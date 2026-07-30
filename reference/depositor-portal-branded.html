@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>OnTarget — Depositor Portal</title>
+<meta name="api-url" content="http://localhost:3000"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --sb:#0f172a;--sbtext:#94a3b8;
+  --bg:#f1f5f9;--card:#ffffff;--border:#e2e8f0;--text:#1e293b;--muted:#64748b;
+  --gold:#d4921e;--gold-bg:#fef3c7;--gold-border:#fde68a;
+  --green:#059669;--green-bg:#d1fae5;--red:#dc2626;--red-bg:#fee2e2;
+  --blue:#2563eb;--blue-bg:#dbeafe;--teal:#0891b2;--teal-bg:#e0f2fe;
+  --radius:12px;--shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.06);
+  --shadow-lg:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -2px rgba(0,0,0,.05);
+}
+*{box-sizing:border-box;margin:0;padding:0;min-width:0}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13.5px;line-height:1.5}
+a{color:inherit;text-decoration:none}
+
+/* LOGIN */
+#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#0f172a 0%,#5b21b6 50%,#0f172a 100%);padding:20px}
+.login-box{width:100%;max-width:380px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);
+  border-radius:20px;padding:36px;backdrop-filter:blur(20px)}
+.login-logo{width:52px;height:52px;border-radius:14px;background:#fff;padding:7px;
+  display:flex;align-items:center;justify-content:center;margin:0 auto 18px}
+.login-logo svg,.sb-logo svg{width:100%;height:100%}
+.login-title{font-size:19px;font-weight:800;color:#f8fafc;text-align:center;margin-bottom:4px}
+.login-sub{font-size:11.5px;color:#94a3b8;text-align:center;margin-bottom:24px}
+.login-field{margin-bottom:12px}
+.login-label{font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px}
+.login-input{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
+  border-radius:9px;color:#f8fafc;padding:10px 13px;font:inherit;font-size:13px;outline:none;transition:.15s}
+.login-input:focus{border-color:#06b6d4}
+.login-btn{width:100%;background:linear-gradient(135deg,#8b2fe0,#1f7fe0);border:none;border-radius:9px;
+  color:#fff;font:inherit;font-size:14px;font-weight:800;padding:11px;cursor:pointer;transition:.15s;margin-top:4px}
+.login-btn:hover{opacity:.9}.login-btn:disabled{opacity:.5;cursor:not-allowed}
+.login-err{background:rgba(220,38,38,.1);border:1px solid rgba(220,38,38,.25);color:#fca5a5;
+  border-radius:8px;padding:9px 12px;font-size:11.5px;margin-top:8px;display:none}
+
+/* LAYOUT */
+#portal{display:none;min-height:100vh;flex-direction:row}
+#portal.show{display:flex}
+.sidebar{width:220px;min-width:220px;background:var(--sb);display:flex;flex-direction:column;height:100vh;position:sticky;top:0}
+.sb-brand{display:flex;align-items:center;gap:10px;padding:18px 14px 14px;border-bottom:1px solid rgba(255,255,255,.07)}
+.sb-logo{width:36px;height:36px;border-radius:10px;background:#fff;padding:5px;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sb-name{font-weight:800;font-size:12.5px;color:#f1f5f9;line-height:1.2}
+.sb-sub{font-size:9.5px;color:#94a3b8}
+.sb-user{padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.07)}
+.sb-uname{font-size:12.5px;font-weight:700;color:#f1f5f9}
+.sb-ubadge{display:inline-flex;align-items:center;gap:4px;background:rgba(8,145,178,.15);
+  border:1px solid rgba(8,145,178,.3);color:#06b6d4;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;margin-top:3px}
+.sb-nav{padding:10px 6px;flex:1}
+.sb-nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;
+  cursor:pointer;transition:.15s;margin-bottom:2px;color:var(--sbtext);font-size:12px;font-weight:600;border:none;background:none;width:100%;text-align:left}
+.sb-nav-item:hover{background:rgba(255,255,255,.06);color:#f1f5f9}
+.sb-nav-item.active{background:rgba(8,145,178,.1);color:#06b6d4;border:1px solid rgba(8,145,178,.2)}
+.sb-nav-icon{width:17px;text-align:center;font-size:14px;flex-shrink:0}
+.sb-bottom{padding:10px 14px;border-top:1px solid rgba(255,255,255,.07)}
+.logout-btn{display:flex;align-items:center;gap:7px;width:100%;background:rgba(220,38,38,.08);
+  border:1px solid rgba(220,38,38,.2);color:#f87171;border-radius:7px;padding:7px 11px;
+  font:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:.15s}
+.logout-btn:hover{background:rgba(220,38,38,.15)}
+
+/* MAIN */
+.main{flex:1;display:flex;flex-direction:column;min-height:100vh}
+.topbar{display:flex;align-items:center;gap:10px;padding:11px 22px;background:#fff;
+  border-bottom:1px solid var(--border);flex-shrink:0}
+.topbar-title{font-size:15px;font-weight:800;flex:1}
+.topbar-badge{display:flex;align-items:center;gap:5px;background:#f1f5f9;border:1px solid var(--border);
+  border-radius:20px;padding:4px 11px;font-size:11px;font-weight:600;color:var(--muted)}
+.live-dot{width:6px;height:6px;border-radius:50%;background:#06b6d4;animation:pulse 2s infinite;flex-shrink:0}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.content{flex:1;overflow-y:auto;padding:20px}
+
+/* TABS */
+.tab-pane{display:none}.tab-pane.active{display:block}
+
+/* CARDS */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
+.card-title{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.09em;margin-bottom:12px}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:900px){.g3,.g2{grid-template-columns:1fr}.sidebar{display:none}}
+
+/* KPI */
+.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px 16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:3px}
+.kpi-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.kpi-value{font-size:24px;font-weight:900;letter-spacing:-.03em;line-height:1.1}
+.kpi-sub{font-size:11px;color:var(--muted)}
+.kpi-icon{font-size:18px;margin-bottom:3px}
+.kpi-teal .kpi-value{color:var(--teal)}.kpi-gold .kpi-value{color:var(--gold)}
+.kpi-green .kpi-value{color:var(--green)}.kpi-blue .kpi-value{color:var(--blue)}
+
+/* TABLE */
+.tbl-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;background:#fff}
+thead th{background:#f8fafc;padding:8px 11px;text-align:left;font-size:10px;font-weight:800;
+  color:var(--muted);text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody td{padding:9px 11px;border-bottom:1px solid #f1f5f9;font-size:12.5px;vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:#fafafa}
+.mono{font-family:'JetBrains Mono',monospace;font-size:11.5px}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap}
+.b-pending{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
+.b-processing{background:#dbeafe;color:#1e40af;border:1px solid #93c5fd}
+.b-approved{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7}
+.b-declined{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
+.b-expired{background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1}
+
+/* FORMS */
+.form-field{margin-bottom:12px}
+.form-label{display:block;font-size:11px;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
+.form-input{width:100%;background:#fff;border:1px solid var(--border);border-radius:8px;
+  color:var(--text);padding:8px 11px;font:inherit;font-size:13px;outline:none;transition:.15s}
+.form-input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(8,145,178,.1)}
+select.form-input{cursor:pointer}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:5px;border:none;border-radius:8px;padding:7px 13px;
+  font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;white-space:nowrap}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-primary{background:linear-gradient(135deg,#8b2fe0,#1f7fe0);color:#fff}
+.btn-secondary{background:#fff;border:1px solid var(--border);color:var(--text)}
+.btn-secondary:hover{border-color:var(--teal);color:var(--teal)}
+.btn-green{background:var(--green-bg);border:1px solid #6ee7b7;color:var(--green)}
+.btn-red{background:var(--red-bg);border:1px solid #fca5a5;color:var(--red)}
+.btn-sm{padding:5px 9px;font-size:11px;border-radius:6px}
+
+/* ALERTS */
+.alert{padding:9px 13px;border-radius:8px;font-size:12px;margin:6px 0;display:none}
+.alert.show{display:block}
+.alert-success{background:var(--green-bg);border:1px solid #6ee7b7;color:var(--green)}
+.alert-error{background:var(--red-bg);border:1px solid #fca5a5;color:var(--red)}
+.alert-info{background:var(--teal-bg);border:1px solid #7dd3fc;color:var(--teal)}
+
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;
+  align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
+.modal-overlay.open{display:flex}
+.modal{background:#fff;border-radius:14px;padding:24px;width:100%;max-width:460px;
+  box-shadow:var(--shadow-lg);max-height:90vh;overflow-y:auto}
+.modal-title{font-size:15px;font-weight:800;margin-bottom:4px}
+.modal-sub{font-size:12px;color:var(--muted);margin-bottom:18px}
+.modal-close{position:absolute;top:14px;right:14px;background:none;border:1px solid var(--border);
+  border-radius:6px;padding:3px 9px;cursor:pointer;font-size:11.5px;color:var(--muted)}
+
+/* ACCOUNT CARD */
+.acct-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px}
+.acct-method{font-size:18px;margin-bottom:4px}
+.acct-num{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700}
+.acct-name{font-size:11.5px;color:var(--muted);margin-top:2px}
+
+/* EMPTY */
+.empty{text-align:center;padding:36px 20px;color:var(--muted)}
+.empty-icon{font-size:36px;margin-bottom:8px}
+.empty-text{font-size:13px;font-weight:600;margin-bottom:3px}
+.empty-sub{font-size:11.5px}
+
+/* COMMISSION */
+.comm-bar{height:8px;border-radius:4px;background:#e2e8f0;overflow:hidden;margin-top:4px}
+.comm-fill{height:100%;background:linear-gradient(to right,#06b6d4,#0891b2);border-radius:4px;transition:.3s}
+
+/* UTILS */
+.flex{display:flex;align-items:center;gap:8px}
+.flex-between{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.mb8{margin-bottom:8px}.mb12{margin-bottom:12px}.mb16{margin-bottom:16px}
+.fw700{font-weight:700}.fw800{font-weight:800}.text-muted{color:var(--muted)}.text-sm{font-size:11.5px}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="dpg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8b2fe0"/><stop offset="1" stop-color="#5b21b6"/></linearGradient><linearGradient id="dbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4aa8f7"/><stop offset="1" stop-color="#1f7fe0"/></linearGradient></defs><circle cx="50" cy="50" r="43" fill="none" stroke="url(#dpg)" stroke-width="13"/><circle cx="50" cy="50" r="23" fill="none" stroke="url(#dbg)" stroke-width="10"/><circle cx="50" cy="50" r="9.5" fill="url(#dbg)"/></svg></div>
+    <div class="login-title">Depositor Portal</div>
+    <div class="login-sub">OnTarget Payment Provider — Local Collector Login</div>
+    <div class="login-field">
+      <label class="login-label">Username</label>
+      <input id="l-user" class="login-input" type="text" placeholder="your_username" autocomplete="username"/>
+    </div>
+    <div class="login-field">
+      <label class="login-label">Password</label>
+      <input id="l-pass" class="login-input" type="password" placeholder="••••••••" autocomplete="current-password"/>
+    </div>
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">Sign In →</button>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- PORTAL -->
+<div id="portal">
+  <div class="sidebar">
+    <div class="sb-brand">
+      <div class="sb-logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="spg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8b2fe0"/><stop offset="1" stop-color="#5b21b6"/></linearGradient><linearGradient id="sbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4aa8f7"/><stop offset="1" stop-color="#1f7fe0"/></linearGradient></defs><circle cx="50" cy="50" r="43" fill="none" stroke="url(#spg)" stroke-width="13"/><circle cx="50" cy="50" r="23" fill="none" stroke="url(#sbg)" stroke-width="10"/><circle cx="50" cy="50" r="9.5" fill="url(#sbg)"/></svg></div>
+      <div>
+        <div class="sb-name">OnTarget</div>
+        <div class="sb-sub">Depositor Portal</div>
+      </div>
+    </div>
+    <div class="sb-user">
+      <div class="sb-uname" id="sbName">—</div>
+      <div class="sb-ubadge">💼 Local Depositor</div>
+    </div>
+    <div class="sb-nav">
+      <button class="sb-nav-item active" onclick="switchTab('dashboard',this)">
+        <span class="sb-nav-icon">📊</span> Dashboard
+      </button>
+      <button class="sb-nav-item" onclick="switchTab('transactions',this)">
+        <span class="sb-nav-icon">📋</span> My Transactions
+      </button>
+      <button class="sb-nav-item" onclick="switchTab('accounts',this)">
+        <span class="sb-nav-icon">🏦</span> My Accounts
+      </button>
+      <button class="sb-nav-item" onclick="switchTab('merchants',this)">
+        <span class="sb-nav-icon">🏪</span> My Merchants
+      </button>
+      <button class="sb-nav-item" onclick="switchTab('commission',this)">
+        <span class="sb-nav-icon">💰</span> Commission
+      </button>
+      <button class="sb-nav-item" onclick="switchTab('documents',this)">
+        <span class="sb-nav-icon">📎</span> Documents
+      </button>
+    </div>
+    <div class="sb-bottom">
+      <button class="logout-btn" onclick="doLogout()">⏏ Sign Out</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="tabTitle">Dashboard</div>
+      <div class="topbar-badge"><span class="live-dot"></span> Live</div>
+      <button class="btn btn-primary btn-sm" onclick="openModal('addAccountModal')">+ Add Account</button>
+    </div>
+
+    <div class="content">
+
+      <!-- DASHBOARD -->
+      <div id="tab-dashboard" class="tab-pane active">
+        <div class="grid g4 mb16">
+          <div class="kpi-card kpi-teal"><div class="kpi-icon">💰</div><div class="kpi-label">Total Commission</div><div class="kpi-value" id="kpi-total">—</div><div class="kpi-sub">All time earned</div></div>
+          <div class="kpi-card kpi-gold"><div class="kpi-icon">⏳</div><div class="kpi-label">Pending</div><div class="kpi-value" id="kpi-pending">—</div><div class="kpi-sub">Awaiting payout</div></div>
+          <div class="kpi-card kpi-green"><div class="kpi-icon">✅</div><div class="kpi-label">Paid Out</div><div class="kpi-value" id="kpi-paid">—</div><div class="kpi-sub">Already received</div></div>
+          <div class="kpi-card kpi-blue"><div class="kpi-icon">📋</div><div class="kpi-label">Transactions</div><div class="kpi-value" id="kpi-txcount">—</div><div class="kpi-sub">Total processed</div></div>
+        </div>
+
+        <!-- Merchant links + Accounts overview -->
+        <div class="grid g2" style="gap:14px;margin-bottom:14px">
+          <div class="card">
+            <div class="card-title">My Assigned Merchants</div>
+            <div id="dashMerchants" class="empty"><div class="empty-icon">🏪</div><div class="empty-text">No merchants assigned</div></div>
+          </div>
+          <div class="card">
+            <div class="card-title">My Payment Accounts</div>
+            <div id="dashAccounts" class="empty"><div class="empty-icon">🏦</div><div class="empty-text">No accounts added</div></div>
+          </div>
+        </div>
+
+        <!-- Recent transactions -->
+        <div class="card" style="margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div class="card-title" style="margin:0">Recent Transactions</div>
+            <button class="btn btn-secondary btn-sm" onclick="loadTransactions()">↺ Refresh</button>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>ID</th><th>Reference</th><th>Amount</th><th>Type</th><th>Status</th><th>Commission</th><th>Date</th></tr></thead>
+              <tbody id="dashRecentTxBody"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px;font-size:12px">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Quick document upload -->
+        <div class="card">
+          <div class="card-title">Quick Document Upload</div>
+          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+            <div style="flex:1;min-width:180px">
+              <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px">Transaction ID</label>
+              <input id="dash-doc-txid" placeholder="TXN-…" style="width:100%;padding:8px 11px;border:1px solid #e2e8f0;border-radius:8px;font:inherit;font-size:12px">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px">Type</label>
+              <select id="dash-doc-type" style="padding:8px 11px;border:1px solid #e2e8f0;border-radius:8px;font:inherit;font-size:12px">
+                <option value="proof_of_payment">Proof of Payment</option>
+                <option value="invoice">Invoice</option>
+                <option value="agreement">Agreement</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px">File (PDF / Image)</label>
+              <input id="dash-doc-file" type="file" accept="image/*,.pdf" style="font:inherit;font-size:12px">
+            </div>
+            <button class="btn btn-primary" onclick="quickUploadDoc()">Upload</button>
+          </div>
+          <div id="dashDocAlert" style="margin-top:8px;font-size:12px"></div>
+        </div>
+      </div>
+
+      <!-- TRANSACTIONS -->
+      <div id="tab-transactions" class="tab-pane">
+        <div class="flex-between mb16">
+          <div class="fw800">My Transactions</div>
+          <button class="btn btn-secondary btn-sm" onclick="loadTransactions()">↺ Refresh</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr><th>Transaction ID</th><th>Reference</th><th>Amount</th><th>Type</th><th>Status</th><th>Merchant</th><th>Commission</th><th>Date</th></tr>
+            </thead>
+            <tbody id="txBody"></tbody>
+          </table>
+        </div>
+        <div id="txEmpty" class="empty" style="display:none">
+          <div class="empty-icon">📭</div><div class="empty-text">No transactions yet</div>
+          <div class="empty-sub">Your assigned transactions will appear here</div>
+        </div>
+      </div>
+
+      <!-- ACCOUNTS -->
+      <div id="tab-accounts" class="tab-pane">
+        <div class="flex-between mb16">
+          <div>
+            <div class="fw800 mb4">My Payment Accounts</div>
+            <div class="text-muted text-sm">Add your wallet/bank accounts for receiving payments.</div>
+          </div>
+          <button class="btn btn-primary" onclick="openModal('addAccountModal')">+ Add Account</button>
+        </div>
+        <div class="grid g3" id="accountsGrid">
+          <div class="empty" style="grid-column:1/-1">
+            <div class="empty-icon">🏦</div><div class="empty-text">No accounts yet</div>
+            <div class="empty-sub">Add your payment accounts above</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MERCHANTS -->
+      <div id="tab-merchants" class="tab-pane">
+        <div class="fw800 mb16">My Assigned Merchants</div>
+        <div id="merchantsList">
+          <div class="empty"><div class="empty-icon">🏪</div><div class="empty-text">No merchants assigned yet</div><div class="empty-sub">Contact admin to get assigned to merchants</div></div>
+        </div>
+      </div>
+
+      <!-- COMMISSION -->
+      <div id="tab-commission" class="tab-pane">
+        <div class="fw800 mb16">Commission & Earnings</div>
+        <div class="card mb16">
+          <div class="card-title">Earnings Summary</div>
+          <div class="grid g3" style="gap:12px">
+            <div style="background:#f0fdf4;border-radius:9px;padding:14px">
+              <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em">Total Earned</div>
+              <div style="font-size:22px;font-weight:900;color:var(--green);margin-top:4px" id="comm-total">—</div>
+            </div>
+            <div style="background:#fef3c7;border-radius:9px;padding:14px">
+              <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em">Pending</div>
+              <div style="font-size:22px;font-weight:900;color:var(--gold);margin-top:4px" id="comm-pending">—</div>
+            </div>
+            <div style="background:#dbeafe;border-radius:9px;padding:14px">
+              <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em">Paid Out</div>
+              <div style="font-size:22px;font-weight:900;color:var(--blue);margin-top:4px" id="comm-paid">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Commission Rates per Merchant</div>
+          <div id="commRates">
+            <div class="empty"><div class="empty-icon">📊</div><div class="empty-text">No merchants assigned</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DOCUMENTS -->
+      <div id="tab-documents" class="tab-pane">
+        <div class="card mb16">
+          <div class="card-title">Upload Transaction Document</div>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Upload proof of payment, invoices, or agreements for any transaction. Files are saved to secure storage and Google Drive.</p>
+          <div class="grid g2" style="gap:12px;margin-bottom:12px">
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px">Transaction ID <span style="color:var(--red)">*</span></label>
+              <input id="doc-txid" placeholder="TXN-XXXXXXXX" style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:9px;font:inherit;font-size:12px">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px">Document Type</label>
+              <select id="doc-type" style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:9px;font:inherit;font-size:12px">
+                <option value="proof_of_payment">Proof of Payment</option>
+                <option value="invoice">Invoice</option>
+                <option value="agreement">Agreement / Contract</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px">File <span style="color:var(--red)">*</span> (PDF, JPG, PNG — max 20 MB)</label>
+            <input id="doc-file" type="file" accept="image/*,.pdf" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:9px;font:inherit;font-size:12px;background:#f8fafc">
+          </div>
+          <button class="btn btn-primary" onclick="uploadDocument()">Upload Document</button>
+          <div id="docUploadAlert" style="margin-top:10px;font-size:12px"></div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div class="card-title" style="margin:0">Documents</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input id="doc-search-txid" placeholder="Transaction ID…" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font:inherit;font-size:11px;width:180px">
+              <button class="btn btn-secondary btn-sm" onclick="loadDocuments()">Load</button>
+            </div>
+          </div>
+          <div id="docsList">
+            <div class="empty"><div class="empty-icon">📎</div><div class="empty-text">Enter a Transaction ID and click Load</div></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ADD ACCOUNT MODAL -->
+<div class="modal-overlay" id="addAccountModal">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeModal('addAccountModal')">✕</button>
+    <div class="modal-title">🏦 Add Payment Account</div>
+    <div class="modal-sub">Add a wallet or bank account to receive payments.</div>
+
+    <div class="form-field">
+      <label class="form-label">Payment Method <span style="color:var(--red)">*</span></label>
+      <select id="acct-method" class="form-input">
+        <option value="">— Select method —</option>
+        <option value="instapay_eg">⚡ InstaPay Egypt</option>
+        <option value="vodafone_cash">📱 Vodafone Cash</option>
+        <option value="orange_cash">🟠 Orange Cash</option>
+        <option value="etisalat_cash">🟢 Etisalat Cash (e&)</option>
+        <option value="fawry">🟡 Fawry Pay</option>
+        <option value="meeza">💳 Meeza Card</option>
+        <option value="bank_transfer">🏦 Bank Transfer (CIB/QNB/HSBC)</option>
+        <option value="card_visa_mc">💳 Credit/Debit Card (Visa/MC)</option>
+        <option value="usdt_crypto">💎 USDT (TRC20/ERC20)</option>
+        <option value="wise">🌍 Wise Transfer</option>
+        <option value="revolut">🔄 Revolut Pay</option>
+        <option value="paypal">🅿 PayPal</option>
+        <option value="binance_pay">🟡 Binance Pay</option>
+      </select>
+    </div>
+    <div class="form-field">
+      <label class="form-label">Account Number / Phone / Address <span style="color:var(--red)">*</span></label>
+      <input type="text" id="acct-num" class="form-input" placeholder="e.g. 01xxxxxxxx or wallet address"/>
+    </div>
+    <div class="form-row">
+      <div class="form-field" style="margin:0">
+        <label class="form-label">Account Name</label>
+        <input type="text" id="acct-name" class="form-input" placeholder="Full name on account"/>
+      </div>
+      <div class="form-field" style="margin:0">
+        <label class="form-label">Label / Nickname</label>
+        <input type="text" id="acct-label" class="form-input" placeholder="e.g. My VF Cash"/>
+      </div>
+    </div>
+    <div class="form-field" style="margin-top:12px" id="iban-wrap">
+      <label class="form-label">IBAN (bank transfers)</label>
+      <input type="text" id="acct-iban" class="form-input" placeholder="EG…"/>
+    </div>
+
+    <div id="acctAlert" class="alert"></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('addAccountModal')">Cancel</button>
+      <button class="btn btn-primary" style="flex:2" id="acctSaveBtn" onclick="saveAccount()">Add Account →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = document.querySelector('meta[name="api-url"]').content;
+
+const S = { token: null, depositorId: null, name: null, merchants: [], accounts: [], transactions: [], commSummary: null };
+
+// ── utils ──────────────────────────────────────────────────────────────────────
+const esc  = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const fmt  = (a,c) => `${Number(a||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} ${c||'EGP'}`;
+const fmtN = a     => Number(a||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtD = d     => d ? new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+
+function statusBadge(s){const m={pending:'b-pending',processing:'b-processing',approved:'b-approved',declined:'b-declined',expired:'b-expired'};return `<span class="badge ${m[s]||'b-expired'}">${s}</span>`;}
+
+const TAB_TITLES = { dashboard:'Dashboard', transactions:'My Transactions', accounts:'My Accounts', merchants:'My Merchants', commission:'Commission', documents:'Documents' };
+
+// ── auth ───────────────────────────────────────────────────────────────────────
+async function doLogin(){
+  const u = document.getElementById('l-user').value.trim();
+  const p = document.getElementById('l-pass').value;
+  if(!u||!p){ showLoginErr('Enter username and password'); return; }
+  const btn = document.getElementById('loginBtn'); btn.disabled=true; btn.textContent='Signing in…';
+  try{
+    const res  = await fetch(`${API}/v1/depositors/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+    const data = await res.json();
+    if(!res.ok) throw new Error(data?.error?.message||'Login failed');
+    S.token       = data.session.access_token;
+    S.depositorId = data.profile?.depositor_id;
+    S.name        = data.profile?.full_name || u;
+    localStorage.setItem('dep_token', S.token);
+    await bootPortal();
+  }catch(e){ showLoginErr(e.message); btn.disabled=false; btn.textContent='Sign In →'; }
+}
+function showLoginErr(m){ const el=document.getElementById('loginErr'); el.textContent=m; el.style.display='block'; }
+
+function doLogout(){
+  localStorage.removeItem('dep_token'); S.token=null;
+  document.getElementById('portal').classList.remove('show');
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('l-pass').value='';
+}
+
+async function bootPortal(){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('portal').classList.add('show');
+  await loadProfile();
+}
+
+// ── data ───────────────────────────────────────────────────────────────────────
+async function apiGet(path){
+  const res = await fetch(`${API}${path}`,{headers:{Authorization:'Bearer '+S.token}});
+  const data = await res.json();
+  if(!res.ok) throw new Error(data?.error?.message||res.statusText);
+  return data;
+}
+
+async function loadProfile(){
+  try{
+    const data = await apiGet('/v1/depositors/me');
+    S.merchants   = data.merchants||[];
+    S.accounts    = data.accounts||[];
+    S.commSummary = data.summary||{};
+    S.depositorId = data.depositor_id;
+    S.name        = data.name;
+    document.getElementById('sbName').textContent = S.name||'—';
+    renderDashboard();
+    renderKpis();
+  }catch(e){ console.error('loadProfile',e); }
+}
+
+async function loadTransactions(){
+  try{
+    const data = await apiGet('/v1/depositors/transactions?limit=200');
+    S.transactions = data.transactions||[];
+    renderTransactions();
+  }catch(e){ console.error('loadTx',e); }
+}
+
+// ── render ─────────────────────────────────────────────────────────────────────
+function renderKpis(){
+  const s = S.commSummary||{};
+  document.getElementById('kpi-total').textContent   = 'EGP '+fmtN(s.total_earned||0);
+  document.getElementById('kpi-pending').textContent = 'EGP '+fmtN(s.pending_earned||0);
+  document.getElementById('kpi-paid').textContent    = 'EGP '+fmtN(s.paid_earned||0);
+  document.getElementById('kpi-txcount').textContent = s.tx_count||0;
+  // comm tab
+  document.getElementById('comm-total').textContent   = 'EGP '+fmtN(s.total_earned||0);
+  document.getElementById('comm-pending').textContent = 'EGP '+fmtN(s.pending_earned||0);
+  document.getElementById('comm-paid').textContent    = 'EGP '+fmtN(s.paid_earned||0);
+}
+
+function renderDashboard(){
+  renderDashRecentTx();
+  // merchants
+  const mEl = document.getElementById('dashMerchants');
+  if(!S.merchants.length){ mEl.innerHTML='<div class="empty"><div class="empty-icon">🏪</div><div class="empty-text">No merchants assigned</div></div>'; }
+  else mEl.innerHTML = S.merchants.map(m=>`
+    <div class="flex-between" style="padding:8px 0;border-bottom:1px solid #f1f5f9">
+      <div><div class="fw700 text-sm">${esc(m.merchant_name)}</div><div class="text-muted" style="font-size:10.5px">${esc(m.mid||'—')}</div></div>
+      <div style="text-align:right;font-size:11.5px">
+        <div class="fw700 text-sm">${fmtN(m.commission_pct||0)}%${m.commission_flat>0?' + EGP '+fmtN(m.commission_flat):''}</div>
+        ${m.commission_cap ? `<div class="text-muted" style="font-size:10px">Cap: EGP ${fmtN(m.commission_cap)}</div>` : ''}
+      </div>
+    </div>`).join('');
+
+  // accounts
+  const aEl = document.getElementById('dashAccounts');
+  if(!S.accounts.length){ aEl.innerHTML='<div class="empty"><div class="empty-icon">🏦</div><div class="empty-text">No accounts added</div></div>'; }
+  else aEl.innerHTML = S.accounts.slice(0,4).map(a=>`
+    <div class="flex" style="padding:8px 0;border-bottom:1px solid #f1f5f9">
+      <div style="font-size:18px">${esc(a.icon_emoji||'💳')}</div>
+      <div><div class="fw700 text-sm">${esc(a.method_name||a.method_code)}</div>
+        <div class="mono text-muted" style="font-size:11px">${esc(a.account_number)}</div>
+      </div>
+    </div>`).join('');
+}
+
+function renderAccounts(){
+  const grid = document.getElementById('accountsGrid');
+  if(!S.accounts.length){
+    grid.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-icon">🏦</div><div class="empty-text">No accounts yet</div><div class="empty-sub">Click "+ Add Account" to get started</div></div>';
+    return;
+  }
+  grid.innerHTML = S.accounts.map(a=>`
+    <div class="acct-card">
+      <div class="acct-method">${esc(a.icon_emoji||'💳')} ${esc(a.method_name||a.method_code)}</div>
+      <div class="acct-num">${esc(a.account_number)}</div>
+      ${a.account_name ? `<div class="acct-name">${esc(a.account_name)}</div>` : ''}
+      ${a.label ? `<div style="font-size:10.5px;color:var(--muted);margin-top:4px">${esc(a.label)}</div>` : ''}
+      ${a.iban  ? `<div style="font-size:10px;color:var(--muted);font-family:monospace;margin-top:3px">${esc(a.iban)}</div>` : ''}
+      <div style="margin-top:8px"><span class="badge ${a.is_active?'b-approved':'b-expired'}">${a.is_active?'Active':'Inactive'}</span></div>
+    </div>`).join('');
+}
+
+function renderMerchants(){
+  const el = document.getElementById('merchantsList');
+  if(!S.merchants.length){
+    el.innerHTML='<div class="empty"><div class="empty-icon">🏪</div><div class="empty-text">No merchants assigned</div><div class="empty-sub">Contact admin to be assigned to merchants</div></div>';
+    return;
+  }
+  el.innerHTML = S.merchants.map(m=>`
+    <div class="card mb8">
+      <div class="flex-between">
+        <div><div class="fw800">${esc(m.merchant_name)}</div><div class="text-muted text-sm">${esc(m.mid||'—')}</div></div>
+        <span class="badge ${m.is_active?'b-approved':'b-expired'}">${m.is_active?'Active':'Inactive'}</span>
+      </div>
+      <div class="grid g3" style="gap:10px;margin-top:12px">
+        <div style="background:#f8fafc;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">Commission %</div>
+          <div style="font-size:18px;font-weight:900;color:var(--teal)">${fmtN(m.commission_pct||0)}%</div>
+        </div>
+        <div style="background:#f8fafc;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">Flat Fee</div>
+          <div style="font-size:18px;font-weight:900;color:var(--blue)">EGP ${fmtN(m.commission_flat||0)}</div>
+        </div>
+        <div style="background:#f8fafc;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">Cap / Tx</div>
+          <div style="font-size:18px;font-weight:900;color:var(--gold)">${m.commission_cap ? 'EGP '+fmtN(m.commission_cap) : '∞'}</div>
+        </div>
+      </div>
+      ${m.daily_limit ? `<div style="font-size:11.5px;color:var(--muted);margin-top:8px">📅 Daily collection limit: EGP ${fmtN(m.daily_limit)}</div>` : ''}
+    </div>`).join('');
+}
+
+function renderCommRates(){
+  const el = document.getElementById('commRates');
+  if(!S.merchants.length){ el.innerHTML='<div class="empty"><div class="empty-icon">📊</div><div class="empty-text">No merchants</div></div>'; return; }
+  el.innerHTML = S.merchants.map(m=>`
+    <div class="flex-between" style="padding:10px 0;border-bottom:1px solid #f1f5f9">
+      <div><div class="fw700">${esc(m.merchant_name)}</div><div class="text-muted text-sm">${esc(m.mid||'—')}</div></div>
+      <div style="text-align:right">
+        <div class="fw800" style="color:var(--teal)">${fmtN(m.commission_pct||0)}% per transaction</div>
+        ${m.commission_flat>0?`<div class="text-sm text-muted">+ EGP ${fmtN(m.commission_flat)} flat</div>`:''}
+        ${m.commission_cap?`<div class="text-sm" style="color:var(--gold)">Cap: EGP ${fmtN(m.commission_cap)}/tx</div>`:''}
+      </div>
+    </div>`).join('');
+}
+
+function renderTransactions(){
+  const body  = document.getElementById('txBody');
+  const empty = document.getElementById('txEmpty');
+  if(!S.transactions.length){ body.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  body.innerHTML = S.transactions.map(t=>`<tr>
+    <td class="mono">${esc(t.transaction_id)}</td>
+    <td>${esc(t.merchant_ref)}</td>
+    <td class="fw700">${fmt(t.amount,t.currency)}</td>
+    <td><span class="badge b-pending">${esc(t.type||'payin')}</span></td>
+    <td>${statusBadge(t.status)}</td>
+    <td>${esc(t.merchant_name||'—')}</td>
+    <td style="color:var(--teal);font-weight:700">${t.commission_amt ? 'EGP '+fmtN(t.commission_amt) : '<span class="text-muted">—</span>'}</td>
+    <td class="text-muted text-sm">${fmtD(t.created_at)}</td>
+  </tr>`).join('');
+}
+
+// ── tab nav ────────────────────────────────────────────────────────────────────
+function switchTab(name, el){
+  document.querySelectorAll('.tab-pane').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.sb-nav-item').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  if(el) el.classList.add('active');
+  document.getElementById('tabTitle').textContent = TAB_TITLES[name]||name;
+  if(name==='transactions') loadTransactions();
+  if(name==='accounts')     renderAccounts();
+  if(name==='merchants')    renderMerchants();
+  if(name==='commission')   { renderCommRates(); renderKpis(); }
+  if(name==='documents')    loadDocuments();
+}
+
+// ── add account ────────────────────────────────────────────────────────────────
+async function saveAccount(){
+  const method = document.getElementById('acct-method').value;
+  const num    = document.getElementById('acct-num').value.trim();
+  const name   = document.getElementById('acct-name').value.trim();
+  const label  = document.getElementById('acct-label').value.trim();
+  const iban   = document.getElementById('acct-iban').value.trim();
+  const alertEl = document.getElementById('acctAlert');
+  alertEl.className='alert'; alertEl.style.display='none';
+
+  if(!method){ alertEl.className='alert alert-error'; alertEl.textContent='Select a payment method'; alertEl.style.display='block'; return; }
+  if(!num){ alertEl.className='alert alert-error'; alertEl.textContent='Account number/address is required'; alertEl.style.display='block'; return; }
+
+  const btn = document.getElementById('acctSaveBtn'); btn.disabled=true; btn.textContent='Saving…';
+  try{
+    const res = await fetch(`${API}/v1/depositors/accounts`,{method:'POST',
+      headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.token},
+      body:JSON.stringify({method_code:method,account_number:num,account_name:name||undefined,label:label||undefined,iban:iban||undefined})
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data?.error?.message||'Failed');
+    alertEl.className='alert alert-success'; alertEl.textContent='Account added!'; alertEl.style.display='block';
+    await loadProfile();
+    renderAccounts();
+    btn.disabled=false; btn.textContent='Add Account →';
+    setTimeout(()=>{ closeModal('addAccountModal'); alertEl.style.display='none'; }, 1200);
+  }catch(e){ alertEl.className='alert alert-error'; alertEl.textContent=e.message; alertEl.style.display='block'; btn.disabled=false; btn.textContent='Add Account →'; }
+}
+
+// ── recent transactions on dashboard ─────────────────────────────────────────
+function renderDashRecentTx() {
+  const body = document.getElementById('dashRecentTxBody');
+  const recent = S.transactions.slice(0, 8);
+  if (!recent.length) {
+    body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px;font-size:12px">No transactions yet</td></tr>';
+    return;
+  }
+  body.innerHTML = recent.map(t => `<tr>
+    <td class="mono" style="font-size:10px">${esc(t.transaction_id)}</td>
+    <td style="font-size:11px">${esc(t.merchant_ref)}</td>
+    <td style="font-weight:700;font-size:12px">${fmt(t.amount,t.currency)}</td>
+    <td style="font-size:11px"><span class="badge b-pending">${esc(t.type||'payin')}</span></td>
+    <td>${statusBadge(t.status)}</td>
+    <td style="color:var(--teal);font-weight:700;font-size:11px">${t.commission_amt ? 'EGP '+fmtN(t.commission_amt) : '<span style="color:var(--muted)">—</span>'}</td>
+    <td style="color:var(--muted);font-size:10px">${fmtD(t.created_at)}</td>
+  </tr>`).join('');
+}
+
+// ── documents ─────────────────────────────────────────────────────────────────
+async function uploadDocument() {
+  const txid   = document.getElementById('doc-txid').value.trim();
+  const type   = document.getElementById('doc-type').value;
+  const file   = document.getElementById('doc-file').files[0];
+  const alert  = document.getElementById('docUploadAlert');
+  alert.textContent = '';
+
+  if (!txid) { alert.style.color='var(--red)'; alert.textContent = 'Transaction ID is required'; return; }
+  if (!file) { alert.style.color='var(--red)'; alert.textContent = 'Please choose a file'; return; }
+
+  alert.style.color = 'var(--muted)';
+  alert.textContent = 'Uploading…';
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('doc_type', type);
+  fd.append('uploaded_by', 'depositor');
+
+  try {
+    const res = await fetch(`${API}/v1/documents/${encodeURIComponent(txid)}/upload`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + S.token },
+      body: fd
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error?.message || res.status);
+    alert.style.color = 'var(--green)';
+    alert.textContent = `Uploaded: ${data.file_name}. Saved to Supabase Storage${data.gdrive_url ? ' and Google Drive' : ''}.`;
+    document.getElementById('doc-file').value = '';
+    document.getElementById('doc-txid').value = '';
+    document.getElementById('doc-search-txid').value = txid;
+    loadDocuments();
+  } catch(e) {
+    alert.style.color = 'var(--red)';
+    alert.textContent = 'Upload failed: ' + e.message;
+  }
+}
+
+async function quickUploadDoc() {
+  const txid   = document.getElementById('dash-doc-txid').value.trim();
+  const type   = document.getElementById('dash-doc-type').value;
+  const file   = document.getElementById('dash-doc-file').files[0];
+  const alert  = document.getElementById('dashDocAlert');
+  alert.textContent = '';
+
+  if (!txid) { alert.style.color='var(--red)'; alert.textContent = 'Transaction ID is required'; return; }
+  if (!file) { alert.style.color='var(--red)'; alert.textContent = 'Please choose a file'; return; }
+
+  alert.style.color = 'var(--muted)';
+  alert.textContent = 'Uploading…';
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('doc_type', type);
+  fd.append('uploaded_by', 'depositor');
+
+  try {
+    const res = await fetch(`${API}/v1/documents/${encodeURIComponent(txid)}/upload`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + S.token },
+      body: fd
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error?.message || res.status);
+    alert.style.color = 'var(--green)';
+    alert.textContent = `Uploaded successfully: ${data.file_name}`;
+    document.getElementById('dash-doc-file').value = '';
+  } catch(e) {
+    alert.style.color = 'var(--red)';
+    alert.textContent = 'Upload failed: ' + e.message;
+  }
+}
+
+async function loadDocuments() {
+  const txid = (document.getElementById('doc-search-txid')?.value || '').trim();
+  const el   = document.getElementById('docsList');
+  if (!txid) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">📎</div><div class="empty-text">Enter a Transaction ID and click Load</div></div>';
+    return;
+  }
+  el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:12px">Loading…</div>';
+  try {
+    const res  = await fetch(`${API}/v1/documents/${encodeURIComponent(txid)}`, {
+      headers: { Authorization: 'Bearer ' + S.token }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error?.message || res.status);
+    const docs = data.documents || [];
+    if (!docs.length) {
+      el.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">No documents for this transaction</div></div>';
+      return;
+    }
+    const typeIcon = { proof_of_payment:'🧾', invoice:'📄', agreement:'📝', other:'📎' };
+    el.innerHTML = `<div style="display:grid;gap:8px">` + docs.map(d => `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px;border:1px solid #e2e8f0;border-radius:9px;background:#f8fafc">
+        <div style="font-size:24px">${typeIcon[d.doc_type]||'📎'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:12px">${esc(d.file_name)}</div>
+          <div style="font-size:10px;color:var(--muted);text-transform:capitalize">${esc(d.doc_type.replace(/_/g,' '))} · ${esc(d.uploaded_by||'—')} · ${fmtD(d.created_at)}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          ${d.storage_url ? `<a href="${esc(d.storage_url)}" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none">View</a>` : ''}
+          ${d.gdrive_url  ? `<a href="${esc(d.gdrive_url)}"  target="_blank" class="btn btn-primary btn-sm"   style="text-decoration:none">Drive</a>` : '<span style="font-size:10px;color:var(--muted)">Drive: pending</span>'}
+        </div>
+      </div>`).join('') + '</div>';
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--red);font-size:12px;padding:12px">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+// ── helpers ────────────────────────────────────────────────────────────────────
+function openModal(id){ document.getElementById(id).classList.add('open'); }
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open')); });
+document.querySelectorAll('.modal-overlay').forEach(m=>m.addEventListener('click',e=>{ if(e.target===m) m.classList.remove('open'); }));
+['l-user','l-pass'].forEach(id=>document.getElementById(id).addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); }));
+
+// auto-login
+(async()=>{
+  const t = localStorage.getItem('dep_token');
+  if(t){ S.token=t; await bootPortal(); }
+})();
+</script>
+</body>
+</html>

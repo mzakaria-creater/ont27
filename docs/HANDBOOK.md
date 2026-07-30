@@ -70,6 +70,12 @@ Auth + RBAC → Dashboard → **Deposits (الأولوية التشغيلية ا
 - `reference/checkout-branded.html` — نفس الصفحة بهوية OnTarget الجديدة (bullseye logo + purple/blue بدل الذهبي/البرتقالي؛ الذهبي اتساب للـ timer/تحذير الانتهاء فقط كدلالة).
 - ملاحظات للبناء الجديد: الصفحة الحالية بتحمّل مكتبة QR من CDN خارجي (jsdelivr) — في النسخة الجديدة تتعمل bundle محلياً؛ والـ submit بيبعت FormData مفتوح من غير session token إضافي — الـ checkout الجديد لازم يقفل ده بالـ `checkout_sessions` + سعر الصرف المقفول (`exchange_rate_locked_at/value/expires_at`).
 
+## 5.6) مرجع الـ Depositor Portal (المحصّلين المحليين)
+
+- `reference/depositor-portal.html` — بورتال الـ Local Depositors كما استُلم: login خاص (`POST /v1/depositors/login`)، Dashboard بعمولات (total/pending/paid)، My Transactions (`/v1/depositors/transactions`)، My Accounts (13 method: InstaPay/Vodafone/Orange/Etisalat/Fawry/Meeza/Bank/Visa-MC/USDT/Wise/Revolut/PayPal/Binance Pay عبر `POST /v1/depositors/accounts`)، My Merchants (نسب عمولة % + flat + cap + daily limit)، Documents (رفع proof/invoice/agreement عبر `/v1/documents/:txid/upload` → Supabase Storage + Google Drive).
+- `reference/depositor-portal-branded.html` — نفسه بهوية bullseye + purple/blue.
+- **فجوة مكشوفة:** الـ API base في الملف `http://localhost:3000` — يعني backend الـ depositors تحت التطوير ومش منشور، وجداوله (depositors، depositor_accounts، depositor_merchant_assignments، transaction_documents أو مكافئاتها) **غير موجودة في panel-v2 DB** حالياً. ده بيترجم مفهوم `local_deposit_channels` لواجهة فعلية — لما نوصل لمرحلة بنائه: نصمم الجداول في panel-v2 + طبقة API بنفس قواعد الأمان (JWT مخصص، RLS، idempotency)، ونحوّل الـ portal لصفحات داخل البانل أو تطبيق منفصل حسب قرار المنتج.
+
 ## 6) أوامر تشخيص سريعة
 
 ```bash
