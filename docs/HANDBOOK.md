@@ -82,6 +82,21 @@ Auth + RBAC → Dashboard → **Deposits (الأولوية التشغيلية ا
 - **حسم اللغز المعماري:** جداول v3 في schema `ontarget` (8 جداول RLS)، لكن **كل الـ DB access عبر SECURITY DEFINER RPCs عايشة في `public`** بـ `search_path = ontarget, public` و`Content-Profile: public` — فغياب USAGE للـ service_role على `ontarget` مش بيمنعه، وده تفسير تطابق الـ OpenAPI spec مع أسماء الجداول. مفيش تناقض مع كون الـ API الحي (`api.ontarget-egy.com`) شغال على `public` مباشرة.
 - **Blueprint جاهز للـ checkout الجديد** (نقتبسه بدل الاختراع): token URL 64-hex يتخزن SHA-256 فقط؛ single-use على 3 طبقات (frontend/API 409/RPC atomic RAISE)؛ جلسة 15 دقيقة auto-expire؛ statuses: `pending → processing → approved|declined` + `expired`؛ API keys بصيغة `ot_live_` تتخزن SHA-256+salt وتظهر مرة واحدة؛ passwords bcrypt cost 12؛ rate limits (10/5min للـ submit، 30/min للـ public fetch، 100/15min عام)؛ webhook HMAC مع ملاحظة إن **مفيش retry تلقائي حالياً** — نضيف retry queue في البناء الجديد.
 
+## 5.8) مرجع الـ Admin Dashboard (أهم مرجع — ده اللي بنعيد بناءه)
+
+`reference/admin-dashboard.html` (+ `-branded.html`) — لوحة تحكم الأدمن الحالية بـ **19 تبويب**، وهي الأقرب لوصف البانل الجديد. التبويبات: Monitor (live)، Merchants، Transactions، Approvals (بـ badge عدّاد)، Settlements، Wallets & Payment Accounts، Payment Methods، Analytics، SMS Logs، Checkout Builder، Merchant View، API Docs، Auth & Tokens، Request Builder، Admin Profile، Operators & Depositors، Support Tickets، Merchant Hierarchy (شجرة)، Role Permissions (matrix).
+
+**بتتكلم مع Supabase مباشرة** عبر PostgREST RPCs (`POST /rest/v1/rpc/<fn>` بـ header `Content-Profile: public`) — مش عبر Gateway API. الـ RPCs المستخدمة:
+`admin_get_merchants` / `admin_get_sandbox_merchants` (توأمة live/sandbox عبر `_mEnv`)، `admin_get_transactions`، `admin_update_tx_status`، `admin_get_settlement_requests` / `admin_update_settlement`، `admin_get_support_tickets` / `admin_update_ticket`، `admin_get_wallet_pools`، `admin_list/add/update/toggle/delete_payment_method`، `api_admin_hierarchy_tree`، `api_admin_fee_allocations`، `get_checkout_wallets`. وبعض العمليات عبر Gateway بـ `X-Admin-Secret`: `/v1/admin/transaction/:id/proof`، `/v1/admin/transaction/:id/approve-payout`، `/v1/admin/transaction/:id/calculate-fees`، `/v1/admin/merchant/:mid/hierarchy`.
+
+> 🔴 **دروس أمان من الملف ده — لا تتكرر في البانل الجديد (تعزيز مباشر لقسم الأمان في الـ kickoff):**
+> 1. الملف فيه **`ADMIN_KEY` (admin secret) و`SB_ANON` مكتوبين hardcoded في الـ HTML** — أي حد يفتح view-source يشوفهم. البانل الجديد: مفيش أسرار في الـ frontend إطلاقاً؛ الأدمن سيكرت يعيش في طبقة API server-side بس.
+> 2. الفرونت بينادي RPCs بالـ **anon key مباشرة** — يعني الأمان كله معتمد على منطق جوّه الـ RPC؛ لو RPC واحدة ناقصة check بتتكشف. الجديد: RLS فعلي + JWT مخصص لكل طلب، مش anon مفتوح.
+> 3. **الـ admin secret ده مكشوف دلوقتي في ملف على الديسكتوب** (`a16126…`) — يُعتبر compromised ويتغيّر في env بتاعة `ontarget-v1-api` قبل أي إطلاق. [[project-ontarget-supabase]]
+> 4. في الملف health-check string بيقول "Connected · awzzlmdq…" — ده project ID **غلط** (مشروع تاني)، بينما الـ RPCs الحقيقية بتضرب `yvwppyoaksyhycimvgtw`. لا تتبع الـ string ده.
+
+**قيمته:** خريطة كاملة للصفحات والـ RPCs المطلوبة — نعيد بناء كل تبويب فوق panel-v2 DB بطبقة API آمنة بدل RPCs مفتوحة بالـ anon. وترتيب البناء في القسم 5 مشتق من التبويبات دي (Deposits = Approvals + Transactions أولوية قصوى).
+
 ## 6) أوامر تشخيص سريعة
 
 ```bash
