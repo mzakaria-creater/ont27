@@ -1,0 +1,87 @@
+:root {
+  /* Neutral dark base — near-navy/charcoal. Status colors are reserved
+     EXCLUSIVELY for transaction status, never reuse them elsewhere. */
+  --bg: #0e1420;
+  --surface: #151d2e;
+  --border: #24304a;
+  --text: #e8ecf4;
+  --text-dim: #8b96ad;
+  --status-pending: #f0a929; /* PENDING only */
+  --status-paid: #2ecc80;    /* PAID only */
+  --status-declined: #e5484d;/* DECLINED only */
+  --accent: #5b8def;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Tahoma, sans-serif;
+  font-size: 14px;
+}
+
+.shell {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-block-end: 1px solid var(--border);
+}
+
+.topbar h1 {
+  font-size: 15px;
+  margin: 0;
+  font-weight: 600;
+}
+
+.spacer { flex: 1; }
+
+.conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.dot {
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.dot.ok { background: var(--status-paid); }
+.dot.bad { background: var(--status-declined); }
+.dot.wait { background: var(--status-pending); }
+
+.main {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px 28px;
+  max-inline-size: 560px;
+  inline-size: 100%;
+}
+
+.card h2 { margin: 0 0 4px; font-size: 18px; }
+.card p { color: var(--text-dim); margin: 6px 0; line-height: 1.7; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; direction: ltr; unicode-bidi: embed; }
