@@ -37,7 +37,8 @@ export default function App() {
   return (
     <div className="shell">
       <header className="topbar">
-        <h1>OnTarget Panel</h1>
+        <img src="/logo.svg" alt="OnTarget" className="logo" />
+        <h1>OnTarget <span className="brand-sub">Payment Provider</span></h1>
         <div className="spacer" />
         <span className="conn">
           <span className={`dot ${conn}`} />

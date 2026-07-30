@@ -9,7 +9,10 @@
   --status-pending: #f0a929; /* PENDING only */
   --status-paid: #2ecc80;    /* PAID only */
   --status-declined: #e5484d;/* DECLINED only */
-  --accent: #5b8def;
+  /* Brand (OnTarget bullseye): purple + blue */
+  --brand-purple: #6d28d9;
+  --brand-blue: #2f8fef;
+  --accent: var(--brand-blue);
 }
 
 * { box-sizing: border-box; }
@@ -43,6 +46,20 @@ body {
   font-size: 15px;
   margin: 0;
   font-weight: 600;
+}
+
+.logo {
+  inline-size: 22px;
+  block-size: 22px;
+  display: block;
+}
+
+.brand-sub {
+  color: var(--text-dim);
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .spacer { flex: 1; }
