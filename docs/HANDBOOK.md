@@ -64,6 +64,12 @@ Auth + RBAC → Dashboard → **Deposits (الأولوية التشغيلية ا
 
 بعد كل صفحة: اختبار فعلي ضد قاعدة panel-v2 (لا mock)، والتأكد أن أي approve/decline يوجَّه حسب `master_merchant` قبل الانتقال.
 
+## 5.5) مرجع الـ Hosted Checkout
+
+- `reference/checkout.html` — نسخة طبق الأصل من صفحة الـ checkout الحية (بتكلم `pay.ontarget-egy.com/api/v1/transaction/...`): AR/EN، 4 طرق دفع (manual / QR / USSD / redirect)، countdown للـ expiry، dynamic fields من الـ API، رفع إثبات دفع ثم تحويل لـ `waiting.html`. **دي مرجع الـ UX والـ flow** لما نبني الـ checkout الجديد (Next.js، مؤجل حسب القرار #1) مع schema `ontarget` في `ontarget-api-v3`.
+- `reference/checkout-branded.html` — نفس الصفحة بهوية OnTarget الجديدة (bullseye logo + purple/blue بدل الذهبي/البرتقالي؛ الذهبي اتساب للـ timer/تحذير الانتهاء فقط كدلالة).
+- ملاحظات للبناء الجديد: الصفحة الحالية بتحمّل مكتبة QR من CDN خارجي (jsdelivr) — في النسخة الجديدة تتعمل bundle محلياً؛ والـ submit بيبعت FormData مفتوح من غير session token إضافي — الـ checkout الجديد لازم يقفل ده بالـ `checkout_sessions` + سعر الصرف المقفول (`exchange_rate_locked_at/value/expires_at`).
+
 ## 6) أوامر تشخيص سريعة
 
 ```bash
