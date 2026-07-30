@@ -17,7 +17,7 @@
 - على Railway توجد مشاريع كثيرة متشابهة الأسماء (`ontarget-api-v3`, `ontarget-api` ×2, `ontarget-sandbox-api`...) — الحي الوحيد هو `ontarget-v1-api`.
 - مجلد `~/Desktop/https-ontarget-egy-com` كوده قريب من المنشور لكنه **ليس** مصدر النشر.
 - مجلد `~/Desktop/ontarget-nexus-main` نسخة محلية **متباعدة قليلاً** عن GitHub main — الحقيقة عند GitHub.
-- `ontarget-api-v3` (schema `ontarget`) غير منشور — مرجع تصميم Hosted Checkout فقط.
+- `ontarget-api-v3` (schema `ontarget`) **منشور على URL بتاعه** `ontarget-api-v3-production.up.railway.app` لكنه ليس اللي وراء `api.ontarget-egy.com` — مرجع تصميم Hosted Checkout (راجع 5.7).
 
 ## 2) التشغيل المحلي
 
@@ -75,6 +75,12 @@ Auth + RBAC → Dashboard → **Deposits (الأولوية التشغيلية ا
 - `reference/depositor-portal.html` — بورتال الـ Local Depositors كما استُلم: login خاص (`POST /v1/depositors/login`)، Dashboard بعمولات (total/pending/paid)، My Transactions (`/v1/depositors/transactions`)، My Accounts (13 method: InstaPay/Vodafone/Orange/Etisalat/Fawry/Meeza/Bank/Visa-MC/USDT/Wise/Revolut/PayPal/Binance Pay عبر `POST /v1/depositors/accounts`)، My Merchants (نسب عمولة % + flat + cap + daily limit)، Documents (رفع proof/invoice/agreement عبر `/v1/documents/:txid/upload` → Supabase Storage + Google Drive).
 - `reference/depositor-portal-branded.html` — نفسه بهوية bullseye + purple/blue.
 - **فجوة مكشوفة:** الـ API base في الملف `http://localhost:3000` — يعني backend الـ depositors تحت التطوير ومش منشور، وجداوله (depositors، depositor_accounts، depositor_merchant_assignments، transaction_documents أو مكافئاتها) **غير موجودة في panel-v2 DB** حالياً. ده بيترجم مفهوم `local_deposit_channels` لواجهة فعلية — لما نوصل لمرحلة بنائه: نصمم الجداول في panel-v2 + طبقة API بنفس قواعد الأمان (JWT مخصص، RLS، idempotency)، ونحوّل الـ portal لصفحات داخل البانل أو تطبيق منفصل حسب قرار المنتج.
+
+## 5.7) مرجع API Reference v3 — ولغز schema `ontarget` محسوم
+
+- `reference/api-reference-v3.html` (+ `-branded.html`) — التوثيق الرسمي الكامل لـ `ontarget-api-v3` (v3.0، يونيو 2026): auth بثلاث طرق (Merchant JWT 30d/90d rotation + `X-API-Key: ot_live_...` + `X-Admin-Secret`)، checkout/payout بروابط 256-bit tokens، payment submission عام بـ rate limits، webhooks بتوقيع HMAC-SHA256 (`X-OnTarget-Signature` بمفتاح `ot_secret_...`)، admin CRUD، جداول أخطاء وenv vars كاملة.
+- **حسم اللغز المعماري:** جداول v3 في schema `ontarget` (8 جداول RLS)، لكن **كل الـ DB access عبر SECURITY DEFINER RPCs عايشة في `public`** بـ `search_path = ontarget, public` و`Content-Profile: public` — فغياب USAGE للـ service_role على `ontarget` مش بيمنعه، وده تفسير تطابق الـ OpenAPI spec مع أسماء الجداول. مفيش تناقض مع كون الـ API الحي (`api.ontarget-egy.com`) شغال على `public` مباشرة.
+- **Blueprint جاهز للـ checkout الجديد** (نقتبسه بدل الاختراع): token URL 64-hex يتخزن SHA-256 فقط؛ single-use على 3 طبقات (frontend/API 409/RPC atomic RAISE)؛ جلسة 15 دقيقة auto-expire؛ statuses: `pending → processing → approved|declined` + `expired`؛ API keys بصيغة `ot_live_` تتخزن SHA-256+salt وتظهر مرة واحدة؛ passwords bcrypt cost 12؛ rate limits (10/5min للـ submit، 30/min للـ public fetch، 100/15min عام)؛ webhook HMAC مع ملاحظة إن **مفيش retry تلقائي حالياً** — نضيف retry queue في البناء الجديد.
 
 ## 6) أوامر تشخيص سريعة
 

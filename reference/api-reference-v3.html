@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>OnTarget PSP — API Reference v3</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+  :root{
+    --gold:#d4921e;--dark:#0d1117;--panel:#161b22;--border:#30363d;
+    --text:#e6edf3;--muted:#8b949e;--green:#3fb950;--red:#f85149;--blue:#58a6ff;
+    --purple:#bc8cff;--orange:#ffa657;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',sans-serif;background:#fff;color:#1a1a2e;font-size:10pt;line-height:1.6}
+  @media print{
+    body{color:#000;font-size:9pt}
+    .page-break{page-break-before:always}
+    .no-break{page-break-inside:avoid}
+    a{color:inherit;text-decoration:none}
+    .toc-page{page-break-after:always}
+  }
+
+  /* COVER */
+  .cover{
+    background:linear-gradient(135deg,#0d1117 0%,#161b22 50%,#1c2333 100%);
+    min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;
+    text-align:center;color:#e6edf3;padding:60px 40px;position:relative;overflow:hidden;
+  }
+  .cover::before{
+    content:'';position:absolute;inset:0;
+    background:radial-gradient(ellipse 80% 60% at 50% 30%,rgba(212,146,30,.12) 0,transparent 70%);
+  }
+  .cover-logo{
+    width:90px;height:90px;border-radius:24px;
+    background:linear-gradient(135deg,#d4921e,#ff7c2b);
+    display:flex;align-items:center;justify-content:center;
+    font-size:42px;font-weight:900;color:#111;margin-bottom:32px;
+    box-shadow:0 8px 32px rgba(212,146,30,.35);
+    position:relative;z-index:1;
+  }
+  .cover-title{font-size:38pt;font-weight:800;letter-spacing:-.02em;color:#e6edf3;position:relative;z-index:1;margin-bottom:8px}
+  .cover-sub{font-size:14pt;color:#d4921e;font-weight:600;margin-bottom:6px;position:relative;z-index:1}
+  .cover-version{font-size:10pt;color:#8b949e;margin-bottom:40px;position:relative;z-index:1}
+  .cover-meta{display:flex;gap:40px;position:relative;z-index:1;flex-wrap:wrap;justify-content:center}
+  .cover-meta-item{text-align:center}
+  .cover-meta-label{font-size:8pt;color:#8b949e;text-transform:uppercase;letter-spacing:.1em;font-weight:700;margin-bottom:4px}
+  .cover-meta-value{font-size:10pt;color:#e6edf3;font-weight:600}
+  .cover-divider{width:60px;height:3px;background:linear-gradient(90deg,#d4921e,#ff7c2b);border-radius:2px;margin:28px auto;position:relative;z-index:1}
+
+  /* LAYOUT */
+  .page{max-width:900px;margin:0 auto;padding:48px 56px}
+  @media print{.page{padding:32px 40px;max-width:100%}}
+
+  /* HEADINGS */
+  h1{font-size:20pt;font-weight:800;color:#0d1117;border-bottom:3px solid #d4921e;padding-bottom:10px;margin-bottom:24px;margin-top:40px}
+  h1:first-child{margin-top:0}
+  h2{font-size:14pt;font-weight:700;color:#0d1117;margin:28px 0 12px;padding-left:12px;border-left:4px solid #d4921e}
+  h3{font-size:11pt;font-weight:700;color:#1a1a2e;margin:20px 0 8px}
+  h4{font-size:9.5pt;font-weight:700;color:#444;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.05em}
+
+  /* TOC */
+  .toc{background:#f8f9fa;border:1px solid #e0e0e0;border-radius:12px;padding:28px 32px;margin:20px 0}
+  .toc-title{font-size:13pt;font-weight:800;color:#0d1117;margin-bottom:16px}
+  .toc-section{margin-bottom:4px}
+  .toc-item{display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-bottom:1px dotted #ddd;font-size:9.5pt}
+  .toc-item.sub{padding-left:16px;color:#555;font-size:9pt}
+  .toc-num{color:#d4921e;font-weight:700;min-width:24px}
+  .toc-pg{color:#888;font-size:8.5pt}
+
+  /* SECTION HEADER */
+  .section-header{background:linear-gradient(135deg,#0d1117,#1c2333);color:#e6edf3;padding:18px 24px;border-radius:12px;margin-bottom:20px}
+  .section-header h1{color:#e6edf3;border-bottom-color:rgba(212,146,30,.5);font-size:16pt;margin:0;padding-bottom:6px}
+  .section-header p{color:#8b949e;font-size:9.5pt;margin-top:6px}
+
+  /* ENDPOINT BLOCK */
+  .endpoint{background:#f8f9fa;border:1px solid #e0e0e0;border-radius:12px;margin-bottom:20px;overflow:hidden}
+  .endpoint-header{display:flex;align-items:center;gap:12px;padding:12px 16px;background:#fff;border-bottom:1px solid #e0e0e0}
+  .method{font-family:'JetBrains Mono',monospace;font-size:8.5pt;font-weight:700;padding:3px 10px;border-radius:6px;color:#fff;white-space:nowrap}
+  .method.GET{background:#1a7f37}
+  .method.POST{background:#0969da}
+  .method.PATCH{background:#bf8700}
+  .method.DELETE{background:#cf222e}
+  .endpoint-path{font-family:'JetBrains Mono',monospace;font-size:9.5pt;font-weight:600;color:#0d1117}
+  .auth-badge{margin-left:auto;font-size:7.5pt;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap}
+  .auth-badge.admin{background:#fff3cd;color:#856404;border:1px solid #ffc107}
+  .auth-badge.merchant{background:#cce5ff;color:#004085;border:1px solid #004085}
+  .auth-badge.public{background:#d4edda;color:#155724;border:1px solid #28a745}
+  .endpoint-body{padding:14px 16px}
+  .endpoint-desc{font-size:9.5pt;color:#444;margin-bottom:12px}
+
+  /* PARAMS TABLE */
+  .param-table{width:100%;border-collapse:collapse;font-size:8.5pt;margin-bottom:10px}
+  .param-table th{background:#0d1117;color:#e6edf3;padding:5px 10px;text-align:left;font-weight:700;font-size:7.5pt;text-transform:uppercase;letter-spacing:.06em}
+  .param-table td{padding:5px 10px;border-bottom:1px solid #e0e0e0;vertical-align:top}
+  .param-table tr:last-child td{border-bottom:none}
+  .param-table tr:nth-child(even) td{background:#f0f0f0}
+  .param-name{font-family:'JetBrains Mono',monospace;font-weight:600;color:#0969da;font-size:8pt}
+  .param-type{font-family:'JetBrains Mono',monospace;color:#8b949e;font-size:7.5pt}
+  .required{color:#cf222e;font-weight:800;font-size:7pt}
+  .optional{color:#8b949e;font-size:7pt}
+
+  /* CODE */
+  pre{background:#0d1117;color:#e6edf3;padding:14px 16px;border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:8pt;line-height:1.7;overflow-x:auto;margin:8px 0}
+  code{font-family:'JetBrains Mono',monospace;font-size:8.5pt;background:#f0f0f0;padding:1px 5px;border-radius:4px;color:#0d1117}
+  .label{font-size:7.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#8b949e;margin-bottom:4px}
+
+  /* RESPONSE SECTIONS */
+  .response-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+  .response-block{}
+  .response-ok .label{color:#1a7f37}
+  .response-err .label{color:#cf222e}
+
+  /* CALLOUT */
+  .callout{border-radius:8px;padding:12px 16px;margin:12px 0;font-size:9pt}
+  .callout.info{background:#dbeafe;border-left:4px solid #3b82f6;color:#1e3a5f}
+  .callout.warn{background:#fef3c7;border-left:4px solid #f59e0b;color:#78350f}
+  .callout.success{background:#d1fae5;border-left:4px solid #10b981;color:#064e3b}
+  .callout.danger{background:#fee2e2;border-left:4px solid #ef4444;color:#7f1d1d}
+
+  /* SCHEMA TABLE */
+  .schema-table{width:100%;border-collapse:collapse;font-size:8.5pt;margin-bottom:16px}
+  .schema-table th{background:#1c2333;color:#e6edf3;padding:7px 12px;text-align:left;font-size:7.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+  .schema-table td{padding:6px 12px;border-bottom:1px solid #e0e0e0;vertical-align:top}
+  .schema-table tr:nth-child(even) td{background:#f8f8f8}
+  .col-name{font-family:'JetBrains Mono',monospace;font-weight:600;color:#0d1117;font-size:8pt}
+  .col-type{font-family:'JetBrains Mono',monospace;color:#6f42c1;font-size:8pt}
+  .pk{font-size:7pt;font-weight:800;color:#d4921e;border:1px solid #d4921e;padding:1px 5px;border-radius:4px}
+  .fk{font-size:7pt;font-weight:800;color:#0969da;border:1px solid #0969da;padding:1px 5px;border-radius:4px}
+  .idx{font-size:7pt;font-weight:800;color:#1a7f37;border:1px solid #1a7f37;padding:1px 5px;border-radius:4px}
+
+  /* ERROR TABLE */
+  .error-table{width:100%;border-collapse:collapse;font-size:8.5pt}
+  .error-table th{background:#1c2333;color:#e6edf3;padding:6px 12px;text-align:left;font-size:7.5pt;font-weight:700;text-transform:uppercase}
+  .error-table td{padding:6px 12px;border-bottom:1px solid #e0e0e0;vertical-align:top}
+  .error-code{font-family:'JetBrains Mono',monospace;font-weight:600;color:#cf222e;font-size:8pt}
+  .http{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:8pt}
+
+  /* STATUS BADGES */
+  .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:7.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+  .badge.pending{background:#fff3cd;color:#856404}
+  .badge.processing{background:#cce5ff;color:#004085}
+  .badge.approved{background:#d4edda;color:#155724}
+  .badge.declined{background:#f8d7da;color:#721c24}
+  .badge.expired{background:#f0f0f0;color:#666}
+
+  /* FLOW DIAGRAM */
+  .flow{background:#f8f9fa;border:1px solid #e0e0e0;border-radius:12px;padding:20px 24px;margin:16px 0}
+  .flow-step{display:flex;align-items:flex-start;gap:16px;margin-bottom:14px}
+  .flow-step:last-child{margin-bottom:0}
+  .flow-num{width:28px;height:28px;border-radius:50%;background:#d4921e;color:#fff;font-weight:800;font-size:11pt;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+  .flow-content{flex:1}
+  .flow-title{font-weight:700;font-size:9.5pt;color:#0d1117;margin-bottom:2px}
+  .flow-detail{font-size:8.5pt;color:#666}
+  .flow-arrow{text-align:center;color:#d4921e;font-size:14pt;margin:-4px 0 -4px 12px;line-height:1}
+
+  /* ENV TABLE */
+  .env-table{width:100%;border-collapse:collapse;font-size:8.5pt}
+  .env-table th{background:#1c2333;color:#e6edf3;padding:6px 12px;text-align:left;font-size:7.5pt;font-weight:700;text-transform:uppercase}
+  .env-table td{padding:6px 12px;border-bottom:1px solid #e0e0e0;vertical-align:top}
+  .env-key{font-family:'JetBrains Mono',monospace;font-weight:600;font-size:8pt;color:#0d1117}
+  .env-req{color:#cf222e;font-weight:800;font-size:7.5pt}
+
+  /* FOOTER */
+  .footer{text-align:center;color:#8b949e;font-size:8pt;margin-top:48px;padding-top:16px;border-top:1px solid #e0e0e0}
+
+  /* INLINE JSON HIGHLIGHT */
+  .json-key{color:#79b8ff}
+  .json-str{color:#9ecbff}
+  .json-num{color:#f8c555}
+  .json-bool{color:#f97583}
+
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media print{.two-col{grid-template-columns:1fr 1fr}}
+  .info-card{background:#f8f9fa;border:1px solid #e0e0e0;border-radius:10px;padding:16px}
+  .info-card-title{font-size:8pt;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#8b949e;margin-bottom:8px}
+  .info-card-value{font-size:9.5pt;font-weight:600;color:#0d1117;word-break:break-all}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ COVER ══════════════════ -->
+<div class="cover">
+  <div class="cover-logo">↗</div>
+  <div class="cover-title">OnTarget PSP</div>
+  <div class="cover-sub">Payment Service Provider — API Reference</div>
+  <div class="cover-version">Version 3.0 &nbsp;·&nbsp; Confidential</div>
+  <div class="cover-divider"></div>
+  <div class="cover-meta">
+    <div class="cover-meta-item">
+      <div class="cover-meta-label">Date</div>
+      <div class="cover-meta-value">June 2026</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="cover-meta-label">API Base</div>
+      <div class="cover-meta-value">ontarget-api-v3-production.up.railway.app</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="cover-meta-label">Checkout</div>
+      <div class="cover-meta-value">checkout.ontarget-egy.com</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="cover-meta-label">Platform</div>
+      <div class="cover-meta-value">Railway · Vercel · Supabase</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ TOC ══════════════════ -->
+<div class="page toc-page">
+  <h1>Table of Contents</h1>
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <div class="toc-item"><span><span class="toc-num">1.</span> System Overview</span></div>
+    <div class="toc-item sub"><span>&nbsp;&nbsp;Architecture &amp; Stack</span></div>
+    <div class="toc-item sub"><span>&nbsp;&nbsp;Base URLs</span></div>
+    <div class="toc-item sub"><span>&nbsp;&nbsp;Payment Flows</span></div>
+    <div class="toc-item"><span><span class="toc-num">2.</span> Authentication</span></div>
+    <div class="toc-item sub"><span>&nbsp;&nbsp;Merchant Login / Refresh / Logout</span></div>
+    <div class="toc-item sub"><span>&nbsp;&nbsp;API Key Auth</span></div>
+    <div class="toc-item sub"><span>&nbsp;&nbsp;Admin Auth</span></div>
+    <div class="toc-item"><span><span class="toc-num">3.</span> Checkout — Payin</span></div>
+    <div class="toc-item sub"><span>&nbsp;&nbsp;POST /v1/checkout/create</span></div>
+    <div class="toc-item"><span><span class="toc-num">4.</span> Payout (Withdrawal)</span></div>
+    <div class="toc-item sub"><span>&nbsp;&nbsp;POST /v1/payout/create</span></div>
+    <div class="toc-item"><span><span class="toc-num">5.</span> Payment Submission (Public)</span></div>
+    <div class="toc-item sub"><span>&nbsp;&nbsp;POST /v1/payment/submit</span></div>
+    <div class="toc-item sub"><span>&nbsp;&nbsp;POST /v1/payment/payout</span></div>
+    <div class="toc-item"><span><span class="toc-num">6.</span> Transactions</span></div>
+    <div class="toc-item sub"><span>&nbsp;&nbsp;GET /v1/transaction/public</span></div>
+    <div class="toc-item sub"><span>&nbsp;&nbsp;GET /v1/transaction/status</span></div>
+    <div class="toc-item sub"><span>&nbsp;&nbsp;PATCH /v1/transaction/:id/status</span></div>
+    <div class="toc-item"><span><span class="toc-num">7.</span> Admin Endpoints</span></div>
+    <div class="toc-item sub"><span>&nbsp;&nbsp;Merchant CRUD · Rotate Key · Transactions</span></div>
+    <div class="toc-item"><span><span class="toc-num">8.</span> Webhooks</span></div>
+    <div class="toc-item"><span><span class="toc-num">9.</span> Checkout Page</span></div>
+    <div class="toc-item"><span><span class="toc-num">10.</span> Security Model</span></div>
+    <div class="toc-item"><span><span class="toc-num">11.</span> Database Schema</span></div>
+    <div class="toc-item"><span><span class="toc-num">12.</span> Error Reference</span></div>
+    <div class="toc-item"><span><span class="toc-num">13.</span> Environment Variables</span></div>
+    <div class="toc-item"><span><span class="toc-num">14.</span> Transaction Status Reference</span></div>
+  </div>
+</div>
+
+<!-- ══════════════════ 1. OVERVIEW ══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h1>1. System Overview</h1>
+    <p>OnTarget PSP is a payment service provider API for processing payin (deposit) and payout (withdrawal) transactions in Egypt and MENA markets.</p>
+  </div>
+
+  <h2>Architecture &amp; Stack</h2>
+  <div class="two-col">
+    <div class="info-card">
+      <div class="info-card-title">API Server</div>
+      <div class="info-card-value">Node.js · Express 4 · Railway</div>
+    </div>
+    <div class="info-card">
+      <div class="info-card-title">Database &amp; Auth</div>
+      <div class="info-card-value">Supabase · PostgreSQL 17 · RLS</div>
+    </div>
+    <div class="info-card">
+      <div class="info-card-title">Checkout Frontend</div>
+      <div class="info-card-value">Vanilla HTML/JS · Vercel</div>
+    </div>
+    <div class="info-card">
+      <div class="info-card-title">File Storage</div>
+      <div class="info-card-value">Supabase Storage · payment-proofs bucket</div>
+    </div>
+    <div class="info-card">
+      <div class="info-card-title">DB Schema</div>
+      <div class="info-card-value">ontarget (8 tables, all RLS-enabled)</div>
+    </div>
+    <div class="info-card">
+      <div class="info-card-title">DB Access Pattern</div>
+      <div class="info-card-value">All DB ops via SECURITY DEFINER RPCs only</div>
+    </div>
+  </div>
+
+  <h2>Base URLs</h2>
+  <table class="schema-table">
+    <tr><th>Environment</th><th>API Base</th><th>Checkout Base</th></tr>
+    <tr>
+      <td><strong>Production</strong></td>
+      <td><code>https://ontarget-api-v3-production.up.railway.app</code></td>
+      <td><code>https://checkout.ontarget-egy.com</code></td>
+    </tr>
+    <tr>
+      <td>Local Dev</td>
+      <td><code>http://localhost:3000</code></td>
+      <td><code>http://localhost:5500</code></td>
+    </tr>
+  </table>
+  <div class="callout info">All endpoints are prefixed with <code>/v1</code>. Example: <code>POST https://ontarget-api-v3-production.up.railway.app/v1/checkout/create</code></div>
+
+  <h2>Supported Currencies</h2>
+  <p style="font-size:9pt;color:#444;margin-bottom:8px">EGP · USD · EUR · SAR · AED · KWD · BHD · OMR · QAR</p>
+
+  <h2>Payment Flows</h2>
+  <div class="two-col">
+    <div>
+      <h3>Payin (Deposit)</h3>
+      <div class="flow">
+        <div class="flow-step"><div class="flow-num">1</div><div class="flow-content"><div class="flow-title">Merchant creates checkout</div><div class="flow-detail">POST /v1/checkout/create → receives secure checkout_url</div></div></div>
+        <div class="flow-step"><div class="flow-num">2</div><div class="flow-content"><div class="flow-title">Customer opens checkout URL</div><div class="flow-detail">256-bit token in URL; 15-min session timer starts</div></div></div>
+        <div class="flow-step"><div class="flow-num">3</div><div class="flow-content"><div class="flow-title">Customer selects payment method</div><div class="flow-detail">Sees merchant wallet details (Vodafone Cash, InstaPay, etc.)</div></div></div>
+        <div class="flow-step"><div class="flow-num">4</div><div class="flow-content"><div class="flow-title">Customer transfers &amp; submits proof</div><div class="flow-detail">POST /v1/payment/submit with name, account, screenshot</div></div></div>
+        <div class="flow-step"><div class="flow-num">5</div><div class="flow-content"><div class="flow-title">Merchant approves or declines</div><div class="flow-detail">PATCH /v1/transaction/:id/status → webhook fired</div></div></div>
+      </div>
+    </div>
+    <div>
+      <h3>Payout (Withdrawal)</h3>
+      <div class="flow">
+        <div class="flow-step"><div class="flow-num">1</div><div class="flow-content"><div class="flow-title">Merchant creates payout</div><div class="flow-detail">POST /v1/payout/create → receives secure payout_url</div></div></div>
+        <div class="flow-step"><div class="flow-num">2</div><div class="flow-content"><div class="flow-title">Merchant shares link with customer</div><div class="flow-detail">Or embeds as iframe in their portal</div></div></div>
+        <div class="flow-step"><div class="flow-num">3</div><div class="flow-content"><div class="flow-title">Customer opens payout URL</div><div class="flow-detail">Green-themed page; customer sees amount they'll receive</div></div></div>
+        <div class="flow-step"><div class="flow-num">4</div><div class="flow-content"><div class="flow-title">Customer submits their account</div><div class="flow-detail">POST /v1/payment/payout with method, account, name</div></div></div>
+        <div class="flow-step"><div class="flow-num">5</div><div class="flow-content"><div class="flow-title">Merchant processes transfer</div><div class="flow-detail">Sends money externally, then approves via dashboard</div></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 2. AUTH ══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h1>2. Authentication</h1>
+    <p>Three auth methods are supported: JWT Bearer tokens (merchant portal), API key (machine-to-machine), and Admin Secret (dashboard).</p>
+  </div>
+
+  <h2>2.1 Merchant JWT Auth</h2>
+
+  <div class="endpoint no-break">
+    <div class="endpoint-header">
+      <span class="method POST">POST</span>
+      <span class="endpoint-path">/v1/auth/merchant/login</span>
+      <span class="auth-badge public">Public</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="endpoint-desc">Authenticate with username and password. Returns access + refresh JWT tokens.</div>
+      <div class="label">Request Body</div>
+      <table class="param-table">
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">username</td><td class="param-type">string</td><td class="required">✓ required</td><td>Merchant portal username</td></tr>
+        <tr><td class="param-name">password</td><td class="param-type">string</td><td class="required">✓ required</td><td>Merchant portal password</td></tr>
+      </table>
+      <div class="response-grid">
+        <div class="response-ok">
+          <div class="label">200 Response</div>
+          <pre>{
+  "success": true,
+  "session": {
+    "access_token": "eyJ...",
+    "refresh_token": "eyJ...",
+    "access_expires_in": 2592000,
+    "refresh_expires_in": 7776000,
+    "token_type": "Bearer"
+  },
+  "merchant": {
+    "mid": "MID-XXXXXXXX",
+    "username": "minaz",
+    "session_id": "uuid"
+  }
+}</pre>
+        </div>
+        <div class="response-err">
+          <div class="label">Error Responses</div>
+          <pre>401 INVALID_CREDENTIALS
+403 ACCOUNT_INACTIVE
+400 MISSING_FIELDS</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="endpoint no-break">
+    <div class="endpoint-header">
+      <span class="method POST">POST</span>
+      <span class="endpoint-path">/v1/auth/merchant/refresh</span>
+      <span class="auth-badge public">Public</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="endpoint-desc">Exchange a refresh token for a new access + refresh token pair. Old refresh token is immediately invalidated (rotation).</div>
+      <table class="param-table">
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">refresh_token</td><td class="param-type">string</td><td class="required">✓ required</td><td>The refresh token from login</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="endpoint no-break">
+    <div class="endpoint-header">
+      <span class="method POST">POST</span>
+      <span class="endpoint-path">/v1/auth/merchant/logout</span>
+      <span class="auth-badge merchant">Merchant JWT</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="endpoint-desc">Revoke the current session. Add <code>Authorization: Bearer &lt;access_token&gt;</code> header.</div>
+    </div>
+  </div>
+
+  <h2>2.2 API Key Auth (Machine-to-Machine)</h2>
+  <div class="callout info">
+    Send <code>X-API-Key: ot_live_xxxxxxxx</code> in the request header. Used for server-to-server integration (checkout creation, transaction status checks). The raw key is shown only once at merchant creation; only its SHA-256+salt hash is stored in the database.
+  </div>
+
+  <h2>2.3 Admin Auth</h2>
+  <div class="callout warn">
+    Send <code>X-Admin-Secret: &lt;ADMIN_SECRET&gt;</code> header. Required for all <code>/v1/admin/*</code> endpoints. The admin secret must be at least 32 characters and is set via environment variable. Never expose it to clients.
+  </div>
+
+  <h2>2.4 Token Lifetimes</h2>
+  <table class="schema-table">
+    <tr><th>Token</th><th>Lifetime</th><th>Notes</th></tr>
+    <tr><td>Access Token (JWT)</td><td>30 days</td><td>Bearer token for merchant portal APIs</td></tr>
+    <tr><td>Refresh Token (JWT)</td><td>90 days</td><td>Rotated on each use (single-use)</td></tr>
+    <tr><td>Checkout Session</td><td>15 minutes</td><td>Single-use; expires on submission or timer</td></tr>
+    <tr><td>API Key</td><td>Permanent</td><td>Until rotated by admin</td></tr>
+  </table>
+</div>
+
+<!-- ══════════════════ 3. CHECKOUT / PAYIN ══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h1>3. Checkout — Payin (Deposit)</h1>
+    <p>Create a hosted checkout session for a customer to make a payment.</p>
+  </div>
+
+  <div class="endpoint no-break">
+    <div class="endpoint-header">
+      <span class="method POST">POST</span>
+      <span class="endpoint-path">/v1/checkout/create</span>
+      <span class="auth-badge merchant">Merchant JWT or API Key</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="endpoint-desc">Creates a new payin transaction and returns a secure, single-use checkout URL. The URL contains a 256-bit random token; only its SHA-256 hash is stored in the database.</div>
+      <div class="label">Request Body (JSON)</div>
+      <table class="param-table">
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">merchant_ref</td><td class="param-type">string</td><td class="required">✓ required</td><td>Unique reference from your system (e.g. order ID). Must be unique per merchant.</td></tr>
+        <tr><td class="param-name">amount</td><td class="param-type">number</td><td class="required">✓ required</td><td>Positive decimal amount (e.g. 500.00)</td></tr>
+        <tr><td class="param-name">currency</td><td class="param-type">string</td><td class="optional">optional</td><td>Default: <code>EGP</code>. Supported: EGP, USD, EUR, SAR, AED, KWD, BHD, OMR, QAR</td></tr>
+        <tr><td class="param-name">description</td><td class="param-type">string</td><td class="optional">optional</td><td>Order description shown to the customer</td></tr>
+        <tr><td class="param-name">callback_url</td><td class="param-type">string</td><td class="optional">optional</td><td>Webhook URL override for this transaction. Falls back to merchant-level URL.</td></tr>
+        <tr><td class="param-name">return_url</td><td class="param-type">string</td><td class="optional">optional</td><td>URL to redirect customer to after submission</td></tr>
+        <tr><td class="param-name">customer_phone</td><td class="param-type">string</td><td class="optional">optional</td><td>Customer phone number for reference</td></tr>
+        <tr><td class="param-name">metadata</td><td class="param-type">object</td><td class="optional">optional</td><td>Free-form JSON stored with the transaction</td></tr>
+      </table>
+
+      <div class="label">201 Success Response</div>
+      <pre>{
+  "success": true,
+  "transaction_id": "TRX-20260613-A4F2C1D8",
+  "status": "pending",
+  "amount": 500,
+  "currency": "EGP",
+  "checkout_url": "https://checkout.ontarget-egy.com/checkout/7f3a1c9e...64chars...",
+  "iframe_url":   "https://checkout.ontarget-egy.com/embed/7f3a1c9e...64chars...",
+  "expires_at":   "2026-06-13T14:30:00.000Z",
+  "created_at":   "2026-06-13T14:15:00.000Z"
+}</pre>
+
+      <div class="callout info"><strong>checkout_url</strong> — share with the customer. Contains a 256-bit token. Valid for 15 minutes. Single-use: once submitted it cannot be resubmitted.<br><strong>iframe_url</strong> — embed in your portal using <code>&lt;iframe src="..."&gt;</code>.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 4. PAYOUT ══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h1>4. Payout (Withdrawal)</h1>
+    <p>Create a withdrawal session where the customer submits their account details to receive a payment from the merchant.</p>
+  </div>
+
+  <div class="endpoint no-break">
+    <div class="endpoint-header">
+      <span class="method POST">POST</span>
+      <span class="endpoint-path">/v1/payout/create</span>
+      <span class="auth-badge merchant">Merchant JWT or API Key</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="endpoint-desc">Creates a payout transaction. The customer opens the URL, selects a payment method (Vodafone Cash, InstaPay, Bank Transfer, etc.), and enters the account they want the money sent to.</div>
+      <div class="label">Request Body (JSON)</div>
+      <table class="param-table">
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">merchant_ref</td><td class="param-type">string</td><td class="required">✓ required</td><td>Unique reference from your system</td></tr>
+        <tr><td class="param-name">amount</td><td class="param-type">number</td><td class="required">✓ required</td><td>Amount the customer will receive</td></tr>
+        <tr><td class="param-name">currency</td><td class="param-type">string</td><td class="optional">optional</td><td>Default: EGP</td></tr>
+        <tr><td class="param-name">description</td><td class="param-type">string</td><td class="optional">optional</td><td>Shown on the payout page</td></tr>
+        <tr><td class="param-name">callback_url</td><td class="param-type">string</td><td class="optional">optional</td><td>Webhook URL for status updates</td></tr>
+        <tr><td class="param-name">return_url</td><td class="param-type">string</td><td class="optional">optional</td><td>URL to redirect customer after submission</td></tr>
+      </table>
+
+      <div class="label">201 Success Response</div>
+      <pre>{
+  "success": true,
+  "transaction_id": "TRX-20260613-B7E3A2C1",
+  "type": "payout",
+  "status": "pending",
+  "amount": 1000,
+  "currency": "EGP",
+  "checkout_url": "https://checkout.ontarget-egy.com/payout/a8f3c2...64chars...",
+  "iframe_url":   "https://checkout.ontarget-egy.com/embed-payout/a8f3c2...64chars...",
+  "expires_at":   "2026-06-13T14:30:00.000Z",
+  "created_at":   "2026-06-13T14:15:00.000Z"
+}</pre>
+      <div class="callout success">The payout checkout page has a <strong>green theme</strong> and shows "You Will Receive EGP 1,000". The customer selects their preferred method and enters their account number.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 5. PAYMENT SUBMISSION ══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h1>5. Payment Submission (Public — No Auth)</h1>
+    <p>These endpoints are called by the checkout page on behalf of the customer. Rate limited to 10 requests per 5 minutes per IP.</p>
+  </div>
+
+  <div class="endpoint no-break">
+    <div class="endpoint-header">
+      <span class="method POST">POST</span>
+      <span class="endpoint-path">/v1/payment/submit</span>
+      <span class="auth-badge public">Public</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="endpoint-desc">Customer submits their payment details and optional proof screenshot after transferring funds. Accepts <code>multipart/form-data</code>.</div>
+      <div class="callout warn"><strong>Single-use enforced at 3 layers:</strong> DB (atomic status check), API (status ≠ pending → 409), and frontend (processing state shows confirmation screen). Cannot be resubmitted.</div>
+      <div class="label">Request — multipart/form-data</div>
+      <table class="param-table">
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">transaction_id</td><td class="param-type">string</td><td class="required">✓ required</td><td>TRX-YYYYMMDD-XXXXXXXX (returned from the public checkout fetch)</td></tr>
+        <tr><td class="param-name">customer_name</td><td class="param-type">string</td><td class="required">✓ required</td><td>Customer full name</td></tr>
+        <tr><td class="param-name">customer_account</td><td class="param-type">string</td><td class="required">✓ required</td><td>Account/wallet number the customer sent from</td></tr>
+        <tr><td class="param-name">customer_proof</td><td class="param-type">file</td><td class="optional">optional</td><td>Receipt screenshot (JPEG, PNG, WEBP, HEIC, PDF — max 10 MB)</td></tr>
+        <tr><td class="param-name">notes</td><td class="param-type">string</td><td class="optional">optional</td><td>Additional notes</td></tr>
+      </table>
+      <div class="response-grid">
+        <div class="response-ok">
+          <div class="label">200 Response</div>
+          <pre>{
+  "success": true,
+  "message": "Payment details submitted",
+  "transaction_id": "TRX-...",
+  "status": "processing",
+  "customer_proof_url": "https://...",
+  "return_url": "https://merchant.com/thanks"
+}</pre>
+        </div>
+        <div class="response-err">
+          <div class="label">Error Responses</div>
+          <pre>409 ALREADY_SUBMITTED
+410 SESSION_EXPIRED
+404 TRANSACTION_NOT_FOUND
+429 RATE_LIMITED</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="endpoint no-break">
+    <div class="endpoint-header">
+      <span class="method POST">POST</span>
+      <span class="endpoint-path">/v1/payment/payout</span>
+      <span class="auth-badge public">Public</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="endpoint-desc">Customer submits the account details where they want to receive their withdrawal. JSON body (no file upload).</div>
+      <div class="label">Request Body (JSON)</div>
+      <table class="param-table">
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">transaction_id</td><td class="param-type">string</td><td class="required">✓ required</td><td>TRX-YYYYMMDD-XXXXXXXX</td></tr>
+        <tr><td class="param-name">payout_account</td><td class="param-type">string</td><td class="required">✓ required</td><td>Phone number, IBAN, or account number to receive funds</td></tr>
+        <tr><td class="param-name">payout_method</td><td class="param-type">string</td><td class="optional">optional</td><td><code>vodafone_cash</code> | <code>instapay</code> | <code>orange_cash</code> | <code>bank_transfer</code></td></tr>
+        <tr><td class="param-name">payout_name</td><td class="param-type">string</td><td class="optional">optional</td><td>Customer full name</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 6. TRANSACTIONS ══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h1>6. Transactions</h1>
+    <p>Fetch transaction state and update status (approve / decline).</p>
+  </div>
+
+  <div class="endpoint no-break">
+    <div class="endpoint-header">
+      <span class="method GET">GET</span>
+      <span class="endpoint-path">/v1/transaction/public?token=&lt;checkout_token&gt;</span>
+      <span class="auth-badge public">Public</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="endpoint-desc">Returns the public view of a transaction by its checkout token. Used by the checkout page to load transaction details. Rate limited to 30 req/min per IP. The token is SHA-256 hashed server-side before DB lookup.</div>
+      <table class="param-table">
+        <tr><th>Query Param</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">token</td><td class="param-type">string (64 hex)</td><td class="required">✓ required</td><td>Raw checkout token from the URL path segment</td></tr>
+      </table>
+      <div class="label">200 Response</div>
+      <pre>{
+  "success": true,
+  "transaction": {
+    "transaction_id": "TRX-20260613-A4F2C1D8",
+    "merchant_ref": "order_001",
+    "amount": 500,
+    "currency": "EGP",
+    "status": "pending",
+    "type": "payin",
+    "description": "Subscription payment",
+    "expires_at": "2026-06-13T14:30:00.000Z",
+    "return_url": "https://merchant.com/thanks",
+    "created_at": "2026-06-13T14:15:00.000Z"
+  }
+}</pre>
+      <div class="callout info">If <code>expires_at</code> has passed and status is still <code>pending</code>, the API automatically sets status to <code>expired</code> and returns it in the response.</div>
+    </div>
+  </div>
+
+  <div class="endpoint no-break">
+    <div class="endpoint-header">
+      <span class="method GET">GET</span>
+      <span class="endpoint-path">/v1/transaction/status?transaction_id=&lt;id&gt;</span>
+      <span class="auth-badge merchant">Merchant JWT or API Key</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="endpoint-desc">Returns full transaction details including payment submission data. Only returns transactions belonging to the authenticated merchant.</div>
+      <div class="label">200 Response (includes payment_details)</div>
+      <pre>{
+  "success": true,
+  "transaction": {
+    "transaction_id": "TRX-...",
+    "status": "processing",
+    "amount": 500,
+    "currency": "EGP",
+    "type": "payin",
+    "payment_details": {
+      "customer_name": "Ahmed Mohamed",
+      "customer_account": "01012345678",
+      "customer_proof_url": "https://storage.supabase.co/...",
+      "submitted_by": "customer",
+      "submitted_at": "2026-06-13T14:20:00.000Z"
+    }
+  }
+}</pre>
+    </div>
+  </div>
+
+  <div class="endpoint no-break">
+    <div class="endpoint-header">
+      <span class="method PATCH">PATCH</span>
+      <span class="endpoint-path">/v1/transaction/:transaction_id/status</span>
+      <span class="auth-badge merchant">Merchant JWT or API Key</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="endpoint-desc">Update a transaction status. Triggers a webhook to the merchant callback URL with the new status.</div>
+      <table class="param-table">
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">status</td><td class="param-type">string</td><td class="required">✓ required</td><td><code>approved</code> | <code>declined</code> | <code>processing</code></td></tr>
+        <tr><td class="param-name">notes</td><td class="param-type">string</td><td class="optional">optional</td><td>Internal notes</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 7. ADMIN ══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h1>7. Admin Endpoints</h1>
+    <p>All admin endpoints require the <code>X-Admin-Secret</code> header. These are used by the OnTarget Dashboard only.</p>
+  </div>
+
+  <div class="endpoint no-break">
+    <div class="endpoint-header">
+      <span class="method POST">POST</span>
+      <span class="endpoint-path">/v1/admin/merchant/create</span>
+      <span class="auth-badge admin">Admin Secret</span>
+    </div>
+    <div class="endpoint-body">
+      <div class="endpoint-desc">Create a new merchant. Returns the API key (shown once only — never stored in plaintext).</div>
+      <table class="param-table">
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">name</td><td class="param-type">string</td><td class="required">✓ required</td><td>Merchant business name</td></tr>
+        <tr><td class="param-name">username</td><td class="param-type">string</td><td class="required">✓ required</td><td>Portal login username (unique)</td></tr>
+        <tr><td class="param-name">password</td><td class="param-type">string</td><td class="optional">optional</td><td>If omitted, a strong password is auto-generated</td></tr>
+        <tr><td class="param-name">callback_url</td><td class="param-type">string</td><td class="optional">optional</td><td>Default webhook URL for all transactions</td></tr>
+      </table>
+      <div class="label">201 Response — Save immediately, shown once only</div>
+      <pre>{
+  "success": true,
+  "credentials": {
+    "mid": "MID-XXXXXXXX",
+    "username": "merchant_name",
+    "password": "AutoG3n@Pass!",
+    "api_key": "ot_live_xxxxxxxxxxxxxxxx",
+    "secret_key": "ot_secret_xxxxxxxxxxxxxxxx",
+    "login_url": "https://api.../v1/auth/merchant/login"
+  },
+  "merchant": { "id": "uuid", "name": "Merchant Name" }
+}</pre>
+      <div class="callout danger"><strong>API key is shown once only.</strong> Copy it immediately — it cannot be recovered. Only its SHA-256+salt hash is stored in the database.</div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="endpoint no-break">
+      <div class="endpoint-header">
+        <span class="method GET">GET</span>
+        <span class="endpoint-path">/v1/admin/merchants</span>
+        <span class="auth-badge admin">Admin</span>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-desc">List all merchants with activity counts.</div>
+      </div>
+    </div>
+    <div class="endpoint no-break">
+      <div class="endpoint-header">
+        <span class="method GET">GET</span>
+        <span class="endpoint-path">/v1/admin/merchant/:mid</span>
+        <span class="auth-badge admin">Admin</span>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-desc">Get full merchant details including transaction counts.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="endpoint no-break">
+      <div class="endpoint-header">
+        <span class="method POST">POST</span>
+        <span class="endpoint-path">/v1/admin/merchant/:mid/reset-password</span>
+        <span class="auth-badge admin">Admin</span>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-desc">Reset merchant password. All active sessions revoked. Body: <code>{ "new_password": "..." }</code> (optional — auto-generated if omitted).</div>
+      </div>
+    </div>
+    <div class="endpoint no-break">
+      <div class="endpoint-header">
+        <span class="method POST">POST</span>
+        <span class="endpoint-path">/v1/admin/merchant/:mid/rotate-key</span>
+        <span class="auth-badge admin">Admin</span>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-desc">Generate new API key. Old key invalid immediately. Returns new key (shown once).</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="endpoint no-break">
+      <div class="endpoint-header">
+        <span class="method PATCH">PATCH</span>
+        <span class="endpoint-path">/v1/admin/merchant/:mid/toggle</span>
+        <span class="auth-badge admin">Admin</span>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-desc">Activate or deactivate merchant. Body: <code>{ "is_active": false }</code>. Deactivation revokes all sessions.</div>
+      </div>
+    </div>
+    <div class="endpoint no-break">
+      <div class="endpoint-header">
+        <span class="method GET">GET</span>
+        <span class="endpoint-path">/v1/admin/transactions?limit=50</span>
+        <span class="auth-badge admin">Admin</span>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-desc">List all transactions across all merchants. Default limit: 50.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 8. WEBHOOKS ══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h1>8. Webhooks</h1>
+    <p>OnTarget fires webhooks to the merchant's callback URL on transaction status changes.</p>
+  </div>
+
+  <h2>Trigger Events</h2>
+  <table class="schema-table">
+    <tr><th>Event</th><th>Trigger</th><th>Status in Payload</th></tr>
+    <tr><td>Checkout Created</td><td>POST /v1/checkout/create</td><td><span class="badge pending">pending</span></td></tr>
+    <tr><td>Customer Submitted</td><td>POST /v1/payment/submit</td><td><span class="badge processing">processing</span></td></tr>
+    <tr><td>Merchant Approved</td><td>PATCH /v1/transaction/:id/status</td><td><span class="badge approved">approved</span></td></tr>
+    <tr><td>Merchant Declined</td><td>PATCH /v1/transaction/:id/status</td><td><span class="badge declined">declined</span></td></tr>
+    <tr><td>Payout Created</td><td>POST /v1/payout/create</td><td><span class="badge pending">pending</span></td></tr>
+    <tr><td>Payout Submitted</td><td>POST /v1/payment/payout</td><td><span class="badge processing">processing</span></td></tr>
+  </table>
+
+  <h2>Webhook Payload</h2>
+  <pre>POST https://your-callback-url.com/webhook
+
+{
+  "event": "transaction.processing",
+  "transaction_id": "TRX-20260613-A4F2C1D8",
+  "merchant_ref": "order_001",
+  "amount": 500,
+  "currency": "EGP",
+  "status": "processing",
+  "type": "payin",
+  "timestamp": "2026-06-13T14:20:00.000Z"
+}</pre>
+
+  <h2>Signature Verification</h2>
+  <div class="callout info">
+    Every webhook includes an <code>X-OnTarget-Signature</code> header containing an HMAC-SHA256 of the raw request body signed with the merchant's <strong>secret_key</strong> (<code>ot_secret_xxxxxxxx</code>).
+  </div>
+  <pre>// Node.js verification example
+const crypto = require('crypto');
+
+function verifyWebhook(rawBody, signatureHeader, secretKey) {
+  const expected = crypto
+    .createHmac('sha256', secretKey)
+    .update(rawBody)
+    .digest('hex');
+  return crypto.timingSafeEqual(
+    Buffer.from(expected),
+    Buffer.from(signatureHeader)
+  );
+}</pre>
+
+  <div class="callout warn"><strong>Retry policy:</strong> If your endpoint returns a non-2xx status, the webhook is not currently retried automatically. Ensure your endpoint responds 200 within 10 seconds.</div>
+</div>
+
+<!-- ══════════════════ 9. CHECKOUT PAGE ══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h1>9. Checkout Page</h1>
+    <p>A hosted, single-page application served from Vercel. Two modes: payin (gold theme) and payout (green theme).</p>
+  </div>
+
+  <h2>URL Patterns</h2>
+  <table class="schema-table">
+    <tr><th>Path</th><th>Mode</th><th>Theme</th><th>Use</th></tr>
+    <tr><td><code>/checkout/[token]</code></td><td>Payin</td><td>Gold</td><td>Share link with customer to collect payment</td></tr>
+    <tr><td><code>/embed/[token]</code></td><td>Payin</td><td>Gold</td><td>Embed as iframe in merchant portal</td></tr>
+    <tr><td><code>/payout/[token]</code></td><td>Payout</td><td>Green</td><td>Share link with customer for withdrawal</td></tr>
+    <tr><td><code>/embed-payout/[token]</code></td><td>Payout</td><td>Green</td><td>Embed payout as iframe</td></tr>
+  </table>
+
+  <h2>Payin — Customer Flow (3 Steps)</h2>
+  <div class="flow">
+    <div class="flow-step"><div class="flow-num">1</div><div class="flow-content"><div class="flow-title">Choose Payment Method</div><div class="flow-detail">Merchant's active wallets shown: Vodafone Cash, InstaPay, Orange Cash, Bank Transfer, Crypto. Each shows account number and name with copy button.</div></div></div>
+    <div class="flow-step"><div class="flow-num">2</div><div class="flow-content"><div class="flow-title">Transfer to Merchant's Account</div><div class="flow-detail">Customer copies the account number and transfers the exact amount. Account details update dynamically based on selected method.</div></div></div>
+    <div class="flow-step"><div class="flow-num">3</div><div class="flow-content"><div class="flow-title">Confirm Your Transfer</div><div class="flow-detail">Customer enters their full name, the account they sent from (field label adapts per method), and uploads a screenshot receipt. Single submission enforced.</div></div></div>
+  </div>
+
+  <h2>Payout — Customer Flow (2 Steps)</h2>
+  <div class="flow">
+    <div class="flow-step"><div class="flow-num">1</div><div class="flow-content"><div class="flow-title">Choose How to Receive</div><div class="flow-detail">Customer selects: Vodafone Cash, InstaPay, Orange Cash, or Bank Transfer</div></div></div>
+    <div class="flow-step"><div class="flow-num">2</div><div class="flow-content"><div class="flow-title">Enter Account to Receive To</div><div class="flow-detail">Field label and placeholder adapt per method (e.g. "Your Vodafone Cash Number" / "01xxxxxxxx")</div></div></div>
+  </div>
+
+  <h2>Supported Payment Methods</h2>
+  <table class="schema-table">
+    <tr><th>code</th><th>Label</th><th>Field</th><th>Placeholder</th></tr>
+    <tr><td><code>vodafone_cash</code></td><td>Vodafone Cash</td><td>Vodafone Cash Number</td><td>01xxxxxxxx</td></tr>
+    <tr><td><code>instapay</code></td><td>InstaPay</td><td>InstaPay IPA or Phone</td><td>phone@instapay or 01xxxxxxxx</td></tr>
+    <tr><td><code>orange_cash</code></td><td>Orange Cash</td><td>Orange Cash Number</td><td>01xxxxxxxx</td></tr>
+    <tr><td><code>bank_transfer</code></td><td>Bank Transfer</td><td>Bank Account / IBAN</td><td>Account number or IBAN</td></tr>
+    <tr><td><code>crypto</code></td><td>Crypto</td><td>Wallet Address / TX Hash</td><td>0x... or TxHash</td></tr>
+  </table>
+
+  <div class="callout info">Session timer is shown in the header. At 60 seconds remaining it turns red. On expiry the page replaces with an "Session expired" state and no further submission is possible.</div>
+
+  <h2>Embedding as iframe</h2>
+  <pre>&lt;iframe
+  src="https://checkout.ontarget-egy.com/embed/[checkout_token]"
+  width="580"
+  height="800"
+  frameborder="0"
+  style="border-radius:16px"
+&gt;&lt;/iframe&gt;</pre>
+</div>
+
+<!-- ══════════════════ 10. SECURITY ══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h1>10. Security Model</h1>
+    <p>Multiple layers of protection from URL to database.</p>
+  </div>
+
+  <h2>Checkout URL Token</h2>
+  <table class="schema-table">
+    <tr><th>Property</th><th>Value</th></tr>
+    <tr><td>Generation</td><td><code>crypto.randomBytes(32)</code> → 64-char hex string (256 bits)</td></tr>
+    <tr><td>Storage</td><td><strong>Never stored raw</strong> — only <code>SHA-256(token)</code> stored in <code>checkout_token_hash</code> column</td></tr>
+    <tr><td>Lookup</td><td>Server hashes incoming token via PostgreSQL <code>sha256(token::bytea)</code> and matches against stored hash</td></tr>
+    <tr><td>Brute-force cost</td><td>2<sup>256</sup> combinations — computationally infeasible</td></tr>
+    <tr><td>Expiry</td><td>15 minutes from creation</td></tr>
+    <tr><td>Single-use</td><td>Enforced atomically in DB via status check before any write</td></tr>
+  </table>
+
+  <h2>API Key Security</h2>
+  <table class="schema-table">
+    <tr><th>Property</th><th>Value</th></tr>
+    <tr><td>Format</td><td><code>ot_live_</code> + 40 hex chars (160 bits)</td></tr>
+    <tr><td>Storage</td><td><code>SHA-256(key + SALT)</code> — salt from environment variable</td></tr>
+    <tr><td>Rotation</td><td>Immediate — old key invalid the moment new key is generated</td></tr>
+  </table>
+
+  <h2>Single-Use Transaction Enforcement</h2>
+  <div class="flow">
+    <div class="flow-step"><div class="flow-num">1</div><div class="flow-content"><div class="flow-title">Frontend (Checkout Page)</div><div class="flow-detail">If <code>status === 'processing'</code> on page load → shows "already submitted" screen instead of form. No resubmit button.</div></div></div>
+    <div class="flow-step"><div class="flow-num">2</div><div class="flow-content"><div class="flow-title">API Layer (payment.js)</div><div class="flow-detail">Checks <code>transaction.status !== 'pending'</code> before calling the RPC → returns HTTP 409 ALREADY_SUBMITTED immediately.</div></div></div>
+    <div class="flow-step"><div class="flow-num">3</div><div class="flow-content"><div class="flow-title">Database Layer (PostgreSQL RPC)</div><div class="flow-detail"><code>api_payment_submit</code> and <code>api_payout_submit</code> are <code>plpgsql</code> functions that read the status atomically. If not <code>pending</code>, they RAISE EXCEPTION — transaction rolled back.</div></div></div>
+  </div>
+
+  <h2>Rate Limiting</h2>
+  <table class="schema-table">
+    <tr><th>Endpoint</th><th>Limit</th><th>Window</th></tr>
+    <tr><td>All endpoints (global)</td><td>100 requests</td><td>15 minutes / IP</td></tr>
+    <tr><td>GET /v1/transaction/public</td><td>30 requests</td><td>1 minute / IP</td></tr>
+    <tr><td>POST /v1/payment/submit</td><td>10 requests</td><td>5 minutes / IP</td></tr>
+    <tr><td>POST /v1/payment/payout</td><td>10 requests</td><td>5 minutes / IP</td></tr>
+  </table>
+
+  <h2>Database Security</h2>
+  <ul style="font-size:9pt;color:#444;line-height:2;padding-left:20px">
+    <li>All 8 ontarget tables have <strong>Row Level Security (RLS)</strong> enabled</li>
+    <li>Public/anon roles cannot access any table directly</li>
+    <li>All access goes through <code>SECURITY DEFINER</code> RPCs with fixed <code>search_path = ontarget, public</code></li>
+    <li>Sessions table: tokens stored as SHA-256 hashes only</li>
+    <li>Merchants table: API keys stored as SHA-256+salt hashes only</li>
+    <li>Passwords stored as bcrypt hashes (cost 12)</li>
+  </ul>
+
+  <h2>Transport &amp; Headers</h2>
+  <ul style="font-size:9pt;color:#444;line-height:2;padding-left:20px">
+    <li>HTTPS enforced (Railway + Vercel both enforce TLS)</li>
+    <li>Helmet.js security headers on all API responses</li>
+    <li>CORS: production restricts origins to <code>*.ontarget-egy.com</code> and <code>*.vercel.app</code></li>
+    <li>Token format validated (<code>/^[0-9a-f]{64}$/</code>) before any DB lookup</li>
+  </ul>
+</div>
+
+<!-- ══════════════════ 11. SCHEMA ══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h1>11. Database Schema</h1>
+    <p>All tables live in the <code>ontarget</code> PostgreSQL schema. All have RLS enabled with service_role full-access policy.</p>
+  </div>
+
+  <h2>ontarget.transactions</h2>
+  <table class="schema-table">
+    <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+    <tr><td class="col-name">id</td><td class="col-type">uuid</td><td><span class="pk">PK</span> Auto-generated</td></tr>
+    <tr><td class="col-name">transaction_id</td><td class="col-type">text</td><td><span class="idx">UNIQUE</span> Format: TRX-YYYYMMDD-XXXXXXXX</td></tr>
+    <tr><td class="col-name">merchant_id</td><td class="col-type">uuid</td><td><span class="fk">FK</span> → merchants.id</td></tr>
+    <tr><td class="col-name">merchant_ref</td><td class="col-type">text</td><td>Merchant's own order reference</td></tr>
+    <tr><td class="col-name">amount</td><td class="col-type">numeric</td><td>Payment amount</td></tr>
+    <tr><td class="col-name">currency</td><td class="col-type">char(3)</td><td>ISO currency code</td></tr>
+    <tr><td class="col-name">status</td><td class="col-type">text</td><td>pending | processing | approved | declined | expired</td></tr>
+    <tr><td class="col-name">type</td><td class="col-type">text</td><td>payin | payout</td></tr>
+    <tr><td class="col-name">checkout_token_hash</td><td class="col-type">text</td><td><span class="idx">UNIQUE</span> SHA-256 of URL token. NULL for legacy rows.</td></tr>
+    <tr><td class="col-name">checkout_url</td><td class="col-type">text</td><td>Full URL shared with customer</td></tr>
+    <tr><td class="col-name">iframe_url</td><td class="col-type">text</td><td>Embeddable URL</td></tr>
+    <tr><td class="col-name">expires_at</td><td class="col-type">timestamptz</td><td>15 minutes after creation</td></tr>
+    <tr><td class="col-name">callback_url</td><td class="col-type">text</td><td>Webhook URL override for this TX</td></tr>
+    <tr><td class="col-name">return_url</td><td class="col-type">text</td><td>Redirect after checkout</td></tr>
+    <tr><td class="col-name">description</td><td class="col-type">text</td><td>Shown on checkout page</td></tr>
+    <tr><td class="col-name">raw_payload</td><td class="col-type">jsonb</td><td>Full original request body</td></tr>
+    <tr><td class="col-name">created_at / updated_at</td><td class="col-type">timestamptz</td><td>Auto-managed</td></tr>
+  </table>
+
+  <h2>ontarget.merchants</h2>
+  <table class="schema-table">
+    <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+    <tr><td class="col-name">id</td><td class="col-type">uuid</td><td><span class="pk">PK</span></td></tr>
+    <tr><td class="col-name">name</td><td class="col-type">text</td><td>Business name</td></tr>
+    <tr><td class="col-name">api_key_hash</td><td class="col-type">text</td><td>SHA-256+salt of API key. Never stores raw key.</td></tr>
+    <tr><td class="col-name">secret_key</td><td class="col-type">text</td><td><code>ot_secret_xxx</code> — used for webhook HMAC signing</td></tr>
+    <tr><td class="col-name">callback_url</td><td class="col-type">text</td><td>Default webhook URL</td></tr>
+    <tr><td class="col-name">is_active</td><td class="col-type">boolean</td><td>Disabled merchants cannot authenticate</td></tr>
+  </table>
+
+  <h2>ontarget.merchant_accounts</h2>
+  <table class="schema-table">
+    <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+    <tr><td class="col-name">id</td><td class="col-type">uuid</td><td><span class="pk">PK</span></td></tr>
+    <tr><td class="col-name">mid</td><td class="col-type">text</td><td>Human-readable merchant ID (MID-XXXXXXXX)</td></tr>
+    <tr><td class="col-name">merchant_id</td><td class="col-type">uuid</td><td><span class="fk">FK</span> → merchants.id</td></tr>
+    <tr><td class="col-name">username</td><td class="col-type">text</td><td><span class="idx">UNIQUE</span></td></tr>
+    <tr><td class="col-name">password_hash</td><td class="col-type">text</td><td>bcrypt, cost 12</td></tr>
+    <tr><td class="col-name">is_active</td><td class="col-type">boolean</td><td></td></tr>
+    <tr><td class="col-name">last_login_at</td><td class="col-type">timestamptz</td><td></td></tr>
+  </table>
+
+  <h2>ontarget.payment_details</h2>
+  <table class="schema-table">
+    <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+    <tr><td class="col-name">transaction_id</td><td class="col-type">text</td><td><span class="idx">UNIQUE</span> One record per transaction</td></tr>
+    <tr><td class="col-name">customer_name</td><td class="col-type">text</td><td>Payin: sender's name</td></tr>
+    <tr><td class="col-name">customer_account</td><td class="col-type">text</td><td>Payin: wallet/account sent from</td></tr>
+    <tr><td class="col-name">customer_proof_url</td><td class="col-type">text</td><td>Supabase Storage URL of proof image</td></tr>
+    <tr><td class="col-name">payout_method</td><td class="col-type">text</td><td>Payout: vodafone_cash | instapay | etc.</td></tr>
+    <tr><td class="col-name">payout_account</td><td class="col-type">text</td><td>Payout: account to receive funds</td></tr>
+    <tr><td class="col-name">payout_name</td><td class="col-type">text</td><td>Payout: recipient name</td></tr>
+    <tr><td class="col-name">raw_customer_data</td><td class="col-type">jsonb</td><td>Full submission data including IP and timestamp</td></tr>
+  </table>
+
+  <h2>ontarget.payment_methods (Merchant Wallets)</h2>
+  <table class="schema-table">
+    <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+    <tr><td class="col-name">merchant_id</td><td class="col-type">uuid</td><td><span class="fk">FK</span> → merchants.id</td></tr>
+    <tr><td class="col-name">method_code</td><td class="col-type">text</td><td>vodafone_cash | instapay | orange_cash | bank_transfer | crypto</td></tr>
+    <tr><td class="col-name">account_number</td><td class="col-type">text</td><td>Wallet number / account number</td></tr>
+    <tr><td class="col-name">account_name</td><td class="col-type">text</td><td>Account holder name</td></tr>
+    <tr><td class="col-name">iban</td><td class="col-type">text</td><td>For bank_transfer method</td></tr>
+    <tr><td class="col-name">is_active</td><td class="col-type">boolean</td><td>Only active methods shown to customers</td></tr>
+    <tr><td class="col-name">sort_order</td><td class="col-type">integer</td><td>Display order on checkout</td></tr>
+  </table>
+
+  <h2>Other Tables</h2>
+  <table class="schema-table">
+    <tr><th>Table</th><th>Purpose</th></tr>
+    <tr><td><code>sessions</code></td><td>JWT session tracking. Stores SHA-256 hashes of access and refresh tokens. Supports revocation.</td></tr>
+    <tr><td><code>webhook_logs</code></td><td>All outbound webhook attempts with payload, response status, and response body.</td></tr>
+    <tr><td><code>customer_accounts</code></td><td>Reserved for future customer portal feature.</td></tr>
+  </table>
+</div>
+
+<!-- ══════════════════ 12. ERRORS ══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h1>12. Error Reference</h1>
+    <p>All error responses follow the same structure: <code>{"success": false, "error": {"code": "...", "message": "..."}}</code></p>
+  </div>
+
+  <h2>Auth Errors</h2>
+  <table class="error-table">
+    <tr><th>HTTP</th><th>Code</th><th>Message</th></tr>
+    <tr><td class="http">400</td><td class="error-code">MISSING_FIELDS</td><td>Required field missing from request body</td></tr>
+    <tr><td class="http">401</td><td class="error-code">INVALID_CREDENTIALS</td><td>Wrong username or password</td></tr>
+    <tr><td class="http">401</td><td class="error-code">TOKEN_INVALID</td><td>JWT is invalid, expired, or revoked</td></tr>
+    <tr><td class="http">401</td><td class="error-code">INVALID_API_KEY</td><td>API key not found or invalid</td></tr>
+    <tr><td class="http">403</td><td class="error-code">ACCOUNT_INACTIVE</td><td>Merchant account has been deactivated</td></tr>
+    <tr><td class="http">403</td><td class="error-code">MERCHANT_NOT_FOUND</td><td>No merchant linked to this account</td></tr>
+    <tr><td class="http">401</td><td class="error-code">ADMIN_AUTH_REQUIRED</td><td>X-Admin-Secret header missing or wrong</td></tr>
+  </table>
+
+  <h2>Checkout / Payment Errors</h2>
+  <table class="error-table">
+    <tr><th>HTTP</th><th>Code</th><th>Message</th></tr>
+    <tr><td class="http">400</td><td class="error-code">INVALID_REFERENCE</td><td>merchant_ref missing or already used</td></tr>
+    <tr><td class="http">400</td><td class="error-code">INVALID_AMOUNT</td><td>Amount must be a positive number</td></tr>
+    <tr><td class="http">400</td><td class="error-code">INVALID_CURRENCY</td><td>Unsupported currency code</td></tr>
+    <tr><td class="http">400</td><td class="error-code">INVALID_TOKEN</td><td>Token is not a valid 64-char hex string</td></tr>
+    <tr><td class="http">400</td><td class="error-code">MISSING_TRANSACTION_ID</td><td>transaction_id field missing from submit</td></tr>
+    <tr><td class="http">400</td><td class="error-code">MISSING_ACCOUNT</td><td>payout_account missing from payout submit</td></tr>
+    <tr><td class="http">400</td><td class="error-code">WRONG_TYPE</td><td>Attempted payin submit on a payout transaction</td></tr>
+    <tr><td class="http">404</td><td class="error-code">TRANSACTION_NOT_FOUND</td><td>Transaction not found or token invalid</td></tr>
+    <tr><td class="http">409</td><td class="error-code">ALREADY_SUBMITTED</td><td>Transaction already submitted (single-use)</td></tr>
+    <tr><td class="http">409</td><td class="error-code">USERNAME_TAKEN</td><td>Username already registered</td></tr>
+    <tr><td class="http">410</td><td class="error-code">SESSION_EXPIRED</td><td>15-minute checkout window has passed</td></tr>
+    <tr><td class="http">429</td><td class="error-code">RATE_LIMITED</td><td>Too many requests from this IP</td></tr>
+    <tr><td class="http">500</td><td class="error-code">SERVER_ERROR</td><td>Internal server error</td></tr>
+  </table>
+
+  <h2>Transaction Status Reference</h2>
+  <table class="schema-table">
+    <tr><th>Status</th><th>Meaning</th><th>Next States</th></tr>
+    <tr><td><span class="badge pending">pending</span></td><td>Transaction created, waiting for customer submission</td><td>processing, expired</td></tr>
+    <tr><td><span class="badge processing">processing</span></td><td>Customer submitted — awaiting merchant review</td><td>approved, declined</td></tr>
+    <tr><td><span class="badge approved">approved</span></td><td>Merchant confirmed payment received</td><td>— (terminal)</td></tr>
+    <tr><td><span class="badge declined">declined</span></td><td>Merchant rejected the submission</td><td>— (terminal)</td></tr>
+    <tr><td><span class="badge expired">expired</span></td><td>15-minute timer elapsed without submission</td><td>— (terminal)</td></tr>
+  </table>
+</div>
+
+<!-- ══════════════════ 13. ENV VARS ══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h1>13. Environment Variables</h1>
+    <p>Set in Railway (API) and checked at startup. Missing or too-short values cause immediate crash with error log.</p>
+  </div>
+
+  <table class="env-table">
+    <tr><th>Variable</th><th>Min Length</th><th>Description</th></tr>
+    <tr><td class="env-key">SUPABASE_URL</td><td><span class="env-req">required</span></td><td>Full Supabase project URL (https://xxx.supabase.co)</td></tr>
+    <tr><td class="env-key">SUPABASE_SERVICE_KEY</td><td><span class="env-req">required</span></td><td>Supabase service_role key (bypasses RLS for server-to-server operations)</td></tr>
+    <tr><td class="env-key">JWT_ACCESS_SECRET</td><td><span class="env-req">≥ 32 chars</span></td><td>Secret for signing access tokens</td></tr>
+    <tr><td class="env-key">JWT_REFRESH_SECRET</td><td><span class="env-req">≥ 32 chars</span></td><td>Secret for signing refresh tokens (different from access)</td></tr>
+    <tr><td class="env-key">ADMIN_SECRET</td><td><span class="env-req">≥ 32 chars</span></td><td>X-Admin-Secret header value for dashboard access</td></tr>
+    <tr><td class="env-key">API_KEY_SALT</td><td><span class="env-req">≥ 16 chars</span></td><td>Salt appended to raw API keys before SHA-256 hashing</td></tr>
+    <tr><td class="env-key">CHECKOUT_BASE_URL</td><td><span class="env-req">required</span></td><td>Checkout frontend base URL (https://checkout.ontarget-egy.com)</td></tr>
+    <tr><td class="env-key">API_BASE_URL</td><td><span class="env-req">required</span></td><td>This API's public URL (used in login_url responses)</td></tr>
+    <tr><td class="env-key">NODE_ENV</td><td>optional</td><td>Set to <code>production</code> to enable strict CORS</td></tr>
+    <tr><td class="env-key">PORT</td><td>optional</td><td>HTTP port (default: 3000). Railway sets this automatically.</td></tr>
+  </table>
+
+  <div class="callout danger">Never commit these values to git. Set them in Railway's environment variable panel. Rotate <code>ADMIN_SECRET</code> and <code>API_KEY_SALT</code> immediately if they are ever exposed.</div>
+
+  <h2>Supabase Configuration</h2>
+  <table class="schema-table">
+    <tr><th>Setting</th><th>Value</th></tr>
+    <tr><td>Project</td><td>supabase-gray-feather (yvwppyoaksyhycimvgtw)</td></tr>
+    <tr><td>Region</td><td>eu-west-2 (London)</td></tr>
+    <tr><td>DB Schema</td><td>ontarget (all app tables)</td></tr>
+    <tr><td>Public Schema</td><td>All RPCs live in <code>public</code> schema</td></tr>
+    <tr><td>Content-Profile Header</td><td>All PostgREST RPC calls include <code>Content-Profile: public</code></td></tr>
+    <tr><td>Storage Bucket</td><td>payment-proofs (public access for proof image URLs)</td></tr>
+  </table>
+
+  <h2>Deployment</h2>
+  <table class="schema-table">
+    <tr><th>Component</th><th>Platform</th><th>Deploy Command</th></tr>
+    <tr><td>API Server</td><td>Railway</td><td><code>railway up --detach --service ontarget-api-v3</code></td></tr>
+    <tr><td>Checkout Page</td><td>Vercel</td><td><code>npx vercel@latest --prod</code> (from ontarget-checkout/)</td></tr>
+    <tr><td>Database Migrations</td><td>Supabase MCP</td><td>Via <code>apply_migration</code> tool</td></tr>
+  </table>
+
+  <div class="footer">
+    OnTarget PSP — API Reference v3 &nbsp;·&nbsp; Confidential &nbsp;·&nbsp; June 2026<br>
+    Generated from production codebase · Railway · Vercel · Supabase eu-west-2
+  </div>
+</div>
+
+</body>
+</html>
