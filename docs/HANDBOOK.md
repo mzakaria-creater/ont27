@@ -79,5 +79,6 @@ grep SUPABASE_URL <repo>/.env
 
 ## 7) نشر الواجهة
 
-- Push إلى `main` في repo `ont27` → Vercel ينشر تلقائياً بعد ربط الـ repo.
-- يدوياً: `vercel --prod` من مجلد المشروع.
+- **Vercel project:** `ont27` على team `p2ps-projects-6352ad93` — production: **https://ont27.vercel.app**
+- **الحالة الحالية:** النشر تم بـ direct upload (أول deployment 2026-07-30). الـ repo **غير مربوط** بعد بالـ Vercel project — لتفعيل النشر التلقائي مع كل push: Vercel Dashboard → ont27 → Settings → Git → Connect `mzakaria-creater/ont27`.
+- البيئة: `VITE_SUPABASE_URL` و`VITE_SUPABASE_PUBLISHABLE_KEY` مدمجتان build-time (publishable key عام بطبيعته — الأسرار الحقيقية لا تدخل الواجهة أبداً).
