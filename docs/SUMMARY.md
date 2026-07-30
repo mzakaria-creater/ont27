@@ -16,11 +16,21 @@
 
 5. **بدء مشروع الواجهة `ont27`:** React + Vite + TypeScript، RTL + dark theme حسب توجيه UX في الـ kickoff، متصل بقاعدة panel-v2 بالـ publishable key فقط.
 
+## تحديث 2026-07-30 (جلسة لاحقة): Auth + RBAC مبني فعلياً
+
+بعد تأكيد مباشر عبر screenshot أن الواجهة كانت لا تزال تعرض "الأساس جاهز" بدون أي login فعلي، بُني تسجيل الدخول + RBAC من الصفر كـ Vercel Serverless Functions تحت `/api/auth/*` (التفاصيل الكاملة في [docs/AUTH.md](AUTH.md)):
+
+- Login بكلمة مرور فقط (بحث case-insensitive عبر دالة DB جديدة `panel_get_user_for_login`)، قفل بعد 5 محاولات فاشلة، JWT مخصص (`PANEL_AUTH_JWT_SECRET` — مستقل عن أي سر Supabase) + refresh token مُدوَّر مخزَّن كـ hash فقط.
+- **2FA غير مفعّل عند الدخول حالياً** — قرار منتج صريح أُخِذ أثناء البناء (راجع AUTH.md §2)، رغم أن الطلب الأصلي فرضه على أدوار `can_approve`. البنية التحتية (`panel_users_2fa`, `/api/auth/2fa-setup`, `/api/auth/2fa-enable`) موجودة وجاهزة لإعادة التفعيل.
+- **فجوة غير محسومة:** `password_hash` تبيّن أنه SHA-256 خام (64 hex، بدون salt) وليس bcrypt كما ورد في مرجع نظام مختلف — التحقق الفعلي بكلمة مرور حقيقية لم يتم بعد (يحتاج صاحب المنتج، راجع AUTH.md §3 و§9).
+- `role_page_permissions` مربوط بالكامل عبر `/api/auth/me` + `useAuth().can()`.
+
 ## الحالة الحالية
 
 - ✅ التحقق (خطوة 1 من الخطة) — مكتمل وموثق
 - ✅ قاعدة البيانات الجديدة + الهجرة (خطوتا 2-3) — مكتملتان من جلسة سابقة
-- 🔄 الواجهة (خطوة 4) — scaffold جاهز؛ التالي: Auth + RBAC ثم Dashboard ثم Deposits
+- ✅ Auth + RBAC (خطوة 4، جزء أول) — مبني، بانتظار تأكيد دخول حقيقي من صاحب المنتج (AUTH.md §9)
+- 🔄 الواجهة — التالي: Dashboard الفعلي ثم Deposits
 - ⬜ Hosted Checkout (Next.js) — مؤجل حسب القرار المعماري #1
 
 ## أسئلة مفتوحة (لا تُفترض إجاباتها)

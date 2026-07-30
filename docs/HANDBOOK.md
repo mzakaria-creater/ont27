@@ -24,13 +24,19 @@
 ```bash
 cd ~/Desktop/ont27
 npm install
-npm run dev        # → http://localhost:5173
+npm run dev        # → http://localhost:5173 (الواجهة فقط، بدون /api/*)
 ```
+
+`npm run dev` (Vite) لا يشغّل دوال `/api/*` — لازم `vercel dev` لتجربة تسجيل الدخول محلياً كاملاً (يقرأ نفس `.env`). راجع `.env.example` لكل المتغيرات المطلوبة (الواجهة + الخادم) وتفاصيلها في [docs/AUTH.md](AUTH.md).
 
 الـ `.env` (غير مرفوع على git):
 ```
 VITE_SUPABASE_URL=https://iwhjmhazcvctvipoasct.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+SUPABASE_URL=https://iwhjmhazcvctvipoasct.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=...        # سر — Dashboard → Settings → API
+PANEL_AUTH_JWT_SECRET=...            # openssl rand -base64 48
+PANEL_2FA_ENC_KEY=...                # openssl rand -base64 32
 ```
 
 ## 3) قاعدة بيانات Panel v2 — الحالة المهاجَرة
@@ -60,7 +66,7 @@ VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 
 ## 5) ترتيب بناء الصفحات (لا قفز)
 
-Auth + RBAC → Dashboard → **Deposits (الأولوية التشغيلية القصوى)** → Payouts → Merchants/Wallets/CRM → Automation Settings (Kill Switch) → Device Monitor → Telegram/Binance → AI Assistant.
+✅ Auth + RBAC (2026-07-30 — تفاصيل كاملة في [docs/AUTH.md](AUTH.md), بما فيها قرار تعطيل 2FA وفجوة تشفير كلمة المرور غير المحسومة بعد) → **Dashboard (التالي)** → **Deposits (الأولوية التشغيلية القصوى)** → Payouts → Merchants/Wallets/CRM → Automation Settings (Kill Switch) → Device Monitor → Telegram/Binance → AI Assistant.
 
 بعد كل صفحة: اختبار فعلي ضد قاعدة panel-v2 (لا mock)، والتأكد أن أي approve/decline يوجَّه حسب `master_merchant` قبل الانتقال.
 
@@ -115,3 +121,4 @@ grep SUPABASE_URL <repo>/.env
 - **Vercel project:** `ont27` على team `p2ps-projects-6352ad93` — production: **https://ont27.vercel.app**
 - **الحالة الحالية:** النشر تم بـ direct upload (أول deployment 2026-07-30). الـ repo **غير مربوط** بعد بالـ Vercel project — لتفعيل النشر التلقائي مع كل push: Vercel Dashboard → ont27 → Settings → Git → Connect `mzakaria-creater/ont27`.
 - البيئة: `VITE_SUPABASE_URL` و`VITE_SUPABASE_PUBLISHABLE_KEY` مدمجتان build-time (publishable key عام بطبيعته — الأسرار الحقيقية لا تدخل الواجهة أبداً).
+- **إضافة 2026-07-30 (Auth):** لازم تُضاف على Vercel (Settings → Environment Variables، ليس `.env` محلي فقط) قبل أي دخول فعلي: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `PANEL_AUTH_JWT_SECRET`, `PANEL_2FA_ENC_KEY` — كلها خادمية فقط (بدون `VITE_`). التفاصيل والتحذيرات في [docs/AUTH.md](AUTH.md).
