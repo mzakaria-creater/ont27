@@ -102,3 +102,208 @@ body {
 .card h2 { margin: 0 0 4px; font-size: 18px; }
 .card p { color: var(--text-dim); margin: 6px 0; line-height: 1.7; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; direction: ltr; unicode-bidi: embed; }
+.warn { color: var(--status-pending); }
+
+/* ---- Auth ---- */
+.login-wrap {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-card {
+  max-inline-size: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: center;
+}
+
+.login-logo { inline-size: 44px; block-size: 44px; margin-inline: auto; }
+.login-sub { margin: 0; color: var(--text-dim); font-size: 12px; }
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: start;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.field input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+}
+
+.field input:focus { border-color: var(--accent); }
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--brand-purple), var(--brand-blue));
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-primary:disabled { opacity: 0.6; cursor: default; }
+
+.btn-ghost {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-ghost:hover { color: var(--text); border-color: var(--accent); }
+
+.login-error {
+  background: color-mix(in srgb, var(--status-declined) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-declined) 40%, transparent);
+  color: var(--status-declined);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+/* ---- Topnav ---- */
+.topnav { display: flex; gap: 4px; margin-inline-start: 12px; }
+.topnav a {
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+.topnav a:hover { color: var(--text); background: var(--bg); }
+
+/* ---- Public pay pages (mobile fintech) ---- */
+.pay-wrap { flex: 1; display: grid; place-items: center; padding: 20px 16px; }
+.pay-card {
+  max-inline-size: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: center;
+  border-radius: 18px;
+}
+.pay-amount { font-size: 34px; font-weight: 700; direction: ltr; }
+.pay-amount span { font-size: 15px; color: var(--text-dim); font-weight: 500; }
+.pay-channel { color: var(--brand-blue); font-weight: 600; font-size: 14px; }
+.pay-wallet {
+  font-size: 24px !important;
+  letter-spacing: 0.12em;
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 12px;
+}
+.pay-qr {
+  inline-size: 190px;
+  block-size: 190px;
+  margin-inline: auto;
+  border-radius: 14px;
+  background: #fff;
+  padding: 8px;
+}
+.pay-actions { display: flex; flex-direction: column; gap: 8px; }
+.pay-actions a { text-decoration: none; display: block; }
+.pay-note { color: var(--text-dim); font-size: 12px; margin: 0; display: flex; align-items: center; gap: 6px; justify-content: center; }
+.pay-status-link { text-decoration: none; }
+
+.pay-status-badge {
+  border-radius: 10px;
+  padding: 10px;
+  font-weight: 600;
+  font-size: 15px;
+}
+.st-pending { background: color-mix(in srgb, var(--status-pending) 14%, transparent); color: var(--status-pending); }
+.st-paid { background: color-mix(in srgb, var(--status-paid) 14%, transparent); color: var(--status-paid); }
+.st-declined { background: color-mix(in srgb, var(--status-declined) 14%, transparent); color: var(--status-declined); }
+.st-dim { background: var(--bg); color: var(--text-dim); }
+
+.timeline { list-style: none; margin: 0; padding: 0; text-align: start; }
+.timeline li {
+  position: relative;
+  padding: 8px 24px 8px 0;
+  color: var(--text-dim);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.timeline li::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 8px;
+  inline-size: 10px;
+  block-size: 10px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.timeline li { padding-inline-start: 28px; }
+.timeline li.done { color: var(--text); }
+.timeline li.done::before { background: var(--status-paid); }
+.timeline li.active { color: var(--status-pending); }
+.timeline li.active::before { background: var(--status-pending); }
+
+.pay-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg);
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 13px;
+}
+.pay-details > div { display: flex; justify-content: space-between; }
+.pay-details span:first-child { color: var(--text-dim); }
+
+/* ---- Panel pages ---- */
+.page { flex: 1; padding: 20px; max-inline-size: 1000px; margin-inline: auto; inline-size: 100%; }
+.page h2 { margin: 0 0 14px; font-size: 18px; }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-block-end: 14px; }
+.kpi {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.kpi b { font-size: 20px; }
+.kpi span { color: var(--text-dim); font-size: 12px; }
+
+.link-form { max-inline-size: none; margin-block-end: 14px; display: flex; flex-direction: column; gap: 12px; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.field select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 14px;
+}
+.link-form .btn-primary { align-self: start; }
+
+.table-card { max-inline-size: none; padding: 0; overflow-x: auto; }
+.links-table { border-collapse: collapse; inline-size: 100%; font-size: 13px; }
+.links-table th, .links-table td { padding: 10px 12px; text-align: start; white-space: nowrap; }
+.links-table thead th { color: var(--text-dim); font-weight: 500; border-block-end: 1px solid var(--border); }
+.links-table tbody tr + tr td { border-block-start: 1px solid var(--border); }
+.row-dim { opacity: 0.5; }
+.row-actions { display: flex; gap: 6px; }
+.empty { text-align: center; color: var(--text-dim); padding: 20px !important; }

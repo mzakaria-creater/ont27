@@ -24,14 +24,38 @@
 ```bash
 cd ~/Desktop/ont27
 npm install
-npm run dev        # → http://localhost:5173
+npm run dev        # web → http://localhost:5173 + API (Hono) → http://localhost:8787
 ```
+
+`npm run dev` بيشغّل الاتنين معاً (concurrently): Vite للواجهة + `tsx watch server/local.ts` للـ API، مع proxy `/api` → 8787 فالكوكيز same-origin. على Vercel نفس الـ Hono app بيتخدم من `api/[[...path]].ts`.
 
 الـ `.env` (غير مرفوع على git):
 ```
 VITE_SUPABASE_URL=https://iwhjmhazcvctvipoasct.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+# server-side فقط:
+SUPABASE_URL=https://iwhjmhazcvctvipoasct.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_...        # يتظبط في Vercel env قبل النشر
+PANEL_JWT_SECRET=<64 hex>                # يتظبط في Vercel env قبل النشر
+TELEGRAM_BOT_TOKEN=...                   # اختياري — إشعار طلبات الإيداع
+TELEGRAM_CHAT_ID=...
 ```
+
+## 2.5) Auth + RBAC (مبني ومختبر 2026-07-30)
+
+- **API:** Hono تحت `server/` — `/api/auth/login|refresh|logout|me`، JWT (HS256، 15 دقيقة) في cookie `ot_access` httpOnly + refresh token (30 يوم، SHA-256 في `panel_refresh_tokens`) في `ot_refresh` على path `/api/auth` مع **rotation وكشف replay** (إعادة استخدام token قديم = سحب كل الجلسات).
+- **Passwords:** المخزون القديم SHA-256 غير مملّح — الترقية لـ bcrypt cost 12 تلقائية عند أول login ناجح. lockout بعد 5 محاولات فاشلة لمدة 15 دقيقة (`failed_login_count`/`locked_until`).
+- **RBAC:** middleware `requirePerm(page_key, action)` من `role_page_permissions`. الواجهة بتقرأ الـ matrix من `/api/auth/me` (`can()` في `AuthContext`).
+- **Audit:** كل login/logout/فشل بيتسجل في `audit_log` بـ `actor_type='manual_panel'` (الـ constraint بيسمح فقط بـ `auto_trigger|manual_panel|system`).
+- **2FA:** الجداول جاهزة (`panel_users_2fa`) — الـ enrollment UI **لسه**، وإلزامي قبل فتح شاشات فيها approve.
+
+## 2.6) صفحات الدفع العامة (مبنية ومختبرة 2026-07-30)
+
+- **`/payment-checkout`** (عام، `?code=` اختياري): موبايل + مبلغ → session في `checkout_sessions` (15 دقيقة) مع **allocation ديناميكي** (`server/allocate.ts`): قناة active من `local_deposit_channels` حسب العملة → أجهزتها → المحافظ من `wallet_device_map` (أونلاين حسب `device_status`، الأقل تحميلاً pending أولاً). بيعرض رقم المحفظة + QR بنفسجي + نسخ/تحميل/فتح تطبيق (لو `config.deeplink_template` موجود في القناة). إشعار Telegram اختياري env-driven.
+- **`/payment-status?id=`** (عام): polling كل 5 ثوانٍ، timeline، بيقف تلقائياً عند حالة نهائية. statuses: `pending → processing → approved|declined` + `expired` (مشتقة من `expires_at`).
+- **`/merchant-link-generator`** (محمي بـ RBAC صفحة `checkout-builder` — حالياً super_admin فقط create/edit و merchant_admin view): جدول `payment_links` جديد (fixed/open، min/max، expiry، max_uses، short_code من alphabet بدون حروف ملتبسة) + عدّاد ذري عبر function `use_payment_link` (service_role فقط). إحصائيات لكل رابط من جلساته.
+- **Webhook للتاجر:** `server/notify.ts` بيبعت على `merchants.callback_url` بتوقيع HMAC-SHA256 (`X-OnTarget-Signature` بـ `callback_secret`) — **من غير retry queue بعد** (يتبني مع صفحة الإيداعات).
+- ⚠️ الـ providers per-wallet من `wallet_device_map.provider` (فيه vodafone-cash فعلاً تحت قناة Orange Cash Egypt) — العرض ديناميكي، ممنوع تثبيت اسم مزوّد في الكود.
 
 ## 3) قاعدة بيانات Panel v2 — الحالة المهاجَرة
 

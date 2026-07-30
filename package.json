@@ -4,19 +4,32 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "concurrently -n web,api -c blue,magenta \"vite\" \"npm:dev:api\"",
+    "dev:api": "tsx watch server/local.ts",
+    "build": "tsc -b && tsc -p tsconfig.server.json && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@hono/node-server": "^2.0.12",
     "@supabase/supabase-js": "^2.52.0",
+    "bcryptjs": "^3.0.3",
+    "hono": "^4.12.32",
+    "jose": "^6.2.5",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.2",
+    "ws": "^8.21.1"
   },
   "devDependencies": {
+    "@types/node": "^26.1.2",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.2.4",
+    "tsx": "^4.23.1",
     "typescript": "^5.6.3",
     "vite": "^6.0.7"
   }

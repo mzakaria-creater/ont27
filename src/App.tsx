@@ -1,65 +1,50 @@
-import { useEffect, useState } from 'react'
-import { SUPABASE_URL, SUPABASE_KEY } from './lib/supabase'
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
+import { AuthProvider, useAuth } from './auth/AuthContext'
+import ProtectedRoute from './auth/ProtectedRoute'
+import Login from './pages/Login'
+import Dashboard from './pages/Dashboard'
+import PaymentCheckout from './pages/PaymentCheckout'
+import PaymentStatus from './pages/PaymentStatus'
+import LinkGenerator from './pages/LinkGenerator'
 
-type Conn = 'wait' | 'ok' | 'bad'
+function Topbar() {
+  const { user, logout, status, can } = useAuth()
+  if (status !== 'authed') return null
+  return (
+    <header className="topbar">
+      <img src="/logo.svg" alt="OnTarget" className="logo" />
+      <h1>OnTarget <span className="brand-sub">Payment Provider</span></h1>
+      <nav className="topnav">
+        <Link to="/">الرئيسية</Link>
+        {can('checkout-builder') && <Link to="/merchant-link-generator">روابط الدفع</Link>}
+      </nav>
+      <div className="spacer" />
+      <span className="conn">
+        {user?.display_name} · <span className="mono">{user?.role}</span>
+      </span>
+      <button className="btn-ghost" onClick={() => void logout()}>خروج</button>
+    </header>
+  )
+}
 
 export default function App() {
-  const [conn, setConn] = useState<Conn>('wait')
-  const [checkedAt, setCheckedAt] = useState<Date | null>(null)
-  const [ago, setAgo] = useState(0)
-
-  useEffect(() => {
-    let alive = true
-    const check = async () => {
-      try {
-        const res = await fetch(`${SUPABASE_URL}/auth/v1/health`, {
-          headers: { apikey: SUPABASE_KEY },
-        })
-        if (!alive) return
-        setConn(res.ok ? 'ok' : 'bad')
-      } catch {
-        if (alive) setConn('bad')
-      }
-      if (alive) setCheckedAt(new Date())
-    }
-    check()
-    const iv = setInterval(check, 30_000)
-    return () => { alive = false; clearInterval(iv) }
-  }, [])
-
-  useEffect(() => {
-    const iv = setInterval(() => {
-      if (checkedAt) setAgo(Math.round((Date.now() - checkedAt.getTime()) / 1000))
-    }, 1000)
-    return () => clearInterval(iv)
-  }, [checkedAt])
-
   return (
-    <div className="shell">
-      <header className="topbar">
-        <img src="/logo.svg" alt="OnTarget" className="logo" />
-        <h1>OnTarget <span className="brand-sub">Payment Provider</span></h1>
-        <div className="spacer" />
-        <span className="conn">
-          <span className={`dot ${conn}`} />
-          {conn === 'ok' ? 'متصل' : conn === 'bad' ? 'غير متصل' : 'جارٍ الفحص…'}
-          {checkedAt && <>· آخر تحديث: منذ {ago} ثانية</>}
-        </span>
-      </header>
-      <main className="main">
-        <div className="card">
-          <h2>OnTarget Panel v2 — الأساس جاهز</h2>
-          <p>
-            الواجهة متصلة بقاعدة البيانات الجديدة
-            {' '}<span className="mono">ontarget-panel-v2</span>{' '}
-            (<span className="mono">iwhjmhazcvctvipoasct</span>).
-          </p>
-          <p>
-            الترتيب القادم للبناء: Auth + RBAC ← Dashboard ← Deposits ← Payouts
-            ← Merchants/Wallets/CRM ← Automation ← Devices ← Integrations.
-          </p>
+    <AuthProvider>
+      <BrowserRouter>
+        <div className="shell">
+          <Topbar />
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/payment-checkout" element={<PaymentCheckout />} />
+            <Route path="/payment-status" element={<PaymentStatus />} />
+            <Route element={<ProtectedRoute />}>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/merchant-link-generator" element={<LinkGenerator />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         </div>
-      </main>
-    </div>
+      </BrowserRouter>
+    </AuthProvider>
   )
 }
