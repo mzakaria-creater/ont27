@@ -4,6 +4,7 @@ import { useAuth } from './auth/AuthContext'
 import ProtectedRoute from './auth/ProtectedRoute'
 import LoginPage from './auth/LoginPage'
 import Dashboard from './pages/Dashboard'
+import Deposits from './pages/Deposits'
 import PaymentCheckout from './pages/PaymentCheckout'
 import PaymentStatus from './pages/PaymentStatus'
 import LinkGenerator from './pages/LinkGenerator'
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="/payment-status" element={<PaymentStatus />} />
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/deposits" element={<Deposits />} />
             <Route path="/merchant-link-generator" element={<LinkGenerator />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

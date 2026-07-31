@@ -1,7 +1,11 @@
-import { useMemo } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import { CATEGORIES, categoryFor, labelFor } from '../nav/pageCatalog'
+import PanelShell, { usePermittedModules } from '../components/PanelShell'
+import { api } from '../lib/api'
+import { labelFor } from '../nav/pageCatalog'
+import { depositTime, money, statusMeta } from '../lib/deposits'
+import type { DepositStats } from '../lib/deposits'
 
 const ROLE_LABELS: Record<string, string> = {
   owner: 'صاحب المنصة',
@@ -12,94 +16,125 @@ const ROLE_LABELS: Record<string, string> = {
 }
 
 export default function Dashboard() {
-  const { user, permissions, can } = useAuth()
+  const { user, permissions } = useAuth()
+  const modules = usePermittedModules()
+  const [stats, setStats] = useState<DepositStats | null>(null)
+  const [statsErr, setStatsErr] = useState(false)
 
-  // Group this role's *actual* view permissions by category — a page never
-  // appears in the nav unless role_page_permissions grants can_view on it.
-  const modules = useMemo(() => {
-    const byCategory = new Map<string, typeof permissions>()
-    for (const p of permissions) {
-      if (!p.can_view || p.page_key === 'dashboard') continue
-      const cat = categoryFor(p.page_key)
-      if (!byCategory.has(cat)) byCategory.set(cat, [])
-      byCategory.get(cat)!.push(p)
+  const loadStats = useCallback(async () => {
+    try {
+      setStats(await api<DepositStats>('/api/deposits/stats'))
+      setStatsErr(false)
+    } catch {
+      setStatsErr(true)
     }
-    return CATEGORIES.filter((c) => byCategory.has(c.id)).map((c) => ({
-      ...c,
-      pages: byCategory.get(c.id)!,
-    }))
-  }, [permissions])
+  }, [])
 
-  const permsLoaded = permissions.length > 0
+  useEffect(() => {
+    void loadStats()
+    const iv = setInterval(() => void loadStats(), 30_000)
+    return () => clearInterval(iv)
+  }, [loadStats])
+
   const roleLabel = user ? (ROLE_LABELS[user.role] ?? user.role) : ''
 
   return (
-    <div className="dash-body">
-      <nav className="sidebar">
-        <div className="sidebar-item active">
-          <span className="sidebar-icon">🏠</span>
-          <span>لوحة التحكم</span>
+    <PanelShell>
+      <section className="welcome-banner">
+        <div>
+          <h2>مرحباً {user?.display_name ?? user?.username} 👋</h2>
+          <p>
+            {roleLabel && <>الدور: <span className="mono">{roleLabel}</span> · </>}
+            صلاحيات عرض فعلية على {permissions.filter((p) => p.can_view).length} صفحة
+            عبر {modules.length} قسم.
+          </p>
         </div>
-        {can('checkout-builder') && (
-          <Link to="/merchant-link-generator" className="sidebar-item sidebar-link">
-            <span className="sidebar-icon">🔗</span>
-            <span>روابط الدفع</span>
-          </Link>
+      </section>
+
+      {statsErr && (
+        <div className="card warn">تعذّر تحميل الإحصائيات — أعد المحاولة أو راجع اتصال الخادم.</div>
+      )}
+
+      <div className="stat-grid">
+        <Link to="/deposits?status=PENDING" className="stat-card stat-pending">
+          <span className="stat-label">إيداعات معلّقة</span>
+          <span className="stat-value">{stats ? stats.pending : '…'}</span>
+          <span className="stat-sub">تحتاج مراجعة الآن</span>
+        </Link>
+        <div className="stat-card">
+          <span className="stat-label">مدفوع · آخر 24 ساعة</span>
+          <span className="stat-value">{stats ? money(stats.day.paid.volume, 'EGP') : '…'}</span>
+          <span className="stat-sub">{stats ? `${stats.day.paid.count} عملية` : ''}</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-label">مدفوع · آخر 7 أيام</span>
+          <span className="stat-value">{stats ? money(stats.week.paid.volume, 'EGP') : '…'}</span>
+          <span className="stat-sub">{stats ? `${stats.week.paid.count} عملية` : ''}</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-label">مرفوض · آخر 24 ساعة</span>
+          <span className="stat-value">{stats ? stats.day.declined : '…'}</span>
+          <span className="stat-sub">{stats ? `من إجمالي ${stats.total.toLocaleString('en-US')} إيداع` : ''}</span>
+        </div>
+      </div>
+
+      <section className="card recent-card">
+        <div className="recent-head">
+          <h3>أحدث الإيداعات</h3>
+          <Link to="/deposits" className="pay-status-link">عرض الكل ←</Link>
+        </div>
+        {!stats && <p className="sidebar-hint">جارٍ التحميل…</p>}
+        {stats && stats.recent.length === 0 && <p>لا توجد إيداعات بعد.</p>}
+        {stats && stats.recent.length > 0 && (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>المرجع</th>
+                  <th>المبلغ</th>
+                  <th>المُرسِل</th>
+                  <th>التاجر</th>
+                  <th>الحالة</th>
+                  <th>الوقت</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.recent.map((r) => {
+                  const st = statusMeta(r.status)
+                  return (
+                    <tr key={r.tx_id}>
+                      <td className="mono">{r.ontarget_ref ?? r.tx_id}</td>
+                      <td className="mono">{money(r.amount, r.currency)}</td>
+                      <td>{r.sender_name ?? r.sender_number ?? '—'}</td>
+                      <td>{r.merchant ?? '—'}</td>
+                      <td><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></td>
+                      <td className="mono">{depositTime(r)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
-        {!permsLoaded && <div className="sidebar-hint">جارٍ تحميل الصلاحيات…</div>}
+      </section>
+
+      <div className="module-grid">
         {modules.map((m) => (
-          <div key={m.id} className="sidebar-item soon" title="قريباً">
-            <span className="sidebar-icon">{m.icon}</span>
-            <span>{m.label}</span>
-            <span className="sidebar-count">{m.pages.length}</span>
+          <div key={m.id} className={`module-card${m.priority ? ' priority' : ''}`}>
+            <div className="module-card-head">
+              <span className="module-icon">{m.icon}</span>
+              <span className="module-badge">قريباً</span>
+            </div>
+            <h3>{m.label}</h3>
+            <ul className="module-pages">
+              {m.pages.slice(0, 4).map((p) => (
+                <li key={p.page_key}>{labelFor(p.page_key)}</li>
+              ))}
+              {m.pages.length > 4 && <li>+{m.pages.length - 4} أخرى</li>}
+            </ul>
           </div>
         ))}
-      </nav>
-
-      <main className="dash-main">
-        <section className="welcome-banner">
-          <div>
-            <h2>مرحباً {user?.display_name ?? user?.username} 👋</h2>
-            <p>
-              {roleLabel && <>الدور: <span className="mono">{roleLabel}</span> · </>}
-              صلاحيات عرض فعلية على {permissions.filter((p) => p.can_view).length} صفحة
-              عبر {modules.length} قسم.
-            </p>
-          </div>
-        </section>
-
-        <section className="priority-callout">
-          <span className="priority-badge">التالي في البناء</span>
-          <div>
-            <strong>الإيداعات (Deposits)</strong>
-            <p>الأولوية التشغيلية القصوى حسب خطة البناء — راجع docs/HANDBOOK.md §5.</p>
-          </div>
-        </section>
-
-        {modules.length === 0 && permsLoaded && (
-          <div className="card">
-            <p>لا توجد صفحات مُتاحة لدورك الحالي بعد.</p>
-          </div>
-        )}
-
-        <div className="module-grid">
-          {modules.map((m) => (
-            <div key={m.id} className={`module-card${m.priority ? ' priority' : ''}`}>
-              <div className="module-card-head">
-                <span className="module-icon">{m.icon}</span>
-                <span className="module-badge">قريباً</span>
-              </div>
-              <h3>{m.label}</h3>
-              <ul className="module-pages">
-                {m.pages.slice(0, 4).map((p) => (
-                  <li key={p.page_key}>{labelFor(p.page_key)}</li>
-                ))}
-                {m.pages.length > 4 && <li>+{m.pages.length - 4} أخرى</li>}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </main>
-    </div>
+      </div>
+    </PanelShell>
   )
 }
