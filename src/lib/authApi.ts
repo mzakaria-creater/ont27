@@ -69,5 +69,9 @@ export async function me(): Promise<{
 } | null> {
   const res = await fetch('/api/auth/me', { credentials: 'include' })
   if (!res.ok) return null
-  return (await res.json()) as { user: AuthUser; permissions: PagePermission[] }
+  try {
+    return (await res.json()) as { user: AuthUser; permissions: PagePermission[] }
+  } catch {
+    return null
+  }
 }

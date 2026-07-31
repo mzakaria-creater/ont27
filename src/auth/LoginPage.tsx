@@ -76,6 +76,12 @@ export default function LoginPage() {
             {error}
           </div>
         )}
+
+        <div className="login-footnote">
+          <span className="login-soon-link" title="غير متاح بعد">
+            نسيت كلمة المرور؟
+          </span>
+        </div>
       </form>
     </div>
   )
