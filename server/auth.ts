@@ -137,8 +137,12 @@ authRoutes.post('/logout', async (c) => {
   return c.json({ ok: true })
 })
 
-// --- 2FA enrollment (from an authenticated session; not enforced at login —
-// explicit product decision 2026-07-30, kept ready to re-enable) ---
+// --- 2FA enrollment (optional, from an authenticated session) ---
+// FINAL product decision 2026-07-31: 2FA/TOTP is NOT required anywhere —
+// neither at login nor as an extra gate on can_approve actions
+// (deposit approve/decline). panel_users_2fa and these enrollment
+// endpoints stay in place unused; re-enabling requires a new explicit
+// product decision. See docs/AUTH.md.
 
 authRoutes.post('/2fa/setup', async (c) => {
   const token = getCookie(c, ACCESS_COOKIE)
