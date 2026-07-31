@@ -27,16 +27,17 @@ npm install
 npm run dev        # web → http://localhost:5173 + API (Hono) → http://localhost:8787
 ```
 
-`npm run dev` بيشغّل الاتنين معاً (concurrently): Vite للواجهة + `tsx watch server/local.ts` للـ API، مع proxy `/api` → 8787 فالكوكيز same-origin. على Vercel نفس الـ Hono app بيتخدم من `api/[[...path]].ts`.
+`npm run dev` بيشغّل الاتنين معاً (concurrently): Vite للواجهة + `tsx watch server/local.ts` للـ API، مع proxy `/api` → 8787 فالكوكيز same-origin. على Vercel نفس الـ Hono app بيتخدم من `api/[[...path]].ts` — مفيش دوال منفصلة لكل endpoint (اتوحدت بعد دمج جلسة 2026-07-31). تفاصيل الـ Auth في [docs/AUTH.md](AUTH.md).
 
 الـ `.env` (غير مرفوع على git):
 ```
 VITE_SUPABASE_URL=https://iwhjmhazcvctvipoasct.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
-# server-side فقط:
+# server-side فقط (الأسماء الموحدة بعد الدمج — لا تستخدم SUPABASE_SERVICE_ROLE_KEY أو PANEL_AUTH_JWT_SECRET):
 SUPABASE_URL=https://iwhjmhazcvctvipoasct.supabase.co
 SUPABASE_SECRET_KEY=sb_secret_...        # يتظبط في Vercel env قبل النشر
 PANEL_JWT_SECRET=<64 hex>                # يتظبط في Vercel env قبل النشر
+PANEL_2FA_ENC_KEY=<base64/hex 32 bytes>  # تشفير TOTP secrets — openssl rand -hex 32
 TELEGRAM_BOT_TOKEN=...                   # اختياري — إشعار طلبات الإيداع
 TELEGRAM_CHAT_ID=...
 ```
@@ -84,7 +85,7 @@ TELEGRAM_CHAT_ID=...
 
 ## 5) ترتيب بناء الصفحات (لا قفز)
 
-Auth + RBAC → Dashboard → **Deposits (الأولوية التشغيلية القصوى)** → Payouts → Merchants/Wallets/CRM → Automation Settings (Kill Switch) → Device Monitor → Telegram/Binance → AI Assistant.
+✅ Auth + RBAC (2026-07-30 — تفاصيل كاملة في [docs/AUTH.md](AUTH.md), بما فيها قرار تعطيل 2FA وفجوة تشفير كلمة المرور غير المحسومة بعد) → **Dashboard (التالي)** → **Deposits (الأولوية التشغيلية القصوى)** → Payouts → Merchants/Wallets/CRM → Automation Settings (Kill Switch) → Device Monitor → Telegram/Binance → AI Assistant.
 
 بعد كل صفحة: اختبار فعلي ضد قاعدة panel-v2 (لا mock)، والتأكد أن أي approve/decline يوجَّه حسب `master_merchant` قبل الانتقال.
 
@@ -139,3 +140,4 @@ grep SUPABASE_URL <repo>/.env
 - **Vercel project:** `ont27` على team `p2ps-projects-6352ad93` — production: **https://ont27.vercel.app**
 - **الحالة الحالية:** النشر تم بـ direct upload (أول deployment 2026-07-30). الـ repo **غير مربوط** بعد بالـ Vercel project — لتفعيل النشر التلقائي مع كل push: Vercel Dashboard → ont27 → Settings → Git → Connect `mzakaria-creater/ont27`.
 - البيئة: `VITE_SUPABASE_URL` و`VITE_SUPABASE_PUBLISHABLE_KEY` مدمجتان build-time (publishable key عام بطبيعته — الأسرار الحقيقية لا تدخل الواجهة أبداً).
+- **إضافة 2026-07-30 (Auth):** لازم تُضاف على Vercel (Settings → Environment Variables، ليس `.env` محلي فقط) قبل أي دخول فعلي: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `PANEL_AUTH_JWT_SECRET`, `PANEL_2FA_ENC_KEY` — كلها خادمية فقط (بدون `VITE_`). التفاصيل والتحذيرات في [docs/AUTH.md](AUTH.md).

@@ -55,11 +55,10 @@ authRoutes.post('/login', async (c) => {
   const password = typeof body?.password === 'string' ? body.password : ''
   if (!username || !password) return c.json({ error: 'missing_credentials' }, 400)
 
-  const { data: user } = await db
-    .from('panel_users')
-    .select('id, username, display_name, role, active, password_hash, failed_login_count, locked_until')
-    .ilike('username', username.replace(/([%_\\])/g, '\\$1'))
-    .maybeSingle()
+  // Case-insensitive, backslash-safe lookup via SECURITY DEFINER helper
+  // (created by the 2026-07-31 session; 0 rows = unknown, >1 = case collision).
+  const { data: rows } = await db.rpc('panel_get_user_for_login', { p_username: username })
+  const user = Array.isArray(rows) && rows.length === 1 ? rows[0] : null
 
   if (!user || !user.active) {
     await audit(c, 'auth.login_failed', username)
@@ -136,6 +135,68 @@ authRoutes.post('/logout', async (c) => {
   }
   clearAuthCookies(c)
   return c.json({ ok: true })
+})
+
+// --- 2FA enrollment (from an authenticated session; not enforced at login —
+// explicit product decision 2026-07-30, kept ready to re-enable) ---
+
+authRoutes.post('/2fa/setup', async (c) => {
+  const token = getCookie(c, ACCESS_COOKIE)
+  const claims = token ? await verifyAccessToken(token) : null
+  if (!claims) return c.json({ error: 'unauthenticated' }, 401)
+
+  const { generateTotpSecret, encryptSecret, totpQrDataUrl } = await import('./twofa.js')
+  const secret = generateTotpSecret()
+  const { error } = await db.from('panel_users_2fa').upsert(
+    {
+      user_id: claims.sub,
+      totp_secret_enc: encryptSecret(secret),
+      enabled_at: null,
+      recovery_codes_hash: [],
+    },
+    { onConflict: 'user_id' },
+  )
+  if (error) {
+    console.error('2fa setup failed:', error.message)
+    return c.json({ error: 'server_error' }, 500)
+  }
+  const qr = await totpQrDataUrl(claims.username, secret)
+  return c.json({ qr_data_url: qr, manual_entry_key: secret })
+})
+
+authRoutes.post('/2fa/enable', async (c) => {
+  const token = getCookie(c, ACCESS_COOKIE)
+  const claims = token ? await verifyAccessToken(token) : null
+  if (!claims) return c.json({ error: 'unauthenticated' }, 401)
+
+  const body = await c.req.json().catch(() => null)
+  const totpCode = typeof body?.totp_code === 'string' ? body.totp_code.trim() : ''
+  if (!totpCode) return c.json({ error: 'missing_totp_code' }, 400)
+
+  const { data: twofa } = await db
+    .from('panel_users_2fa')
+    .select('totp_secret_enc, enabled_at')
+    .eq('user_id', claims.sub)
+    .maybeSingle()
+  if (!twofa) return c.json({ error: 'not_enrolled' }, 409)
+
+  const { decryptSecret, verifyTotp, generateRecoveryCodes } = await import('./twofa.js')
+  if (!verifyTotp(totpCode, decryptSecret(twofa.totp_secret_enc))) {
+    return c.json({ error: 'invalid_totp' }, 401)
+  }
+
+  const { plaintext, hashes } = generateRecoveryCodes(10)
+  const { error } = await db
+    .from('panel_users_2fa')
+    .update({ enabled_at: new Date().toISOString(), recovery_codes_hash: hashes })
+    .eq('user_id', claims.sub)
+  if (error) {
+    console.error('2fa enable failed:', error.message)
+    return c.json({ error: 'server_error' }, 500)
+  }
+  await audit(c, 'auth.2fa_enabled', claims.sub, { id: claims.sub, name: claims.username })
+  // Recovery codes are shown exactly once — the UI must force the user to save them.
+  return c.json({ recovery_codes: plaintext })
 })
 
 authRoutes.get('/me', async (c) => {

@@ -34,6 +34,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { void loadMe() }, [loadMe])
 
+  // Proactively refresh a little before the 15-min access TTL so an active
+  // user never gets bounced mid-action (lib/api still silently retries on 401).
+  useEffect(() => {
+    if (status !== 'authed') return
+    const iv = setInterval(() => {
+      void fetch('/api/auth/refresh', { method: 'POST', credentials: 'same-origin' })
+    }, 12 * 60 * 1000)
+    return () => clearInterval(iv)
+  }, [status])
+
   const login = useCallback(async (username: string, password: string) => {
     await api('/api/auth/login', {
       method: 'POST',
@@ -73,7 +83,7 @@ export function useAuth(): AuthState {
 export function loginErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.code === 'invalid_credentials') return 'اسم المستخدم أو كلمة المرور غير صحيحة'
-    if (err.code === 'locked') {
+    if (err.code === 'locked' || err.code === 'account_locked') {
       const until = err.body?.until ? new Date(err.body.until as string) : null
       const time = until ? until.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : ''
       return `الحساب مقفول مؤقتاً بعد محاولات فاشلة متكررة${time ? ` — حاول بعد ${time}` : ''}`
