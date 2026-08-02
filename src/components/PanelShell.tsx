@@ -11,27 +11,53 @@ import type { PagePermission } from '../lib/api'
 // first, then the role's remaining permitted modules as "قريباً" placeholders),
 // main content, and an always-on live SMS rail for roles with sms_live access.
 
-const BUILT_LINKS: { to: string; icon: string; label: string; pageKey?: string }[] = [
-  { to: '/', icon: '🏠', label: 'لوحة التحكم' },
-  { to: '/deposits', icon: '💰', label: 'الإيداعات', pageKey: 'deposits' },
-  { to: '/payouts', icon: '📤', label: 'السحوبات', pageKey: 'payouts' },
-  { to: '/merchants', icon: '🏬', label: 'التجار', pageKey: 'merchants' },
-  { to: '/wallets', icon: '👛', label: 'المحافظ', pageKey: 'wallets' },
-  { to: '/sms', icon: '📨', label: 'SMS مباشر', pageKey: 'sms_live' },
-  { to: '/merchant-link-generator', icon: '🔗', label: 'روابط الدفع', pageKey: 'checkout-builder' },
+interface NavLinkDef {
+  to: string
+  icon: string
+  label: string
+  /** visible when the role can_view ANY of these keys; empty = always */
+  keys: string[]
+  group: 'main' | 'system'
+}
+
+const BUILT_LINKS: NavLinkDef[] = [
+  { to: '/', icon: '🏠', label: 'لوحة التحكم', keys: [], group: 'main' },
+  { to: '/approvals', icon: '✅', label: 'طابور الموافقات', keys: ['approvals', 'approval-queue', 'my-queue', 'my-tasks', 'assigned_to_me'], group: 'main' },
+  { to: '/deposits', icon: '💰', label: 'الإيداعات', keys: ['deposits'], group: 'main' },
+  { to: '/payouts', icon: '📤', label: 'السحوبات', keys: ['payouts'], group: 'main' },
+  { to: '/transactions', icon: '📋', label: 'كل المعاملات', keys: ['transactions', 'all_transactions', 'refunds', 'reversals'], group: 'main' },
+  { to: '/sms', icon: '📨', label: 'SMS مباشر', keys: ['sms_live'], group: 'main' },
+  { to: '/merchant-link-generator', icon: '🔗', label: 'روابط الدفع', keys: ['checkout-builder'], group: 'main' },
+  { to: '/merchants', icon: '🏬', label: 'التجار', keys: ['merchants'], group: 'system' },
+  { to: '/wallets', icon: '👛', label: 'المحافظ', keys: ['wallets'], group: 'system' },
+  { to: '/crm', icon: '👥', label: 'CRM العملاء', keys: ['client_crm'], group: 'system' },
+  { to: '/settlements', icon: '🧾', label: 'التسويات', keys: ['settlements', 'settlements_list', 'settlement_recon', 'fees'], group: 'system' },
+  { to: '/risk', icon: '🛡️', label: 'المخاطر', keys: ['risk', 'risk_audit', 'flagged', 'exceptions', 'manual_review', 'velocity', 'compliance'], group: 'system' },
+  { to: '/automation', icon: '🤖', label: 'الأتمتة', keys: ['telegram_bot', 'binance_p2p', 'treasury', 'allocation_engine', 'capacity_monitor', 'workspace_hub', 'launchpad', 'ai_team'], group: 'system' },
+  { to: '/reports', icon: '📊', label: 'التقارير', keys: ['reports', 'advanced_analysis'], group: 'system' },
+  { to: '/audit', icon: '🕵️', label: 'سجل التدقيق', keys: ['audit_log', 'audit-logs'], group: 'system' },
+  { to: '/notifications', icon: '🔔', label: 'الإشعارات', keys: [], group: 'system' },
+  { to: '/admin', icon: '⚙️', label: 'الإدارة', keys: ['users', 'permissions', 'api-keys', 'webhooks', 'developers', 'settings'], group: 'system' },
 ]
 
-// page_keys already represented by a real sidebar link — kept out of the
-// "قريباً" module list. pending_payouts/wallet_pool are covered by the real
-// Payouts (PENDING filter) and Wallets pages.
+// Every page_key now represented by a real page — the "قريباً" module list
+// only shows keys not covered below.
 const BUILT_PAGE_KEYS = new Set([
   'dashboard',
-  'deposits',
-  'payouts',
-  'pending_payouts',
-  'merchants',
-  'wallets',
-  'wallet_pool',
+  'deposits', 'deposit-queue', 'pending_deposits',
+  'payouts', 'pending_payouts',
+  'transactions', 'all_transactions', 'refunds', 'reversals',
+  'approvals', 'approval-queue', 'my-queue', 'my-tasks', 'assigned_to_me',
+  'settlements', 'settlements_list', 'settlement_recon', 'fees',
+  'merchants', 'merchant_detail', 'merchant-dashboard', 'master_merchants', 'sub_merchants', 'sub-merchants', 'agents',
+  'wallets', 'wallet_pool', 'wallet-pools', 'accounts', 'payment_methods',
+  'client_crm',
+  'risk', 'risk_audit', 'flagged', 'exceptions', 'manual_review', 'velocity', 'compliance',
+  'telegram_bot', 'binance_p2p', 'treasury', 'allocation_engine', 'capacity_monitor', 'workspace_hub', 'launchpad', 'ai_team',
+  'audit_log', 'audit-logs',
+  'users', 'permissions', 'api-keys', 'webhooks', 'developers', 'settings',
+  'reports', 'advanced_analysis',
+  'support', 'notifications',
   'sms_live',
   'checkout-builder',
 ])
@@ -165,21 +191,33 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   const modules = usePermittedModules()
   const permsLoaded = permissions.length > 0
+  const [navOpen, setNavOpen] = useState(false)
+
+  const visible = (l: NavLinkDef) => l.keys.length === 0 || l.keys.some((k) => can(k))
+  const renderLinks = (group: 'main' | 'system') =>
+    BUILT_LINKS.filter((l) => l.group === group && visible(l)).map((l) => (
+      <Link
+        key={l.to}
+        to={l.to}
+        onClick={() => setNavOpen(false)}
+        className={`sidebar-item sidebar-link${pathname === l.to ? ' active' : ''}`}
+      >
+        <span className="sidebar-icon">{l.icon}</span>
+        <span>{l.label}</span>
+      </Link>
+    ))
 
   return (
     <div className="dash-body">
-      <nav className="sidebar">
+      <button className="nav-toggle" onClick={() => setNavOpen((o) => !o)} title="القائمة">
+        {navOpen ? '✕' : '☰'}
+      </button>
+      {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
+      <nav className={`sidebar${navOpen ? ' open' : ''}`}>
         <div className="nav-group-label">القائمة الرئيسية</div>
-        {BUILT_LINKS.filter((l) => !l.pageKey || can(l.pageKey)).map((l) => (
-          <Link
-            key={l.to}
-            to={l.to}
-            className={`sidebar-item sidebar-link${pathname === l.to ? ' active' : ''}`}
-          >
-            <span className="sidebar-icon">{l.icon}</span>
-            <span>{l.label}</span>
-          </Link>
-        ))}
+        {renderLinks('main')}
+        <div className="nav-group-label">النظام</div>
+        {renderLinks('system')}
         {!permsLoaded && <div className="sidebar-hint">جارٍ تحميل الصلاحيات…</div>}
         {modules.length > 0 && <div className="nav-group-label">قريباً</div>}
         {modules.map((m) => (

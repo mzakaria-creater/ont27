@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
+import { useBulk } from '../lib/useBulk'
 import { depositTime, money, statusMeta, STATUS_META } from '../lib/deposits'
 import type { DepositDetail, DepositRow, DepositStats } from '../lib/deposits'
 
@@ -135,6 +136,7 @@ export default function Deposits() {
   }
 
   const [rowBusy, setRowBusy] = useState<number | null>(null)
+  const bulk = useBulk((id) => `/api/deposits/${id}/decision`, () => void load())
 
   const quickDecide = async (txId: number, action: 'approve' | 'decline') => {
     setRowBusy(txId)
@@ -271,6 +273,19 @@ export default function Deposits() {
       </div>
 
       {err && <div className="card warn">{err}</div>}
+      {bulk.progress && <div className="card bulk-progress">{bulk.progress}</div>}
+      {bulk.selected.size > 0 && can('deposits', 'can_approve') && (
+        <div className="bulk-bar">
+          <span>{bulk.selected.size} محدد</span>
+          <button className="btn-primary btn-sm" disabled={bulk.busy} onClick={() => void bulk.run('approve')}>
+            ✅ اعتماد الكل
+          </button>
+          <button className="btn-ghost danger btn-sm" disabled={bulk.busy} onClick={() => void bulk.run('decline')}>
+            ❌ رفض الكل
+          </button>
+          <button className="btn-ghost btn-sm" disabled={bulk.busy} onClick={bulk.clear}>إلغاء</button>
+        </div>
+      )}
 
       <section className="card recent-card">
         {loading && <p className="sidebar-hint">جارٍ التحميل…</p>}
@@ -280,6 +295,18 @@ export default function Deposits() {
             <table className="data-table clickable">
               <thead>
                 <tr>
+                  {can('deposits', 'can_approve') && (
+                    <th className="check-col">
+                      <input
+                        type="checkbox"
+                        checked={(() => {
+                          const ids = data.rows.filter((r) => r.status === 'PENDING').map((r) => r.tx_id)
+                          return ids.length > 0 && ids.every((i) => bulk.selected.has(i))
+                        })()}
+                        onChange={() => bulk.toggleAll(data.rows.filter((r) => r.status === 'PENDING').map((r) => r.tx_id))}
+                      />
+                    </th>
+                  )}
                   <th>رقم العملية</th>
                   <th>المبلغ</th>
                   <th>المُرسِل</th>
@@ -299,6 +326,17 @@ export default function Deposits() {
                       className={r.status === 'PENDING' ? 'row-pending' : undefined}
                       onClick={() => void openDetail(r.tx_id)}
                     >
+                      {can('deposits', 'can_approve') && (
+                        <td className="check-col" onClick={(e) => e.stopPropagation()}>
+                          {r.status === 'PENDING' && (
+                            <input
+                              type="checkbox"
+                              checked={bulk.selected.has(r.tx_id)}
+                              onChange={() => bulk.toggle(r.tx_id)}
+                            />
+                          )}
+                        </td>
+                      )}
                       <td className="mono">
                         {r.ontarget_ref ?? r.tx_id}
                         {r.merchant_tx_reference && (

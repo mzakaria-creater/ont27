@@ -31,3 +31,21 @@ export function requirePerm(pageKey: string, action: PermAction) {
     await next()
   })
 }
+
+// A category page is reachable through ANY of its page_keys (the legacy
+// permission matrix splits one screen across several keys per role).
+export function requireAnyPerm(pageKeys: string[], action: PermAction) {
+  return createMiddleware<AuthEnv>(async (c, next) => {
+    const actor = c.get('actor')
+    const { data } = await db
+      .from('role_page_permissions')
+      .select(`page_key, ${action}`)
+      .eq('role_key', actor.role)
+      .in('page_key', pageKeys)
+    const rows = (data ?? []) as unknown as Record<string, boolean>[]
+    if (!rows.some((r) => r[action])) {
+      return c.json({ error: 'forbidden', pages: pageKeys, action }, 403)
+    }
+    await next()
+  })
+}

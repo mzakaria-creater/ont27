@@ -8,6 +8,7 @@ import { merchantRoutes } from './merchants.js'
 import { walletRoutes } from './wallets.js'
 import { smsRoutes } from './sms.js'
 import { deltaSyncRoutes } from './deltaSync.js'
+import { extraRoutes } from './extras.js'
 
 export const app = new Hono().basePath('/api')
 
@@ -21,3 +22,4 @@ app.route('/merchants', merchantRoutes)
 app.route('/wallets', walletRoutes)
 app.route('/sms', smsRoutes)
 app.route('/cron', deltaSyncRoutes)
+app.route('/', extraRoutes)

@@ -1,0 +1,183 @@
+import { useCallback, useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import PanelShell from '../components/PanelShell'
+import { api, ApiError } from '../lib/api'
+import { depositTime, money, statusMeta } from '../lib/deposits'
+
+// All transactions — deposits + payouts merged, sorted by our ref.
+
+const PAGE_SIZE = 25
+const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
+
+interface TxRow {
+  kind: 'deposit' | 'payout'
+  tx_id?: number
+  maven_id?: number
+  ontarget_ref: string | null
+  merchant_tx_reference?: string | null
+  status: string
+  amount: number | null
+  currency?: string | null
+  sender_name?: string | null
+  sender_number?: string | null
+  account_name?: string | null
+  mobile_no?: string | null
+  payment_method?: string | null
+  pay_by?: string | null
+  gateway?: string | null
+  merchant: string | null
+  master_merchant?: string | null
+  approved_by: string | null
+  first_seen_at: string | null
+  created_utc: string | null
+}
+
+interface ListResponse {
+  rows: TxRow[]
+  total: number
+}
+
+export default function Transactions() {
+  const [params, setParams] = useSearchParams()
+  const type = params.get('type') ?? ''
+  const status = params.get('status') ?? ''
+  const page = Math.max(Number(params.get('page')) || 1, 1)
+  const [q, setQ] = useState(params.get('q') ?? '')
+  const appliedQ = params.get('q') ?? ''
+  const [data, setData] = useState<ListResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setErr(null)
+    const search = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String((page - 1) * PAGE_SIZE) })
+    if (type) search.set('type', type)
+    if (status) search.set('status', status)
+    if (appliedQ) search.set('q', appliedQ)
+    try {
+      setData(await api<ListResponse>(`/api/transactions?${search}`))
+    } catch (e) {
+      setErr(e instanceof ApiError && e.status === 403 ? 'لا تملك صلاحية عرض المعاملات.' : 'تعذّر تحميل المعاملات.')
+    } finally {
+      setLoading(false)
+    }
+  }, [type, status, appliedQ, page])
+
+  useEffect(() => { void load() }, [load])
+
+  const setFilter = (next: { type?: string; status?: string; q?: string; page?: number }) => {
+    const p = new URLSearchParams(params)
+    const put = (k: string, v: string | undefined) => {
+      if (v === undefined) return
+      if (v) p.set(k, v); else p.delete(k)
+      p.delete('page')
+    }
+    put('type', next.type)
+    put('status', next.status)
+    put('q', next.q)
+    if (next.page !== undefined) {
+      if (next.page > 1) p.set('page', String(next.page)); else p.delete('page')
+    }
+    setParams(p)
+  }
+
+  const totalPages = data ? Math.max(Math.ceil(data.total / PAGE_SIZE), 1) : 1
+
+  return (
+    <PanelShell>
+      <section className="page-head">
+        <h2>📋 كل المعاملات</h2>
+        <p className="page-sub">إيداعات وسحوبات موحّدة{data && <> · {data.total.toLocaleString('en-US')} نتيجة</>}</p>
+      </section>
+
+      <div className="filter-bar">
+        <div className="filter-pills">
+          <button className={`pill${type === '' ? ' active' : ''}`} onClick={() => setFilter({ type: '' })}>الكل</button>
+          <button className={`pill${type === 'deposit' ? ' active' : ''}`} onClick={() => setFilter({ type: 'deposit' })}>💰 إيداعات</button>
+          <button className={`pill${type === 'payout' ? ' active' : ''}`} onClick={() => setFilter({ type: 'payout' })}>📤 سحوبات</button>
+        </div>
+        <div className="chip-row">
+          <button className={`chip${status === '' ? ' chip-active' : ''}`} onClick={() => setFilter({ status: '' })}>الكل</button>
+          {STATUS_FILTERS.map((s) => (
+            <button key={s} className={`chip${status === s ? ' chip-active' : ''}`} onClick={() => setFilter({ status: s })}>
+              {statusMeta(s).label}
+            </button>
+          ))}
+        </div>
+        <form className="search-row" onSubmit={(e) => { e.preventDefault(); setFilter({ q: q.trim() }) }}>
+          <input className="login-input search-input" placeholder="بحث: مرجع / اسم / موبايل / تاجر…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <button type="submit" className="btn-primary btn-sm">بحث</button>
+        </form>
+      </div>
+
+      {err && <div className="card warn">{err}</div>}
+
+      <section className="card recent-card">
+        {loading && <p className="sidebar-hint">جارٍ التحميل…</p>}
+        {!loading && data && data.rows.length === 0 && <p>لا توجد نتائج مطابقة.</p>}
+        {!loading && data && data.rows.length > 0 && (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>رقم العملية</th>
+                  <th>النوع</th>
+                  <th>المبلغ</th>
+                  <th>الطرف</th>
+                  <th>التاجر</th>
+                  <th>الحالة</th>
+                  <th>الوقت</th>
+                  <th>إجراء</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.map((r) => {
+                  const st = statusMeta(r.status)
+                  const id = r.kind === 'deposit' ? r.tx_id : r.maven_id
+                  const party = r.kind === 'deposit' ? (r.sender_name ?? r.sender_number) : (r.account_name ?? r.mobile_no)
+                  return (
+                    <tr key={`${r.kind}-${id}`} className={r.status === 'PENDING' ? 'row-pending' : undefined}>
+                      <td className="mono">
+                        {r.ontarget_ref ?? id}
+                        {r.merchant_tx_reference && <div className="cell-sub mono">{r.merchant_tx_reference}</div>}
+                      </td>
+                      <td>
+                        <span className={`pay-status-badge ${r.kind === 'deposit' ? 'st-paid' : 'st-under'}`}>
+                          {r.kind === 'deposit' ? '💰 إيداع' : '📤 سحب'}
+                        </span>
+                      </td>
+                      <td className="mono">{money(r.amount, r.currency ?? 'EGP')}</td>
+                      <td>{party ?? '—'}</td>
+                      <td>{r.merchant ?? '—'}{r.master_merchant && <div className="cell-sub">{r.master_merchant}</div>}</td>
+                      <td>
+                        <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
+                        {r.approved_by && <div className="cell-sub">بواسطة {r.approved_by}</div>}
+                      </td>
+                      <td className="mono">{depositTime(r)}</td>
+                      <td>
+                        <Link
+                          className="btn-ghost btn-sm"
+                          to={`/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}
+                        >
+                          👁 تفاصيل
+                        </Link>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {data && totalPages > 1 && (
+          <div className="pager">
+            <button className="btn-ghost btn-sm" disabled={page <= 1} onClick={() => setFilter({ page: page - 1 })}>→ السابق</button>
+            <span className="pager-info mono">{page} / {totalPages}</span>
+            <button className="btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setFilter({ page: page + 1 })}>التالي ←</button>
+          </div>
+        )}
+      </section>
+    </PanelShell>
+  )
+}

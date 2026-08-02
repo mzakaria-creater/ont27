@@ -62,7 +62,7 @@ depositRoutes.get('/stats', requirePerm('dashboard', 'can_view'), async (c) => {
     db
       .from('maven_transactions')
       .select(LIST_COLUMNS)
-      .order('tx_id', { ascending: false })
+      .order('ontarget_ref', { ascending: false, nullsFirst: false })
       .limit(10)
       .then(({ data, error }) => {
         if (error) throw new Error(error.message)

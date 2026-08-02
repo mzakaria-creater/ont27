@@ -1,0 +1,89 @@
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import PanelShell from '../components/PanelShell'
+import { api } from '../lib/api'
+import { money } from '../lib/deposits'
+
+// Notifications center — the bell's data, expanded.
+
+export interface NotifData {
+  pendingDeposits: number
+  pendingPayouts: number
+  smsReview: number
+  offlineDevices: string[]
+  latestPending: { tx_id: number; ontarget_ref: string | null; amount: number | null; currency: string | null; sender_name: string | null; merchant: string | null }[]
+  total: number
+}
+
+export default function Notifications() {
+  const [data, setData] = useState<NotifData | null>(null)
+
+  useEffect(() => {
+    const load = () => void api<NotifData>('/api/notifications').then(setData).catch(() => {})
+    load()
+    const iv = setInterval(load, 30_000)
+    return () => clearInterval(iv)
+  }, [])
+
+  return (
+    <PanelShell>
+      <section className="page-head">
+        <h2>🔔 الإشعارات</h2>
+        <p className="page-sub">كل ما يحتاج انتباهك الآن · تحديث تلقائي كل 30 ثانية</p>
+      </section>
+
+      {!data && <p className="sidebar-hint">جارٍ التحميل…</p>}
+      {data && (
+        <>
+          <div className="kpi-grid">
+            <Link to="/deposits?status=PENDING" className="kpi-card amber">
+              <span className="kpi-icon">💰</span>
+              <div className="kpi-value">{data.pendingDeposits}</div>
+              <div className="kpi-label">إيداعات معلّقة</div>
+            </Link>
+            <Link to="/payouts?status=PENDING" className="kpi-card amber">
+              <span className="kpi-icon">📤</span>
+              <div className="kpi-value">{data.pendingPayouts}</div>
+              <div className="kpi-label">سحوبات معلّقة</div>
+            </Link>
+            <Link to="/sms?match=review" className="kpi-card">
+              <span className="kpi-icon">📨</span>
+              <div className="kpi-value">{data.smsReview}</div>
+              <div className="kpi-label">رسائل تحتاج مراجعة (48 ساعة)</div>
+            </Link>
+            <Link to="/wallets" className="kpi-card">
+              <span className="kpi-icon">📵</span>
+              <div className="kpi-value">{data.offlineDevices.length}</div>
+              <div className="kpi-label">أجهزة غير متصلة{data.offlineDevices.length > 0 && `: ${data.offlineDevices.join('، ')}`}</div>
+            </Link>
+          </div>
+
+          <section className="card recent-card">
+            <div className="recent-head">
+              <h3>أحدث الإيداعات المعلّقة</h3>
+              <Link to="/approvals" className="pay-status-link">فتح طابور الموافقات ←</Link>
+            </div>
+            {data.latestPending.length === 0 && <p>لا يوجد شيء معلّق 🎉</p>}
+            {data.latestPending.length > 0 && (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead><tr><th>رقم العملية</th><th>المبلغ</th><th>المُرسِل</th><th>التاجر</th></tr></thead>
+                  <tbody>
+                    {data.latestPending.map((r) => (
+                      <tr key={r.tx_id}>
+                        <td className="mono">{r.ontarget_ref ?? r.tx_id}</td>
+                        <td className="mono">{money(r.amount, r.currency)}</td>
+                        <td>{r.sender_name ?? '—'}</td>
+                        <td>{r.merchant ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </>
+      )}
+    </PanelShell>
+  )
+}

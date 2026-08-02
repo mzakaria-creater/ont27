@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
+import { useBulk } from '../lib/useBulk'
 import { depositTime, money, statusMeta } from '../lib/deposits'
 
 const PAGE_SIZE = 25
@@ -109,6 +110,7 @@ export default function Payouts() {
   }
 
   const [rowBusy, setRowBusy] = useState<number | null>(null)
+  const bulk = useBulk((id) => `/api/payouts/${id}/decision`, () => void load())
 
   const quickDecide = async (mavenId: number, action: 'approve' | 'decline') => {
     setRowBusy(mavenId)
@@ -207,6 +209,19 @@ export default function Payouts() {
       </div>
 
       {err && <div className="card warn">{err}</div>}
+      {bulk.progress && <div className="card bulk-progress">{bulk.progress}</div>}
+      {bulk.selected.size > 0 && can('payouts', 'can_approve') && (
+        <div className="bulk-bar">
+          <span>{bulk.selected.size} محدد</span>
+          <button className="btn-primary btn-sm" disabled={bulk.busy} onClick={() => void bulk.run('approve')}>
+            ✅ اعتماد الكل
+          </button>
+          <button className="btn-ghost danger btn-sm" disabled={bulk.busy} onClick={() => void bulk.run('decline')}>
+            ❌ رفض الكل
+          </button>
+          <button className="btn-ghost btn-sm" disabled={bulk.busy} onClick={bulk.clear}>إلغاء</button>
+        </div>
+      )}
 
       <section className="card recent-card">
         {loading && <p className="sidebar-hint">جارٍ التحميل…</p>}
@@ -216,6 +231,18 @@ export default function Payouts() {
             <table className="data-table clickable">
               <thead>
                 <tr>
+                  {can('payouts', 'can_approve') && (
+                    <th className="check-col">
+                      <input
+                        type="checkbox"
+                        checked={(() => {
+                          const ids = data.rows.filter((r) => r.status === 'PENDING').map((r) => r.maven_id)
+                          return ids.length > 0 && ids.every((i) => bulk.selected.has(i))
+                        })()}
+                        onChange={() => bulk.toggleAll(data.rows.filter((r) => r.status === 'PENDING').map((r) => r.maven_id))}
+                      />
+                    </th>
+                  )}
                   <th>رقم العملية</th>
                   <th>المبلغ</th>
                   <th>المستفيد</th>
@@ -232,6 +259,17 @@ export default function Payouts() {
                   const st = statusMeta(r.status)
                   return (
                     <tr key={r.maven_id} onClick={() => void openDetail(r.maven_id)}>
+                      {can('payouts', 'can_approve') && (
+                        <td className="check-col" onClick={(e) => e.stopPropagation()}>
+                          {r.status === 'PENDING' && (
+                            <input
+                              type="checkbox"
+                              checked={bulk.selected.has(r.maven_id)}
+                              onChange={() => bulk.toggle(r.maven_id)}
+                            />
+                          )}
+                        </td>
+                      )}
                       <td className="mono">
                         {r.ontarget_ref ?? r.maven_id}
                         <div className="cell-sub mono" title="مرجع Maven">{r.maven_id}</div>
