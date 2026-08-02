@@ -42,7 +42,16 @@ interface ChannelRow {
   active: boolean | null
 }
 
+interface LiveWallet {
+  bank_id: string | null
+  account_name: string | null
+  payment_type: string | null
+  phone_number: string | null
+  last_checked: string | null
+}
+
 interface WalletsResponse {
+  live: LiveWallet[]
   wallets: WalletRow[]
   devices: DeviceRow[]
   channels: ChannelRow[]
@@ -108,7 +117,36 @@ export default function Wallets() {
 
       {err && <div className="card warn">{err}</div>}
 
+      {data && data.live.length > 0 && (
+        <section className="card recent-card">
+          <div className="recent-head">
+            <h3>✅ المحافظ النشطة الآن (Maven مباشر)</h3>
+            <span className="cell-sub">المصدر الرسمي — بيتفحص كل دقايق</span>
+          </div>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead><tr><th>bank_id</th><th>القناة</th><th>النوع</th><th>رقم المحفظة</th><th>آخر فحص</th></tr></thead>
+              <tbody>
+                {data.live.map((w, i) => (
+                  <tr key={`${w.bank_id}-${i}`}>
+                    <td className="mono">{w.bank_id ?? '—'}</td>
+                    <td>{w.account_name ?? '—'}</td>
+                    <td>{w.payment_type ?? '—'}</td>
+                    <td className="mono">{w.phone_number ?? '—'}</td>
+                    <td className="mono">{depositTime({ first_seen_at: w.last_checked })}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       <section className="card recent-card">
+        <div className="recent-head">
+          <h3>🗺️ ربط المحافظ بالأجهزة (wallet_device_map)</h3>
+          <span className="cell-sub">الصفوف "استنتاج آلي" قد تكون قديمة — القايمة الحية فوق هي المرجع</span>
+        </div>
         {!data && !err && <p className="sidebar-hint">جارٍ التحميل…</p>}
         {filtered && filtered.length === 0 && <p>لا توجد نتائج مطابقة.</p>}
         {filtered && filtered.length > 0 && (
