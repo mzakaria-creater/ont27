@@ -2,5 +2,8 @@
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api" },
     { "source": "/((?!api).*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    { "path": "/api/cron/delta-sync", "schedule": "0 2 * * *" }
   ]
 }

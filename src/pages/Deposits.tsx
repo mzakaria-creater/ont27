@@ -287,7 +287,7 @@ export default function Deposits() {
                   <th>التاجر</th>
                   <th>الحالة</th>
                   <th>الوقت</th>
-                  {can('deposits', 'can_approve') && <th>إجراء</th>}
+                  <th>إجراء</th>
                 </tr>
               </thead>
               <tbody>
@@ -322,16 +322,23 @@ export default function Deposits() {
                         {r.approved_by && <div className="cell-sub">بواسطة {r.approved_by}</div>}
                       </td>
                       <td className="mono">{depositTime(r)}</td>
-                      {can('deposits', 'can_approve') && (
-                        <td onClick={(e) => e.stopPropagation()}>
-                          {r.status === 'PENDING' && (
-                            <div className="row-actions">
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <div className="row-actions">
+                          <button
+                            className="btn-ghost btn-sm"
+                            title="تفاصيل المعاملة"
+                            onClick={() => void openDetail(r.tx_id)}
+                          >
+                            👁 تفاصيل
+                          </button>
+                          {r.status === 'PENDING' && can('deposits', 'can_approve') && (
+                            <>
                               <button
                                 className="btn-primary btn-sm"
                                 disabled={rowBusy === r.tx_id}
                                 onClick={() => void quickDecide(r.tx_id, 'approve')}
                               >
-                                ✅ اعتماد
+                                ✅
                               </button>
                               <button
                                 className="btn-ghost danger btn-sm"
@@ -340,10 +347,10 @@ export default function Deposits() {
                               >
                                 ❌
                               </button>
-                            </div>
+                            </>
                           )}
-                        </td>
-                      )}
+                        </div>
+                      </td>
                     </tr>
                   )
                 })}

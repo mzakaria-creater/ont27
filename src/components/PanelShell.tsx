@@ -91,6 +91,9 @@ function SmsRail() {
     let alive = true
     const load = async () => {
       try {
+        // Fire-and-forget: keeps panel-v2 topped up from the old prod DB
+        // while anyone has the panel open (server throttles to 1/min).
+        void fetch('/api/cron/delta-sync', { method: 'POST', credentials: 'same-origin' }).catch(() => {})
         const [list, dev] = await Promise.all([
           api<{ rows: RailSms[] }>('/api/sms?limit=8'),
           api<{ devices: RailDevice[] }>('/api/sms/devices'),

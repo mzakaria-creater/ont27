@@ -75,14 +75,21 @@ export function parseUtcText(value: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
-const timeFmt = new Intl.DateTimeFormat('ar-EG-u-nu-latn', {
+// en-GB keeps the dd/MM HH:mm order stable inside RTL table cells.
+const timeFmt = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Africa/Cairo',
-  dateStyle: 'short',
-  timeStyle: 'short',
+  day: '2-digit',
+  month: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
 })
 
+// Prefer created_utc (the REAL transaction time at the provider) over
+// first_seen_at (when OUR sync first saw the row — the migration stamped
+// thousands of rows with the same first_seen_at).
 export function depositTime(row: { first_seen_at?: string | null; created_utc?: string | null }): string {
-  const d = parseUtcText(row.first_seen_at) ?? parseUtcText(row.created_utc)
+  const d = parseUtcText(row.created_utc) ?? parseUtcText(row.first_seen_at)
   return d ? timeFmt.format(d) : '—'
 }
 
