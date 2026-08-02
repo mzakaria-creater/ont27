@@ -127,6 +127,7 @@ export default function Transactions() {
                   <th>الطرف</th>
                   <th>التاجر</th>
                   <th>الحالة</th>
+                  <th>اعتمد بواسطة</th>
                   <th>الوقت</th>
                   <th>إجراء</th>
                 </tr>
@@ -150,10 +151,8 @@ export default function Transactions() {
                       <td className="mono">{money(r.amount, r.currency ?? 'EGP')}</td>
                       <td>{party ?? '—'}</td>
                       <td>{r.merchant ?? '—'}{r.master_merchant && <div className="cell-sub">{r.master_merchant}</div>}</td>
-                      <td>
-                        <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
-                        {r.approved_by && <div className="cell-sub">بواسطة {r.approved_by}</div>}
-                      </td>
+                      <td><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></td>
+                      <td>{r.status === 'PENDING' ? '—' : (!r.approved_by || r.approved_by === 'Manual' ? 'النظام (آلي)' : r.approved_by)}</td>
                       <td className="mono">{depositTime(r)}</td>
                       <td>
                         <Link
