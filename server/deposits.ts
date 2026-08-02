@@ -81,6 +81,7 @@ depositRoutes.get('/stats', requirePerm('dashboard', 'can_view'), async (c) => {
 
 depositRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
   const status = c.req.query('status')?.toUpperCase()
+  const master = c.req.query('master')?.trim()
   const q = c.req.query('q')?.trim()
   const limit = Math.min(Number(c.req.query('limit')) || 25, 100)
   const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
@@ -93,6 +94,7 @@ depositRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
     .range(offset, offset + limit - 1)
 
   if (status) query = query.eq('status', status)
+  if (master) query = query.ilike('master_merchant', `%${master}%`)
   if (q) {
     const like = `%${q.replaceAll(',', ' ')}%`
     const ors = [
@@ -121,7 +123,42 @@ depositRoutes.get('/:txId', requirePerm('deposits', 'can_view'), async (c) => {
     .maybeSingle()
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   if (!data) return c.json({ error: 'not_found' }, 404)
-  return c.json({ deposit: data })
+
+  // Matched SMS (if the matcher or an operator linked one) + client history.
+  const [smsMatch, clientRows] = await Promise.all([
+    db
+      .from('sms_maven_matches')
+      .select('sms_id, sec_diff, matched_at')
+      .eq('tx_id', txId)
+      .maybeSingle()
+      .then(async ({ data: m }) => {
+        if (!m) return null
+        const { data: sms } = await db
+          .from('inbound_sms')
+          .select('id, received_at, device_name, sim_slot, sender_name, sender_number, amount, balance_after, sms_first_line, match_status')
+          .eq('id', m.sms_id)
+          .maybeSingle()
+        return sms ? { ...sms, sec_diff: m.sec_diff } : null
+      }),
+    data.sender_number
+      ? db
+          .from('maven_transactions')
+          .select('status')
+          .eq('sender_number', data.sender_number)
+          .limit(1_000)
+          .then(({ data: rows }) => rows ?? [])
+      : Promise.resolve([]),
+  ])
+
+  const client = data.sender_number
+    ? {
+        total: clientRows.length,
+        paid: clientRows.filter((r) => r.status === 'PAID' || r.status === 'APPROVED').length,
+        declined: clientRows.filter((r) => r.status === 'DECLINED').length,
+      }
+    : null
+
+  return c.json({ deposit: data, sms: smsMatch, client })
 })
 
 depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), async (c) => {

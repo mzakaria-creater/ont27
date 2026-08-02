@@ -4,10 +4,14 @@ import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money, statusMeta, STATUS_META } from '../lib/deposits'
-import type { DepositDetail, DepositRow } from '../lib/deposits'
+import type { DepositDetail, DepositRow, DepositStats } from '../lib/deposits'
 
 const PAGE_SIZE = 25
 const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
+const MASTER_PILLS = [
+  { key: 'NGPay', cls: 'ngpay' },
+  { key: 'PayFuture', cls: 'payfuture' },
+]
 
 interface ListResponse {
   rows: DepositRow[]
@@ -16,16 +20,52 @@ interface ListResponse {
   offset: number
 }
 
+interface MatchedSms {
+  id: number
+  received_at: string | null
+  device_name: string | null
+  sim_slot: number | null
+  sender_name: string | null
+  sender_number: string | null
+  amount: number | null
+  balance_after: number | null
+  sms_first_line: string | null
+  match_status: string | null
+  sec_diff: number | null
+}
+
+interface ClientHistory {
+  total: number
+  paid: number
+  declined: number
+}
+
+function merchantChipCls(master: string | null | undefined): string {
+  const m = (master ?? '').toLowerCase()
+  if (m.includes('ngpay')) return 'ngpay'
+  if (m.includes('payfuture')) return 'payfuture'
+  return 'other'
+}
+
+function smsFirstLine(s: MatchedSms): string {
+  const raw = s.sms_first_line ?? ''
+  return raw.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('From :'))[0] ?? '—'
+}
+
 export default function Deposits() {
   const { can } = useAuth()
   const [params, setParams] = useSearchParams()
   const status = params.get('status') ?? ''
+  const master = params.get('master') ?? ''
   const page = Math.max(Number(params.get('page')) || 1, 1)
   const [q, setQ] = useState(params.get('q') ?? '')
   const [data, setData] = useState<ListResponse | null>(null)
+  const [stats, setStats] = useState<DepositStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [selected, setSelected] = useState<DepositDetail | null>(null)
+  const [selectedSms, setSelectedSms] = useState<MatchedSms | null>(null)
+  const [selectedClient, setSelectedClient] = useState<ClientHistory | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [decisionBusy, setDecisionBusy] = useState(false)
   const [decisionErr, setDecisionErr] = useState<string | null>(null)
@@ -40,6 +80,7 @@ export default function Deposits() {
       offset: String((page - 1) * PAGE_SIZE),
     })
     if (status) search.set('status', status)
+    if (master) search.set('master', master)
     if (appliedQ) search.set('q', appliedQ)
     try {
       setData(await api<ListResponse>(`/api/deposits?${search}`))
@@ -48,14 +89,22 @@ export default function Deposits() {
     } finally {
       setLoading(false)
     }
-  }, [status, appliedQ, page])
+  }, [status, master, appliedQ, page])
+
+  useEffect(() => {
+    api<DepositStats>('/api/deposits/stats').then(setStats).catch(() => setStats(null))
+  }, [])
 
   useEffect(() => { void load() }, [load])
 
-  const setFilter = (next: { status?: string; q?: string; page?: number }) => {
+  const setFilter = (next: { status?: string; master?: string; q?: string; page?: number }) => {
     const p = new URLSearchParams(params)
     if (next.status !== undefined) {
       if (next.status) p.set('status', next.status); else p.delete('status')
+      p.delete('page')
+    }
+    if (next.master !== undefined) {
+      if (next.master) p.set('master', next.master); else p.delete('master')
       p.delete('page')
     }
     if (next.q !== undefined) {
@@ -71,9 +120,13 @@ export default function Deposits() {
   const openDetail = async (txId: number) => {
     setDetailLoading(true)
     setDecisionErr(null)
+    setSelectedSms(null)
+    setSelectedClient(null)
     try {
-      const res = await api<{ deposit: DepositDetail }>(`/api/deposits/${txId}`)
+      const res = await api<{ deposit: DepositDetail; sms: MatchedSms | null; client: ClientHistory | null }>(`/api/deposits/${txId}`)
       setSelected(res.deposit)
+      setSelectedSms(res.sms)
+      setSelectedClient(res.client)
     } catch {
       setErr('تعذّر تحميل تفاصيل الإيداع.')
     } finally {
@@ -142,7 +195,45 @@ export default function Deposits() {
         </p>
       </section>
 
+      <div className="kpi-grid">
+        <button className="kpi-card amber kpi-clickable" onClick={() => setFilter({ status: 'PENDING' })} style={{ textAlign: 'inherit', cursor: 'pointer' }}>
+          <span className="kpi-icon">⏳</span>
+          <div className="kpi-value">{stats ? stats.pending : '…'}</div>
+          <div className="kpi-label">معلّقة الآن</div>
+        </button>
+        <div className="kpi-card">
+          <span className="kpi-icon">📈</span>
+          <div className="kpi-value">{stats ? stats.day.paid.count : '…'}</div>
+          <div className="kpi-label">مقبولة · آخر 24 ساعة</div>
+        </div>
+        <div className="kpi-card">
+          <span className="kpi-icon">📉</span>
+          <div className="kpi-value">{stats ? stats.day.declined : '…'}</div>
+          <div className="kpi-label">مرفوضة · آخر 24 ساعة</div>
+        </div>
+        <div className="kpi-card">
+          <span className="kpi-icon">🪙</span>
+          <div className="kpi-value">{stats ? money(stats.day.paid.volume, '') : '…'}</div>
+          <div className="kpi-label">إجمالي المقبول · 24 ساعة (EGP)</div>
+        </div>
+      </div>
+
       <div className="filter-bar">
+        <div className="filter-pills">
+          <button className={`pill${master === '' ? ' active' : ''}`} onClick={() => setFilter({ master: '' })}>
+            الكل
+          </button>
+          {MASTER_PILLS.map((m) => (
+            <button
+              key={m.key}
+              className={`pill${master === m.key ? ' active' : ''}`}
+              onClick={() => setFilter({ master: master === m.key ? '' : m.key })}
+            >
+              <span className="pill-dot" style={{ background: `var(--${m.cls})` }} />
+              {m.key}
+            </button>
+          ))}
+        </div>
         <div className="chip-row">
           <button
             className={`chip${status === '' ? ' chip-active' : ''}`}
@@ -203,7 +294,11 @@ export default function Deposits() {
                 {data.rows.map((r) => {
                   const st = statusMeta(r.status)
                   return (
-                    <tr key={r.tx_id} onClick={() => void openDetail(r.tx_id)}>
+                    <tr
+                      key={r.tx_id}
+                      className={r.status === 'PENDING' ? 'row-pending' : undefined}
+                      onClick={() => void openDetail(r.tx_id)}
+                    >
                       <td className="mono">
                         {r.ontarget_ref ?? r.tx_id}
                         {r.merchant_tx_reference && (
@@ -217,8 +312,10 @@ export default function Deposits() {
                       </td>
                       <td>{r.payment_method ?? r.gateway ?? '—'}</td>
                       <td>
-                        {r.merchant ?? '—'}
-                        {r.master_merchant && <div className="cell-sub">{r.master_merchant}</div>}
+                        {r.master_merchant
+                          ? <span className={`merchant-chip ${merchantChipCls(r.master_merchant)}`}>{r.master_merchant}</span>
+                          : (r.merchant ?? '—')}
+                        {r.master_merchant && r.merchant && <div className="cell-sub">{r.merchant}</div>}
                       </td>
                       <td>
                         <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
@@ -315,6 +412,83 @@ export default function Deposits() {
                     🧾 عرض إثبات الدفع
                   </a>
                 )}
+
+                {selectedSms && (
+                  <div className="sms-match-card">
+                    <div className="sms-match-head">
+                      <span className="sms-match-title">✅ رسالة SMS مطابقة</span>
+                      {selectedSms.sec_diff != null && (
+                        <span className="match-pct mono">فارق {selectedSms.sec_diff} ث</span>
+                      )}
+                    </div>
+                    <div className="sms-match-text">{smsFirstLine(selectedSms)}</div>
+                    <div className="sms-match-meta">
+                      <span className="mono">
+                        {selectedSms.device_name ?? '—'}{selectedSms.sim_slot != null && <> · SIM {selectedSms.sim_slot}</>}
+                      </span>
+                      <span className="mono">استُلمت {depositTime({ first_seen_at: selectedSms.received_at })}</span>
+                      {selectedSms.balance_after != null && (
+                        <span className="mono">الرصيد بعدها {money(selectedSms.balance_after, 'EGP')}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {selectedClient && selectedClient.total > 1 && (
+                  <>
+                    <div className="section-label">سجل هذا العميل</div>
+                    <div className="client-history">
+                      <div className="ch-tile">
+                        <div className="ch-value">{selectedClient.total}</div>
+                        <div className="ch-label">إجمالي</div>
+                      </div>
+                      <div className="ch-tile">
+                        <div className="ch-value" style={{ color: 'var(--status-paid)' }}>{selectedClient.paid}</div>
+                        <div className="ch-label">مقبولة</div>
+                      </div>
+                      <div className="ch-tile">
+                        <div className="ch-value" style={{ color: 'var(--status-declined)' }}>{selectedClient.declined}</div>
+                        <div className="ch-label">مرفوضة</div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <div className="section-label">سجل النشاط</div>
+                <div className="timeline">
+                  {selected.status !== 'PENDING' && (
+                    <div className="timeline-item">
+                      <div className={`timeline-dot ${selected.status === 'PAID' || selected.status === 'APPROVED' ? 'done' : 'neutral'}`} />
+                      <div>
+                        <div className="timeline-title">القرار: {statusMeta(selected.status).label}</div>
+                        <div className="timeline-meta mono">
+                          {depositTime({ first_seen_at: selected.last_status_change })}
+                          {selected.approved_by && <> · {selected.approved_by}</>}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {selectedSms && (
+                    <div className="timeline-item">
+                      <div className="timeline-dot done" />
+                      <div>
+                        <div className="timeline-title">استُقبلت رسالة SMS مطابقة</div>
+                        <div className="timeline-meta mono">
+                          {depositTime({ first_seen_at: selectedSms.received_at })} · {selectedSms.device_name ?? '—'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div className="timeline-item">
+                    <div className="timeline-dot neutral" />
+                    <div>
+                      <div className="timeline-title">تم إنشاء المعاملة</div>
+                      <div className="timeline-meta mono">
+                        {depositTime(selected)} · {selected.master_merchant ?? selected.merchant ?? '—'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
                 {decisionErr && <div className="card warn">{decisionErr}</div>}
 

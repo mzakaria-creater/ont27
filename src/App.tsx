@@ -16,8 +16,18 @@ import { SUPABASE_URL, SUPABASE_KEY } from './lib/supabase'
 
 type Conn = 'wait' | 'ok' | 'bad'
 
+function useTheme() {
+  const [theme, setTheme] = useState(() => localStorage.getItem('panel-theme') ?? 'dark')
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('panel-theme', theme)
+  }, [theme])
+  return { theme, toggle: () => setTheme((t) => (t === 'dark' ? 'light' : 'dark')) }
+}
+
 function Topbar() {
   const { user, logout, status } = useAuth()
+  const { theme, toggle } = useTheme()
   const [conn, setConn] = useState<Conn>('wait')
   const [checkedAt, setCheckedAt] = useState<Date | null>(null)
   const [ago, setAgo] = useState(0)
@@ -51,7 +61,11 @@ function Topbar() {
     <header className="topbar">
       <img src="/logo.svg" alt="OnTarget" className="logo" />
       <h1><Link to="/" className="home-link">OnTarget <span className="brand-sub">Payment Provider</span></Link></h1>
+      <span className="live-dot"><span className="ld" />مباشر</span>
       <div className="spacer" />
+      <button className="theme-btn" onClick={toggle}>
+        {theme === 'dark' ? '☀️ وضع الإضاءة' : '🌙 الوضع الداكن'}
+      </button>
       <span className="conn">
         <span className={`dot ${conn}`} />
         {conn === 'ok' ? 'متصل' : conn === 'bad' ? 'غير متصل' : 'جارٍ الفحص…'}

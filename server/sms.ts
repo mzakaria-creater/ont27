@@ -101,6 +101,168 @@ smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
   return c.json({ rows: data ?? [], total: count ?? 0, limit, offset })
 })
 
+// Device chips for the live SMS rail.
+smsRoutes.get('/devices', requirePerm('sms_live', 'can_view'), async (c) => {
+  const { data, error } = await db
+    .from('device_status')
+    .select('device, sim_slot, online, battery, last_seen_at')
+    .order('device')
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  return c.json({ devices: data ?? [] })
+})
+
+// Candidate maven_transactions for manual linking: same amount within ±3 days
+// of the SMS, or an explicit ?q= ref/tx_id search.
+smsRoutes.get('/:id/candidates', requirePerm('sms_live', 'can_view'), async (c) => {
+  const id = c.req.param('id')
+  if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)
+  const q = c.req.query('q')?.trim()
+
+  const { data: sms, error: smsErr } = await db
+    .from('inbound_sms')
+    .select('id, amount, received_at')
+    .eq('id', id)
+    .maybeSingle()
+  if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
+  if (!sms) return c.json({ error: 'not_found' }, 404)
+
+  let query = db
+    .from('maven_transactions')
+    .select('tx_id, ontarget_ref, status, amount, currency, sender_name, sender_number, merchant, first_seen_at')
+    .order('first_seen_at', { ascending: false, nullsFirst: false })
+    .limit(10)
+
+  if (q) {
+    const ors = [`ontarget_ref.ilike.%${q}%`, `merchant_tx_reference.ilike.%${q}%`]
+    if (/^\d+$/.test(q)) ors.push(`tx_id.eq.${q}`)
+    query = query.or(ors.join(','))
+  } else {
+    if (sms.amount == null) return c.json({ candidates: [] })
+    query = query.eq('amount', sms.amount).in('status', ['PENDING', 'PAID', 'APPROVED', 'UNDERPAID'])
+    if (sms.received_at) {
+      const t = new Date(sms.received_at).getTime()
+      query = query
+        .gte('first_seen_at', new Date(t - 3 * 86_400_000).toISOString())
+        .lte('first_seen_at', new Date(t + 3 * 86_400_000).toISOString())
+    }
+  }
+
+  const { data, error } = await query
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  return c.json({ candidates: data ?? [] })
+})
+
+smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)
+  const body = await c.req.json().catch(() => null)
+  const txId = Number(body?.tx_id)
+  if (!Number.isInteger(txId) || txId <= 0) return c.json({ error: 'bad_tx_id' }, 400)
+
+  const [{ data: sms, error: smsErr }, { data: tx, error: txErr }] = await Promise.all([
+    db.from('inbound_sms').select('id, matched, match_status, amount, received_at, receiver_number').eq('id', id).maybeSingle(),
+    db.from('maven_transactions').select('tx_id, amount, first_seen_at, ontarget_ref').eq('tx_id', txId).maybeSingle(),
+  ])
+  if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
+  if (txErr) return c.json({ error: 'db_error', detail: txErr.message }, 500)
+  if (!sms) return c.json({ error: 'not_found' }, 404)
+  if (!tx) return c.json({ error: 'tx_not_found' }, 404)
+  if (sms.matched) return c.json({ error: 'already_linked' }, 409)
+
+  const { error: updErr } = await db
+    .from('inbound_sms')
+    .update({
+      matched: true,
+      match_status: 'manual',
+      matched_transaction_id: txId,
+      maven_transaction_id: String(txId),
+      consumed_by_tx_id: txId,
+      review_required: false,
+      processed_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+  if (updErr) return c.json({ error: 'db_error', detail: updErr.message }, 500)
+
+  const secDiff =
+    sms.received_at && tx.first_seen_at
+      ? Math.round(Math.abs(new Date(sms.received_at).getTime() - new Date(tx.first_seen_at).getTime()) / 1000)
+      : null
+  // Best-effort mirrors of the auto-matcher's bookkeeping — the link itself
+  // already landed above.
+  await db.from('sms_maven_matches').upsert(
+    {
+      sms_id: Number(id),
+      tx_id: txId,
+      receiving_wallet: sms.receiver_number,
+      sms_amount: sms.amount,
+      mv_amount: tx.amount,
+      received_at: sms.received_at,
+      mv_time: tx.first_seen_at,
+      sec_diff: secDiff,
+      webhook_name: 'panel_manual',
+      matched_at: new Date().toISOString(),
+    },
+    { onConflict: 'sms_id' },
+  )
+
+  const actor = c.get('actor')
+  await db.from('audit_log').insert({
+    actor_type: 'manual_panel',
+    actor_id: actor.sub,
+    actor_name: actor.username,
+    action: 'sms.link',
+    entity: 'inbound_sms',
+    entity_id: id,
+    before: { match_status: sms.match_status },
+    after: { match_status: 'manual', tx_id: txId, ontarget_ref: tx.ontarget_ref },
+  })
+
+  return c.json({ ok: true })
+})
+
+smsRoutes.post('/:id/unlink', requirePerm('sms_live', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)
+
+  const { data: sms, error: smsErr } = await db
+    .from('inbound_sms')
+    .select('id, matched, match_status, matched_transaction_id')
+    .eq('id', id)
+    .maybeSingle()
+  if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
+  if (!sms) return c.json({ error: 'not_found' }, 404)
+  if (!sms.matched) return c.json({ error: 'not_linked' }, 409)
+
+  const { error: updErr } = await db
+    .from('inbound_sms')
+    .update({
+      matched: false,
+      match_status: 'unmatched',
+      matched_transaction_id: null,
+      maven_transaction_id: null,
+      consumed_by_tx_id: null,
+      review_required: true,
+    })
+    .eq('id', id)
+  if (updErr) return c.json({ error: 'db_error', detail: updErr.message }, 500)
+
+  await db.from('sms_maven_matches').delete().eq('sms_id', id)
+
+  const actor = c.get('actor')
+  await db.from('audit_log').insert({
+    actor_type: 'manual_panel',
+    actor_id: actor.sub,
+    actor_name: actor.username,
+    action: 'sms.unlink',
+    entity: 'inbound_sms',
+    entity_id: id,
+    before: { match_status: sms.match_status, tx_id: sms.matched_transaction_id },
+    after: { match_status: 'unmatched' },
+  })
+
+  return c.json({ ok: true })
+})
+
 smsRoutes.get('/:id', requirePerm('sms_live', 'can_view'), async (c) => {
   const id = c.req.param('id')
   if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
-import { depositTime, money } from '../lib/deposits'
+import { depositTime, money, statusMeta } from '../lib/deposits'
 
 // SMS Live — the inbound_sms queue with its Maven links, auto-refreshing.
 
@@ -83,6 +84,18 @@ interface ListResponse {
   offset: number
 }
 
+interface CandidateTx {
+  tx_id: number
+  ontarget_ref: string | null
+  status: string
+  amount: number | null
+  currency: string | null
+  sender_name: string | null
+  sender_number: string | null
+  merchant: string | null
+  first_seen_at: string | null
+}
+
 function firstLine(r: SmsRow): string {
   const raw = r.sms_first_line ?? ''
   const line = raw
@@ -93,6 +106,7 @@ function firstLine(r: SmsRow): string {
 }
 
 export default function SmsLive() {
+  const { can } = useAuth()
   const [params, setParams] = useSearchParams()
   const category = params.get('category') ?? ''
   const match = params.get('match') ?? ''
@@ -104,6 +118,11 @@ export default function SmsLive() {
   const [err, setErr] = useState<string | null>(null)
   const [selected, setSelected] = useState<SmsDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [candidates, setCandidates] = useState<CandidateTx[] | null>(null)
+  const [candQ, setCandQ] = useState('')
+  const [candLoading, setCandLoading] = useState(false)
+  const [linkBusy, setLinkBusy] = useState(false)
+  const [linkErr, setLinkErr] = useState<string | null>(null)
 
   const appliedQ = params.get('q') ?? ''
 
@@ -154,15 +173,71 @@ export default function SmsLive() {
     setParams(p)
   }
 
+  const loadCandidates = async (id: number, search?: string) => {
+    setCandLoading(true)
+    try {
+      const qs = search ? `?q=${encodeURIComponent(search)}` : ''
+      const res = await api<{ candidates: CandidateTx[] }>(`/api/sms/${id}/candidates${qs}`)
+      setCandidates(res.candidates)
+    } catch {
+      setCandidates([])
+    } finally {
+      setCandLoading(false)
+    }
+  }
+
   const openDetail = async (id: number) => {
     setDetailLoading(true)
+    setLinkErr(null)
+    setCandidates(null)
+    setCandQ('')
     try {
       const res = await api<{ sms: SmsDetail }>(`/api/sms/${id}`)
       setSelected(res.sms)
+      if (!res.sms.matched && can('sms_live', 'can_edit')) void loadCandidates(id)
     } catch {
       setErr('تعذّر تحميل تفاصيل الرسالة.')
     } finally {
       setDetailLoading(false)
+    }
+  }
+
+  const link = async (txId: number) => {
+    if (!selected) return
+    setLinkBusy(true)
+    setLinkErr(null)
+    try {
+      await api(`/api/sms/${selected.id}/link`, {
+        method: 'POST',
+        body: JSON.stringify({ tx_id: txId }),
+      })
+      setSelected(null)
+      void load(true)
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'already_linked') {
+        setLinkErr('الرسالة مرتبطة بالفعل — أعد الفتح.')
+      } else if (e instanceof ApiError && e.status === 403) {
+        setLinkErr('لا تملك صلاحية الربط (can_edit غير ممنوحة لدورك).')
+      } else {
+        setLinkErr('فشل الربط — حاول مرة أخرى.')
+      }
+    } finally {
+      setLinkBusy(false)
+    }
+  }
+
+  const unlink = async () => {
+    if (!selected) return
+    setLinkBusy(true)
+    setLinkErr(null)
+    try {
+      await api(`/api/sms/${selected.id}/unlink`, { method: 'POST' })
+      setSelected(null)
+      void load(true)
+    } catch {
+      setLinkErr('فشل فك الربط — حاول مرة أخرى.')
+    } finally {
+      setLinkBusy(false)
     }
   }
 
@@ -370,6 +445,63 @@ export default function SmsLive() {
                   {selected.notes && <><dt>ملاحظات</dt><dd>{selected.notes}</dd></>}
                   <dt>وقت الاستلام</dt><dd className="mono">{depositTime({ first_seen_at: selected.received_at })}</dd>
                 </dl>
+
+                {linkErr && <div className="card warn">{linkErr}</div>}
+
+                {selected.matched && can('sms_live', 'can_edit') && (
+                  <div className="drawer-actions">
+                    <button className="btn-ghost danger" disabled={linkBusy} onClick={() => void unlink()}>
+                      🔗 فك الربط عن المعاملة
+                    </button>
+                  </div>
+                )}
+
+                {!selected.matched && can('sms_live', 'can_edit') && (
+                  <div className="link-section">
+                    <h4>🔗 ربط بمعاملة</h4>
+                    <form
+                      className="search-row"
+                      onSubmit={(e) => { e.preventDefault(); void loadCandidates(selected.id, candQ.trim() || undefined) }}
+                    >
+                      <input
+                        className="login-input search-input"
+                        placeholder="بحث بالمرجع أو tx_id… (فارغ = ترشيح بنفس المبلغ)"
+                        value={candQ}
+                        onChange={(e) => setCandQ(e.target.value)}
+                      />
+                      <button type="submit" className="btn-ghost btn-sm" disabled={candLoading}>بحث</button>
+                    </form>
+                    {candLoading && <p className="sidebar-hint">جارٍ البحث عن معاملات مطابقة…</p>}
+                    {candidates && candidates.length === 0 && !candLoading && (
+                      <p className="sidebar-hint">لا توجد معاملات مرشّحة — جرّب البحث بالمرجع.</p>
+                    )}
+                    {candidates && candidates.length > 0 && (
+                      <ul className="cand-list">
+                        {candidates.map((t) => (
+                          <li key={t.tx_id} className="cand-item">
+                            <div className="cand-info">
+                              <span className="mono">{t.ontarget_ref ?? t.tx_id}</span>
+                              <span className={`pay-status-badge ${statusMeta(t.status).cls}`}>{statusMeta(t.status).label}</span>
+                              <div className="cell-sub">
+                                <span className="mono">{money(t.amount, t.currency)}</span>
+                                {' · '}{t.sender_name ?? t.sender_number ?? '—'}
+                                {' · '}{t.merchant ?? '—'}
+                                {' · '}<span className="mono">{depositTime({ first_seen_at: t.first_seen_at })}</span>
+                              </div>
+                            </div>
+                            <button
+                              className="btn-primary btn-sm"
+                              disabled={linkBusy}
+                              onClick={() => void link(t.tx_id)}
+                            >
+                              ربط
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </aside>
