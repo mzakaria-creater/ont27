@@ -1,112 +1,31 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
-import { money } from '../lib/deposits'
+import { useAuth } from '../auth/AuthContext'
 import { useLocale } from '../lib/locale'
 
-interface Channel {
-  id: string
-  channel_type: string | null
-  country_code: string | null
-  currency_code: string | null
-  display_name: string | null
-  active: boolean | null
-}
-interface MethodStats { key: string; attempts: number; approved: number; volume: number }
-interface Data {
-  channels: Channel[]
-  methods: MethodStats[]
-  walletCount: Record<string, number>
-  since: string
-}
+interface Method { id: string; method_code: string; method_name: string; channel_type: string; is_active: boolean; sort_order: number }
+interface Account { id: string; payment_method_id: string; account_number: string; account_name: string | null; iban: string | null; bank_name: string | null; currency: string | null; country_code: string | null; device_name: string | null; label: string | null; is_active: boolean }
+const emptyAccount = { account_number: '', label: '', device_name: '', bank_name: '' }
 
 export default function PaymentMethods() {
-  const { t } = useLocale()
-  const [data, setData] = useState<Data | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    try {
-      setData(await api<Data>('/api/payment-methods'))
-      setError(null)
-    } catch (err) {
-      setError(err instanceof ApiError && err.status === 403
-        ? t('لا تملك صلاحية عرض طرق الدفع.', 'You do not have permission to view payment methods.')
-        : t('تعذّر تحميل طرق الدفع.', 'Unable to load payment methods.'))
-    }
-  }, [t])
-
+  const { t } = useLocale(); const { can } = useAuth()
+  const [data, setData] = useState<{ methods: Method[]; accounts: Account[] } | null>(null)
+  const [error, setError] = useState<string | null>(null); const [open, setOpen] = useState<string | null>(null)
+  const [account, setAccount] = useState(emptyAccount); const [newMethod, setNewMethod] = useState({ method_code: '', method_name: '', channel_type: 'sms_device' })
+  const editable = can('payment_methods', 'can_edit'); const create = can('payment_methods', 'can_create')
+  const load = useCallback(async () => { try { setData(await api('/api/payment-methods')); setError(null) } catch (e) { setError(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية طرق الدفع.', 'You do not have payment-method permission.') : t('تعذر التحميل.', 'Unable to load.')) } }, [t])
   useEffect(() => { void load() }, [load])
-
-  const toggle = async (channel: Channel) => {
-    setSaving(channel.id)
-    setError(null)
-    try {
-      const result = await api<{ channel: Channel }>(`/api/payment-methods/${channel.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ active: !channel.active }),
-      })
-      setData((current) => current ? {
-        ...current,
-        channels: current.channels.map((item) => item.id === result.channel.id ? result.channel : item),
-      } : current)
-    } catch (err) {
-      setError(err instanceof ApiError && err.status === 403
-        ? t('لا تملك صلاحية تعديل طرق الدفع.', 'You do not have permission to edit payment methods.')
-        : t('تعذّر تحديث طريقة الدفع.', 'Unable to update the payment method.'))
-    } finally {
-      setSaving(null)
-    }
-  }
-
-  const totals = useMemo(() => ({
-    active: data?.channels.filter((channel) => channel.active).length ?? 0,
-    volume: data?.methods.reduce((sum, method) => sum + method.volume, 0) ?? 0,
-    attempts: data?.methods.reduce((sum, method) => sum + method.attempts, 0) ?? 0,
-    approved: data?.methods.reduce((sum, method) => sum + method.approved, 0) ?? 0,
-  }), [data])
-  const approvalRate = totals.attempts ? (totals.approved / totals.attempts) * 100 : 0
-
-  return (
-    <PanelShell>
-      <section className="page-head">
-        <h2>{t('💳 طرق الدفع', '💳 Payment Methods')}</h2>
-        <p className="page-sub">{t('إعداد القنوات وصحتها مع نشاط حي لآخر 30 يوماً.', 'Channel configuration and health with live performance for the last 30 days.')}</p>
-      </section>
-
-      {error && <div className="card warn">{error}</div>}
-
-      <div className="kpi-grid">
-        <div className="kpi-card"><span className="kpi-icon">✅</span><div className="kpi-value">{totals.active}</div><div className="kpi-label">{t('قنوات نشطة', 'Active channels')}</div></div>
-        <div className="kpi-card"><span className="kpi-icon">📈</span><div className="kpi-value">{approvalRate.toFixed(1)}%</div><div className="kpi-label">{t('نسبة قبول 30 يوماً', '30-day approval rate')}</div></div>
-        <div className="kpi-card"><span className="kpi-icon">💰</span><div className="kpi-value">{money(totals.volume, 'EGP')}</div><div className="kpi-label">{t('حجم معتمد 30 يوماً', '30-day approved volume')}</div></div>
-        <div className="kpi-card"><span className="kpi-icon">🔄</span><div className="kpi-value">{totals.attempts.toLocaleString('en-US')}</div><div className="kpi-label">{t('محاولات معالجة', 'Processing attempts')}</div></div>
-      </div>
-
-      <section className="card recent-card">
-        <div className="recent-head"><h3>{t('إعداد القنوات', 'Channel configuration')}</h3></div>
-        {!data && !error && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
-        {data && <div className="table-wrap"><table className="data-table">
-          <thead><tr><th>{t('القناة', 'Channel')}</th><th>{t('النوع', 'Type')}</th><th>{t('الدولة', 'Country')}</th><th>{t('العملة', 'Currency')}</th><th>{t('المحافظ', 'Wallets')}</th><th>{t('الحالة', 'Status')}</th><th>{t('إجراء', 'Action')}</th></tr></thead>
-          <tbody>{data.channels.map((channel) => {
-            const wallets = channel.display_name ? (data.walletCount[channel.display_name] ?? data.walletCount[channel.channel_type ?? ''] ?? 0) : 0
-            return <tr key={channel.id}>
-              <td>{channel.display_name ?? '—'}</td><td className="mono">{channel.channel_type ?? '—'}</td><td>{channel.country_code ?? '—'}</td><td className="mono">{channel.currency_code ?? '—'}</td><td className="mono">{wallets}</td>
-              <td><span className={`pay-status-badge ${channel.active ? 'st-paid' : 'st-dim'}`}>{channel.active ? t('نشطة', 'Active') : t('موقوفة', 'Disabled')}</span></td>
-              <td><button className={channel.active ? 'btn-ghost danger btn-sm' : 'btn-primary btn-sm'} disabled={saving === channel.id} onClick={() => void toggle(channel)}>{saving === channel.id ? t('جارٍ الحفظ…', 'Saving…') : channel.active ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button></td>
-            </tr>
-          })}</tbody>
-        </table></div>}
-      </section>
-
-      {data && <section className="card recent-card">
-        <div className="recent-head"><h3>{t('أداء طرق الدفع', 'Payment method performance')}</h3><span className="cell-sub">{t('آخر 30 يوماً', 'Last 30 days')}</span></div>
-        <div className="table-wrap"><table className="data-table">
-          <thead><tr><th>{t('الطريقة', 'Method')}</th><th>{t('المحاولات', 'Attempts')}</th><th>{t('المعتمدة', 'Approved')}</th><th>{t('نسبة القبول', 'Approval rate')}</th><th>{t('الحجم المعتمد', 'Approved volume')}</th></tr></thead>
-          <tbody>{data.methods.map((method) => <tr key={method.key}><td>{method.key}</td><td className="mono">{method.attempts}</td><td className="mono">{method.approved}</td><td className="mono">{method.attempts ? `${((method.approved / method.attempts) * 100).toFixed(1)}%` : '—'}</td><td className="mono">{money(method.volume, 'EGP')}</td></tr>)}</tbody>
-        </table></div>
-      </section>}
-    </PanelShell>
-  )
+  const toggle = async (method: Method) => { try { await api(`/api/payment-methods/${method.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !method.is_active }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
+  const addMethod = async (e: React.FormEvent) => { e.preventDefault(); try { await api('/api/payment-methods', { method: 'POST', body: JSON.stringify(newMethod) }); setNewMethod({ method_code: '', method_name: '', channel_type: 'sms_device' }); await load() } catch { setError(t('تعذر إضافة الطريقة.', 'Unable to add method.')) } }
+  const addAccount = async (e: React.FormEvent) => { e.preventDefault(); if (!open) return; try { await api(`/api/payment-methods/${open}/accounts`, { method: 'POST', body: JSON.stringify(account) }); setAccount(emptyAccount); setOpen(null); await load() } catch { setError(t('تعذر إضافة الحساب.', 'Unable to add account.')) } }
+  const toggleAccount = async (row: Account) => { try { await api(`/api/payment-methods/accounts/${row.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !row.is_active }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
+  return <PanelShell><section className="page-head"><h2>{t('طرق الدفع والحسابات', 'Payment methods & accounts')}</h2><p className="page-sub">{t('طبقة عرض وإدارة فقط؛ لا تستبدل خرائط SMS التشغيلية.', 'Reference catalogue only; it does not replace operational SMS mapping.')}</p></section>
+    {error && <div className="card warn">{error}</div>}
+    {create && <form className="card control-row" onSubmit={addMethod}><strong>{t('إضافة طريقة', 'Add method')}</strong><input className="login-input" required placeholder="CODE" value={newMethod.method_code} onChange={(e) => setNewMethod({ ...newMethod, method_code: e.target.value })}/><input className="login-input" required placeholder={t('الاسم', 'Name')} value={newMethod.method_name} onChange={(e) => setNewMethod({ ...newMethod, method_name: e.target.value })}/><select className="login-input" value={newMethod.channel_type} onChange={(e) => setNewMethod({ ...newMethod, channel_type: e.target.value })}><option value="sms_device">SMS device</option><option value="bank_transfer">Bank transfer</option><option value="other">Other</option></select><button className="btn-primary btn-sm">{t('إضافة', 'Add')}</button></form>}
+    {!data && <p className="sidebar-hint">{t('جار التحميل…', 'Loading…')}</p>}
+    {data?.methods.map((method) => { const rows = data.accounts.filter((row) => row.payment_method_id === method.id); return <section className="card recent-card" key={method.id}><div className="recent-head"><div><h3>{method.method_name} <span className="cell-sub mono">{method.method_code} · {method.channel_type}</span></h3></div><div className="control-row">{editable && <button className="btn-ghost btn-sm" onClick={() => void toggle(method)}>{method.is_active ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>}{create && <button className="btn-primary btn-sm" onClick={() => setOpen(open === method.id ? null : method.id)}>{t('إضافة حساب', 'Add account')}</button>}</div></div>
+      {open === method.id && <form className="control-row" onSubmit={addAccount}><input required className="login-input" placeholder={t('رقم الحساب', 'Account number')} value={account.account_number} onChange={(e) => setAccount({ ...account, account_number: e.target.value })}/><input className="login-input" placeholder={t('تسمية', 'Label')} value={account.label} onChange={(e) => setAccount({ ...account, label: e.target.value })}/><input className="login-input" placeholder={t('الجهاز', 'Device')} value={account.device_name} onChange={(e) => setAccount({ ...account, device_name: e.target.value })}/><button className="btn-primary btn-sm">{t('حفظ', 'Save')}</button></form>}
+      <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('الرقم', 'Number')}</th><th>{t('التسمية', 'Label')}</th><th>{t('الجهاز', 'Device')}</th><th>{t('الحالة', 'Status')}</th><th /></tr></thead><tbody>{rows.length ? rows.map((row) => <tr key={row.id}><td className="mono">{row.account_number}</td><td>{row.label ?? row.account_name ?? '—'}</td><td className="mono">{row.device_name ?? '—'}</td><td><span className={`pay-status-badge ${row.is_active ? 'st-paid' : 'st-dim'}`}>{row.is_active ? t('نشط', 'Active') : t('موقوف', 'Disabled')}</span></td><td>{editable && <button className="btn-ghost btn-sm" onClick={() => void toggleAccount(row)}>{row.is_active ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>}</td></tr>) : <tr><td colSpan={5} className="sidebar-hint">{t('لا توجد حسابات.', 'No accounts.')}</td></tr>}</tbody></table></div></section> })}
+  </PanelShell>
 }

@@ -11,6 +11,9 @@ import { deltaSyncRoutes } from './deltaSync.js'
 import { extraRoutes } from './extras.js'
 import { controlRoutes } from './control.js'
 import { complaintRoutes } from './complaints.js'
+import { paymentMethodRoutes } from './paymentMethods.js'
+import { adminRoutes } from './admin.js'
+import { reportsRoutes } from './reports.js'
 
 export const app = new Hono().basePath('/api')
 
@@ -26,4 +29,10 @@ app.route('/sms', smsRoutes)
 app.route('/cron', deltaSyncRoutes)
 app.route('/control', controlRoutes)
 app.route('/complaints', complaintRoutes)
+// These routes intentionally precede the legacy aggregate endpoints in
+// extras.ts: they are the authenticated CRUD surfaces for the new neutral
+// payment catalogue and operational administration.
+app.route('/payment-methods', paymentMethodRoutes)
+app.route('/admin', adminRoutes)
+app.route('/reports', reportsRoutes)
 app.route('/', extraRoutes)

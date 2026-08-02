@@ -1,154 +1,33 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
-import { depositTime } from '../lib/deposits'
+import { useLocale } from '../lib/locale'
 
-// Admin — panel users, permission matrix, merchant API keys (metadata only), webhooks.
-
-interface UserRow { id: string; username: string; display_name: string | null; role: string; active: boolean | null; last_login_at: string | null; failed_login_count: number | null; locked_until: string | null; created_at: string | null }
-interface PermRow { role_key: string; page_key: string; can_view: boolean; can_edit: boolean; can_approve: boolean }
-interface KeyRow { id: string; merchant_id: string | null; key_name: string | null; environment: string | null; is_active: boolean | null; request_count: number | null; secret_prefix: string | null; last_used_at: string | null; created_at: string | null }
-interface HookRow { id: string; name: string | null; callback_url: string | null }
-
-type Tab = 'users' | 'permissions' | 'keys' | 'webhooks'
+type Tab = 'users' | 'merchants' | 'permissions' | 'fees' | 'capacity' | 'keys'
+type Perm = { role_key: string; page_key: string; can_view: boolean; can_create: boolean; can_edit: boolean; can_delete: boolean; can_approve: boolean; can_export: boolean }
+type Data = { users: any[]; roles: any[]; permissions: Perm[]; apiKeys: any[]; merchants: any[]; masters: any[]; feeDefaults: any[]; hierarchy: any[]; capacities: any[]; accounts: any[] }
+const actions: (keyof Omit<Perm, 'role_key' | 'page_key'>)[] = ['can_view', 'can_create', 'can_edit', 'can_delete', 'can_approve', 'can_export']
 
 export default function AdminPage() {
-  const [tab, setTab] = useState<Tab>('users')
-  const [data, setData] = useState<{ users: UserRow[]; permissions: PermRow[]; apiKeys: KeyRow[]; webhooks: HookRow[] } | null>(null)
-  const [err, setErr] = useState<string | null>(null)
-
-  useEffect(() => {
-    api<NonNullable<typeof data>>('/api/admin')
-      .then(setData)
-      .catch((e) => setErr(e instanceof ApiError && e.status === 403 ? 'لا تملك صلاحية عرض الإدارة.' : 'تعذّر تحميل بيانات الإدارة.'))
-  }, [])
-
-  const permsByPage = useMemo(() => {
-    const map = new Map<string, PermRow[]>()
-    for (const p of data?.permissions ?? []) {
-      if (!map.has(p.page_key)) map.set(p.page_key, [])
-      map.get(p.page_key)!.push(p)
-    }
-    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-  }, [data])
-
-  return (
-    <PanelShell>
-      <section className="page-head">
-        <h2>⚙️ الإدارة والإعدادات</h2>
-        <p className="page-sub">المستخدمون والصلاحيات ومفاتيح الـ API (الأسرار لا تُعرض أبداً — الإدارة الكاملة تدفّق منفصل)</p>
-      </section>
-
-      <div className="filter-bar">
-        <div className="filter-pills">
-          <button className={`pill${tab === 'users' ? ' active' : ''}`} onClick={() => setTab('users')}>👤 المستخدمون</button>
-          <button className={`pill${tab === 'permissions' ? ' active' : ''}`} onClick={() => setTab('permissions')}>🛡️ الصلاحيات</button>
-          <button className={`pill${tab === 'keys' ? ' active' : ''}`} onClick={() => setTab('keys')}>🔑 مفاتيح API</button>
-          <button className={`pill${tab === 'webhooks' ? ' active' : ''}`} onClick={() => setTab('webhooks')}>🔗 Webhooks</button>
-        </div>
-      </div>
-
-      {err && <div className="card warn">{err}</div>}
-      {!data && !err && <p className="sidebar-hint">جارٍ التحميل…</p>}
-
-      {data && tab === 'users' && (
-        <section className="card recent-card">
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead><tr><th>المستخدم</th><th>الدور</th><th>الحالة</th><th>آخر دخول</th><th>محاولات فاشلة</th></tr></thead>
-              <tbody>
-                {data.users.map((u) => (
-                  <tr key={u.id}>
-                    <td>{u.display_name ?? u.username}<div className="cell-sub mono">{u.username}</div></td>
-                    <td className="mono">{u.role}</td>
-                    <td>
-                      <span className={`pay-status-badge ${u.active ? 'st-paid' : 'st-dim'}`}>{u.active ? 'نشط' : 'موقوف'}</span>
-                      {u.locked_until && new Date(u.locked_until) > new Date() && (
-                        <span className="pay-status-badge st-declined"> مقفول</span>
-                      )}
-                    </td>
-                    <td className="mono">{u.last_login_at ? depositTime({ first_seen_at: u.last_login_at }) : 'لم يدخل بعد'}</td>
-                    <td className="mono">{u.failed_login_count ?? 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
-      {data && tab === 'permissions' && (
-        <section className="card recent-card">
-          <p className="page-sub">لكل صفحة: الأدوار المسموح لها (👁 عرض · ✏️ تعديل · ✅ اعتماد)</p>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead><tr><th>الصفحة</th><th>الأدوار</th></tr></thead>
-              <tbody>
-                {permsByPage.map(([pageKey, perms]) => (
-                  <tr key={pageKey}>
-                    <td className="mono">{pageKey}</td>
-                    <td>
-                      <div className="perm-chips">
-                        {perms.filter((p) => p.can_view || p.can_edit || p.can_approve).map((p) => (
-                          <span key={p.role_key} className="pay-status-badge st-dim perm-chip">
-                            {p.role_key} {p.can_view && '👁'}{p.can_edit && '✏️'}{p.can_approve && '✅'}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
-      {data && tab === 'keys' && (
-        <section className="card recent-card">
-          {data.apiKeys.length === 0 && <p>لا توجد مفاتيح.</p>}
-          {data.apiKeys.length > 0 && (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead><tr><th>الاسم</th><th>البيئة</th><th>البادئة</th><th>الطلبات</th><th>الحالة</th><th>آخر استخدام</th></tr></thead>
-                <tbody>
-                  {data.apiKeys.map((k) => (
-                    <tr key={k.id}>
-                      <td>{k.key_name ?? '—'}</td>
-                      <td className="mono">{k.environment ?? '—'}</td>
-                      <td className="mono">{k.secret_prefix ? `${k.secret_prefix}…` : '—'}</td>
-                      <td className="mono">{k.request_count ?? 0}</td>
-                      <td><span className={`pay-status-badge ${k.is_active ? 'st-paid' : 'st-dim'}`}>{k.is_active ? 'نشط' : 'موقوف'}</span></td>
-                      <td className="mono">{k.last_used_at ? depositTime({ first_seen_at: k.last_used_at }) : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      )}
-
-      {data && tab === 'webhooks' && (
-        <section className="card recent-card">
-          {data.webhooks.length === 0 && <p>لا توجد webhooks مسجّلة.</p>}
-          {data.webhooks.length > 0 && (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead><tr><th>التاجر</th><th>Callback URL</th></tr></thead>
-                <tbody>
-                  {data.webhooks.map((h) => (
-                    <tr key={h.id}>
-                      <td>{h.name ?? '—'}</td>
-                      <td className="mono small">{h.callback_url ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      )}
-    </PanelShell>
-  )
+  const { t } = useLocale(); const [tab, setTab] = useState<Tab>('users'); const [data, setData] = useState<Data | null>(null); const [err, setErr] = useState<string | null>(null); const [saving, setSaving] = useState(false); const [shownSecret, setShownSecret] = useState<string | null>(null)
+  const [user, setUser] = useState({ username: '', display_name: '', password: '', role: '' }); const [merchant, setMerchant] = useState({ name: '', code: '', master_merchant_id: '', initial_payin_pct: '' }); const [key, setKey] = useState({ merchant_id: '', key_name: '', environment: 'test' }); const [override, setOverride] = useState({ master_merchant_id: '', name: '', payin_commission_pct: '', payout_commission_pct: '0' })
+  const load = useCallback(async () => { try { setData(await api<Data>('/api/admin')); setErr(null) } catch (e) { setErr(e instanceof ApiError && e.status === 403 ? t('هذه الواجهة للمالك أو المدير فقط.', 'This page is for owner or admin only.') : t('تعذر تحميل الإدارة.', 'Unable to load administration.')) } }, [t])
+  useEffect(() => { void load() }, [load])
+  const call = async (path: string, method: string, body?: unknown) => { setSaving(true); try { const result = await api<any>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) }); await load(); return result } catch (e) { setErr((e as Error).message || t('فشلت العملية.', 'Operation failed.')); return null } finally { setSaving(false) } }
+  const pages = useMemo(() => [...new Set(data?.permissions.map((p) => p.page_key) ?? [])].sort(), [data])
+  const updatePerm = async (row: Perm, action: keyof Omit<Perm, 'role_key' | 'page_key'>) => { await call(`/api/admin/permissions/${encodeURIComponent(row.role_key)}/${encodeURIComponent(row.page_key)}`, 'PUT', { ...row, [action]: !row[action] }) }
+  const createUser = async (e: React.FormEvent) => { e.preventDefault(); const result = await call('/api/admin/users', 'POST', user); if (result) setUser({ username: '', display_name: '', password: '', role: '' }) }
+  const createMerchant = async (e: React.FormEvent) => { e.preventDefault(); const result = await call('/api/admin/merchants', 'POST', merchant); if (result) setMerchant({ name: '', code: '', master_merchant_id: '', initial_payin_pct: '' }) }
+  const issueKey = async (e: React.FormEvent) => { e.preventDefault(); const result = await call('/api/admin/api-keys', 'POST', key); if (result?.secret) { setShownSecret(result.secret); setKey({ merchant_id: '', key_name: '', environment: 'test' }) } }
+  const createOverride = async (e: React.FormEvent) => { e.preventDefault(); const result = await call('/api/admin/fees/hierarchy', 'POST', override); if (result) setOverride({ master_merchant_id: '', name: '', payin_commission_pct: '', payout_commission_pct: '0' }) }
+  return <PanelShell><section className="page-head"><h2>{t('الإدارة التشغيلية', 'Operations administration')}</h2><p className="page-sub">{t('إدارة المستخدمين، رسوم التجار، الصلاحيات، السعة ومفاتيح API.', 'Manage users, merchant fees, permissions, capacity, and API keys.')}</p></section>
+    <div className="filter-bar"><div className="filter-pills">{([['users', t('المستخدمون', 'Users')], ['merchants', t('تاجر جديد', 'New merchant')], ['permissions', t('الصلاحيات', 'Permissions')], ['fees', t('الرسوم', 'Fees')], ['capacity', t('سعة المحافظ', 'Wallet capacity')], ['keys', t('مفاتيح API', 'API keys')]] as [Tab,string][]).map(([id,label]) => <button key={id} className={`pill${tab===id?' active':''}`} onClick={() => setTab(id)}>{label}</button>)}</div></div>
+    {err && <div className="card warn">{err}</div>}{!data && !err && <p className="sidebar-hint">{t('جار التحميل…', 'Loading…')}</p>}
+    {data && tab === 'users' && <><form className="card control-row" onSubmit={createUser}><strong>{t('مستخدم جديد', 'New user')}</strong><input required className="login-input" placeholder={t('اسم المستخدم', 'Username')} value={user.username} onChange={(e)=>setUser({...user,username:e.target.value})}/><input className="login-input" placeholder={t('الاسم الظاهر', 'Display name')} value={user.display_name} onChange={(e)=>setUser({...user,display_name:e.target.value})}/><input required minLength={8} className="login-input" type="password" placeholder={t('كلمة المرور', 'Password')} value={user.password} onChange={(e)=>setUser({...user,password:e.target.value})}/><select required className="login-input" value={user.role} onChange={(e)=>setUser({...user,role:e.target.value})}><option value="">{t('الدور', 'Role')}</option>{data.roles.map((role)=><option key={role.role_key} value={role.role_key}>{role.label} ({role.role_key})</option>)}</select><button disabled={saving} className="btn-primary btn-sm">{t('إنشاء', 'Create')}</button></form><section className="card recent-card"><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('المستخدم', 'User')}</th><th>{t('الدور', 'Role')}</th><th>{t('الحالة', 'Status')}</th><th>{t('آخر دخول', 'Last login')}</th></tr></thead><tbody>{data.users.map((row)=><tr key={row.id}><td>{row.display_name ?? row.username}<div className="cell-sub mono">{row.username}</div></td><td className="mono">{row.role}</td><td>{row.active ? t('نشط','Active') : t('موقوف','Disabled')}</td><td className="mono">{row.last_login_at ?? '—'}</td></tr>)}</tbody></table></div></section></>}
+    {data && tab === 'merchants' && <form className="card control-row" onSubmit={createMerchant}><strong>{t('تاجر جديد', 'New merchant')}</strong><input required className="login-input" placeholder={t('اسم التاجر', 'Merchant name')} value={merchant.name} onChange={(e)=>setMerchant({...merchant,name:e.target.value})}/><input className="login-input" placeholder="CODE" value={merchant.code} onChange={(e)=>setMerchant({...merchant,code:e.target.value})}/><select className="login-input" value={merchant.master_merchant_id} onChange={(e)=>setMerchant({...merchant,master_merchant_id:e.target.value})}><option value="">{t('بدون master', 'No master')}</option>{data.masters.map((master)=><option key={master.id} value={master.id}>{master.name} ({master.code})</option>)}</select><input className="login-input" type="number" min="0" step=".01" placeholder={t('رسوم Payin % (اختياري)', 'Initial payin % (optional)')} value={merchant.initial_payin_pct} onChange={(e)=>setMerchant({...merchant,initial_payin_pct:e.target.value})}/><button disabled={saving} className="btn-primary btn-sm">{t('إنشاء', 'Create')}</button><p className="page-sub">{t('عند إدخال النسبة مع master، ينشأ override في merchants_hierarchy.', 'Entering a rate with a master creates a merchants_hierarchy override.')}</p></form>}
+    {data && tab === 'permissions' && <section className="card recent-card"><p className="page-sub">{t('التغيير فوري على الواجهة والـ API بعد الانتقال/التحديث التالي.', 'Changes take effect on UI and API on the next navigation or refresh.')}</p><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('الدور', 'Role')}</th><th>{t('الصفحة', 'Page')}</th>{actions.map((a)=><th key={a} className="mono">{a.replace('can_','')}</th>)}</tr></thead><tbody>{data.roles.flatMap((role)=>pages.map((page)=>{ const row = data.permissions.find((p)=>p.role_key===role.role_key&&p.page_key===page) ?? { role_key:role.role_key,page_key:page,can_view:false,can_create:false,can_edit:false,can_delete:false,can_approve:false,can_export:false }; return <tr key={`${role.role_key}-${page}`}><td className="mono">{role.role_key}</td><td className="mono">{page}</td>{actions.map((action)=><td key={action}><button className={`pill${row[action]?' active':''}`} onClick={()=>void updatePerm(row,action)} aria-label={`${action} ${page}`}>{row[action]?'✓':'—'}</button></td>)}</tr>}))}</tbody></table></div></section>}
+    {data && tab === 'fees' && <><section className="card recent-card"><div className="recent-head"><h3>{t('الافتراضيات حسب Master', 'Master defaults')}</h3></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Master</th><th>Payin %</th><th>Payout %</th><th>{t('رسم ثابت', 'Flat fee')}</th><th /></tr></thead><tbody>{data.feeDefaults.map((row)=>{const master=data.masters.find((m)=>m.id===row.master_merchant_id); return <tr key={row.id}><td>{master?.name ?? row.master_merchant_id}</td><td><input defaultValue={row.payin_commission_pct} className="login-input control-input mono" id={`pin-${row.id}`}/></td><td><input defaultValue={row.payout_commission_pct} className="login-input control-input mono" id={`pout-${row.id}`}/></td><td><input defaultValue={row.flat_fee_egp} className="login-input control-input mono" id={`flat-${row.id}`}/></td><td><button className="btn-primary btn-sm" onClick={()=>void call(`/api/admin/fees/defaults/${row.id}`,'PUT',{payin_commission_pct:(document.getElementById(`pin-${row.id}`) as HTMLInputElement).value,payout_commission_pct:(document.getElementById(`pout-${row.id}`) as HTMLInputElement).value,flat_fee_egp:(document.getElementById(`flat-${row.id}`) as HTMLInputElement).value,min_monthly_commitment_usd:row.min_monthly_commitment_usd,notes:row.notes})}>{t('حفظ','Save')}</button></td></tr>})}</tbody></table></div></section><form className="card control-row" onSubmit={createOverride}><strong>{t('استثناء تاجر فرعي', 'Sub-merchant override')}</strong><select required className="login-input" value={override.master_merchant_id} onChange={(e)=>setOverride({...override,master_merchant_id:e.target.value})}><option value="">Master</option>{data.masters.map((m)=><option key={m.id} value={m.id}>{m.code}</option>)}</select><input required className="login-input" placeholder={t('اسم التاجر', 'Merchant name')} value={override.name} onChange={(e)=>setOverride({...override,name:e.target.value})}/><input required className="login-input" type="number" step=".01" placeholder="Payin %" value={override.payin_commission_pct} onChange={(e)=>setOverride({...override,payin_commission_pct:e.target.value})}/><input required className="login-input" type="number" step=".01" placeholder="Payout %" value={override.payout_commission_pct} onChange={(e)=>setOverride({...override,payout_commission_pct:e.target.value})}/><button className="btn-primary btn-sm">{t('إضافة','Add')}</button></form><section className="card recent-card"><div className="recent-head"><h3>{t('استثناءات التجار الفرعيين', 'Sub-merchant overrides')}</h3></div><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('التاجر', 'Merchant')}</th><th>Master</th><th>Payin %</th><th>Payout %</th><th>{t('نشط', 'Active')}</th><th /></tr></thead><tbody>{data.hierarchy.map((row)=>{const master=data.masters.find((m)=>m.id===row.master_merchant_id);return <tr key={row.id}><td>{row.name}</td><td>{master?.code ?? '—'}</td><td><input id={`hpin-${row.id}`} className="login-input control-input mono" defaultValue={row.payin_commission_pct ?? row.commission_rate ?? 0}/></td><td><input id={`hpout-${row.id}`} className="login-input control-input mono" defaultValue={row.payout_commission_pct ?? 0}/></td><td><input id={`hactive-${row.id}`} type="checkbox" defaultChecked={row.active}/></td><td><button className="btn-primary btn-sm" onClick={()=>void call(`/api/admin/fees/hierarchy/${row.id}`,'PUT',{payin_commission_pct:(document.getElementById(`hpin-${row.id}`) as HTMLInputElement).value,payout_commission_pct:(document.getElementById(`hpout-${row.id}`) as HTMLInputElement).value,active:(document.getElementById(`hactive-${row.id}`) as HTMLInputElement).checked})}>{t('حفظ','Save')}</button></td></tr>})}</tbody></table></div></section></>}
+    {data && tab === 'capacity' && <section className="card recent-card"><p className="page-sub">{t('حد مرجعي يومي للحسابات؛ لا يغير wallet_device_map أو مطابقة SMS.', 'A daily reference limit; it does not change wallet_device_map or SMS matching.')}</p><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('الحساب', 'Account')}</th><th>{t('الجهاز', 'Device')}</th><th>{t('الحد اليومي', 'Daily limit')}</th><th>{t('المستخدم', 'Used')}</th><th /></tr></thead><tbody>{data.accounts.map((row)=>{const limit=data.capacities.find((x)=>x.payment_account_id===row.id);return <tr key={row.id}><td className="mono">{row.account_number}<div className="cell-sub">{row.label}</div></td><td>{row.device_name ?? '—'}</td><td><input defaultValue={limit?.daily_limit ?? 10000} id={`limit-${row.id}`} className="login-input control-input mono" type="number" min="0"/></td><td className="mono">{limit?.current_daily_used ?? 0}</td><td><button className="btn-primary btn-sm" onClick={()=>void call(`/api/admin/capacity/${row.id}`,'PUT',{daily_limit:(document.getElementById(`limit-${row.id}`) as HTMLInputElement).value})}>{t('حفظ','Save')}</button></td></tr>})}</tbody></table></div></section>}
+    {data && tab === 'keys' && <><form className="card control-row" onSubmit={issueKey}><strong>{t('إصدار مفتاح API', 'Issue API key')}</strong><select required className="login-input" value={key.merchant_id} onChange={(e)=>setKey({...key,merchant_id:e.target.value})}><option value="">{t('اختر التاجر', 'Choose merchant')}</option>{data.merchants.map((m)=><option key={m.id} value={m.id}>{m.name}</option>)}</select><input required className="login-input" placeholder={t('اسم المفتاح', 'Key name')} value={key.key_name} onChange={(e)=>setKey({...key,key_name:e.target.value})}/><select className="login-input" value={key.environment} onChange={(e)=>setKey({...key,environment:e.target.value})}><option value="test">test</option><option value="live">live</option></select><button disabled={saving} className="btn-primary btn-sm">{t('إصدار','Issue')}</button></form>{shownSecret&&<div className="card warn"><strong>{t('انسخ السر الآن — لن يظهر مرة ثانية:', 'Copy this secret now — it will not be shown again:')}</strong><div className="mono" style={{wordBreak:'break-all'}}>{shownSecret}</div><button className="btn-ghost btn-sm" onClick={()=>setShownSecret(null)}>{t('أغلق','Dismiss')}</button></div>}<section className="card recent-card"><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('الاسم','Name')}</th><th>API key</th><th>{t('البيئة','Environment')}</th><th>{t('الحالة','Status')}</th><th /></tr></thead><tbody>{data.apiKeys.map((row)=><tr key={row.id}><td>{row.key_name}</td><td className="mono">{row.api_key}</td><td>{row.environment}</td><td>{row.is_active?t('نشط','Active'):t('ملغى','Revoked')}</td><td>{row.is_active&&<button className="btn-ghost danger btn-sm" onClick={()=>void call(`/api/admin/api-keys/${row.id}/revoke`,'POST')}>{t('إلغاء','Revoke')}</button>}</td></tr>)}</tbody></table></div></section></>}
+  </PanelShell>
 }

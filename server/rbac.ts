@@ -49,3 +49,14 @@ export function requireAnyPerm(pageKeys: string[], action: PermAction) {
     await next()
   })
 }
+
+// Administrative configuration is deliberately limited to the two human
+// stewardship roles. A permission row alone must not accidentally grant an
+// operator access to user management, API secrets, or the global matrix.
+export const requireAdminRole = createMiddleware<AuthEnv>(async (c, next) => {
+  const actor = c.get('actor')
+  if (actor.role !== 'owner' && actor.role !== 'admin') {
+    return c.json({ error: 'admin_role_required' }, 403)
+  }
+  await next()
+})
