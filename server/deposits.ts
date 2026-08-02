@@ -22,17 +22,25 @@ const LIST_COLUMNS =
 async function attachSms(rows: Record<string, unknown>[]): Promise<void> {
   const ids = rows.map((r) => r.tx_id as number)
   if (!ids.length) return
-  const { data: matches } = await db.from('sms_maven_matches').select('tx_id, sms_id').in('tx_id', ids)
+  const { data: matches } = await db.from('sms_maven_matches').select('tx_id, sms_id, receiving_wallet').in('tx_id', ids)
   if (!matches?.length) return
   const { data: smsRows } = await db
     .from('inbound_sms')
-    .select('id, sender_name, amount, balance_after, received_at')
+    .select('id, sender_name, amount, balance_after, received_at, receiver_number')
     .in('id', matches.map((m) => m.sms_id))
   const smsById = new Map((smsRows ?? []).map((s) => [s.id, s]))
   const byTx = new Map(matches.map((m) => [m.tx_id, smsById.get(m.sms_id)]))
+  const walletByTx = new Map(matches.map((m) => [m.tx_id, m.receiving_wallet]))
   for (const r of rows) {
     const sms = byTx.get(r.tx_id as number)
-    if (sms) r.sms = sms
+    if (sms) {
+      r.sms = sms
+      // The SMS receiver is the proof of where the money actually landed.
+      // Keep to_account_number as the allocated target, but show the actual
+      // receiving wallet whenever the two differ.
+      const actualWallet = walletByTx.get(r.tx_id as number) ?? sms.receiver_number
+      if (actualWallet) r.receiving_wallet = actualWallet
+    }
   }
 }
 

@@ -188,6 +188,17 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
     .eq('id', id)
   if (updErr) return c.json({ error: 'db_error', detail: updErr.message }, 500)
 
+  // A matched SMS is the authoritative evidence of the wallet that received
+  // the funds.  Do not overwrite to_account_number: it records the original
+  // checkout allocation and is useful for diagnosing a mismatch.
+  if (sms.receiver_number) {
+    const { error: walletError } = await db
+      .from('maven_transactions')
+      .update({ receiving_wallet: sms.receiver_number })
+      .eq('tx_id', txId)
+    if (walletError) return c.json({ error: 'db_error', detail: walletError.message }, 500)
+  }
+
   const secDiff =
     sms.received_at && tx.first_seen_at
       ? Math.round(Math.abs(new Date(sms.received_at).getTime() - new Date(tx.first_seen_at).getTime()) / 1000)

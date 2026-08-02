@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { useBulk } from '../lib/useBulk'
+import { useLocale } from '../lib/locale'
 import { depositTime, money, statusMeta, STATUS_META } from '../lib/deposits'
 import type { DepositDetail, DepositRow, DepositStats } from '../lib/deposits'
 
@@ -55,6 +56,7 @@ function smsFirstLine(s: MatchedSms): string {
 
 export default function Deposits() {
   const { can } = useAuth()
+  const { t } = useLocale()
   const [params, setParams] = useSearchParams()
   const status = params.get('status') ?? ''
   const master = params.get('master') ?? ''
@@ -352,9 +354,9 @@ export default function Deposits() {
                         {r.sender_number && <div className="cell-sub mono">{r.sender_number}</div>}
                       </td>
                       <td className="mono">
-                        {r.to_account_number ?? '—'}
-                        {r.receiving_wallet && r.receiving_wallet !== r.to_account_number && (
-                          <div className="cell-sub mono">{r.receiving_wallet}</div>
+                        {r.receiving_wallet ?? r.to_account_number ?? '—'}
+                        {r.to_account_number && r.receiving_wallet && r.receiving_wallet !== r.to_account_number && (
+                          <div className="cell-sub mono">{t('المخصص: ', 'Allocated: ')}{r.to_account_number}</div>
                         )}
                       </td>
                       <td>
@@ -478,13 +480,13 @@ export default function Deposits() {
                   <dt>tx_id</dt><dd className="mono">{selected.tx_id}</dd>
                   <dt>GUID</dt><dd className="mono small">{selected.guid ?? '—'}</dd>
                   <dt>المُرسِل</dt><dd>{selected.sender_name ?? '—'} {selected.sender_number && <span className="mono">({selected.sender_number})</span>}</dd>
-                  <dt>إلى حساب</dt><dd>{selected.to_account_name ?? '—'} {selected.to_account_number && <span className="mono">{selected.to_account_number}</span>}</dd>
+                  <dt>{t('المحفظة المستلِمة', 'Receiving wallet')}</dt><dd className="mono">{selected.receiving_wallet ?? selected.to_account_number ?? '—'}</dd>
                   <dt>البنك / الطريقة</dt><dd>{selected.to_bank ?? '—'} · {selected.payment_method ?? selected.gateway ?? '—'}</dd>
                   <dt>التاجر</dt><dd>{selected.merchant ?? '—'}{selected.sub_merchant && <> · فرعي: {selected.sub_merchant}</>}</dd>
                   <dt>التاجر الرئيسي</dt><dd>{selected.master_merchant ?? '—'}</dd>
                   <dt>مرجع التاجر</dt><dd className="mono">{selected.merchant_tx_reference ?? '—'}</dd>
                   <dt>الرسوم / العمولة</dt><dd className="mono">{money(selected.fees, selected.currency)} / {money(selected.commission, selected.currency)}</dd>
-                  <dt>المحفظة المستقبِلة</dt><dd className="mono">{selected.receiving_wallet ?? '—'}</dd>
+                  {selected.receiving_wallet && selected.to_account_number && selected.receiving_wallet !== selected.to_account_number && <><dt>{t('المحفظة المخصصة', 'Allocated wallet')}</dt><dd className="mono">{selected.to_account_number}</dd></>}
                   <dt>أول ظهور</dt><dd className="mono">{depositTime({ first_seen_at: selected.first_seen_at })}</dd>
                   <dt>آخر تغيير حالة</dt><dd className="mono">{depositTime({ first_seen_at: selected.last_status_change })}</dd>
                   <dt>اعتمده</dt><dd>{selected.approved_by ?? '—'}</dd>
