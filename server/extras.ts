@@ -608,3 +608,35 @@ extraRoutes.get(
     return c.json({ events })
   },
 )
+
+// ---- Treasury & wallets hub: live operating summary across wallets, messages and flow ----
+extraRoutes.get(
+  '/treasury-hub',
+  requireAnyPerm(['wallets', 'payouts', 'sms_live', 'treasury'], 'can_view'),
+  async (c) => {
+    const since = new Date(Date.now() - 30 * 86_400_000).toISOString()
+    const [wallets, devices, deposits, payouts, sms] = await Promise.all([
+      db.from('wallet_device_map').select('to_account_number, provider, device, sim_slot, payment_type, daily_limit, merchant, updated_at').order('provider').limit(500),
+      db.from('device_status').select('device, sim_slot, online, battery, balance, last_seen_at').order('device').limit(500),
+      db.from('maven_transactions').select('tx_id, ontarget_ref, amount, status, sender_name, sender_number, to_account_number, payment_method, approved_by, first_seen_at').gte('first_seen_at', since).order('first_seen_at', { ascending: false, nullsFirst: false }).limit(500),
+      db.from('maven_payout_transactions').select('maven_id, ontarget_ref, amount, status, pay_by, merchant, account_name, mobile_no, approved_by, first_seen_at').gte('first_seen_at', since).order('first_seen_at', { ascending: false, nullsFirst: false }).limit(500),
+      db.from('inbound_sms').select('id, amount, sender_name, sender_number, receiver_number, device_name, sim_slot, sms_category, matched, received_at').order('received_at', { ascending: false, nullsFirst: false }).limit(250),
+    ])
+    for (const result of [wallets, devices, deposits, payouts, sms]) {
+      if (result.error) return c.json({ error: 'db_error', detail: result.error.message }, 500)
+    }
+    const depositRows = deposits.data ?? []
+    const payoutRows = payouts.data ?? []
+    const approvedDeposit = depositRows.filter((row) => row.status === 'PAID' || row.status === 'APPROVED').reduce((sum, row) => sum + Number(row.amount ?? 0), 0)
+    const approvedPayout = payoutRows.filter((row) => row.status === 'APPROVED' || row.status === 'PAID').reduce((sum, row) => sum + Number(row.amount ?? 0), 0)
+    return c.json({
+      since,
+      totals: { approvedDeposit, approvedPayout, net: approvedDeposit - approvedPayout },
+      wallets: wallets.data ?? [],
+      devices: devices.data ?? [],
+      deposits: depositRows,
+      payouts: payoutRows,
+      sms: sms.data ?? [],
+    })
+  },
+)
