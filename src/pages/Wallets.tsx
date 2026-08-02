@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
+import { useLocale } from '../lib/locale'
 
 // Wallet pool: wallet_device_map rows (receiving wallets) + live device_status
 // + local_deposit_channels (allocation config).
@@ -58,9 +59,14 @@ interface WalletsResponse {
 }
 
 export default function Wallets() {
+  const { t } = useLocale()
   const [data, setData] = useState<WalletsResponse | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [q, setQ] = useState('')
+  const [editor, setEditor] = useState<WalletRow | null>(null)
+  const [targetDevice, setTargetDevice] = useState('')
+  const [targetSim, setTargetSim] = useState('0')
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     api<WalletsResponse>('/api/wallets')
@@ -69,6 +75,26 @@ export default function Wallets() {
         setErr(e instanceof ApiError && e.status === 403 ? 'لا تملك صلاحية عرض المحافظ.' : 'تعذّر تحميل المحافظ.')
       })
   }, [])
+
+  const reassign = async () => {
+    if (!editor || !targetDevice) return
+    setSaving(true)
+    setErr(null)
+    try {
+      await api(`/api/wallets/${encodeURIComponent(editor.to_account_number)}/assignment`, {
+        method: 'POST',
+        body: JSON.stringify({ device: targetDevice, sim_slot: Number(targetSim) }),
+      })
+      setData(await api<WalletsResponse>('/api/wallets'))
+      setEditor(null)
+    } catch (e) {
+      setErr(e instanceof ApiError && e.status === 403
+        ? t('لا تملك صلاحية تعديل المحافظ.', 'You do not have permission to edit wallets.')
+        : t('تعذّر تغيير ربط المحفظة.', 'Unable to change the wallet mapping.'))
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const deviceInfo = useMemo(() => {
     const map = new Map<string, DeviceRow>()
@@ -93,7 +119,7 @@ export default function Wallets() {
   return (
     <PanelShell>
       <section className="page-head">
-        <h2>👛 المحافظ</h2>
+        <h2>{t('👛 المحافظ', '👛 Wallets')}</h2>
         <p className="page-sub">
           {data && (
             <>
@@ -108,12 +134,38 @@ export default function Wallets() {
         <form className="search-row" onSubmit={(e) => e.preventDefault()}>
           <input
             className="login-input search-input"
-            placeholder="بحث: رقم محفظة / مزوّد / تاجر / جهاز…"
+            placeholder={t('بحث: رقم محفظة / مزوّد / تاجر / جهاز…', 'Search wallet number, provider, merchant, or device…')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
         </form>
       </div>
+
+      {editor && data && (
+        <section className="card recent-card">
+          <div className="recent-head">
+            <h3>{t('تغيير ربط المحفظة', 'Change wallet mapping')}</h3>
+            <button className="btn-ghost btn-sm" onClick={() => setEditor(null)}>{t('إلغاء', 'Cancel')}</button>
+          </div>
+          <p className="cell-sub mono">{editor.to_account_number}</p>
+          <div className="control-row">
+            <select className="login-input control-input" value={targetDevice} onChange={(e) => {
+              setTargetDevice(e.target.value)
+              const first = data.devices.find((device) => device.device === e.target.value)
+              if (first) setTargetSim(String(first.sim_slot ?? 0))
+            }}>
+              <option value="">{t('اختر الجهاز', 'Select device')}</option>
+              {[...new Set(data.devices.map((device) => device.device))].map((device) => <option key={device} value={device}>{device}</option>)}
+            </select>
+            <select className="login-input control-input" value={targetSim} onChange={(e) => setTargetSim(e.target.value)} disabled={!targetDevice}>
+              {data.devices.filter((device) => device.device === targetDevice).map((device) => <option key={device.sim_slot ?? 0} value={String(device.sim_slot ?? 0)}>SIM {device.sim_slot ?? 0}</option>)}
+            </select>
+            <button className="btn-primary btn-sm" disabled={saving || !targetDevice} onClick={() => void reassign()}>
+              {saving ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ التغيير', 'Save mapping')}
+            </button>
+          </div>
+        </section>
+      )}
 
       {err && <div className="card warn">{err}</div>}
 
@@ -161,7 +213,7 @@ export default function Wallets() {
                   <th>الجهاز</th>
                   <th>حالة الجهاز</th>
                   <th>الحد اليومي</th>
-                  <th>آخر تحديث</th>
+                  <th>آخر تحديث</th><th>{t('إجراء', 'Action')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -197,6 +249,7 @@ export default function Wallets() {
                       </td>
                       <td className="mono">{w.daily_limit != null ? money(w.daily_limit, 'EGP') : '—'}</td>
                       <td className="mono">{depositTime({ first_seen_at: w.updated_at })}</td>
+                      <td><button className="btn-ghost btn-sm" onClick={() => { setEditor(w); setTargetDevice(w.device ?? ''); setTargetSim(String(w.sim_slot ?? 0)) }}>{t('تغيير', 'Change')}</button></td>
                     </tr>
                   )
                 })}
