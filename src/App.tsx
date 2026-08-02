@@ -30,6 +30,7 @@ import PaymentStatus from './pages/PaymentStatus'
 import PaymentMethods from './pages/PaymentMethods'
 import KnownRecipients from './pages/KnownRecipients'
 import TreasuryHub from './pages/TreasuryHub'
+import ExecutiveDashboard from './pages/ExecutiveDashboard'
 import { api } from './lib/api'
 import { SUPABASE_URL, SUPABASE_KEY } from './lib/supabase'
 import { LocaleProvider, useLocale } from './lib/locale'
@@ -172,6 +173,7 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/monitor" element={<Monitor />} />
+            <Route path="/executive-dashboard" element={<ExecutiveDashboard />} />
             <Route path="/deposits" element={<Deposits />} />
             <Route path="/payouts" element={<Payouts />} />
             <Route path="/transactions" element={<Transactions />} />

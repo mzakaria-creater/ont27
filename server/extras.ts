@@ -640,3 +640,73 @@ extraRoutes.get(
     })
   },
 )
+
+// ---- Executive dashboard: management-level, live operating indicators ----
+extraRoutes.get(
+  '/executive-dashboard',
+  requireAnyPerm(['dashboard', 'reports', 'advanced_analysis', 'treasury', 'wallets'], 'can_view'),
+  async (c) => {
+    const now = Date.now()
+    const day = new Date(now - 24 * 86_400_000).toISOString()
+    const week = new Date(now - 7 * 86_400_000).toISOString()
+    const month = new Date(now - 30 * 86_400_000).toISOString()
+    const [deposits, payouts, pendingDeposits, pendingPayouts, devices, sms] = await Promise.all([
+      db.from('maven_transactions').select('amount, status, merchant, first_seen_at').gte('first_seen_at', month).order('first_seen_at', { ascending: true, nullsFirst: false }).limit(10_000),
+      db.from('maven_payout_transactions').select('amount, status, merchant, first_seen_at').gte('first_seen_at', month).order('first_seen_at', { ascending: true, nullsFirst: false }).limit(10_000),
+      db.from('maven_transactions').select('tx_id', { count: 'exact', head: true }).eq('status', 'PENDING'),
+      db.from('maven_payout_transactions').select('maven_id', { count: 'exact', head: true }).eq('status', 'PENDING'),
+      db.from('device_status').select('device, sim_slot, online, battery, last_seen_at').order('device').limit(500),
+      db.from('inbound_sms').select('id, matched, sms_category, received_at').gte('received_at', day).order('received_at', { ascending: false, nullsFirst: false }).limit(1_000),
+    ])
+    for (const result of [deposits, payouts, pendingDeposits, pendingPayouts, devices, sms]) {
+      if (result.error) return c.json({ error: 'db_error', detail: result.error.message }, 500)
+    }
+
+    const isApproved = (status: string | null) => status === 'PAID' || status === 'APPROVED'
+    const windowSummary = (since: string) => {
+      const dep = (deposits.data ?? []).filter((row) => String(row.first_seen_at ?? '') >= since)
+      const pay = (payouts.data ?? []).filter((row) => String(row.first_seen_at ?? '') >= since)
+      const approvedDep = dep.filter((row) => isApproved(row.status))
+      const approvedPay = pay.filter((row) => isApproved(row.status))
+      return {
+        depositCount: approvedDep.length,
+        depositVolume: approvedDep.reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
+        payoutCount: approvedPay.length,
+        payoutVolume: approvedPay.reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
+        declined: dep.filter((row) => row.status === 'DECLINED').length,
+        attempts: dep.length,
+      }
+    }
+    const monthly = windowSummary(month)
+    const byMerchant = new Map<string, { merchant: string; volume: number; count: number }>()
+    for (const row of deposits.data ?? []) {
+      if (!isApproved(row.status)) continue
+      const merchant = row.merchant ?? 'Unassigned'
+      const bucket = byMerchant.get(merchant) ?? { merchant, volume: 0, count: 0 }
+      bucket.volume += Number(row.amount ?? 0)
+      bucket.count += 1
+      byMerchant.set(merchant, bucket)
+    }
+    const daily = new Map<string, { date: string; incoming: number; outgoing: number }>()
+    const dailyRow = (date: string) => {
+      if (!daily.has(date)) daily.set(date, { date, incoming: 0, outgoing: 0 })
+      return daily.get(date)!
+    }
+    for (const row of deposits.data ?? []) {
+      if (isApproved(row.status) && row.first_seen_at) dailyRow(row.first_seen_at.slice(0, 10)).incoming += Number(row.amount ?? 0)
+    }
+    for (const row of payouts.data ?? []) {
+      if (isApproved(row.status) && row.first_seen_at) dailyRow(row.first_seen_at.slice(0, 10)).outgoing += Number(row.amount ?? 0)
+    }
+    const deviceRows = devices.data ?? []
+    const liveSms = sms.data ?? []
+    return c.json({
+      generatedAt: new Date().toISOString(),
+      windows: { day: windowSummary(day), week: windowSummary(week), month: monthly },
+      queues: { pendingDeposits: pendingDeposits.count ?? 0, pendingPayouts: pendingPayouts.count ?? 0, smsReview: liveSms.filter((row) => !row.matched && (row.sms_category === 'deposit' || row.sms_category === 'withdrawal')).length },
+      devices: { total: deviceRows.length, online: deviceRows.filter((row) => row.online).length, rows: deviceRows.slice(0, 20) },
+      topMerchants: [...byMerchant.values()].sort((a, b) => b.volume - a.volume).slice(0, 8),
+      daily: [...daily.values()].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30),
+    })
+  },
+)
