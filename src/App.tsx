@@ -19,6 +19,8 @@ import Audit from './pages/Audit'
 import AdminPage from './pages/AdminPage'
 import Reports from './pages/Reports'
 import Notifications from './pages/Notifications'
+import TvScreen from './pages/TvScreen'
+import Complaints from './pages/Complaints'
 import type { NotifData } from './pages/Notifications'
 import LinkGenerator from './pages/LinkGenerator'
 import PaymentCheckout from './pages/PaymentCheckout'
@@ -172,6 +174,8 @@ export default function App() {
             <Route path="/reports" element={<Reports />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/notifications" element={<Notifications />} />
+            <Route path="/tv" element={<TvScreen />} />
+            <Route path="/complaints" element={<Complaints />} />
             <Route path="/merchant-link-generator" element={<LinkGenerator />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

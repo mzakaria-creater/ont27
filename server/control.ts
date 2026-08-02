@@ -69,6 +69,43 @@ controlRoutes.post('/limit', async (c) => {
   return c.json({ ok: true, limit })
 })
 
+// Proxy to the automation-panel edge function on the old project — the
+// access key stays server-side (it was hardcoded in the local HTML tool).
+const PANEL_DATA = new Set(['settings', 'all_accounts', 'bank_catalog', 'payfuture'])
+const PANEL_ACTIONS = new Set(['run_sweep_now', 'bulk_update_accounts', 'assign_bank_account', 'toggle_rule', 'delete_rule'])
+
+function panelUrl(): string | null {
+  const base = process.env.OLD_SUPABASE_URL
+  const key = process.env.AUTOMATION_PANEL_KEY
+  if (!base || !key) return null
+  return `${base}/functions/v1/automation-panel?k=${encodeURIComponent(key)}`
+}
+
+controlRoutes.get('/panel', async (c) => {
+  const data = c.req.query('data') ?? ''
+  if (!PANEL_DATA.has(data)) return c.json({ error: 'bad_request' }, 400)
+  const url = panelUrl()
+  if (!url) return c.json({ error: 'panel_not_configured' }, 500)
+  const res = await fetch(`${url}&data=${data}`)
+  return c.json(await res.json().catch(() => ({ error: 'bad_upstream' })), res.ok ? 200 : 502)
+})
+
+controlRoutes.post('/panel', async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const action = body?.action as string | undefined
+  if (!action || !PANEL_ACTIONS.has(action)) return c.json({ error: 'bad_action' }, 400)
+  const url = panelUrl()
+  if (!url) return c.json({ error: 'panel_not_configured' }, 500)
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const result = await res.json().catch(() => ({ error: 'bad_upstream' }))
+  await audit(c.get('actor'), `automation_panel.${action}`, body as Record<string, unknown>)
+  return c.json(result, res.ok ? 200 : 502)
+})
+
 controlRoutes.post('/queue/approve', async (c) => {
   const old = oldDb()
   if (!old) return c.json({ error: 'old_db_not_configured' }, 500)

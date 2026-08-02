@@ -299,44 +299,99 @@ extraRoutes.get(
   },
 )
 
-// ---- Reports: daily volumes ----
+// ---- Reports: filterable date-range analytics (generalized from the
+// July dashboard: summary / merchants / methods / daily) ----
 extraRoutes.get('/reports', requireAnyPerm(['reports', 'advanced_analysis'], 'can_view'), async (c) => {
-  const days = Math.min(Math.max(Number(c.req.query('days')) || 14, 1), 60)
-  const since = new Date(Date.now() - days * 86_400_000).toISOString()
-  const [dep, pay] = await Promise.all([
-    db.from('maven_transactions').select('amount, status, master_merchant, first_seen_at').gte('first_seen_at', since).limit(10_000),
-    db.from('maven_payout_transactions').select('amount, status, first_seen_at').gte('first_seen_at', since).limit(10_000),
-  ])
+  const to = c.req.query('to') || new Date().toISOString().slice(0, 10)
+  const from = c.req.query('from') || new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10)
+  const merchant = c.req.query('merchant')?.trim()
+  const master = c.req.query('master')?.trim()
+  const excludeTest = c.req.query('excludeTest') === '1'
+
+  const fromIso = `${from}T00:00:00Z`
+  const toIso = `${to}T23:59:59Z`
+
+  let depQ = db
+    .from('maven_transactions')
+    .select('amount, status, merchant, master_merchant, payment_method, gateway, commission, fees, first_seen_at')
+    .gte('first_seen_at', fromIso)
+    .lte('first_seen_at', toIso)
+    .limit(10_000)
+  if (merchant) depQ = depQ.eq('merchant', merchant)
+  if (master) depQ = depQ.ilike('master_merchant', `%${master}%`)
+  if (excludeTest) depQ = depQ.not('merchant', 'is', null).not('merchant', 'ilike', '%test%')
+
+  let payQ = db
+    .from('maven_payout_transactions')
+    .select('amount, status, merchant, commission, first_seen_at')
+    .gte('first_seen_at', fromIso)
+    .lte('first_seen_at', toIso)
+    .limit(10_000)
+  if (merchant) payQ = payQ.eq('merchant', merchant)
+  if (excludeTest) payQ = payQ.not('merchant', 'is', null).not('merchant', 'ilike', '%test%')
+
+  const [dep, pay] = await Promise.all([depQ, payQ])
   if (dep.error) return c.json({ error: 'db_error', detail: dep.error.message }, 500)
   if (pay.error) return c.json({ error: 'db_error', detail: pay.error.message }, 500)
 
-  interface Day {
-    date: string
-    depCount: number
-    depVolume: number
-    declined: number
-    payVolume: number
+  const ok = (s: string) => s === 'PAID' || s === 'APPROVED'
+  const totals = { depCount: 0, depVolume: 0, declined: 0, commission: 0, fees: 0, payCount: 0, payVolume: 0 }
+  interface Day { date: string; depCount: number; depVolume: number; declined: number; commission: number; payVolume: number }
+  interface Agg { key: string; master: string | null; count: number; volume: number; commission: number; fees: number }
+  const daily = new Map<string, Day>()
+  const byMerchant = new Map<string, Agg>()
+  const byMethod = new Map<string, Agg>()
+
+  const bump = (map: Map<string, Agg>, key: string, masterVal: string | null, amount: number, commission: number, fees: number) => {
+    if (!map.has(key)) map.set(key, { key, master: masterVal, count: 0, volume: 0, commission: 0, fees: 0 })
+    const a = map.get(key)!
+    a.count += 1
+    a.volume += amount
+    a.commission += commission
+    a.fees += fees
   }
-  const daysMap = new Map<string, Day>()
-  const dayOf = (iso: string | null) => (iso ? iso.slice(0, 10) : null)
+
   for (const r of dep.data ?? []) {
-    const d = dayOf(r.first_seen_at)
+    const d = r.first_seen_at?.slice(0, 10)
     if (!d) continue
-    if (!daysMap.has(d)) daysMap.set(d, { date: d, depCount: 0, depVolume: 0, declined: 0, payVolume: 0 })
-    const bucket = daysMap.get(d)!
-    if (r.status === 'PAID' || r.status === 'APPROVED') {
+    if (!daily.has(d)) daily.set(d, { date: d, depCount: 0, depVolume: 0, declined: 0, commission: 0, payVolume: 0 })
+    const bucket = daily.get(d)!
+    if (ok(r.status)) {
+      const amount = Number(r.amount ?? 0)
+      const commission = Number(r.commission ?? 0)
+      const fees = Number(r.fees ?? 0)
+      totals.depCount += 1
+      totals.depVolume += amount
+      totals.commission += commission
+      totals.fees += fees
       bucket.depCount += 1
-      bucket.depVolume += Number(r.amount ?? 0)
-    } else if (r.status === 'DECLINED') bucket.declined += 1
+      bucket.depVolume += amount
+      bucket.commission += commission
+      bump(byMerchant, r.merchant ?? '—', r.master_merchant, amount, commission, fees)
+      bump(byMethod, `${r.payment_method ?? r.gateway ?? '—'}||${r.master_merchant ?? '—'}`, r.master_merchant, amount, commission, fees)
+    } else if (r.status === 'DECLINED') {
+      totals.declined += 1
+      bucket.declined += 1
+    }
   }
   for (const r of pay.data ?? []) {
-    const d = dayOf(r.first_seen_at)
+    const d = r.first_seen_at?.slice(0, 10)
     if (!d || r.status !== 'APPROVED') continue
-    if (!daysMap.has(d)) daysMap.set(d, { date: d, depCount: 0, depVolume: 0, declined: 0, payVolume: 0 })
-    daysMap.get(d)!.payVolume += Number(r.amount ?? 0)
+    const amount = Number(r.amount ?? 0)
+    totals.payCount += 1
+    totals.payVolume += amount
+    if (!daily.has(d)) daily.set(d, { date: d, depCount: 0, depVolume: 0, declined: 0, commission: 0, payVolume: 0 })
+    daily.get(d)!.payVolume += amount
   }
-  const rows = [...daysMap.values()].sort((a, b) => b.date.localeCompare(a.date))
-  return c.json({ days, rows })
+
+  return c.json({
+    from,
+    to,
+    totals,
+    daily: [...daily.values()].sort((a, b) => b.date.localeCompare(a.date)),
+    byMerchant: [...byMerchant.values()].sort((a, b) => b.volume - a.volume),
+    byMethod: [...byMethod.values()].sort((a, b) => b.volume - a.volume),
+  })
 })
 
 // ---- Notifications (bell) — available to every authed user ----

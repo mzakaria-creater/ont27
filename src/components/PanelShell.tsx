@@ -27,6 +27,8 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/payouts', icon: '📤', label: 'السحوبات', keys: ['payouts'], group: 'main' },
   { to: '/transactions', icon: '📋', label: 'كل المعاملات', keys: ['transactions', 'all_transactions', 'refunds', 'reversals'], group: 'main' },
   { to: '/sms', icon: '📨', label: 'SMS مباشر', keys: ['sms_live'], group: 'main' },
+  { to: '/tv', icon: '🖥️', label: 'شاشة TV', keys: ['sms_live'], group: 'main' },
+  { to: '/complaints', icon: '🛎️', label: 'الشكاوى', keys: [], group: 'main' },
   { to: '/merchant-link-generator', icon: '🔗', label: 'روابط الدفع', keys: ['checkout-builder'], group: 'main' },
   { to: '/merchants', icon: '🏬', label: 'التجار', keys: ['merchants'], group: 'system' },
   { to: '/wallets', icon: '👛', label: 'المحافظ', keys: ['wallets'], group: 'system' },

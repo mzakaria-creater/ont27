@@ -32,6 +32,25 @@ const FLAG_LABELS: Record<string, string> = {
   sms_feed_circuit_breaker_enabled: 'قاطع تغذية SMS',
 }
 
+interface PayAccount {
+  id: string
+  label: string | null
+  merchant_name: string | null
+  method_name: string | null
+  method_type: string | null
+  priority: number | null
+  status: string | null
+  is_active: boolean | null
+}
+
+interface PayfutureRoute {
+  id: string
+  name: string | null
+  provider: string | null
+  is_active: boolean | null
+  merchant_name: string | null
+}
+
 export default function Automation() {
   const [data, setData] = useState<{
     settings: Record<string, unknown> | null
@@ -41,12 +60,57 @@ export default function Automation() {
     rates: RateRow[]
   } | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [accounts, setAccounts] = useState<PayAccount[] | null>(null)
+  const [pf, setPf] = useState<PayfutureRoute[] | null>(null)
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [panelBusy, setPanelBusy] = useState(false)
+  const [panelMsg, setPanelMsg] = useState<string | null>(null)
+
+  const loadPanel = () => {
+    api<{ accounts: PayAccount[] }>('/api/control/panel?data=all_accounts')
+      .then((r) => setAccounts(r.accounts))
+      .catch(() => setAccounts(null))
+    api<{ routes: PayfutureRoute[] }>('/api/control/panel?data=payfuture')
+      .then((r) => setPf(r.routes))
+      .catch(() => setPf(null))
+  }
 
   useEffect(() => {
     api<NonNullable<typeof data>>('/api/automation')
       .then(setData)
       .catch((e) => setErr(e instanceof ApiError && e.status === 403 ? 'لا تملك صلاحية عرض الأتمتة.' : 'تعذّر تحميل بيانات الأتمتة.'))
+    loadPanel()
   }, [])
+
+  const bulkAccounts = async (isActive: boolean) => {
+    if (sel.size === 0) return
+    setPanelBusy(true)
+    try {
+      await api('/api/control/panel', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'bulk_update_accounts', ids: [...sel], is_active: isActive, status: isActive ? 'active' : 'inactive' }),
+      })
+      setPanelMsg(`تم ${isActive ? 'تفعيل' : 'إيقاف'} ${sel.size} حساب ✅`)
+      setSel(new Set())
+      loadPanel()
+    } catch {
+      setPanelMsg('فشل التحديث — أعد المحاولة.')
+    } finally {
+      setPanelBusy(false)
+    }
+  }
+
+  const runSweep = async () => {
+    setPanelBusy(true)
+    try {
+      await api('/api/control/panel', { method: 'POST', body: JSON.stringify({ action: 'run_sweep_now' }) })
+      setPanelMsg('تم بدء الفحص الفوري 🔄')
+    } catch {
+      setPanelMsg('فشل بدء الفحص.')
+    } finally {
+      setPanelBusy(false)
+    }
+  }
 
   const settings = data?.settings ?? null
 
@@ -136,6 +200,72 @@ export default function Automation() {
               </div>
             )}
           </section>
+
+          {accounts && (
+            <section className="card recent-card">
+              <div className="recent-head">
+                <h3>🏦 حسابات الدفع ({accounts.length})</h3>
+                {sel.size > 0 && (
+                  <div className="row-actions">
+                    <span>{sel.size} محدد</span>
+                    <button className="btn-primary btn-sm" disabled={panelBusy} onClick={() => void bulkAccounts(true)}>✅ تفعيل</button>
+                    <button className="btn-ghost danger btn-sm" disabled={panelBusy} onClick={() => void bulkAccounts(false)}>⏸ إيقاف</button>
+                  </div>
+                )}
+              </div>
+              {panelMsg && <p className="cell-sub">{panelMsg}</p>}
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th className="check-col">
+                        <input
+                          type="checkbox"
+                          checked={accounts.length > 0 && accounts.every((a) => sel.has(a.id))}
+                          onChange={() => setSel(sel.size === accounts.length ? new Set() : new Set(accounts.map((a) => a.id)))}
+                        />
+                      </th>
+                      <th>الحساب</th><th>التاجر</th><th>الطريقة</th><th>الأولوية</th><th>الحالة</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accounts.map((a) => (
+                      <tr key={a.id}>
+                        <td className="check-col">
+                          <input
+                            type="checkbox"
+                            checked={sel.has(a.id)}
+                            onChange={() => setSel((p) => { const n = new Set(p); if (n.has(a.id)) n.delete(a.id); else n.add(a.id); return n })}
+                          />
+                        </td>
+                        <td className="mono">{a.label ?? '—'}</td>
+                        <td>{a.merchant_name ?? '—'}</td>
+                        <td>{a.method_name ?? a.method_type ?? '—'}</td>
+                        <td className="mono">{a.priority ?? '—'}</td>
+                        <td><span className={`pay-status-badge ${a.is_active ? 'st-paid' : 'st-dim'}`}>{a.is_active ? 'نشط' : 'موقوف'}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {pf && (
+            <section className="card recent-card">
+              <div className="recent-head">
+                <h3>🔌 Payfuture</h3>
+                <button className="btn-ghost btn-sm" disabled={panelBusy} onClick={() => void runSweep()}>🔄 إعادة فحص الآن</button>
+              </div>
+              <div className="flag-grid">
+                {pf.map((r) => (
+                  <span key={r.id} className={`pay-status-badge ${r.is_active ? 'st-paid' : 'st-dim'}`}>
+                    {r.is_active ? '●' : '○'} {r.name ?? r.merchant_name ?? '—'}
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
 
           {(data.balances.length > 0 || data.rates.length > 0) && (
             <section className="card recent-card">
