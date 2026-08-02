@@ -6,6 +6,7 @@ export interface DepositRow {
   tx_id: number
   guid: string | null
   ontarget_ref: string | null
+  merchant_tx_reference: string | null
   status: string
   amount: number | null
   currency: string | null
@@ -33,7 +34,6 @@ export interface DepositDetail extends DepositRow {
   proof_image_url: string | null
   approved_by: string | null
   receiving_wallet: string | null
-  merchant_tx_reference: string | null
   email: string | null
   fees: number | null
   commission: number | null

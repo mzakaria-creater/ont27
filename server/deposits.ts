@@ -14,7 +14,7 @@ export const depositRoutes = new Hono<AuthEnv>()
 depositRoutes.use('*', requireAuth)
 
 const LIST_COLUMNS =
-  'tx_id, guid, ontarget_ref, status, amount, currency, sender_name, sender_number, payment_method, gateway, merchant, sub_merchant, master_merchant, manual_entry, first_seen_at, last_status_change, created_utc'
+  'tx_id, guid, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, payment_method, gateway, merchant, sub_merchant, master_merchant, manual_entry, first_seen_at, last_status_change, created_utc'
 
 const DECISION_TARGET: Record<string, string> = {
   approve: 'PAID',

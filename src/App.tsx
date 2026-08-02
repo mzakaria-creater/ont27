@@ -5,6 +5,9 @@ import ProtectedRoute from './auth/ProtectedRoute'
 import LoginPage from './auth/LoginPage'
 import Dashboard from './pages/Dashboard'
 import Deposits from './pages/Deposits'
+import Payouts from './pages/Payouts'
+import Merchants from './pages/Merchants'
+import Wallets from './pages/Wallets'
 import PaymentCheckout from './pages/PaymentCheckout'
 import PaymentStatus from './pages/PaymentStatus'
 import LinkGenerator from './pages/LinkGenerator'
@@ -73,6 +76,9 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/deposits" element={<Deposits />} />
+            <Route path="/payouts" element={<Payouts />} />
+            <Route path="/merchants" element={<Merchants />} />
+            <Route path="/wallets" element={<Wallets />} />
             <Route path="/merchant-link-generator" element={<LinkGenerator />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

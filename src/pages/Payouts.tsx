@@ -3,20 +3,46 @@ import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
-import { depositTime, money, statusMeta, STATUS_META } from '../lib/deposits'
-import type { DepositDetail, DepositRow } from '../lib/deposits'
+import { depositTime, money, statusMeta } from '../lib/deposits'
 
 const PAGE_SIZE = 25
-const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
+const STATUS_FILTERS = ['PENDING', 'APPROVED', 'DECLINED']
+
+// maven_payout_transactions has no currency column — payouts are EGP.
+const CURRENCY = 'EGP'
+
+export interface PayoutRow {
+  maven_id: number
+  guid: string | null
+  ontarget_ref: string | null
+  status: string
+  amount: number | null
+  pay_by: string | null
+  merchant: string | null
+  account_name: string | null
+  mobile_no: string | null
+  agent_name: string | null
+  commission: number | null
+  remark: string | null
+  image_url: string | null
+  created_utc: string | null
+  first_seen_at: string | null
+  last_seen_at: string | null
+}
+
+interface PayoutDetail extends PayoutRow {
+  matched_sms_id: number | null
+  updated_utc: string | null
+}
 
 interface ListResponse {
-  rows: DepositRow[]
+  rows: PayoutRow[]
   total: number
   limit: number
   offset: number
 }
 
-export default function Deposits() {
+export default function Payouts() {
   const { can } = useAuth()
   const [params, setParams] = useSearchParams()
   const status = params.get('status') ?? ''
@@ -25,7 +51,7 @@ export default function Deposits() {
   const [data, setData] = useState<ListResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
-  const [selected, setSelected] = useState<DepositDetail | null>(null)
+  const [selected, setSelected] = useState<PayoutDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [decisionBusy, setDecisionBusy] = useState(false)
   const [decisionErr, setDecisionErr] = useState<string | null>(null)
@@ -42,9 +68,9 @@ export default function Deposits() {
     if (status) search.set('status', status)
     if (appliedQ) search.set('q', appliedQ)
     try {
-      setData(await api<ListResponse>(`/api/deposits?${search}`))
+      setData(await api<ListResponse>(`/api/payouts?${search}`))
     } catch (e) {
-      setErr(e instanceof ApiError && e.status === 403 ? 'لا تملك صلاحية عرض الإيداعات.' : 'تعذّر تحميل الإيداعات.')
+      setErr(e instanceof ApiError && e.status === 403 ? 'لا تملك صلاحية عرض السحوبات.' : 'تعذّر تحميل السحوبات.')
     } finally {
       setLoading(false)
     }
@@ -68,14 +94,14 @@ export default function Deposits() {
     setParams(p)
   }
 
-  const openDetail = async (txId: number) => {
+  const openDetail = async (mavenId: number) => {
     setDetailLoading(true)
     setDecisionErr(null)
     try {
-      const res = await api<{ deposit: DepositDetail }>(`/api/deposits/${txId}`)
-      setSelected(res.deposit)
+      const res = await api<{ payout: PayoutDetail }>(`/api/payouts/${mavenId}`)
+      setSelected(res.payout)
     } catch {
-      setErr('تعذّر تحميل تفاصيل الإيداع.')
+      setErr('تعذّر تحميل تفاصيل السحب.')
     } finally {
       setDetailLoading(false)
     }
@@ -86,7 +112,7 @@ export default function Deposits() {
     setDecisionBusy(true)
     setDecisionErr(null)
     try {
-      await api(`/api/deposits/${selected.tx_id}/decision`, {
+      await api(`/api/payouts/${selected.maven_id}/decision`, {
         method: 'POST',
         body: JSON.stringify({ action }),
       })
@@ -94,9 +120,9 @@ export default function Deposits() {
       void load()
     } catch (e) {
       if (e instanceof ApiError && e.code === 'not_pending') {
-        setDecisionErr('حالة الإيداع اتغيّرت بالفعل — أعد التحميل.')
+        setDecisionErr('حالة السحب اتغيّرت بالفعل — أعد التحميل.')
       } else if (e instanceof ApiError && e.status === 403) {
-        setDecisionErr('لا تملك صلاحية الموافقة (can_approve غير ممنوحة لدورك).')
+        setDecisionErr('لا تملك صلاحية الاعتماد (can_approve غير ممنوحة لدورك).')
       } else {
         setDecisionErr('فشل تنفيذ القرار — حاول مرة أخرى.')
       }
@@ -110,9 +136,9 @@ export default function Deposits() {
   return (
     <PanelShell>
       <section className="page-head">
-        <h2>💰 الإيداعات</h2>
+        <h2>📤 السحوبات</h2>
         <p className="page-sub">
-          مصدر الحقيقة: <span className="mono">maven_transactions</span>
+          مصدر الحقيقة: <span className="mono">maven_payout_transactions</span>
           {data && <> · {data.total.toLocaleString('en-US')} نتيجة</>}
         </p>
       </section>
@@ -131,7 +157,7 @@ export default function Deposits() {
               className={`chip${status === s ? ' chip-active' : ''}`}
               onClick={() => setFilter({ status: s })}
             >
-              {STATUS_META[s]?.label ?? s}
+              {statusMeta(s).label}
             </button>
           ))}
         </div>
@@ -141,7 +167,7 @@ export default function Deposits() {
         >
           <input
             className="login-input search-input"
-            placeholder="بحث: مرجع / رقم مُرسِل / تاجر / tx_id…"
+            placeholder="بحث: مرجع / موبايل / اسم حساب / تاجر / رقم Maven…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -166,9 +192,10 @@ export default function Deposits() {
                 <tr>
                   <th>رقم العملية</th>
                   <th>المبلغ</th>
-                  <th>المُرسِل</th>
+                  <th>المستفيد</th>
                   <th>الطريقة</th>
                   <th>التاجر</th>
+                  <th>الوكيل</th>
                   <th>الحالة</th>
                   <th>الوقت</th>
                 </tr>
@@ -177,23 +204,19 @@ export default function Deposits() {
                 {data.rows.map((r) => {
                   const st = statusMeta(r.status)
                   return (
-                    <tr key={r.tx_id} onClick={() => void openDetail(r.tx_id)}>
+                    <tr key={r.maven_id} onClick={() => void openDetail(r.maven_id)}>
                       <td className="mono">
-                        {r.ontarget_ref ?? r.tx_id}
-                        {r.merchant_tx_reference && (
-                          <div className="cell-sub mono" title="مرجع التاجر">{r.merchant_tx_reference}</div>
-                        )}
+                        {r.ontarget_ref ?? r.maven_id}
+                        <div className="cell-sub mono" title="مرجع Maven">{r.maven_id}</div>
                       </td>
-                      <td className="mono">{money(r.amount, r.currency)}</td>
+                      <td className="mono">{money(r.amount, CURRENCY)}</td>
                       <td>
-                        {r.sender_name ?? '—'}
-                        {r.sender_number && <div className="cell-sub mono">{r.sender_number}</div>}
+                        {r.account_name ?? '—'}
+                        {r.mobile_no && <div className="cell-sub mono">{r.mobile_no}</div>}
                       </td>
-                      <td>{r.payment_method ?? r.gateway ?? '—'}</td>
-                      <td>
-                        {r.merchant ?? '—'}
-                        {r.master_merchant && <div className="cell-sub">{r.master_merchant}</div>}
-                      </td>
+                      <td>{r.pay_by ?? '—'}</td>
+                      <td>{r.merchant ?? '—'}</td>
+                      <td>{r.agent_name ?? '—'}</td>
                       <td><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></td>
                       <td className="mono">{depositTime(r)}</td>
                     </tr>
@@ -223,64 +246,52 @@ export default function Deposits() {
             {selected && (
               <>
                 <div className="drawer-head">
-                  <h3 className="mono">{selected.ontarget_ref ?? `tx ${selected.tx_id}`}</h3>
+                  <h3 className="mono">{selected.ontarget_ref ?? `Maven ${selected.maven_id}`}</h3>
                   <button className="btn-ghost btn-sm" onClick={() => setSelected(null)}>✕</button>
                 </div>
 
                 <div className="drawer-amount">
-                  <span className="mono">{money(selected.amount, selected.currency)}</span>
+                  <span className="mono">{money(selected.amount, CURRENCY)}</span>
                   <span className={`pay-status-badge ${statusMeta(selected.status).cls}`}>
                     {statusMeta(selected.status).label}
                   </span>
                 </div>
 
                 <dl className="detail-grid">
-                  <dt>tx_id</dt><dd className="mono">{selected.tx_id}</dd>
+                  <dt>مرجع Maven</dt><dd className="mono">{selected.maven_id}</dd>
                   <dt>GUID</dt><dd className="mono small">{selected.guid ?? '—'}</dd>
-                  <dt>المُرسِل</dt><dd>{selected.sender_name ?? '—'} {selected.sender_number && <span className="mono">({selected.sender_number})</span>}</dd>
-                  <dt>إلى حساب</dt><dd>{selected.to_account_name ?? '—'} {selected.to_account_number && <span className="mono">{selected.to_account_number}</span>}</dd>
-                  <dt>البنك / الطريقة</dt><dd>{selected.to_bank ?? '—'} · {selected.payment_method ?? selected.gateway ?? '—'}</dd>
-                  <dt>التاجر</dt><dd>{selected.merchant ?? '—'}{selected.sub_merchant && <> · فرعي: {selected.sub_merchant}</>}</dd>
-                  <dt>التاجر الرئيسي</dt><dd>{selected.master_merchant ?? '—'}</dd>
-                  <dt>مرجع التاجر</dt><dd className="mono">{selected.merchant_tx_reference ?? '—'}</dd>
-                  <dt>الرسوم / العمولة</dt><dd className="mono">{money(selected.fees, selected.currency)} / {money(selected.commission, selected.currency)}</dd>
-                  <dt>المحفظة المستقبِلة</dt><dd className="mono">{selected.receiving_wallet ?? '—'}</dd>
+                  <dt>المستفيد</dt><dd>{selected.account_name ?? '—'} {selected.mobile_no && <span className="mono">({selected.mobile_no})</span>}</dd>
+                  <dt>الطريقة</dt><dd>{selected.pay_by ?? '—'}</dd>
+                  <dt>التاجر</dt><dd>{selected.merchant ?? '—'}</dd>
+                  <dt>الوكيل</dt><dd>{selected.agent_name ?? '—'}</dd>
+                  <dt>العمولة</dt><dd className="mono">{money(selected.commission, CURRENCY)}</dd>
+                  <dt>ملاحظة</dt><dd>{selected.remark ?? '—'}</dd>
                   <dt>أول ظهور</dt><dd className="mono">{depositTime({ first_seen_at: selected.first_seen_at })}</dd>
-                  <dt>آخر تغيير حالة</dt><dd className="mono">{depositTime({ first_seen_at: selected.last_status_change })}</dd>
-                  <dt>اعتمده</dt><dd>{selected.approved_by ?? '—'}</dd>
-                  {selected.manual_entry && (
-                    <>
-                      <dt>إدخال يدوي</dt>
-                      <dd>بواسطة {selected.manual_entry_by ?? '—'}{selected.manual_entry_note && <> — {selected.manual_entry_note}</>}</dd>
-                    </>
-                  )}
-                  {selected.response_message && (
-                    <><dt>رسالة النظام</dt><dd>{selected.response_message}</dd></>
-                  )}
+                  <dt>آخر تحديث</dt><dd className="mono">{depositTime({ first_seen_at: selected.last_seen_at, created_utc: selected.updated_utc })}</dd>
                 </dl>
 
-                {selected.proof_image_url && (
-                  <a className="pay-status-link" href={selected.proof_image_url} target="_blank" rel="noreferrer">
-                    🧾 عرض إثبات الدفع
+                {selected.image_url && (
+                  <a className="pay-status-link" href={selected.image_url} target="_blank" rel="noreferrer">
+                    🧾 عرض إيصال التحويل
                   </a>
                 )}
 
                 {decisionErr && <div className="card warn">{decisionErr}</div>}
 
-                {selected.status === 'PENDING' && can('deposits', 'can_approve') && (
+                {selected.status === 'PENDING' && can('payouts', 'can_approve') && (
                   <div className="drawer-actions">
                     <button className="btn-primary" disabled={decisionBusy} onClick={() => void decide('approve')}>
-                      ✅ اعتماد (PAID)
+                      ✅ اعتماد
                     </button>
                     <button className="btn-ghost danger" disabled={decisionBusy} onClick={() => void decide('decline')}>
                       ❌ رفض
                     </button>
                   </div>
                 )}
-                {selected.status === 'PENDING' && !can('deposits', 'can_approve') && (
+                {selected.status === 'PENDING' && !can('payouts', 'can_approve') && (
                   <p className="drawer-note">
                     الاعتماد/الرفض يتطلب صلاحية <span className="mono">can_approve</span> على صفحة
-                    <span className="mono"> deposits</span> — غير ممنوحة لدورك حالياً.
+                    <span className="mono"> payouts</span> — غير ممنوحة لدورك حالياً.
                   </p>
                 )}
               </>

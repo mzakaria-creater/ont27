@@ -11,12 +11,25 @@ import type { PagePermission } from '../lib/api'
 const BUILT_LINKS: { to: string; icon: string; label: string; pageKey?: string }[] = [
   { to: '/', icon: '🏠', label: 'لوحة التحكم' },
   { to: '/deposits', icon: '💰', label: 'الإيداعات', pageKey: 'deposits' },
+  { to: '/payouts', icon: '📤', label: 'السحوبات', pageKey: 'payouts' },
+  { to: '/merchants', icon: '🏬', label: 'التجار', pageKey: 'merchants' },
+  { to: '/wallets', icon: '👛', label: 'المحافظ', pageKey: 'wallets' },
   { to: '/merchant-link-generator', icon: '🔗', label: 'روابط الدفع', pageKey: 'checkout-builder' },
 ]
 
 // page_keys already represented by a real sidebar link — kept out of the
-// "قريباً" module list.
-const BUILT_PAGE_KEYS = new Set(['dashboard', 'deposits', 'checkout-builder'])
+// "قريباً" module list. pending_payouts/wallet_pool are covered by the real
+// Payouts (PENDING filter) and Wallets pages.
+const BUILT_PAGE_KEYS = new Set([
+  'dashboard',
+  'deposits',
+  'payouts',
+  'pending_payouts',
+  'merchants',
+  'wallets',
+  'wallet_pool',
+  'checkout-builder',
+])
 
 export interface PermittedModule {
   id: string
