@@ -131,7 +131,10 @@ export default function Wallets() {
                   const d = deviceInfo(w)
                   return (
                     <tr key={`${w.to_account_number}#${w.sim_slot ?? 0}`}>
-                      <td className="mono">{w.to_account_number}</td>
+                      <td className="mono">
+                        {w.to_account_number}
+                        {w.auto_inferred && <div className="cell-sub">⚙️ استنتاج آلي — غير مؤكد</div>}
+                      </td>
                       <td>{w.provider ?? '—'}</td>
                       <td>{w.payment_type ?? '—'}</td>
                       <td>{w.merchant ?? '—'}</td>
