@@ -116,7 +116,7 @@ export default function KnownRecipients() {
         </div>
       </section>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 0.85fr) minmax(0, 1.45fr)', gap: 16, alignItems: 'start' }}>
+      <div className="responsive-content-grid recipients-content-grid">
         <section className="card recent-card">
           <div className="recent-head"><h3>{t('دليل المستلمين', 'Recipient directory')}</h3><span className="cell-sub">{loading ? t('جارٍ التحميل…', 'Loading…') : recipients.length}</span></div>
           <div className="table-wrap"><table className="data-table">

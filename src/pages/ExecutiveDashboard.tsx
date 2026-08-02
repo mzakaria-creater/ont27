@@ -75,7 +75,7 @@ export default function ExecutiveDashboard() {
         <Link className="stat-card" to="/ontarget-hub"><span className="stat-label">{t('حالة السيولة', 'Liquidity status')}</span><span className="stat-value">{net >= 0 ? t('موجب', 'Positive') : t('سالب', 'Negative')}</span><span className="stat-sub">{money(Math.abs(net), 'EGP')}</span></Link>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1.2fr) minmax(280px, 0.8fr)', gap: 16, alignItems: 'start' }}>
+      <div className="responsive-content-grid executive-content-grid">
         <section className="card recent-card">
           <div className="recent-head"><h3>{t('اتجاه التدفق النقدي', 'Cash-flow trend')}</h3><span className="cell-sub">{t('آخر 30 يوماً', 'Last 30 days')}</span></div>
           <div className="table-wrap"><table className="data-table">
