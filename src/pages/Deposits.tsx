@@ -315,6 +315,7 @@ export default function Deposits() {
                   <th>الطريقة</th>
                   <th>التاجر</th>
                   <th>الحالة</th>
+                  <th>اعتمد بواسطة</th>
                   <th>الوقت</th>
                   <th>إجراء</th>
                 </tr>
@@ -376,14 +377,8 @@ export default function Deposits() {
                           : (r.merchant ?? '—')}
                         {r.master_merchant && r.merchant && <div className="cell-sub">{r.merchant}</div>}
                       </td>
-                      <td>
-                        <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
-                        {r.status !== 'PENDING' && (
-                          <div className="cell-sub">
-                            بواسطة {!r.approved_by || r.approved_by === 'Manual' ? 'النظام (آلي)' : r.approved_by}
-                          </div>
-                        )}
-                      </td>
+                      <td><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></td>
+                      <td>{r.status === 'PENDING' ? '—' : (!r.approved_by || r.approved_by === 'Manual' ? 'النظام (آلي)' : r.approved_by)}</td>
                       <td className="mono">{depositTime(r)}</td>
                       <td onClick={(e) => e.stopPropagation()}>
                         <div className="row-actions">
