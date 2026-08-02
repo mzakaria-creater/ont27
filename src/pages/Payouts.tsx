@@ -250,6 +250,7 @@ export default function Payouts() {
                   <th>التاجر</th>
                   <th>الوكيل</th>
                   <th>الحالة</th>
+                  <th>اعتمد بواسطة</th>
                   <th>الوقت</th>
                   <th>إجراء</th>
                 </tr>
@@ -282,14 +283,8 @@ export default function Payouts() {
                       <td>{r.pay_by ?? '—'}</td>
                       <td>{r.merchant ?? '—'}</td>
                       <td>{r.agent_name ?? '—'}</td>
-                      <td>
-                        <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
-                        {r.status !== 'PENDING' && (
-                          <div className="cell-sub">
-                            بواسطة {!r.approved_by || r.approved_by === 'Manual' ? 'النظام (آلي)' : r.approved_by}
-                          </div>
-                        )}
-                      </td>
+                      <td><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></td>
+                      <td>{r.status === 'PENDING' ? '—' : (!r.approved_by || r.approved_by === 'Manual' ? 'النظام (آلي)' : r.approved_by)}</td>
                       <td className="mono">{depositTime(r)}</td>
                       <td onClick={(e) => e.stopPropagation()}>
                         <div className="row-actions">
