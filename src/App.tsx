@@ -28,6 +28,8 @@ import LinkGenerator from './pages/LinkGenerator'
 import PaymentCheckout from './pages/PaymentCheckout'
 import PaymentStatus from './pages/PaymentStatus'
 import PaymentMethods from './pages/PaymentMethods'
+import KnownRecipients from './pages/KnownRecipients'
+import TreasuryHub from './pages/TreasuryHub'
 import { api } from './lib/api'
 import { SUPABASE_URL, SUPABASE_KEY } from './lib/supabase'
 import { LocaleProvider, useLocale } from './lib/locale'
@@ -190,6 +192,9 @@ export default function App() {
             <Route path="/complaints" element={<Complaints />} />
             <Route path="/merchant-link-generator" element={<LinkGenerator />} />
             <Route path="/payment-methods" element={<PaymentMethods />} />
+            <Route path="/known-recipients" element={<KnownRecipients />} />
+            <Route path="/ontarget-hub" element={<TreasuryHub />} />
+            <Route path="/hub" element={<TreasuryHub />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
