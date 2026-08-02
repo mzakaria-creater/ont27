@@ -33,6 +33,7 @@ export const CATEGORIES: Category[] = [
 export const PAGE_CATALOG: Record<string, { category: string; label: string }> = {
   dashboard: { category: 'deposits', label: 'لوحة التحكم' }, // shown separately, not in a module card
   deposits: { category: 'deposits', label: 'الإيداعات' },
+  sms_live: { category: 'deposits', label: 'SMS مباشر' },
   'deposit-queue': { category: 'deposits', label: 'طابور الإيداعات' },
   pending_deposits: { category: 'deposits', label: 'إيداعات معلّقة' },
 

@@ -14,7 +14,7 @@ export const depositRoutes = new Hono<AuthEnv>()
 depositRoutes.use('*', requireAuth)
 
 const LIST_COLUMNS =
-  'tx_id, guid, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, payment_method, gateway, merchant, sub_merchant, master_merchant, manual_entry, first_seen_at, last_status_change, created_utc'
+  'tx_id, guid, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, payment_method, gateway, merchant, sub_merchant, master_merchant, manual_entry, approved_by, first_seen_at, last_status_change, created_utc'
 
 const DECISION_TARGET: Record<string, string> = {
   approve: 'PAID',
@@ -88,6 +88,7 @@ depositRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
   let query = db
     .from('maven_transactions')
     .select(LIST_COLUMNS, { count: 'exact' })
+    .order('ontarget_ref', { ascending: false, nullsFirst: false })
     .order('tx_id', { ascending: false })
     .range(offset, offset + limit - 1)
 

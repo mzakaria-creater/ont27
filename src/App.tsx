@@ -8,6 +8,7 @@ import Deposits from './pages/Deposits'
 import Payouts from './pages/Payouts'
 import Merchants from './pages/Merchants'
 import Wallets from './pages/Wallets'
+import SmsLive from './pages/SmsLive'
 import PaymentCheckout from './pages/PaymentCheckout'
 import PaymentStatus from './pages/PaymentStatus'
 import LinkGenerator from './pages/LinkGenerator'
@@ -79,6 +80,7 @@ export default function App() {
             <Route path="/payouts" element={<Payouts />} />
             <Route path="/merchants" element={<Merchants />} />
             <Route path="/wallets" element={<Wallets />} />
+            <Route path="/sms" element={<SmsLive />} />
             <Route path="/merchant-link-generator" element={<LinkGenerator />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

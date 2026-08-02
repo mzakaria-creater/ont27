@@ -13,7 +13,7 @@ export const payoutRoutes = new Hono<AuthEnv>()
 payoutRoutes.use('*', requireAuth)
 
 const LIST_COLUMNS =
-  'maven_id, guid, ontarget_ref, status, amount, pay_by, merchant, account_name, mobile_no, agent_name, commission, remark, image_url, created_utc, first_seen_at, last_seen_at'
+  'maven_id, guid, ontarget_ref, status, amount, pay_by, merchant, account_name, mobile_no, agent_name, commission, remark, image_url, approved_by, created_utc, first_seen_at, last_seen_at'
 
 const DECISION_TARGET: Record<string, string> = {
   approve: 'APPROVED',
@@ -29,6 +29,7 @@ payoutRoutes.get('/', requirePerm('payouts', 'can_view'), async (c) => {
   let query = db
     .from('maven_payout_transactions')
     .select(LIST_COLUMNS, { count: 'exact' })
+    .order('ontarget_ref', { ascending: false, nullsFirst: false })
     .order('maven_id', { ascending: false })
     .range(offset, offset + limit - 1)
 
@@ -90,7 +91,7 @@ payoutRoutes.post('/:mavenId/decision', requirePerm('payouts', 'can_approve'), a
   // .eq('status','PENDING') keeps the transition atomic against races.
   const { data: updated, error: updErr } = await db
     .from('maven_payout_transactions')
-    .update({ status: target, updated_utc: nowIso, last_seen_at: nowIso })
+    .update({ status: target, approved_by: actor.username, updated_utc: nowIso, last_seen_at: nowIso })
     .eq('maven_id', mavenId)
     .eq('status', 'PENDING')
     .select('maven_id, status')

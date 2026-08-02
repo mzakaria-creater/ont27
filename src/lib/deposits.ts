@@ -18,6 +18,7 @@ export interface DepositRow {
   sub_merchant: string | null
   master_merchant: string | null
   manual_entry: boolean | null
+  approved_by: string | null
   first_seen_at: string | null
   last_status_change: string | null
   created_utc: string | null
@@ -32,7 +33,6 @@ export interface DepositDetail extends DepositRow {
   request_type: string | null
   response_message: string | null
   proof_image_url: string | null
-  approved_by: string | null
   receiving_wallet: string | null
   email: string | null
   fees: number | null

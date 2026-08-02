@@ -81,6 +81,31 @@ export default function Deposits() {
     }
   }
 
+  const [rowBusy, setRowBusy] = useState<number | null>(null)
+
+  const quickDecide = async (txId: number, action: 'approve' | 'decline') => {
+    setRowBusy(txId)
+    setErr(null)
+    try {
+      await api(`/api/deposits/${txId}/decision`, {
+        method: 'POST',
+        body: JSON.stringify({ action }),
+      })
+      void load()
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'not_pending') {
+        setErr('حالة الإيداع اتغيّرت بالفعل — أعد التحميل.')
+        void load()
+      } else if (e instanceof ApiError && e.status === 403) {
+        setErr('لا تملك صلاحية الاعتماد (can_approve غير ممنوحة لدورك).')
+      } else {
+        setErr('فشل تنفيذ القرار — حاول مرة أخرى.')
+      }
+    } finally {
+      setRowBusy(null)
+    }
+  }
+
   const decide = async (action: 'approve' | 'decline') => {
     if (!selected) return
     setDecisionBusy(true)
@@ -171,6 +196,7 @@ export default function Deposits() {
                   <th>التاجر</th>
                   <th>الحالة</th>
                   <th>الوقت</th>
+                  {can('deposits', 'can_approve') && <th>إجراء</th>}
                 </tr>
               </thead>
               <tbody>
@@ -194,8 +220,33 @@ export default function Deposits() {
                         {r.merchant ?? '—'}
                         {r.master_merchant && <div className="cell-sub">{r.master_merchant}</div>}
                       </td>
-                      <td><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></td>
+                      <td>
+                        <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
+                        {r.approved_by && <div className="cell-sub">بواسطة {r.approved_by}</div>}
+                      </td>
                       <td className="mono">{depositTime(r)}</td>
+                      {can('deposits', 'can_approve') && (
+                        <td onClick={(e) => e.stopPropagation()}>
+                          {r.status === 'PENDING' && (
+                            <div className="row-actions">
+                              <button
+                                className="btn-primary btn-sm"
+                                disabled={rowBusy === r.tx_id}
+                                onClick={() => void quickDecide(r.tx_id, 'approve')}
+                              >
+                                ✅ اعتماد
+                              </button>
+                              <button
+                                className="btn-ghost danger btn-sm"
+                                disabled={rowBusy === r.tx_id}
+                                onClick={() => void quickDecide(r.tx_id, 'decline')}
+                              >
+                                ❌
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   )
                 })}

@@ -685,3 +685,22 @@ a.stat-card:hover { border-color: var(--accent); }
 .drawer-actions .btn-primary, .drawer-actions .btn-ghost { flex: 1; }
 .btn-ghost.danger { color: var(--status-declined); border-color: color-mix(in srgb, var(--status-declined) 40%, var(--border)); }
 .drawer-note { color: var(--text-dim); font-size: 12px; margin: 0; }
+
+/* Inline row actions + SMS Live */
+.row-actions { display: flex; gap: 6px; white-space: nowrap; }
+.row-actions .btn-sm { padding: 5px 10px; font-size: 12px; }
+.chip-sep { width: 1px; align-self: stretch; background: var(--border, rgba(255,255,255,0.12)); margin: 0 4px; }
+.sms-cell { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sms-body {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow-y: auto;
+  direction: rtl;
+}

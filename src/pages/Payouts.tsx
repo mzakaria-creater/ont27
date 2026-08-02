@@ -22,6 +22,7 @@ export interface PayoutRow {
   account_name: string | null
   mobile_no: string | null
   agent_name: string | null
+  approved_by: string | null
   commission: number | null
   remark: string | null
   image_url: string | null
@@ -104,6 +105,31 @@ export default function Payouts() {
       setErr('تعذّر تحميل تفاصيل السحب.')
     } finally {
       setDetailLoading(false)
+    }
+  }
+
+  const [rowBusy, setRowBusy] = useState<number | null>(null)
+
+  const quickDecide = async (mavenId: number, action: 'approve' | 'decline') => {
+    setRowBusy(mavenId)
+    setErr(null)
+    try {
+      await api(`/api/payouts/${mavenId}/decision`, {
+        method: 'POST',
+        body: JSON.stringify({ action }),
+      })
+      void load()
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'not_pending') {
+        setErr('حالة السحب اتغيّرت بالفعل — أعد التحميل.')
+        void load()
+      } else if (e instanceof ApiError && e.status === 403) {
+        setErr('لا تملك صلاحية الاعتماد (can_approve غير ممنوحة لدورك).')
+      } else {
+        setErr('فشل تنفيذ القرار — حاول مرة أخرى.')
+      }
+    } finally {
+      setRowBusy(null)
     }
   }
 
@@ -198,6 +224,7 @@ export default function Payouts() {
                   <th>الوكيل</th>
                   <th>الحالة</th>
                   <th>الوقت</th>
+                  {can('payouts', 'can_approve') && <th>إجراء</th>}
                 </tr>
               </thead>
               <tbody>
@@ -217,8 +244,33 @@ export default function Payouts() {
                       <td>{r.pay_by ?? '—'}</td>
                       <td>{r.merchant ?? '—'}</td>
                       <td>{r.agent_name ?? '—'}</td>
-                      <td><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></td>
+                      <td>
+                        <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
+                        {r.approved_by && <div className="cell-sub">بواسطة {r.approved_by}</div>}
+                      </td>
                       <td className="mono">{depositTime(r)}</td>
+                      {can('payouts', 'can_approve') && (
+                        <td onClick={(e) => e.stopPropagation()}>
+                          {r.status === 'PENDING' && (
+                            <div className="row-actions">
+                              <button
+                                className="btn-primary btn-sm"
+                                disabled={rowBusy === r.maven_id}
+                                onClick={() => void quickDecide(r.maven_id, 'approve')}
+                              >
+                                ✅ اعتماد
+                              </button>
+                              <button
+                                className="btn-ghost danger btn-sm"
+                                disabled={rowBusy === r.maven_id}
+                                onClick={() => void quickDecide(r.maven_id, 'decline')}
+                              >
+                                ❌
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   )
                 })}
@@ -266,6 +318,7 @@ export default function Payouts() {
                   <dt>الوكيل</dt><dd>{selected.agent_name ?? '—'}</dd>
                   <dt>العمولة</dt><dd className="mono">{money(selected.commission, CURRENCY)}</dd>
                   <dt>ملاحظة</dt><dd>{selected.remark ?? '—'}</dd>
+                  <dt>اعتمده</dt><dd>{selected.approved_by ?? '—'}</dd>
                   <dt>أول ظهور</dt><dd className="mono">{depositTime({ first_seen_at: selected.first_seen_at })}</dd>
                   <dt>آخر تحديث</dt><dd className="mono">{depositTime({ first_seen_at: selected.last_seen_at, created_utc: selected.updated_utc })}</dd>
                 </dl>

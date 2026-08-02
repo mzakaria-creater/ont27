@@ -6,6 +6,7 @@ import { depositRoutes } from './deposits.js'
 import { payoutRoutes } from './payouts.js'
 import { merchantRoutes } from './merchants.js'
 import { walletRoutes } from './wallets.js'
+import { smsRoutes } from './sms.js'
 
 export const app = new Hono().basePath('/api')
 
@@ -17,3 +18,4 @@ app.route('/deposits', depositRoutes)
 app.route('/payouts', payoutRoutes)
 app.route('/merchants', merchantRoutes)
 app.route('/wallets', walletRoutes)
+app.route('/sms', smsRoutes)

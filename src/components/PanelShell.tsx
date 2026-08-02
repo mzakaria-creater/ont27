@@ -14,6 +14,7 @@ const BUILT_LINKS: { to: string; icon: string; label: string; pageKey?: string }
   { to: '/payouts', icon: '📤', label: 'السحوبات', pageKey: 'payouts' },
   { to: '/merchants', icon: '🏬', label: 'التجار', pageKey: 'merchants' },
   { to: '/wallets', icon: '👛', label: 'المحافظ', pageKey: 'wallets' },
+  { to: '/sms', icon: '📨', label: 'SMS مباشر', pageKey: 'sms_live' },
   { to: '/merchant-link-generator', icon: '🔗', label: 'روابط الدفع', pageKey: 'checkout-builder' },
 ]
 
@@ -28,6 +29,7 @@ const BUILT_PAGE_KEYS = new Set([
   'merchants',
   'wallets',
   'wallet_pool',
+  'sms_live',
   'checkout-builder',
 ])
 
