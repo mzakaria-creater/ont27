@@ -9,7 +9,7 @@ interface AggRow { key: string; master: string | null; count: number; volume: nu
 interface Totals { depCount: number; depVolume: number; declined: number; commission: number; fees: number; payCount: number; payVolume: number }
 interface Report { from: string | null; to: string | null; totals: Totals; daily: DayRow[]; byMerchant: AggRow[]; byMethod: AggRow[] }
 
-type Tab = 'summary' | 'merchants' | 'methods' | 'daily' | 'settlement'
+type Tab = 'summary' | 'merchants' | 'methods' | 'daily' | 'performance' | 'settlement'
 
 export default function Reports() {
   const { t } = useLocale()
@@ -65,12 +65,15 @@ export default function Reports() {
   const rangeLabel = report?.from && report?.to
     ? `${report.from} → ${report.to}`
     : t('كل البيانات المتاحة', 'All available data')
+  const terminalCount = (totals?.depCount ?? 0) + (totals?.declined ?? 0)
+  const approvalRate = terminalCount > 0 ? ((totals?.depCount ?? 0) / terminalCount) * 100 : 0
 
   const tabLabels: [Tab, string][] = [
     ['summary', t('📊 الملخص', '📊 Summary')],
     ['merchants', t('🏪 التجار', '🏪 Merchants')],
     ['methods', t('⚡ الطريقة', '⚡ Methods')],
     ['daily', t('📅 اليومية', '📅 Daily')],
+    ['performance', t('🎯 الأداء', '🎯 Performance')],
     ['settlement', t('💸 التسوية', '💸 Settlement')],
   ]
 
@@ -144,6 +147,19 @@ export default function Reports() {
         <thead><tr><th>{t('التاريخ', 'Date')}</th><th className="bar-col">{t('حجم الإيداعات', 'Deposit volume')}</th><th>{t('عدد', 'Count')}</th><th>{t('العمولة (ج.م)', 'Fee (EGP)')}</th><th>{t('مرفوضة', 'Declined')}</th><th>{t('سحوبات', 'Payouts')}</th></tr></thead>
         <tbody>{report.daily.map((row) => <tr key={row.date}><td className="mono">{row.date}</td><td className="bar-col"><div className="bar-track"><div className="bar-fill" style={{ width: `${Math.max((row.depVolume / maxDaily) * 100, 2)}%` }} /><span className="mono bar-label">{money(row.depVolume, '')}</span></div></td><td className="mono">{row.depCount}</td><td className="mono">{money(row.commission, '')}</td><td className="mono" style={{ color: row.declined > 0 ? 'var(--status-declined)' : undefined }}>{row.declined}</td><td className="mono">{money(row.payVolume, '')}</td></tr>)}</tbody>
       </table></div></section>}
+
+      {report && totals && tab === 'performance' && <>
+        <div className="kpi-grid">
+          <div className="kpi-card"><span className="kpi-icon">🎯</span><div className="kpi-value">{approvalRate.toFixed(1)}%</div><div className="kpi-label">{t('نسبة القبول من العمليات النهائية', 'Approval rate from terminal outcomes')}</div></div>
+          <div className="kpi-card"><span className="kpi-icon">✅</span><div className="kpi-value">{totals.depCount.toLocaleString('en-US')}</div><div className="kpi-label">{t('إيداعات معتمدة', 'Approved deposits')}</div></div>
+          <div className="kpi-card"><span className="kpi-icon">📉</span><div className="kpi-value">{totals.declined.toLocaleString('en-US')}</div><div className="kpi-label">{t('إيداعات مرفوضة', 'Declined deposits')}</div></div>
+          <div className="kpi-card"><span className="kpi-icon">📊</span><div className="kpi-value">{report.daily.length ? money(totals.depVolume / report.daily.length, '') : '—'}</div><div className="kpi-label">{t('متوسط حجم اليوم (ج.م)', 'Average daily volume (EGP)')}</div></div>
+        </div>
+        <section className="card recent-card"><div className="recent-head"><h3>{t('أداء التجار', 'Merchant performance')}</h3></div><div className="table-wrap"><table className="data-table">
+          <thead><tr><th>{t('التاجر', 'Merchant')}</th><th>{t('العمليات المعتمدة', 'Approved transactions')}</th><th>{t('الحجم', 'Volume')}</th><th>{t('متوسط الصفقة', 'Average ticket')}</th><th>{t('الحصة', 'Share')}</th></tr></thead>
+          <tbody>{report.byMerchant.map((row) => <tr key={row.key}><td>{row.key}{row.master && <div className="cell-sub">{row.master}</div>}</td><td className="mono">{row.count}</td><td className="mono">{money(row.volume, '')}</td><td className="mono">{row.count ? money(row.volume / row.count, '') : '—'}</td><td className="mono">{totals.depVolume ? `${((row.volume / totals.depVolume) * 100).toFixed(1)}%` : '—'}</td></tr>)}</tbody>
+        </table></div></section>
+      </>}
 
       {report && totals && tab === 'settlement' && <section className="card recent-card">
         <div className="recent-head"><h3>{t('💸 حاسبة التسوية و P&L', '💸 Settlement & P&L calculator')}</h3></div>
