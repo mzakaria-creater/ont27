@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { db } from './db.js'
+import { oldDb } from './oldDb.js'
 import { requireAuth, requirePerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 
@@ -98,6 +99,19 @@ payoutRoutes.post('/:mavenId/decision', requirePerm('payouts', 'can_approve'), a
   if (updErr) return c.json({ error: 'db_error', detail: updErr.message }, 500)
   if (!updated?.length) return c.json({ error: 'not_pending' }, 409)
 
+  // Mirror the decision into the OLD prod DB so the payout workers see it.
+  let oldSync = 'skipped'
+  const old = oldDb()
+  if (old) {
+    // NOTE: old DB has no approved_by column — status/timestamps only.
+    const { error: oldErr } = await old
+      .from('maven_payout_transactions')
+      .update({ status: target, updated_utc: nowIso, last_seen_at: nowIso })
+      .eq('maven_id', mavenId)
+      .eq('status', 'PENDING')
+    oldSync = oldErr ? `error: ${oldErr.message}` : 'ok'
+  }
+
   const { error: auditErr } = await db.from('audit_log').insert({
     actor_type: 'manual_panel',
     actor_id: actor.sub,
@@ -106,7 +120,7 @@ payoutRoutes.post('/:mavenId/decision', requirePerm('payouts', 'can_approve'), a
     entity: 'maven_payout_transactions',
     entity_id: mavenId,
     before: { status: before.status },
-    after: { status: target, note },
+    after: { status: target, note, old_sync: oldSync },
   })
   if (auditErr) {
     return c.json({ ok: true, status: target, audit_error: auditErr.message })

@@ -974,3 +974,8 @@ a.stat-card:hover { border-color: var(--accent); }
   .drawer { width: 100vw; }
   .bell-menu { position: fixed; inset-inline: 10px; top: 54px; min-width: 0; }
 }
+
+/* Quick control */
+.control-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.control-sep { width: 1px; height: 24px; background: var(--border-soft); margin: 0 4px; }
+.control-input { width: 130px; padding: 7px 10px; }

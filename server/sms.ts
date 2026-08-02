@@ -92,7 +92,8 @@ smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
       `device_name.ilike.${like}`,
       `provider.ilike.${like}`,
     ]
-    if (/^\d+$/.test(q)) ors.push(`id.eq.${q}`)
+    if (/^\d+$/.test(q)) ors.push(`id.eq.${q}`, `amount.eq.${q}`)
+    else if (/^\d+\.\d+$/.test(q)) ors.push(`amount.eq.${q}`)
     query = query.or(ors.join(','))
   }
 

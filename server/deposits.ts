@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { db } from './db.js'
+import { oldDb } from './oldDb.js'
 import { requireAuth, requirePerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 
@@ -14,7 +15,25 @@ export const depositRoutes = new Hono<AuthEnv>()
 depositRoutes.use('*', requireAuth)
 
 const LIST_COLUMNS =
-  'tx_id, guid, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, payment_method, gateway, merchant, sub_merchant, master_merchant, manual_entry, approved_by, first_seen_at, last_status_change, created_utc'
+  'tx_id, guid, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, payment_method, gateway, merchant, sub_merchant, master_merchant, manual_entry, approved_by, to_account_number, receiving_wallet, proof_image_url, first_seen_at, last_status_change, created_utc'
+
+// Attach the matched SMS (id, name, balance) to each visible row.
+async function attachSms(rows: Record<string, unknown>[]): Promise<void> {
+  const ids = rows.map((r) => r.tx_id as number)
+  if (!ids.length) return
+  const { data: matches } = await db.from('sms_maven_matches').select('tx_id, sms_id').in('tx_id', ids)
+  if (!matches?.length) return
+  const { data: smsRows } = await db
+    .from('inbound_sms')
+    .select('id, sender_name, amount, balance_after, received_at')
+    .in('id', matches.map((m) => m.sms_id))
+  const smsById = new Map((smsRows ?? []).map((s) => [s.id, s]))
+  const byTx = new Map(matches.map((m) => [m.tx_id, smsById.get(m.sms_id)]))
+  for (const r of rows) {
+    const sms = byTx.get(r.tx_id as number)
+    if (sms) r.sms = sms
+  }
+}
 
 const DECISION_TARGET: Record<string, string> = {
   approve: 'PAID',
@@ -110,7 +129,9 @@ depositRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
 
   const { data, count, error } = await query
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  return c.json({ rows: data ?? [], total: count ?? 0, limit, offset })
+  const rows = (data ?? []) as unknown as Record<string, unknown>[]
+  await attachSms(rows)
+  return c.json({ rows, total: count ?? 0, limit, offset })
 })
 
 depositRoutes.get('/:txId', requirePerm('deposits', 'can_view'), async (c) => {
@@ -199,6 +220,19 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
   if (updErr) return c.json({ error: 'db_error', detail: updErr.message }, 500)
   if (!updated?.length) return c.json({ error: 'not_pending' }, 409)
 
+  // Propagate to the OLD prod DB — the automation/workers act there, and the
+  // control-room RPC also notifies Maven. Without this the decision is local-only.
+  let oldSync: string = 'skipped'
+  const old = oldDb()
+  if (old) {
+    const { error: oldErr } = await old.rpc('dashboard_manual_action', {
+      p_tx_id: Number(txId),
+      p_action: action,
+      p_by: actor.username,
+    })
+    oldSync = oldErr ? `error: ${oldErr.message}` : 'ok'
+  }
+
   const { error: auditErr } = await db.from('audit_log').insert({
     actor_type: 'manual_panel',
     actor_id: actor.sub,
@@ -207,12 +241,12 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
     entity: 'maven_transactions',
     entity_id: txId,
     before: { status: before.status },
-    after: { status: target, note },
+    after: { status: target, note, old_sync: oldSync },
   })
   if (auditErr) {
     // The decision already landed; surface the audit failure loudly instead of hiding it.
-    return c.json({ ok: true, status: target, audit_error: auditErr.message })
+    return c.json({ ok: true, status: target, old_sync: oldSync, audit_error: auditErr.message })
   }
 
-  return c.json({ ok: true, status: target })
+  return c.json({ ok: true, status: target, old_sync: oldSync })
 })

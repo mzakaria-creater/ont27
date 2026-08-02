@@ -19,6 +19,10 @@ export interface DepositRow {
   master_merchant: string | null
   manual_entry: boolean | null
   approved_by: string | null
+  to_account_number: string | null
+  receiving_wallet: string | null
+  proof_image_url: string | null
+  sms?: { id: number; sender_name: string | null; amount: number | null; balance_after: number | null; received_at: string | null } | null
   first_seen_at: string | null
   last_status_change: string | null
   created_utc: string | null

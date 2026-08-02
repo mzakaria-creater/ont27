@@ -310,6 +310,8 @@ export default function Deposits() {
                   <th>رقم العملية</th>
                   <th>المبلغ</th>
                   <th>المُرسِل</th>
+                  <th>محفظة الاستلام</th>
+                  <th>SMS المطابقة</th>
                   <th>الطريقة</th>
                   <th>التاجر</th>
                   <th>الحالة</th>
@@ -348,6 +350,25 @@ export default function Deposits() {
                         {r.sender_name ?? '—'}
                         {r.sender_number && <div className="cell-sub mono">{r.sender_number}</div>}
                       </td>
+                      <td className="mono">
+                        {r.to_account_number ?? '—'}
+                        {r.receiving_wallet && r.receiving_wallet !== r.to_account_number && (
+                          <div className="cell-sub mono">{r.receiving_wallet}</div>
+                        )}
+                      </td>
+                      <td>
+                        {r.sms ? (
+                          <>
+                            <span className="pay-status-badge st-paid">✅ #{r.sms.id}</span>
+                            <div className="cell-sub">
+                              {r.sms.sender_name ?? ''}
+                              {r.sms.balance_after != null && <span className="mono"> · رصيد {money(r.sms.balance_after, '')}</span>}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="cell-sub">— بدون رسالة</span>
+                        )}
+                      </td>
                       <td>{r.payment_method ?? r.gateway ?? '—'}</td>
                       <td>
                         {r.master_merchant
@@ -367,8 +388,28 @@ export default function Deposits() {
                             title="تفاصيل المعاملة"
                             onClick={() => void openDetail(r.tx_id)}
                           >
-                            👁 تفاصيل
+                            👁
                           </button>
+                          {!r.sms && (
+                            <a
+                              className="btn-ghost btn-sm"
+                              title="دور على رسالة بنفس المبلغ"
+                              href={`/sms?q=${r.amount ?? ''}`}
+                            >
+                              🔎
+                            </a>
+                          )}
+                          {r.proof_image_url && (
+                            <a
+                              className="btn-ghost btn-sm"
+                              title="صورة الإثبات"
+                              href={r.proof_image_url}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              📷
+                            </a>
+                          )}
                           {r.status === 'PENDING' && can('deposits', 'can_approve') && (
                             <>
                               <button
