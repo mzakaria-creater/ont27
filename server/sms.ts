@@ -92,10 +92,14 @@ smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
       `device_name.ilike.${like}`,
       `provider.ilike.${like}`,
     ]
-    if (/^\d+$/.test(q)) ors.push(`id.eq.${q}`, `amount.eq.${q}`)
-    else if (/^\d+\.\d+$/.test(q)) ors.push(`amount.eq.${q}`)
+    if (/^\d+$/.test(q)) ors.push(`id.eq.${q}`)
     query = query.or(ors.join(','))
   }
+
+  // Exact-amount lookup (used by the deposits 🔎 "find SMS" shortcut) —
+  // kept separate from q so numeric id searches stay precise.
+  const amount = c.req.query('amount')?.trim()
+  if (amount && /^\d+(\.\d+)?$/.test(amount)) query = query.eq('amount', amount)
 
   const { data, count, error } = await query
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)

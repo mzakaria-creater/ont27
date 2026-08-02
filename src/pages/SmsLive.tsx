@@ -125,6 +125,7 @@ export default function SmsLive() {
   const [linkErr, setLinkErr] = useState<string | null>(null)
 
   const appliedQ = params.get('q') ?? ''
+  const amount = params.get('amount') ?? ''
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -135,6 +136,7 @@ export default function SmsLive() {
     if (category) search.set('category', category)
     if (match) search.set('match', match)
     if (appliedQ) search.set('q', appliedQ)
+    if (amount) search.set('amount', amount)
     try {
       const [list, st] = await Promise.all([
         api<ListResponse>(`/api/sms?${search}`),
@@ -148,7 +150,7 @@ export default function SmsLive() {
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [category, match, appliedQ, page])
+  }, [category, match, appliedQ, amount, page])
 
   useEffect(() => { void load() }, [load])
 
@@ -321,6 +323,15 @@ export default function SmsLive() {
           {appliedQ && (
             <button type="button" className="btn-ghost btn-sm" onClick={() => { setQ(''); setFilter({ q: '' }) }}>
               مسح
+            </button>
+          )}
+          {amount && (
+            <button
+              type="button"
+              className="chip chip-active"
+              onClick={() => { const p = new URLSearchParams(params); p.delete('amount'); setParams(p) }}
+            >
+              مبلغ = {amount} ✕
             </button>
           )}
         </form>

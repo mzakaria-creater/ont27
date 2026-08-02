@@ -398,7 +398,7 @@ export default function Deposits() {
                             <a
                               className="btn-ghost btn-sm"
                               title="دور على رسالة بنفس المبلغ"
-                              href={`/sms?q=${r.amount ?? ''}`}
+                              href={`/sms?amount=${r.amount ?? ''}`}
                             >
                               🔎
                             </a>
