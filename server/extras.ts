@@ -446,3 +446,73 @@ extraRoutes.get('/notifications', async (c) => {
     total: pendingDeposits + pendingPayouts + (smsReview > 0 ? 1 : 0) + (offlineDevices.length > 0 ? 1 : 0),
   })
 })
+
+// ---- Payment methods: live channel configuration plus 30-day transaction health ----
+extraRoutes.get(
+  '/payment-methods',
+  requireAnyPerm(['wallets', 'payment_methods'], 'can_view'),
+  async () => {
+    const since = new Date(Date.now() - 30 * 86_400_000).toISOString()
+    const [channels, transactions, wallets] = await Promise.all([
+      db
+        .from('local_deposit_channels')
+        .select('id, channel_type, country_code, currency_code, display_name, active')
+        .order('display_name'),
+      db
+        .from('maven_transactions')
+        .select('payment_method, gateway, status, amount')
+        .gte('first_seen_at', since)
+        .order('first_seen_at', { ascending: false, nullsFirst: false })
+        .limit(10_000),
+      db
+        .from('wallet_device_map')
+        .select('provider, device, sim_slot')
+        .order('provider'),
+    ])
+    if (channels.error) return new Response(JSON.stringify({ error: 'db_error', detail: channels.error.message }), { status: 500 })
+    if (transactions.error) return new Response(JSON.stringify({ error: 'db_error', detail: transactions.error.message }), { status: 500 })
+    if (wallets.error) return new Response(JSON.stringify({ error: 'db_error', detail: wallets.error.message }), { status: 500 })
+
+    const byMethod = new Map<string, { key: string; attempts: number; approved: number; volume: number }>()
+    for (const row of transactions.data ?? []) {
+      const key = row.payment_method ?? row.gateway ?? 'Unspecified'
+      if (!byMethod.has(key)) byMethod.set(key, { key, attempts: 0, approved: 0, volume: 0 })
+      const bucket = byMethod.get(key)!
+      bucket.attempts += 1
+      if (row.status === 'PAID' || row.status === 'APPROVED') {
+        bucket.approved += 1
+        bucket.volume += Number(row.amount ?? 0)
+      }
+    }
+    const walletCount = new Map<string, number>()
+    for (const row of wallets.data ?? []) {
+      const key = row.provider ?? 'Unspecified'
+      walletCount.set(key, (walletCount.get(key) ?? 0) + 1)
+    }
+
+    return Response.json({
+      channels: channels.data ?? [],
+      methods: [...byMethod.values()].sort((a, b) => b.volume - a.volume),
+      walletCount: Object.fromEntries(walletCount),
+      since,
+    })
+  },
+)
+
+extraRoutes.patch(
+  '/payment-methods/:id',
+  requireAnyPerm(['wallets', 'payment_methods'], 'can_edit'),
+  async (c) => {
+    const body = await c.req.json<{ active?: boolean }>().catch(() => null)
+    if (typeof body?.active !== 'boolean') return c.json({ error: 'invalid_active' }, 400)
+    const { data, error } = await db
+      .from('local_deposit_channels')
+      .update({ active: body.active })
+      .eq('id', c.req.param('id'))
+      .select('id, channel_type, country_code, currency_code, display_name, active')
+      .maybeSingle()
+    if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+    if (!data) return c.json({ error: 'channel_not_found' }, 404)
+    return c.json({ channel: data })
+  },
+)
