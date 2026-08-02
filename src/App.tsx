@@ -10,6 +10,7 @@ import Merchants from './pages/Merchants'
 import Wallets from './pages/Wallets'
 import SmsLive from './pages/SmsLive'
 import Transactions from './pages/Transactions'
+import TransactionDetail from './pages/TransactionDetail'
 import Approvals from './pages/Approvals'
 import Settlements from './pages/Settlements'
 import Crm from './pages/Crm'
@@ -162,6 +163,7 @@ export default function App() {
             <Route path="/deposits" element={<Deposits />} />
             <Route path="/payouts" element={<Payouts />} />
             <Route path="/transactions" element={<Transactions />} />
+            <Route path="/transactions/:ref" element={<TransactionDetail />} />
             <Route path="/approvals" element={<Approvals />} />
             <Route path="/merchants" element={<Merchants />} />
             <Route path="/wallets" element={<Wallets />} />

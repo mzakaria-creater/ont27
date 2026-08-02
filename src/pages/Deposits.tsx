@@ -462,7 +462,14 @@ export default function Deposits() {
               <>
                 <div className="drawer-head">
                   <h3 className="mono">{selected.ontarget_ref ?? `tx ${selected.tx_id}`}</h3>
-                  <button className="btn-ghost btn-sm" onClick={() => setSelected(null)}>✕</button>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {selected.ontarget_ref && (
+                      <a className="btn-ghost btn-sm" href={`/transactions/${encodeURIComponent(selected.ontarget_ref)}`}>
+                        ↗ صفحة كاملة
+                      </a>
+                    )}
+                    <button className="btn-ghost btn-sm" onClick={() => setSelected(null)}>✕</button>
+                  </div>
                 </div>
 
                 <div className="drawer-amount">

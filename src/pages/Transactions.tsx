@@ -158,7 +158,9 @@ export default function Transactions() {
                       <td>
                         <Link
                           className="btn-ghost btn-sm"
-                          to={`/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}
+                          to={r.kind === 'deposit' && r.ontarget_ref
+                            ? `/transactions/${encodeURIComponent(r.ontarget_ref)}`
+                            : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}
                         >
                           👁 تفاصيل
                         </Link>

@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { db } from './db.js'
 import { oldDb } from './oldDb.js'
 import { requireAuth, requirePerm } from './rbac.js'
@@ -134,9 +135,32 @@ depositRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
   return c.json({ rows, total: count ?? 0, limit, offset })
 })
 
+// Detail by OUR reference (the user-facing identifier — unique, verified).
+// Registered before /:txId so the literal segment wins.
+depositRoutes.get('/by-ref/:ref', requirePerm('deposits', 'can_view'), async (c) => {
+  const ref = c.req.param('ref')
+  if (!/^[\w-]{3,40}$/.test(ref)) return c.json({ error: 'bad_ref' }, 400)
+  const { data, error } = await db
+    .from('maven_transactions')
+    .select('tx_id')
+    .eq('ontarget_ref', ref)
+    .maybeSingle()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  if (!data) return c.json({ error: 'not_found' }, 404)
+  return depositDetail(c, String(data.tx_id))
+})
+
 depositRoutes.get('/:txId', requirePerm('deposits', 'can_view'), async (c) => {
   const txId = c.req.param('txId')
   if (!/^\d+$/.test(txId)) return c.json({ error: 'bad_tx_id' }, 400)
+  return depositDetail(c, txId)
+})
+
+// Shared detail builder: full row (incl. raw jsonb) + matched SMS + client history.
+// Data access is server-side behind the panel's own auth/RBAC (httpOnly JWT
+// cookies + role_page_permissions) — the browser never holds a Supabase key,
+// which is this codebase's deliberate alternative to client-side RLS.
+async function depositDetail(c: Context<AuthEnv>, txId: string) {
   const { data, error } = await db
     .from('maven_transactions')
     .select('*')
@@ -180,7 +204,7 @@ depositRoutes.get('/:txId', requirePerm('deposits', 'can_view'), async (c) => {
     : null
 
   return c.json({ deposit: data, sms: smsMatch, client })
-})
+}
 
 depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), async (c) => {
   const txId = c.req.param('txId')
