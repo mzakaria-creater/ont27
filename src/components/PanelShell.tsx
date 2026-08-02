@@ -35,6 +35,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/merchant-link-generator', icon: '🔗', labelAr: 'روابط الدفع', labelEn: 'Payment links', keys: ['checkout-builder'], group: 'main' },
   { to: '/merchants', icon: '🏬', labelAr: 'التجار', labelEn: 'Merchants', keys: ['merchants'], group: 'system' },
   { to: '/wallets', icon: '👛', labelAr: 'المحافظ', labelEn: 'Wallets', keys: ['wallets'], group: 'system' },
+  { to: '/payment-methods', icon: '💳', labelAr: 'طرق الدفع', labelEn: 'Payment Methods', keys: ['wallets', 'payment_methods'], group: 'system' },
   { to: '/crm', icon: '👥', labelAr: 'CRM العملاء', labelEn: 'Customer CRM', keys: ['client_crm'], group: 'system' },
   { to: '/settlements', icon: '🧾', labelAr: 'التسويات', labelEn: 'Settlements', keys: ['settlements', 'settlements_list', 'settlement_recon', 'fees'], group: 'system' },
   { to: '/risk', icon: '🛡️', labelAr: 'المخاطر', labelEn: 'Risk & compliance', keys: ['risk', 'risk_audit', 'flagged', 'exceptions', 'manual_review', 'velocity', 'compliance'], group: 'system' },
@@ -198,6 +199,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   const modules = usePermittedModules()
   const permsLoaded = permissions.length > 0
   const [navOpen, setNavOpen] = useState(false)
+  const [smsOpen, setSmsOpen] = useState(true)
 
   const visible = (l: NavLinkDef) => l.keys.length === 0 || l.keys.some((k) => can(k))
   const renderLinks = (group: 'main' | 'system') =>
@@ -235,7 +237,18 @@ export default function PanelShell({ children }: { children: ReactNode }) {
         ))}
       </nav>
       <main className="dash-main">{children}</main>
-      {can('sms_live') && <SmsRail />}
+      {can('sms_live') && (
+        <button
+          type="button"
+          className="btn-ghost btn-sm"
+          style={{ position: 'fixed', insetInlineEnd: 12, bottom: 12, zIndex: 30 }}
+          onClick={() => setSmsOpen((open) => !open)}
+          aria-pressed={smsOpen}
+        >
+          {smsOpen ? t('إخفاء SMS المباشر', 'Hide Live SMS') : t('إظهار SMS المباشر', 'Show Live SMS')}
+        </button>
+      )}
+      {can('sms_live') && smsOpen && <SmsRail />}
     </div>
   )
 }
