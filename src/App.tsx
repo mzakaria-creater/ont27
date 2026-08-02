@@ -4,6 +4,7 @@ import { useAuth } from './auth/AuthContext'
 import ProtectedRoute from './auth/ProtectedRoute'
 import LoginPage from './auth/LoginPage'
 import Dashboard from './pages/Dashboard'
+import Monitor from './pages/Monitor'
 import Deposits from './pages/Deposits'
 import Payouts from './pages/Payouts'
 import Merchants from './pages/Merchants'
@@ -28,11 +29,12 @@ import PaymentCheckout from './pages/PaymentCheckout'
 import PaymentStatus from './pages/PaymentStatus'
 import { api } from './lib/api'
 import { SUPABASE_URL, SUPABASE_KEY } from './lib/supabase'
+import { LocaleProvider, useLocale } from './lib/locale'
 
 type Conn = 'wait' | 'ok' | 'bad'
 
 function useTheme() {
-  const [theme, setTheme] = useState(() => localStorage.getItem('panel-theme') ?? 'dark')
+  const [theme, setTheme] = useState(() => localStorage.getItem('panel-theme') ?? 'light')
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
     localStorage.setItem('panel-theme', theme)
@@ -41,6 +43,7 @@ function useTheme() {
 }
 
 function Bell() {
+  const { t } = useLocale()
   const [data, setData] = useState<NotifData | null>(null)
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -64,28 +67,28 @@ function Bell() {
 
   return (
     <div className="bell-wrap" ref={wrapRef}>
-      <button className="theme-btn bell-btn" onClick={() => setOpen((o) => !o)} title="الإشعارات">
+      <button className="theme-btn bell-btn" onClick={() => setOpen((o) => !o)} title={t("الإشعارات", "Notifications")} aria-label={t("الإشعارات", "Notifications")}>
         🔔
         {count > 0 && <span className="bell-badge">{count > 99 ? '99+' : count}</span>}
       </button>
       {open && data && (
         <div className="bell-menu">
           <Link to="/deposits?status=PENDING" className="bell-item" onClick={() => setOpen(false)}>
-            💰 إيداعات معلّقة <span className="bell-count">{data.pendingDeposits}</span>
+            {t('💰 إيداعات معلّقة', '💰 Pending deposits')} <span className="bell-count">{data.pendingDeposits}</span>
           </Link>
           <Link to="/payouts?status=PENDING" className="bell-item" onClick={() => setOpen(false)}>
-            📤 سحوبات معلّقة <span className="bell-count">{data.pendingPayouts}</span>
+            {t('📤 سحوبات معلّقة', '📤 Pending payouts')} <span className="bell-count">{data.pendingPayouts}</span>
           </Link>
           <Link to="/sms?match=review" className="bell-item" onClick={() => setOpen(false)}>
-            📨 رسائل تحتاج مراجعة <span className="bell-count">{data.smsReview}</span>
+            {t('📨 رسائل تحتاج مراجعة', '📨 SMS awaiting review')} <span className="bell-count">{data.smsReview}</span>
           </Link>
           {data.offlineDevices.length > 0 && (
             <Link to="/wallets" className="bell-item warn-item" onClick={() => setOpen(false)}>
-              📵 أجهزة غير متصلة: {data.offlineDevices.join('، ')}
+              {t('📵 أجهزة غير متصلة: ', '📵 Offline devices: ')}{data.offlineDevices.join(', ')}
             </Link>
           )}
           <Link to="/notifications" className="bell-item bell-all" onClick={() => setOpen(false)}>
-            كل الإشعارات ←
+            {t('كل الإشعارات ←', 'All notifications →')}
           </Link>
         </div>
       )}
@@ -95,6 +98,7 @@ function Bell() {
 
 function Topbar() {
   const { user, logout, status } = useAuth()
+  const { locale, toggleLocale, t } = useLocale()
   const { theme, toggle } = useTheme()
   const [conn, setConn] = useState<Conn>('wait')
   const [checkedAt, setCheckedAt] = useState<Date | null>(null)
@@ -129,22 +133,25 @@ function Topbar() {
     <header className="topbar">
       <img src="/logo.svg" alt="OnTarget" className="logo" />
       <h1><Link to="/" className="home-link">OnTarget <span className="brand-sub">Payment Provider</span></Link></h1>
-      <span className="live-dot"><span className="ld" />مباشر</span>
+      <span className="live-dot"><span className="ld" />{t('مباشر', 'Live')}</span>
       <div className="spacer" />
       <Bell />
+      <button className="theme-btn" onClick={toggleLocale} aria-label={t('تبديل اللغة', 'Switch language')}>
+        <span className="theme-btn-label">{locale === 'ar' ? 'EN' : 'AR'}</span>
+      </button>
       <button className="theme-btn" onClick={toggle}>
         {theme === 'dark' ? '☀️' : '🌙'}
-        <span className="theme-btn-label">{theme === 'dark' ? ' وضع الإضاءة' : ' الوضع الداكن'}</span>
+        <span className="theme-btn-label">{theme === 'dark' ? t('وضع الإضاءة', 'Light mode') : t('الوضع الداكن', 'Dark mode')}</span>
       </button>
       <span className="conn">
         <span className={`dot ${conn}`} />
-        {conn === 'ok' ? 'متصل' : conn === 'bad' ? 'غير متصل' : 'جارٍ الفحص…'}
-        {checkedAt && <> · منذ {ago} ث</>}
+        {conn === 'ok' ? t('متصل', 'Connected') : conn === 'bad' ? t('غير متصل', 'Offline') : t('جارٍ الفحص…', 'Checking…')}
+        {checkedAt && <> · {t(`منذ ${ago} ث`, `${ago}s ago`)}</>}
       </span>
       <span className="user-chip">
         {user?.display_name ?? user?.username} · <span className="mono">{user?.role}</span>
       </span>
-      <button className="logout-btn" onClick={() => void logout()}>تسجيل الخروج</button>
+      <button className="logout-btn" onClick={() => void logout()}>{t('تسجيل الخروج', 'Sign out')}</button>
     </header>
   )
 }
@@ -152,14 +159,16 @@ function Topbar() {
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="shell">
-        <Topbar />
+      <LocaleProvider>
+        <div className="shell">
+          <Topbar />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/payment-checkout" element={<PaymentCheckout />} />
           <Route path="/payment-status" element={<PaymentStatus />} />
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/monitor" element={<Monitor />} />
             <Route path="/deposits" element={<Deposits />} />
             <Route path="/payouts" element={<Payouts />} />
             <Route path="/transactions" element={<Transactions />} />
@@ -182,7 +191,8 @@ export default function App() {
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </div>
+        </div>
+      </LocaleProvider>
     </BrowserRouter>
   )
 }
