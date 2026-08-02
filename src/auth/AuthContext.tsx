@@ -12,6 +12,7 @@ interface AuthState {
   twofaEnrolled: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  refreshPermissions: () => Promise<void>
   can: (pageKey: string, action?: keyof Omit<PagePermission, 'page_key'>) => boolean
 }
 
@@ -65,11 +66,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     twofaEnrolled: me?.twofa_enrolled ?? false,
     login,
     logout,
+    refreshPermissions: loadMe,
     can: (pageKey, action = 'can_view') => {
       const row = me?.permissions.find((p) => p.page_key === pageKey)
       return !!row?.[action]
     },
-  }), [status, me, login, logout])
+  }), [status, me, login, logout, loadMe])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

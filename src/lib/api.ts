@@ -12,10 +12,11 @@ export class ApiError extends Error {
 }
 
 async function rawFetch(path: string, init?: RequestInit): Promise<Response> {
+  const isFormData = typeof FormData !== 'undefined' && init?.body instanceof FormData
   return fetch(path, {
     ...init,
     credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers: { ...(isFormData ? {} : { 'Content-Type': 'application/json' }), ...init?.headers },
   })
 }
 

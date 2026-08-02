@@ -63,12 +63,10 @@ export default function Approvals() {
   }, [load])
 
   const depBulk = useBulk((id) => `/api/deposits/${id}/decision`, () => void load())
-  const payBulk = useBulk((id) => `/api/payouts/${id}/decision`, () => void load())
-
-  const quick = async (kind: 'deposits' | 'payouts', id: number, action: 'approve' | 'decline') => {
-    setRowBusy(`${kind}-${id}`)
+  const quick = async (id: number, action: 'approve' | 'decline') => {
+    setRowBusy(`deposits-${id}`)
     try {
-      await api(`/api/${kind}/${id}/decision`, { method: 'POST', body: JSON.stringify({ action }) })
+      await api(`/api/deposits/${id}/decision`, { method: 'POST', body: JSON.stringify({ action }) })
       void load()
     } catch {
       setErr('فشل تنفيذ القرار — أعد المحاولة.')
@@ -78,7 +76,6 @@ export default function Approvals() {
   }
 
   const canDep = can('deposits', 'can_approve')
-  const canPay = can('payouts', 'can_approve')
 
   return (
     <PanelShell>
@@ -151,8 +148,8 @@ export default function Approvals() {
                     <td>
                       {canDep && (
                         <div className="row-actions">
-                          <button className="btn-primary btn-sm" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick('deposits', r.tx_id, 'approve')}>✅</button>
-                          <button className="btn-ghost danger btn-sm" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick('deposits', r.tx_id, 'decline')}>❌</button>
+                          <button className="btn-primary btn-sm" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'approve')}>✅</button>
+                          <button className="btn-ghost danger btn-sm" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'decline')}>❌</button>
                         </div>
                       )}
                     </td>
@@ -170,14 +167,7 @@ export default function Approvals() {
           <h3>📤 سحوبات معلّقة {payouts && <span className="mono">({payouts.length})</span>}</h3>
           <Link to="/payouts?status=PENDING" className="pay-status-link">فتح صفحة السحوبات ←</Link>
         </div>
-        {payBulk.progress && <div className="card bulk-progress">{payBulk.progress}</div>}
-        {payBulk.selected.size > 0 && canPay && (
-          <div className="bulk-bar">
-            <span>{payBulk.selected.size} محدد</span>
-            <button className="btn-primary btn-sm" disabled={payBulk.busy} onClick={() => void payBulk.run('approve')}>✅ اعتماد الكل</button>
-            <button className="btn-ghost danger btn-sm" disabled={payBulk.busy} onClick={() => void payBulk.run('decline')}>❌ رفض الكل</button>
-          </div>
-        )}
+        <p className="drawer-note">تسجيل قرارات السحب يتم من صفحة السحوبات فقط، حيث يلزم رفع إثبات للمقبول ويظهر بوضوح أن تنفيذ المزود يدوي.</p>
         {!payouts && <p className="sidebar-hint">جارٍ التحميل…</p>}
         {payouts && payouts.length === 0 && <p>لا توجد سحوبات معلّقة 🎉</p>}
         {payouts && payouts.length > 0 && (
@@ -185,15 +175,6 @@ export default function Approvals() {
             <table className="data-table">
               <thead>
                 <tr>
-                  {canPay && (
-                    <th className="check-col">
-                      <input
-                        type="checkbox"
-                        checked={payouts.length > 0 && payouts.every((r) => payBulk.selected.has(r.maven_id))}
-                        onChange={() => payBulk.toggleAll(payouts.map((r) => r.maven_id))}
-                      />
-                    </th>
-                  )}
                   <th>رقم العملية</th>
                   <th>المبلغ</th>
                   <th>المستفيد</th>
@@ -206,25 +187,13 @@ export default function Approvals() {
               <tbody>
                 {payouts.map((r) => (
                   <tr key={r.maven_id} className="row-pending">
-                    {canPay && (
-                      <td className="check-col">
-                        <input type="checkbox" checked={payBulk.selected.has(r.maven_id)} onChange={() => payBulk.toggle(r.maven_id)} />
-                      </td>
-                    )}
                     <td className="mono">{r.ontarget_ref ?? r.maven_id}<div className="cell-sub mono">{r.maven_id}</div></td>
                     <td className="mono">{money(r.amount, 'EGP')}</td>
                     <td>{r.account_name ?? '—'}{r.mobile_no && <div className="cell-sub mono">{r.mobile_no}</div>}</td>
                     <td>{r.pay_by ?? '—'}</td>
                     <td>{r.merchant ?? '—'}</td>
                     <td className="mono">{depositTime(r)}</td>
-                    <td>
-                      {canPay && (
-                        <div className="row-actions">
-                          <button className="btn-primary btn-sm" disabled={rowBusy === `payouts-${r.maven_id}`} onClick={() => void quick('payouts', r.maven_id, 'approve')}>✅</button>
-                          <button className="btn-ghost danger btn-sm" disabled={rowBusy === `payouts-${r.maven_id}`} onClick={() => void quick('payouts', r.maven_id, 'decline')}>❌</button>
-                        </div>
-                      )}
-                    </td>
+                    <td><Link to={`/payouts?status=PENDING&q=${encodeURIComponent(r.ontarget_ref ?? String(r.maven_id))}`} className="btn-ghost btn-sm">فتح السحب</Link></td>
                   </tr>
                 ))}
               </tbody>

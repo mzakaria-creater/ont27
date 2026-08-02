@@ -182,13 +182,17 @@ function SmsRail() {
 }
 
 export default function PanelShell({ children }: { children: ReactNode }) {
-  const { permissions, can } = useAuth()
+  const { permissions, can, refreshPermissions } = useAuth()
   const { locale, t } = useLocale()
   const { pathname } = useLocation()
   const modules = usePermittedModules()
   const permsLoaded = permissions.length > 0
   const [navOpen, setNavOpen] = useState(false)
   const [smsOpen, setSmsOpen] = useState(true)
+
+  // Refresh the role permission matrix from role_page_permissions on each
+  // page visit so button visibility follows the current authenticated role.
+  useEffect(() => { void refreshPermissions() }, [pathname, refreshPermissions])
 
   const visible = (l: NavLinkDef) => l.keys.length === 0 || l.keys.some((k) => can(k))
   const renderLinks = (group: 'main' | 'system') => BUILT_LINKS.filter((l) => l.group === group && visible(l)).map((l) => (
