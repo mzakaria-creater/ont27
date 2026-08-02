@@ -2,9 +2,11 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth, loginErrorMessage } from './AuthContext'
+import { useLocale } from '../lib/locale'
 
 export default function LoginPage() {
   const { login } = useAuth()
+  const { locale, toggleLocale, t } = useLocale()
   const navigate = useNavigate()
   const location = useLocation()
   const [username, setUsername] = useState('')
@@ -33,11 +35,14 @@ export default function LoginPage() {
     <div className="login-screen">
       <form className="login-box" onSubmit={onSubmit}>
         <img src="/logo.svg" alt="OnTarget" className="login-logo" />
-        <h1 className="login-title">OnTarget Panel</h1>
-        <p className="login-sub">تسجيل الدخول للوحة التحكم</p>
+        <div className="recent-head">
+          <h1 className="login-title">OnTarget Panel</h1>
+          <button type="button" className="btn-ghost btn-sm" onClick={toggleLocale}>{locale === 'ar' ? 'EN' : 'AR'}</button>
+        </div>
+        <p className="login-sub">{t('تسجيل الدخول للوحة التحكم', 'Sign in to the control panel')}</p>
 
         <div className="login-field">
-          <label className="login-label" htmlFor="username">اسم المستخدم</label>
+          <label className="login-label" htmlFor="username">{t('اسم المستخدم', 'Username')}</label>
           <input
             id="username"
             className="login-input"
@@ -51,7 +56,7 @@ export default function LoginPage() {
         </div>
 
         <div className="login-field">
-          <label className="login-label" htmlFor="password">كلمة المرور</label>
+          <label className="login-label" htmlFor="password">{t('كلمة المرور', 'Password')}</label>
           <input
             id="password"
             className="login-input"
@@ -64,7 +69,7 @@ export default function LoginPage() {
         </div>
 
         <button className="login-btn" type="submit" disabled={busy}>
-          {busy ? 'جارٍ التحقق…' : 'دخول ←'}
+          {busy ? t('جارٍ التحقق…', 'Checking…') : t('دخول ←', 'Sign in →')}
         </button>
 
         {error && (
@@ -72,7 +77,7 @@ export default function LoginPage() {
         )}
 
         <div className="login-footnote">
-          <span className="login-soon-link" title="غير متاح بعد">نسيت كلمة المرور؟</span>
+          <span className="login-soon-link" title={t('غير متاح بعد', 'Not available yet')}>{t('نسيت كلمة المرور؟', 'Forgot password?')}</span>
         </div>
       </form>
     </div>
