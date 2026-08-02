@@ -516,3 +516,95 @@ extraRoutes.patch(
     return c.json({ channel: data })
   },
 )
+
+// ---- Known recipients: outgoing payout recipients, aggregated from live history ----
+const recipientKey = (value: string) => {
+  const digits = value.replace(/\D/g, '')
+  return digits.length >= 6 ? digits : value.trim().toLowerCase()
+}
+
+const loadRecipientPayouts = async (from: string | null, to: string | null) => {
+  let query = db
+    .from('maven_payout_transactions')
+    .select('maven_id, ontarget_ref, amount, status, pay_by, merchant, account_name, mobile_no, approved_by, first_seen_at')
+    .order('first_seen_at', { ascending: false, nullsFirst: false })
+  if (from) query = query.gte('first_seen_at', `${from}T00:00:00Z`)
+  if (to) query = query.lte('first_seen_at', `${to}T23:59:59Z`)
+
+  const rows: any[] = []
+  for (let offset = 0; offset < 50_000; offset += 1_000) {
+    const { data, error } = await query.range(offset, offset + 999)
+    if (error) return { rows, error }
+    rows.push(...(data ?? []))
+    if ((data ?? []).length < 1_000) break
+  }
+  return { rows, error: null }
+}
+
+extraRoutes.get(
+  '/known-recipients',
+  requireAnyPerm(['wallets', 'payouts'], 'can_view'),
+  async (c) => {
+    const from = c.req.query('from')?.trim() || null
+    const to = c.req.query('to')?.trim() || null
+    const q = c.req.query('q')?.trim().toLowerCase() || ''
+    const result = await loadRecipientPayouts(from, to)
+    if (result.error) return c.json({ error: 'db_error', detail: result.error.message }, 500)
+
+    const grouped = new Map<string, {
+      recipient: string
+      accountName: string | null
+      count: number
+      approvedCount: number
+      total: number
+      lastAt: string | null
+      methods: Set<string>
+      merchants: Set<string>
+    }>()
+    for (const row of result.rows) {
+      const recipient = String(row.mobile_no ?? row.account_name ?? '').trim()
+      if (!recipient) continue
+      const key = recipientKey(recipient)
+      if (!grouped.has(key)) grouped.set(key, {
+        recipient,
+        accountName: row.account_name ?? null,
+        count: 0,
+        approvedCount: 0,
+        total: 0,
+        lastAt: row.first_seen_at ?? null,
+        methods: new Set(),
+        merchants: new Set(),
+      })
+      const bucket = grouped.get(key)!
+      bucket.count += 1
+      if (row.status === 'APPROVED' || row.status === 'PAID') {
+        bucket.approvedCount += 1
+        bucket.total += Number(row.amount ?? 0)
+      }
+      if (!bucket.lastAt || String(row.first_seen_at ?? '') > bucket.lastAt) bucket.lastAt = row.first_seen_at ?? bucket.lastAt
+      if (row.pay_by) bucket.methods.add(row.pay_by)
+      if (row.merchant) bucket.merchants.add(row.merchant)
+    }
+
+    const recipients = [...grouped.entries()]
+      .map(([key, value]) => ({ ...value, key, methods: [...value.methods], merchants: [...value.merchants] }))
+      .filter((row) => !q || [row.recipient, row.accountName, ...row.methods, ...row.merchants].filter(Boolean).join(' ').toLowerCase().includes(q))
+      .sort((a, b) => b.total - a.total || b.count - a.count)
+      .slice(0, 1_000)
+    return c.json({ from, to, recipients })
+  },
+)
+
+extraRoutes.get(
+  '/known-recipients/:recipient',
+  requireAnyPerm(['wallets', 'payouts'], 'can_view'),
+  async (c) => {
+    const target = recipientKey(decodeURIComponent(c.req.param('recipient')))
+    const result = await loadRecipientPayouts(null, null)
+    if (result.error) return c.json({ error: 'db_error', detail: result.error.message }, 500)
+    const events = result.rows
+      .filter((row) => recipientKey(String(row.mobile_no ?? row.account_name ?? '')) === target)
+      .slice(0, 250)
+    return c.json({ events })
+  },
+)
