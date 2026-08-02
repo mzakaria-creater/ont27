@@ -60,6 +60,15 @@ async function runSync(): Promise<Record<string, number | string>> {
         if (fetchErr) throw new Error(`old: ${fetchErr.message}`)
         if (!rows?.length) break
 
+        // The old browser-worker stamps approved_by='Manual' (no actor name).
+        // Drop that field from the payload so a real name recorded by the
+        // panel is never overwritten by the generic label.
+        if (table === 'maven_transactions') {
+          for (const r of rows as Record<string, unknown>[]) {
+            if (r.approved_by == null || r.approved_by === 'Manual') delete r.approved_by
+          }
+        }
+
         const { error: upErr } = await db.from(table).upsert(rows, { onConflict: pk })
         if (upErr) throw new Error(`upsert: ${upErr.message}`)
         upserted += rows.length

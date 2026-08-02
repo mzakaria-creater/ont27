@@ -378,7 +378,11 @@ export default function Deposits() {
                       </td>
                       <td>
                         <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
-                        {r.approved_by && <div className="cell-sub">بواسطة {r.approved_by}</div>}
+                        {r.status !== 'PENDING' && (
+                          <div className="cell-sub">
+                            بواسطة {!r.approved_by || r.approved_by === 'Manual' ? 'النظام (آلي)' : r.approved_by}
+                          </div>
+                        )}
                       </td>
                       <td className="mono">{depositTime(r)}</td>
                       <td onClick={(e) => e.stopPropagation()}>

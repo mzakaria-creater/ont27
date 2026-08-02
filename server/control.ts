@@ -78,6 +78,12 @@ controlRoutes.post('/queue/approve', async (c) => {
   if (!Number.isInteger(txId) || !Number.isInteger(smsId)) return c.json({ error: 'bad_request' }, 400)
   const { data, error } = await old.rpc('pending_link_and_approve', { p_tx_id: txId, p_sms_id: smsId })
   if (error) return c.json({ error: 'rpc_error', detail: error.message }, 500)
-  await audit(c.get('actor'), 'queue.link_and_approve', { tx_id: txId, sms_id: smsId, result: data })
+  const actor = c.get('actor')
+  // Record WHO approved on both DBs — the worker only writes a generic "Manual".
+  await Promise.all([
+    old.from('maven_transactions').update({ approved_by: actor.username }).eq('tx_id', txId),
+    db.from('maven_transactions').update({ approved_by: actor.username }).eq('tx_id', txId),
+  ])
+  await audit(actor, 'queue.link_and_approve', { tx_id: txId, sms_id: smsId, result: data })
   return c.json({ ok: true, result: data })
 })
