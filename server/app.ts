@@ -14,6 +14,7 @@ import { complaintRoutes } from './complaints.js'
 import { paymentMethodRoutes } from './paymentMethods.js'
 import { adminRoutes } from './admin.js'
 import { reportsRoutes } from './reports.js'
+import { reviewRoutes } from './review.js'
 
 export const app = new Hono().basePath('/api')
 
@@ -35,4 +36,5 @@ app.route('/complaints', complaintRoutes)
 app.route('/payment-methods', paymentMethodRoutes)
 app.route('/admin', adminRoutes)
 app.route('/reports', reportsRoutes)
+app.route('/review', reviewRoutes)
 app.route('/', extraRoutes)

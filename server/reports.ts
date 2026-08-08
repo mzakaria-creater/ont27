@@ -40,8 +40,12 @@ async function buildReport(c: any) {
   const byMethod = new Map<string, { method: string; master: string; count: number; amount: number }>()
   const daily = new Map<string, { date: string; deposits: number; payouts: number; count: number }>()
   let includesPayFuture = false
+  let ngpayPaid = 0
+  let unassigned = { count: 0, amount: 0 }
   for (const row of depRows) {
     const status = row.status ?? 'PENDING'; const amount = Number(row.amount ?? 0)
+    if (/^ngpay$/i.test(row.master_merchant ?? '') && (status === 'PAID' || status === 'APPROVED')) ngpayPaid += amount
+    if (row.master_merchant == null) { unassigned.count += 1; unassigned.amount += amount }
     if (!depositStatuses[status]) depositStatuses[status] = { count: 0, amount: 0 }
     depositStatuses[status].count += 1; depositStatuses[status].amount += amount
     const master = row.master_merchant ?? 'Unassigned'
@@ -55,14 +59,20 @@ async function buildReport(c: any) {
     const date = row.first_seen_at?.slice(0, 10)
     if (date) { const bucket = daily.get(date) ?? { date, deposits: 0, payouts: 0, count: 0 }; bucket.deposits += amount; bucket.count += 1; daily.set(date, bucket) }
   }
+  let approvedPayouts = 0
   for (const row of payoutRows) {
     const status = row.status ?? 'PENDING'; const amount = Number(row.amount ?? 0)
+    if (status === 'APPROVED') approvedPayouts += amount
     if (!payoutStatuses[status]) payoutStatuses[status] = { count: 0, amount: 0 }
     payoutStatuses[status].count += 1; payoutStatuses[status].amount += amount
     const date = row.first_seen_at?.slice(0, 10)
     if (date) { const bucket = daily.get(date) ?? { date, deposits: 0, payouts: 0, count: 0 }; bucket.payouts += amount; daily.set(date, bucket) }
   }
-  return { from, to, depositStatuses, payoutStatuses, byMaster: [...byMaster.values()].sort((a, b) => b.amount - a.amount), byMethod: [...byMethod.values()].sort((a, b) => b.amount - a.amount), daily: [...daily.values()].sort((a, b) => b.date.localeCompare(a.date)), includesPayFuture }
+  // maven_payout_transactions has no master_merchant column, so payout totals
+  // cannot be split per provider — the UI must disclose that instead of
+  // silently attributing everything to NGPay.
+  const hero = { ngpayPaid, approvedPayouts, net: ngpayPaid - approvedPayouts, payoutsUnclassified: true }
+  return { from, to, hero, unassigned, depositStatuses, payoutStatuses, byMaster: [...byMaster.values()].sort((a, b) => b.amount - a.amount), byMethod: [...byMethod.values()].sort((a, b) => b.amount - a.amount), daily: [...daily.values()].sort((a, b) => b.date.localeCompare(a.date)), includesPayFuture }
 }
 const esc = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`
 

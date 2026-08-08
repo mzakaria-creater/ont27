@@ -265,6 +265,20 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
     oldSync = oldErr ? `error: ${oldErr.message}` : 'ok'
   }
 
+  // Decision log feeds the Review screen. executed_on_provider stays false at
+  // record time: even when old_sync=ok the browser worker executes async, so
+  // claiming provider execution here would be dishonest.
+  const { error: logErr } = await db.from('deposit_decision_log').insert({
+    tx_id: Number(txId),
+    ontarget_ref: before.ontarget_ref,
+    decision: target,
+    actor_name: actor.username,
+    reason: note ?? `old_sync=${oldSync}`,
+    db_status_before: before.status,
+    executed_on_provider: false,
+  })
+  if (logErr) console.error('deposit_decision_log insert failed:', logErr.message)
+
   const { error: auditErr } = await db.from('audit_log').insert({
     actor_type: 'manual_panel',
     actor_id: actor.sub,

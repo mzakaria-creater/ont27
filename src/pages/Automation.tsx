@@ -13,7 +13,9 @@ interface RateRow { currency_pair: string | null; rate: number | null; fetched_a
 const FLAG_LABELS: Record<string, string> = {
   automation_enabled: 'الأتمتة مفعّلة',
   ngpay_enabled: 'NGPay',
-  maven_enabled: 'Maven',
+  // maven_enabled is the old stack's back-office worker channel; the literal
+  // provider name must never surface in the UI (naming rule).
+  maven_enabled: 'قناة المزوّد (back-office)',
   payfuture_enabled: 'PayFuture',
   balance_check_enabled: 'فحص الرصيد',
   above_limit_to_manual: 'فوق الحد → يدوي',
@@ -43,6 +45,8 @@ interface PayAccount {
   is_active: boolean | null
 }
 
+interface CronJob { jobid: number; jobname: string | null; schedule: string | null; active: boolean | null; last_start: string | null; last_end: string | null; last_status: string | null; last_message: string | null }
+
 interface PayfutureRoute {
   id: string
   name: string | null
@@ -61,6 +65,7 @@ export default function Automation() {
   } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [accounts, setAccounts] = useState<PayAccount[] | null>(null)
+  const [crons, setCrons] = useState<CronJob[] | null>(null)
   const [pf, setPf] = useState<PayfutureRoute[] | null>(null)
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [panelBusy, setPanelBusy] = useState(false)
@@ -73,6 +78,9 @@ export default function Automation() {
     api<{ routes: PayfutureRoute[] }>('/api/control/panel?data=payfuture')
       .then((r) => setPf(r.routes))
       .catch(() => setPf(null))
+    api<{ jobs: CronJob[] }>('/api/control/crons')
+      .then((r) => setCrons(r.jobs))
+      .catch(() => setCrons(null))
   }
 
   useEffect(() => {
@@ -123,6 +131,27 @@ export default function Automation() {
 
       {err && <div className="card warn">{err}</div>}
       {!data && !err && <p className="sidebar-hint">جارٍ التحميل…</p>}
+
+      {crons && (
+        <section className="card recent-card">
+          <div className="recent-head">
+            <h3>⏱️ صحة مهام الجدولة (النظام القديم)</h3>
+            <span className="mono cell-sub">{crons.filter((j) => j.active).length} نشطة من {crons.length}</span>
+          </div>
+          <div className="table-wrap"><table className="data-table">
+            <thead><tr><th>#</th><th>المهمة</th><th>الجدولة</th><th>نشطة</th><th>آخر تشغيل</th><th>النتيجة</th><th>الرسالة</th></tr></thead>
+            <tbody>{crons.map((j) => <tr key={j.jobid}>
+              <td className="mono">{j.jobid}</td>
+              <td className="mono">{j.jobname ?? '—'}</td>
+              <td className="mono">{j.schedule ?? '—'}</td>
+              <td>{j.active ? '●' : '○'}</td>
+              <td className="mono">{j.last_start ? depositTime({ first_seen_at: j.last_start }) : '—'}</td>
+              <td><span className={`pay-status-badge ${j.last_status === 'succeeded' ? 'st-paid' : j.last_status ? 'st-declined' : 'st-dim'}`}>{j.last_status ?? '—'}</span></td>
+              <td className="cell-sub">{j.last_message ?? '—'}</td>
+            </tr>)}</tbody>
+          </table></div>
+        </section>
+      )}
 
       {settings && (
         <section className="card recent-card">

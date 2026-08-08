@@ -45,6 +45,17 @@ controlRoutes.get('/status', async (c) => {
   })
 })
 
+// Cron-health monitor for the OLD project's pg_cron jobs (two critical
+// breakages were found there by manual inspection — job 36's pg_sleep(30)
+// and job 61's wrong function name). Read-only SECURITY DEFINER RPC.
+controlRoutes.get('/crons', async (c) => {
+  const old = oldDb()
+  if (!old) return c.json({ error: 'old_db_not_configured' }, 500)
+  const { data, error } = await old.rpc('panel_cron_health')
+  if (error) return c.json({ error: 'rpc_error', detail: error.message }, 500)
+  return c.json({ jobs: data ?? [] })
+})
+
 controlRoutes.post('/automation', async (c) => {
   const old = oldDb()
   if (!old) return c.json({ error: 'old_db_not_configured' }, 500)

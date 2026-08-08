@@ -20,6 +20,7 @@ import Automation from './pages/Automation'
 import Audit from './pages/Audit'
 import AdminPage from './pages/AdminPage'
 import Reports from './pages/Reports'
+import Review from './pages/Review'
 import Notifications from './pages/Notifications'
 import TvScreen from './pages/TvScreen'
 import Complaints from './pages/Complaints'
@@ -190,6 +191,7 @@ export default function App() {
             <Route path="/automation" element={<Automation />} />
             <Route path="/audit" element={<Audit />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/review" element={<Review />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/tv" element={<TvScreen />} />

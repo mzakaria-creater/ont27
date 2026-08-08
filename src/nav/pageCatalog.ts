@@ -91,6 +91,7 @@ export const PAGE_CATALOG: Record<string, { category: string; label: string }> =
 
   audit_log: { category: 'audit', label: 'سجل التدقيق' },
   'audit-logs': { category: 'audit', label: 'سجل التدقيق' },
+  review: { category: 'audit', label: 'مراجعة القرارات' },
 
   users: { category: 'admin', label: 'المستخدمون' },
   permissions: { category: 'admin', label: 'الصلاحيات' },
