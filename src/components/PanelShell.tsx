@@ -45,6 +45,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/risk', icon: '🛡️', labelAr: 'المخاطر', labelEn: 'Risk & compliance', keys: ['risk', 'risk_audit', 'flagged', 'exceptions', 'manual_review', 'velocity', 'compliance'], group: 'system' },
   { to: '/automation', icon: '🤖', labelAr: 'الأتمتة', labelEn: 'Automation', keys: ['telegram_bot', 'binance_p2p', 'treasury', 'allocation_engine', 'capacity_monitor', 'workspace_hub', 'launchpad', 'ai_team'], group: 'system' },
   { to: '/reports', icon: '📊', labelAr: 'التقارير', labelEn: 'Reports', keys: ['reports', 'advanced_analysis'], group: 'system' },
+  { to: '/telegram', icon: '📨', labelAr: 'تنبيهات Telegram', labelEn: 'Telegram alerts', keys: ['telegram_bot', 'automation'], group: 'system' },
   { to: '/review', icon: '🧐', labelAr: 'مراجعة القرارات', labelEn: 'Decision review', keys: ['review', 'audit_log', 'audit-logs'], group: 'system' },
   { to: '/audit', icon: '🕵️', labelAr: 'سجل التدقيق', labelEn: 'Audit log', keys: ['audit_log', 'audit-logs'], group: 'system' },
   { to: '/notifications', icon: '🔔', labelAr: 'الإشعارات', labelEn: 'Notifications', keys: [], group: 'system' },
