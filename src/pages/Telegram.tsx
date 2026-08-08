@@ -37,11 +37,11 @@ export default function Telegram() {
     {data && <>
       <section className="card recent-card"><div className="recent-head"><h3>{t('التوكن', 'Bot token')}</h3>
         <span className={`pay-status-badge ${data.token_configured ? 'st-paid' : 'st-pending'}`}>{data.token_configured ? t('مُهيَّأ', 'Configured') : t('لم يُهيَّأ', 'Not configured')}</span></div>
-        {canEdit && <form className="control-row" onSubmit={saveToken}><input className="login-input" type="password" placeholder="123456:ABC-..." value={token} onChange={(e) => setToken(e.target.value)} /><button className="btn-primary btn-sm">{t('حفظ', 'Save')}</button>{data.token_configured && data.chats.some((ch) => ch.is_active) && <button type="button" className="btn-ghost btn-sm" onClick={() => void sendTest()}>{t('إرسال اختبار', 'Send test')}</button>}</form>}
+        {canEdit && <form className="control-row" onSubmit={saveToken}><input className="login-input" type="password" placeholder="123456:ABC-..." aria-label={t('توكن بوت Telegram', 'Telegram bot token')} value={token} onChange={(e) => setToken(e.target.value)} /><button className="btn-primary btn-sm">{t('حفظ', 'Save')}</button>{data.token_configured && data.chats.some((ch) => ch.is_active) && <button type="button" className="btn-ghost btn-sm" onClick={() => void sendTest()}>{t('إرسال اختبار', 'Send test')}</button>}</form>}
       </section>
 
       <section className="card recent-card"><div className="recent-head"><h3>{t('المحادثات', 'Chats')}</h3></div>
-        {canEdit && <form className="control-row" onSubmit={addChat}><input required className="login-input" placeholder="chat_id (-100...)" value={chat.chat_id} onChange={(e) => setChat({ ...chat, chat_id: e.target.value })} /><input className="login-input" placeholder={t('تسمية', 'Label')} value={chat.label} onChange={(e) => setChat({ ...chat, label: e.target.value })} /><button className="btn-primary btn-sm">{t('إضافة', 'Add')}</button></form>}
+        {canEdit && <form className="control-row" onSubmit={addChat}><input required className="login-input" placeholder="chat_id (-100...)" aria-label="chat_id" value={chat.chat_id} onChange={(e) => setChat({ ...chat, chat_id: e.target.value })} /><input className="login-input" placeholder={t('تسمية', 'Label')} aria-label={t('تسمية المحادثة', 'Chat label')} value={chat.label} onChange={(e) => setChat({ ...chat, label: e.target.value })} /><button className="btn-primary btn-sm">{t('إضافة', 'Add')}</button></form>}
         <div className="table-wrap"><table className="data-table"><thead><tr><th>chat_id</th><th>{t('التسمية', 'Label')}</th><th>{t('الحالة', 'Status')}</th><th /></tr></thead>
           <tbody>{data.chats.length ? data.chats.map((row) => <tr key={row.id}><td className="mono">{row.chat_id}</td><td>{row.label ?? '—'}</td><td><span className={`pay-status-badge ${row.is_active ? 'st-paid' : 'st-dim'}`}>{row.is_active ? t('نشط', 'Active') : t('موقوف', 'Off')}</span></td><td>{canEdit && <button className="btn-ghost btn-sm" onClick={() => void toggleChat(row)}>{row.is_active ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>}</td></tr>) : <tr><td colSpan={4} className="sidebar-hint">{t('لا توجد محادثات.', 'No chats.')}</td></tr>}</tbody>
         </table></div>
@@ -49,7 +49,7 @@ export default function Telegram() {
 
       <section className="card recent-card"><div className="recent-head"><h3>{t('أنواع التنبيهات', 'Alert types')}</h3></div>
         <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('النوع', 'Type')}</th><th>{t('الوصف', 'Label')}</th><th>{t('مفعّل', 'Enabled')}</th></tr></thead>
-          <tbody>{data.gates.map((g) => <tr key={g.alert_type}><td className="mono">{g.alert_type}</td><td>{g.label ?? '—'}</td><td><button className={`pill${g.enabled ? ' active' : ''}`} disabled={!canEdit} onClick={() => void toggleGate(g)}>{g.enabled ? '✓' : '—'}</button></td></tr>)}</tbody>
+          <tbody>{data.gates.map((g) => <tr key={g.alert_type}><td className="mono">{g.alert_type}</td><td>{g.label ?? '—'}</td><td><button className={`pill${g.enabled ? ' active' : ''}`} disabled={!canEdit} onClick={() => void toggleGate(g)} aria-label={`${g.enabled ? t('تعطيل', 'Disable') : t('تفعيل', 'Enable')} ${g.label ?? g.alert_type}`} aria-pressed={g.enabled}>{g.enabled ? '✓' : '—'}</button></td></tr>)}</tbody>
         </table></div>
       </section>
 
