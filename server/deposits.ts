@@ -226,7 +226,7 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
 
   const { data: before, error: readErr } = await db
     .from('maven_transactions')
-    .select('tx_id, status, amount, currency, ontarget_ref, merchant, master_merchant')
+    .select('tx_id, status, amount, currency, ontarget_ref, merchant, master_merchant, gateway')
     .eq('tx_id', txId)
     .maybeSingle()
   if (readErr) return c.json({ error: 'db_error', detail: readErr.message }, 500)
@@ -236,6 +236,38 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
   }
 
   const actor = c.get('actor')
+
+  // NGPay deposits execute FOR REAL through the panel-v2 ngpay-approve worker
+  // (2026-08-08 decision: own worker, not the old project's browser_jobs
+  // pipeline). The worker owns the decision log + row update; the old DB
+  // catches up from the provider via its collector, so we deliberately skip
+  // dashboard_manual_action here to avoid double execution.
+  if (before.gateway === 'NagupayP2P') {
+    const baseUrl = process.env.SUPABASE_URL
+    const serviceKey = process.env.SUPABASE_SECRET_KEY
+    if (!baseUrl || !serviceKey) return c.json({ error: 'worker_not_configured' }, 500)
+    const workerResponse = await fetch(`${baseUrl}/functions/v1/ngpay-approve`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
+      body: JSON.stringify({ tx_id: Number(txId), decision: target, actor_name: actor.username, remark: note ?? undefined }),
+    })
+    const workerResult = await workerResponse.json().catch(() => ({ error: 'worker_invalid_response' })) as Record<string, unknown>
+    const executed = workerResponse.ok && workerResult.executed_on_provider === true
+    const { error: auditErr2 } = await db.from('audit_log').insert({
+      actor_type: 'manual_panel',
+      actor_id: actor.sub,
+      actor_name: actor.username,
+      action: `deposit.${action}`,
+      entity: 'maven_transactions',
+      entity_id: txId,
+      before: { status: before.status },
+      after: { status: target, note, provider_execution: 'ngpay-approve', executed_on_provider: executed, worker: workerResponse.ok ? undefined : workerResult },
+    })
+    if (!workerResponse.ok) {
+      return c.json({ error: 'worker_failed', worker: workerResult }, workerResponse.status as 400 | 401 | 404 | 409 | 500)
+    }
+    return c.json({ ok: true, status: target, executed_on_provider: executed, audit_error: auditErr2?.message })
+  }
   const nowIso = new Date().toISOString()
   // .eq('status','PENDING') keeps the transition atomic against races.
   const { data: updated, error: updErr } = await db
