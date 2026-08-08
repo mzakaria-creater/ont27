@@ -13,14 +13,23 @@ import { ACCESS_COOKIE, verifyAccessToken } from './tokens.js'
 
 export const deltaSyncRoutes = new Hono()
 
-// table, pk, timestamp column to watermark on
-const GROWING: { table: string; pk: string; ts: string }[] = [
-  { table: 'maven_transactions', pk: 'tx_id', ts: 'first_seen_at' },
-  { table: 'maven_payout_transactions', pk: 'maven_id', ts: 'first_seen_at' },
+// table, pk, timestamp column to watermark on. `updatedTs` (when set) drives a
+// second pass that re-pulls rows whose STATUS changed on the old DB after they
+// were first synced — without it a tx that flips DECLINED→PAID upstream stays
+// frozen at its first-synced status here forever (this is exactly what made
+// ontarget_ref=777021614 read DECLINED locally while the old prod DB said PAID).
+const GROWING: { table: string; pk: string; ts: string; updatedTs?: string }[] = [
+  { table: 'maven_transactions', pk: 'tx_id', ts: 'first_seen_at', updatedTs: 'last_status_change' },
+  { table: 'maven_payout_transactions', pk: 'maven_id', ts: 'first_seen_at', updatedTs: 'updated_utc' },
   { table: 'inbound_sms', pk: 'id', ts: 'created_at' },
 ]
 
 const OVERLAP_MS = 5 * 60_000
+// The update pass overlaps a full day: the panel writes its own local
+// last_status_change on manual decisions, which can push the watermark past
+// not-yet-synced upstream changes. Upserts are idempotent and a day of status
+// flips is small, so the wide window costs little and misses nothing.
+const UPDATED_OVERLAP_MS = 24 * 60 * 60_000
 const PAGE = 1000
 
 let lastRunAt = 0
@@ -33,51 +42,66 @@ async function runSync(): Promise<Record<string, number | string>> {
 
   const results: Record<string, number | string> = {}
 
-  for (const { table, pk, ts } of GROWING) {
-    try {
-      const { data: maxRow, error: maxErr } = await db
+  async function pullSince(table: string, pk: string, col: string, since: string): Promise<number> {
+    let upserted = 0
+    let offset = 0
+    for (;;) {
+      const { data: rows, error: fetchErr } = await oldDb
         .from(table)
-        .select(ts)
-        .order(ts, { ascending: false, nullsFirst: false })
-        .limit(1)
-        .maybeSingle()
-      if (maxErr) throw new Error(maxErr.message)
-      const maxTs = (maxRow as Record<string, string> | null)?.[ts]
-      const since = maxTs
-        ? new Date(new Date(maxTs).getTime() - OVERLAP_MS).toISOString()
-        : '1970-01-01T00:00:00Z'
+        .select('*')
+        .gte(col, since)
+        .order(col, { ascending: true })
+        .order(pk, { ascending: true })
+        .range(offset, offset + PAGE - 1)
+      if (fetchErr) throw new Error(`old: ${fetchErr.message}`)
+      if (!rows?.length) break
 
-      let upserted = 0
-      let offset = 0
-      for (;;) {
-        const { data: rows, error: fetchErr } = await oldDb
-          .from(table)
-          .select('*')
-          .gte(ts, since)
-          .order(ts, { ascending: true })
-          .order(pk, { ascending: true })
-          .range(offset, offset + PAGE - 1)
-        if (fetchErr) throw new Error(`old: ${fetchErr.message}`)
-        if (!rows?.length) break
-
-        // The old browser-worker stamps approved_by='Manual' (no actor name).
-        // Drop that field from the payload so a real name recorded by the
-        // panel is never overwritten by the generic label.
-        if (table === 'maven_transactions') {
-          for (const r of rows as Record<string, unknown>[]) {
-            if (r.approved_by == null || r.approved_by === 'Manual') delete r.approved_by
-          }
+      // The old browser-worker stamps approved_by='Manual' (no actor name).
+      // Drop that field from the payload so a real name recorded by the
+      // panel is never overwritten by the generic label.
+      if (table === 'maven_transactions') {
+        for (const r of rows as Record<string, unknown>[]) {
+          if (r.approved_by == null || r.approved_by === 'Manual') delete r.approved_by
         }
-
-        const { error: upErr } = await db.from(table).upsert(rows, { onConflict: pk })
-        if (upErr) throw new Error(`upsert: ${upErr.message}`)
-        upserted += rows.length
-        if (rows.length < PAGE) break
-        offset += rows.length
       }
-      results[table] = upserted
+
+      const { error: upErr } = await db.from(table).upsert(rows, { onConflict: pk })
+      if (upErr) throw new Error(`upsert: ${upErr.message}`)
+      upserted += rows.length
+      if (rows.length < PAGE) break
+      offset += rows.length
+    }
+    return upserted
+  }
+
+  async function watermark(table: string, col: string, overlapMs: number): Promise<string> {
+    const { data: maxRow, error: maxErr } = await db
+      .from(table)
+      .select(col)
+      .order(col, { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle()
+    if (maxErr) throw new Error(maxErr.message)
+    const maxTs = (maxRow as Record<string, string> | null)?.[col]
+    return maxTs
+      ? new Date(new Date(maxTs).getTime() - overlapMs).toISOString()
+      : '1970-01-01T00:00:00Z'
+  }
+
+  for (const { table, pk, ts, updatedTs } of GROWING) {
+    try {
+      const since = await watermark(table, ts, OVERLAP_MS)
+      results[table] = await pullSince(table, pk, ts, since)
     } catch (e) {
       results[table] = `error: ${(e as Error).message}`
+    }
+
+    if (!updatedTs) continue
+    try {
+      const since = await watermark(table, updatedTs, UPDATED_OVERLAP_MS)
+      results[`${table}:updated`] = await pullSince(table, pk, updatedTs, since)
+    } catch (e) {
+      results[`${table}:updated`] = `error: ${(e as Error).message}`
     }
   }
 
