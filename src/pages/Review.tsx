@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import PanelShell from '../components/PanelShell'
+import ProofModal from '../components/ProofModal'
 import { api, ApiError } from '../lib/api'
 import { depositTime } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -12,6 +13,7 @@ export default function Review() {
   const [data, setData] = useState<{ rows: Row[]; pendingProvider: number } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'pending' | 'deposit' | 'payout'>('all')
+  const [proof, setProof] = useState<{ url: string; ref: string } | null>(null)
   const load = useCallback(async () => {
     try {
       setData(await api(`/api/review${filter === 'pending' ? '?pending_provider=1' : ''}`))
@@ -38,10 +40,11 @@ export default function Review() {
         <td className="mono">{r.db_status_before ?? '—'}</td>
         <td>{r.actor_name ?? '—'}</td>
         <td>{r.executed_on_provider ? <span className="pay-status-badge st-paid">{t('منفَّذ', 'Executed')}</span> : <span className="pay-status-badge st-pending">{t('يدوي — لم يُنفَّذ', 'Manual — not executed')}</span>}</td>
-        <td>{r.proof_url ? <a href={r.proof_url} target="_blank" rel="noreferrer">📷</a> : '—'}</td>
+        <td>{r.proof_url ? <button className="btn-ghost btn-sm" onClick={() => setProof({ url: r.proof_url!, ref: r.ref ?? String(r.provider_id ?? '') })} aria-label={t('عرض إثبات الدفع', 'View payment proof')}>📷 {t('عرض', 'View')}</button> : '—'}</td>
         <td>{r.note ?? '—'}</td>
         <td className="mono">{r.created_at ? depositTime({ first_seen_at: r.created_at }) : '—'}</td>
       </tr>) : <tr><td colSpan={9} className="sidebar-hint">{t('لا توجد قرارات مسجلة.', 'No recorded decisions.')}</td></tr>}</tbody>
     </table></div></section>}
+    {proof && <ProofModal url={proof.url} title={`${t('إثبات الدفع', 'Payment proof')} · ${proof.ref}`} onClose={() => setProof(null)} />}
   </PanelShell>
 }

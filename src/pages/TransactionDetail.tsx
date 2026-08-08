@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
+import ProofModal from '../components/ProofModal'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money, statusMeta } from '../lib/deposits'
 import type { DepositDetail } from '../lib/deposits'
@@ -60,6 +61,7 @@ export default function TransactionDetail() {
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [decisionMsg, setDecisionMsg] = useState<string | null>(null)
+  const [proofOpen, setProofOpen] = useState(false)
 
   const load = useCallback(async () => {
     if (!ref) return
@@ -147,7 +149,7 @@ export default function TransactionDetail() {
               </dl>
 
               {d.proof_image_url && (
-                <a className="pay-status-link" href={d.proof_image_url} target="_blank" rel="noreferrer">🧾 عرض إثبات الدفع</a>
+                <button type="button" className="btn-ghost btn-sm" onClick={() => setProofOpen(true)} aria-label="عرض إثبات الدفع">🧾 عرض إثبات الدفع</button>
               )}
             </section>
 
@@ -250,6 +252,9 @@ export default function TransactionDetail() {
             <Link to="/deposits" className="btn-ghost btn-sm">→ رجوع للإيداعات</Link>
           </aside>
         </div>
+      )}
+      {proofOpen && data?.deposit.proof_image_url && (
+        <ProofModal url={data.deposit.proof_image_url} title={`إثبات الدفع · ${data.deposit.ontarget_ref}`} onClose={() => setProofOpen(false)} />
       )}
     </PanelShell>
   )

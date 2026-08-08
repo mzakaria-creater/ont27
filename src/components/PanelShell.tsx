@@ -12,6 +12,8 @@ import { useLocale } from '../lib/locale'
 // first, then the role's remaining permitted modules as "قريباً" placeholders),
 // main content, and an always-on live SMS rail for roles with sms_live access.
 
+type NavGroupId = 'main' | 'operations' | 'management' | 'risk' | 'system'
+
 interface NavLinkDef {
   to: string
   icon: string
@@ -19,34 +21,48 @@ interface NavLinkDef {
   labelEn: string
   /** visible when the role can_view ANY of these keys; empty = always */
   keys: string[]
-  group: 'main' | 'system'
+  group: NavGroupId
 }
 
+// Ordered nav groups. Only groups with at least one visible link render.
+const NAV_GROUPS: { id: NavGroupId; ar: string; en: string }[] = [
+  { id: 'main', ar: 'رئيسية', en: 'Main' },
+  { id: 'operations', ar: 'العمليات', en: 'Operations' },
+  { id: 'management', ar: 'الإدارة والتجار', en: 'Management' },
+  { id: 'risk', ar: 'المخاطر والأتمتة', en: 'Risk & automation' },
+  { id: 'system', ar: 'النظام', en: 'System' },
+]
+
 const BUILT_LINKS: NavLinkDef[] = [
+  // Main — dashboards & live monitoring
   { to: '/', icon: '🏠', labelAr: 'لوحة التحكم', labelEn: 'Dashboard', keys: [], group: 'main' },
   { to: '/monitor', icon: '📡', labelAr: 'المراقبة المباشرة', labelEn: 'Live Monitor', keys: [], group: 'main' },
   { to: '/executive-dashboard', icon: '▦', labelAr: 'لوحة الإدارة التنفيذية', labelEn: 'Executive Dashboard', keys: ['dashboard', 'reports', 'advanced_analysis', 'treasury', 'wallets'], group: 'main' },
   { to: '/analytics-dashboard', icon: '◫', labelAr: 'لوحة التحليلات', labelEn: 'Analytics Dashboard', keys: ['dashboard', 'reports', 'advanced_analysis', 'wallets'], group: 'main' },
-  { to: '/approvals', icon: '✅', labelAr: 'طابور الموافقات', labelEn: 'Approval queue', keys: ['approvals', 'approval-queue', 'my-queue', 'my-tasks', 'assigned_to_me'], group: 'main' },
-  { to: '/deposits', icon: '💰', labelAr: 'الإيداعات', labelEn: 'Deposits', keys: ['deposits'], group: 'main' },
-  { to: '/payouts', icon: '📤', labelAr: 'السحوبات', labelEn: 'Payouts', keys: ['payouts'], group: 'main' },
-  { to: '/transactions', icon: '📋', labelAr: 'كل المعاملات', labelEn: 'All transactions', keys: ['transactions', 'all_transactions', 'refunds', 'reversals'], group: 'main' },
-  { to: '/sms', icon: '📨', labelAr: 'SMS مباشر', labelEn: 'Live SMS', keys: ['sms_live'], group: 'main' },
-  { to: '/tv', icon: '🖥️', labelAr: 'شاشة TV', labelEn: 'TV screen', keys: ['sms_live'], group: 'main' },
-  { to: '/complaints', icon: '🛎️', labelAr: 'الشكاوى', labelEn: 'Complaints', keys: [], group: 'main' },
-  { to: '/merchant-link-generator', icon: '🔗', labelAr: 'روابط الدفع', labelEn: 'Payment links', keys: ['checkout-builder'], group: 'main' },
-  { to: '/merchants', icon: '🏬', labelAr: 'التجار', labelEn: 'Merchants', keys: ['merchants'], group: 'system' },
-  { to: '/wallets', icon: '👛', labelAr: 'المحافظ', labelEn: 'Wallets', keys: ['wallets'], group: 'system' },
-  { to: '/payment-methods', icon: '💳', labelAr: 'طرق الدفع', labelEn: 'Payment Methods', keys: ['wallets', 'payment_methods'], group: 'system' },
-  { to: '/known-recipients', icon: '🎯', labelAr: 'المستلمون المعروفون', labelEn: 'Known Recipients', keys: ['wallets', 'payouts'], group: 'system' },
-  { to: '/ontarget-hub', icon: '🏛️', labelAr: 'مركز الخزينة', labelEn: 'Treasury Hub', keys: ['wallets', 'payouts', 'sms_live', 'treasury'], group: 'system' },
-  { to: '/crm', icon: '👥', labelAr: 'CRM العملاء', labelEn: 'Customer CRM', keys: ['client_crm'], group: 'system' },
-  { to: '/settlements', icon: '🧾', labelAr: 'التسويات', labelEn: 'Settlements', keys: ['settlements', 'settlements_list', 'settlement_recon', 'fees'], group: 'system' },
-  { to: '/risk', icon: '🛡️', labelAr: 'المخاطر', labelEn: 'Risk & compliance', keys: ['risk', 'risk_audit', 'flagged', 'exceptions', 'manual_review', 'velocity', 'compliance'], group: 'system' },
-  { to: '/automation', icon: '🤖', labelAr: 'الأتمتة', labelEn: 'Automation', keys: ['telegram_bot', 'binance_p2p', 'treasury', 'allocation_engine', 'capacity_monitor', 'workspace_hub', 'launchpad', 'ai_team'], group: 'system' },
+  // Operations — the daily transaction workflow
+  { to: '/approvals', icon: '✅', labelAr: 'طابور الموافقات', labelEn: 'Approval queue', keys: ['approvals', 'approval-queue', 'my-queue', 'my-tasks', 'assigned_to_me'], group: 'operations' },
+  { to: '/deposits', icon: '💰', labelAr: 'الإيداعات', labelEn: 'Deposits', keys: ['deposits'], group: 'operations' },
+  { to: '/payouts', icon: '📤', labelAr: 'السحوبات', labelEn: 'Payouts', keys: ['payouts'], group: 'operations' },
+  { to: '/transactions', icon: '📋', labelAr: 'كل المعاملات', labelEn: 'All transactions', keys: ['transactions', 'all_transactions', 'refunds', 'reversals'], group: 'operations' },
+  { to: '/review', icon: '🧐', labelAr: 'مراجعة القرارات', labelEn: 'Decision review', keys: ['review', 'audit_log', 'audit-logs'], group: 'operations' },
+  { to: '/sms', icon: '📨', labelAr: 'SMS مباشر', labelEn: 'Live SMS', keys: ['sms_live'], group: 'operations' },
+  { to: '/tv', icon: '🖥️', labelAr: 'شاشة TV', labelEn: 'TV screen', keys: ['sms_live'], group: 'operations' },
+  { to: '/complaints', icon: '🛎️', labelAr: 'الشكاوى', labelEn: 'Complaints', keys: [], group: 'operations' },
+  { to: '/merchant-link-generator', icon: '🔗', labelAr: 'روابط الدفع', labelEn: 'Payment links', keys: ['checkout-builder'], group: 'operations' },
+  // Management — merchants, wallets, money movement
+  { to: '/merchants', icon: '🏬', labelAr: 'التجار', labelEn: 'Merchants', keys: ['merchants'], group: 'management' },
+  { to: '/wallets', icon: '👛', labelAr: 'المحافظ', labelEn: 'Wallets', keys: ['wallets'], group: 'management' },
+  { to: '/payment-methods', icon: '💳', labelAr: 'طرق الدفع', labelEn: 'Payment Methods', keys: ['wallets', 'payment_methods'], group: 'management' },
+  { to: '/known-recipients', icon: '🎯', labelAr: 'المستلمون المعروفون', labelEn: 'Known Recipients', keys: ['wallets', 'payouts'], group: 'management' },
+  { to: '/ontarget-hub', icon: '🏛️', labelAr: 'مركز الخزينة', labelEn: 'Treasury Hub', keys: ['wallets', 'payouts', 'sms_live', 'treasury'], group: 'management' },
+  { to: '/crm', icon: '👥', labelAr: 'CRM العملاء', labelEn: 'Customer CRM', keys: ['client_crm'], group: 'management' },
+  { to: '/settlements', icon: '🧾', labelAr: 'التسويات', labelEn: 'Settlements', keys: ['settlements', 'settlements_list', 'settlement_recon', 'fees'], group: 'management' },
+  // Risk & automation
+  { to: '/risk', icon: '🛡️', labelAr: 'المخاطر', labelEn: 'Risk & compliance', keys: ['risk', 'risk_audit', 'flagged', 'exceptions', 'manual_review', 'velocity', 'compliance'], group: 'risk' },
+  { to: '/automation', icon: '🤖', labelAr: 'الأتمتة', labelEn: 'Automation', keys: ['telegram_bot', 'binance_p2p', 'treasury', 'allocation_engine', 'capacity_monitor', 'workspace_hub', 'launchpad', 'ai_team'], group: 'risk' },
+  { to: '/telegram', icon: '📨', labelAr: 'تنبيهات Telegram', labelEn: 'Telegram alerts', keys: ['telegram_bot', 'automation'], group: 'risk' },
+  // System — reporting, audit, admin
   { to: '/reports', icon: '📊', labelAr: 'التقارير', labelEn: 'Reports', keys: ['reports', 'advanced_analysis'], group: 'system' },
-  { to: '/telegram', icon: '📨', labelAr: 'تنبيهات Telegram', labelEn: 'Telegram alerts', keys: ['telegram_bot', 'automation'], group: 'system' },
-  { to: '/review', icon: '🧐', labelAr: 'مراجعة القرارات', labelEn: 'Decision review', keys: ['review', 'audit_log', 'audit-logs'], group: 'system' },
   { to: '/audit', icon: '🕵️', labelAr: 'سجل التدقيق', labelEn: 'Audit log', keys: ['audit_log', 'audit-logs'], group: 'system' },
   { to: '/notifications', icon: '🔔', labelAr: 'الإشعارات', labelEn: 'Notifications', keys: [], group: 'system' },
   { to: '/admin', icon: '⚙️', labelAr: 'الإدارة', labelEn: 'Administration', keys: ['users', 'permissions', 'api-keys', 'webhooks', 'developers', 'settings'], group: 'system' },
@@ -197,7 +213,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   useEffect(() => { void refreshPermissions() }, [pathname, refreshPermissions])
 
   const visible = (l: NavLinkDef) => l.keys.length === 0 || l.keys.some((k) => can(k))
-  const renderLinks = (group: 'main' | 'system') => BUILT_LINKS.filter((l) => l.group === group && visible(l)).map((l) => (
+  const renderLinks = (group: NavGroupId) => BUILT_LINKS.filter((l) => l.group === group && visible(l)).map((l) => (
     <Link key={l.to} to={l.to} onClick={() => setNavOpen(false)} className={`sidebar-item sidebar-link${pathname === l.to ? ' active' : ''}`}>
       <span className="sidebar-icon">{l.icon}</span><span>{locale === 'en' ? l.labelEn : l.labelAr}</span>
     </Link>
@@ -208,11 +224,21 @@ export default function PanelShell({ children }: { children: ReactNode }) {
       <button className="nav-toggle" onClick={() => setNavOpen((o) => !o)} title={t('القائمة', 'Menu')} aria-label={t('القائمة', 'Menu')}>{navOpen ? '✕' : '☰'}</button>
       {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
       <nav className={`sidebar${navOpen ? ' open' : ''}`}>
-        <div className="nav-group-label">{t('القائمة الرئيسية', 'Main navigation')}</div>{renderLinks('main')}
-        <div className="nav-group-label">{t('النظام', 'System')}</div>{renderLinks('system')}
+        {NAV_GROUPS.map((g) => {
+          const links = renderLinks(g.id)
+          if (links.length === 0) return null
+          return (
+            <div className="nav-group" key={g.id}>
+              <div className="nav-group-label">{locale === 'en' ? g.en : g.ar}</div>
+              {links}
+            </div>
+          )
+        })}
         {!permsLoaded && <div className="sidebar-hint">{t('جارٍ تحميل الصلاحيات…', 'Loading permissions…')}</div>}
-        {modules.length > 0 && <div className="nav-group-label">{t('قريباً', 'More modules')}</div>}
-        {modules.map((m) => <div key={m.id} className="sidebar-item soon" title={t('قريباً', 'More modules')}><span className="sidebar-icon">{m.icon}</span><span>{m.label}</span><span className="sidebar-count">{m.pages.length}</span></div>)}
+        {modules.length > 0 && <div className="nav-group">
+          <div className="nav-group-label">{t('قريباً', 'More modules')}</div>
+          {modules.map((m) => <div key={m.id} className="sidebar-item soon" title={t('قريباً', 'More modules')}><span className="sidebar-icon">{m.icon}</span><span>{m.label}</span><span className="sidebar-count">{m.pages.length}</span></div>)}
+        </div>}
       </nav>
       <main className="dash-main">{children}</main>
       {can('sms_live') && <button type="button" className="btn-ghost btn-sm" style={{ position: 'fixed', insetInlineEnd: 12, bottom: 12, zIndex: 30 }} onClick={() => setSmsOpen((open) => !open)} aria-pressed={smsOpen}>{smsOpen ? t('إخفاء SMS المباشر', 'Hide Live SMS') : t('إظهار SMS المباشر', 'Show Live SMS')}</button>}
