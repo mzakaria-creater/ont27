@@ -218,6 +218,48 @@ extraRoutes.get(
   },
 )
 
+// ---- Risk: velocity offenders (sender_number aggregation over a window) ----
+// Surfaces fraud-shaped behaviour like one number sending dozens of deposits
+// with a very high decline rate (e.g. 01055953836: 96 txns / 91 declined).
+extraRoutes.get(
+  '/risk/velocity',
+  requireAnyPerm(['risk', 'risk_audit', 'flagged', 'velocity', 'compliance'], 'can_view'),
+  async (c) => {
+    const minTxns = Math.min(Math.max(Number(c.req.query('min_txns')) || 20, 2), 500)
+    const windowDays = Math.min(Math.max(Number(c.req.query('window_days')) || 30, 1), 365)
+    const { data, error } = await db.rpc('panel_velocity_offenders', {
+      p_min_txns: minTxns, p_window_days: windowDays, p_limit: 100,
+    })
+    if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+    return c.json({ offenders: data ?? [], min_txns: minTxns, window_days: windowDays })
+  },
+)
+
+// Add a sender_number to the blacklist straight from the velocity view.
+extraRoutes.post(
+  '/risk/blacklist',
+  requireAnyPerm(['risk', 'risk_audit', 'flagged', 'velocity', 'compliance'], 'can_edit'),
+  async (c) => {
+    const body = await c.req.json().catch(() => null)
+    const value = typeof body?.value === 'string' ? body.value.trim() : ''
+    const type = typeof body?.type === 'string' && body.type.trim() ? body.type.trim().slice(0, 40) : 'phone'
+    const reason = typeof body?.reason === 'string' ? body.reason.trim().slice(0, 300) : null
+    if (!value) return c.json({ error: 'value_required' }, 400)
+    const actor = c.get('actor')
+    const { data: existing } = await db.from('api_risk_blacklist').select('id').eq('value', value).maybeSingle()
+    if (existing) return c.json({ error: 'already_blacklisted', id: existing.id }, 409)
+    const { data, error } = await db.from('api_risk_blacklist')
+      .insert({ type, value, reason: reason ?? `Added from velocity view by ${actor.username}` })
+      .select('id, type, value, reason, created_at').single()
+    if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
+    await db.from('audit_log').insert({
+      actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
+      action: 'risk.blacklist_add', entity: 'api_risk_blacklist', entity_id: data.id, after: { type, value, reason },
+    })
+    return c.json({ entry: data }, 201)
+  },
+)
+
 // ---- Automation: settings + rules + worker jobs + treasury ----
 extraRoutes.get(
   '/automation',
