@@ -1053,6 +1053,29 @@ a.stat-card:hover { border-color: var(--accent); }
   .bell-menu { position: fixed; inset-inline: 10px; top: 54px; min-width: 0; }
 }
 
+/* Phone hardening: comfortable touch targets + 16px inputs (stops iOS
+   zoom-on-focus) + full-width form controls that stack cleanly. */
+@media (max-width: 640px) {
+  .login-input, .filter-field input, .filter-select, .control-input, .search-input {
+    font-size: 16px; min-height: 44px;
+  }
+  .btn-primary, .btn-ghost, .login-btn, .btn-sm, .logout-btn, .theme-btn {
+    min-height: 40px;
+  }
+  .pill { min-height: 34px; }
+  .row-actions .btn-sm, .template-card .btn-primary { min-height: 38px; }
+  /* Stacked forms: each control on its own full-width line. */
+  .control-row { flex-direction: column; align-items: stretch; }
+  .control-row > .login-input, .control-row > select, .control-row > input, .control-row > button { width: 100%; }
+  .control-row > strong { margin-bottom: 2px; }
+  .template-grid { grid-template-columns: 1fr; }
+  .auth-form { padding: 26px 20px; }
+  .recent-head { flex-wrap: wrap; row-gap: 4px; }
+  .page-head h2 { font-size: 16px; }
+  .kpi-value { font-size: 18px; }
+  .proof-overlay { padding: 12px; }
+}
+
 /* Quick control */
 .control-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .control-sep { width: 1px; height: 24px; background: var(--border-soft); margin: 0 4px; }
