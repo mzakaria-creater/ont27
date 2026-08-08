@@ -56,6 +56,90 @@ controlRoutes.get('/crons', async (c) => {
   return c.json({ jobs: data ?? [] })
 })
 
+// ---------------------------------------------------------------------------
+// Automation templates — one-switch posture presets over the ~21 automation
+// settings. Defined SERVER-SIDE so the client only ever sends a template id,
+// never a raw settings map. Applied through the old project's automation-panel
+// edge function (save_settings) — the same tested path the standalone tool
+// used — so the live workers pick them up immediately.
+// ---------------------------------------------------------------------------
+
+type Posture = {
+  automation_enabled: boolean
+  security_rules_enabled: boolean
+  balance_check_enabled: boolean
+  above_limit_to_manual: boolean
+  sms_feed_circuit_breaker_enabled: boolean
+  wallet_switch_auto_enabled: boolean
+  turbo_mode: boolean
+  max_auto_amount: number
+  decline_grace_minutes: number
+  score_threshold: number
+}
+
+const AUTOMATION_TEMPLATES: { id: string; label: string; desc: string; settings: Posture }[] = [
+  {
+    id: 'conservative', label: 'محافظ', desc: 'أقل مخاطرة: حد أقل، مهلة أطول، ثقة أعلى، قاطع الأمان مفعّل.',
+    settings: { automation_enabled: true, security_rules_enabled: true, balance_check_enabled: true, above_limit_to_manual: true, sms_feed_circuit_breaker_enabled: true, wallet_switch_auto_enabled: false, turbo_mode: false, max_auto_amount: 3000, decline_grace_minutes: 5, score_threshold: 85 },
+  },
+  {
+    id: 'balanced', label: 'متوازن', desc: 'الوضع التشغيلي الافتراضي — توازن بين السرعة والأمان.',
+    settings: { automation_enabled: true, security_rules_enabled: true, balance_check_enabled: true, above_limit_to_manual: true, sms_feed_circuit_breaker_enabled: false, wallet_switch_auto_enabled: false, turbo_mode: false, max_auto_amount: 5000, decline_grace_minutes: 3, score_threshold: 80 },
+  },
+  {
+    id: 'turbo', label: 'سريع (Turbo)', desc: 'أعلى إنتاجية: حد أكبر، مهلة أقصر، تبديل محافظ تلقائي. مخاطرة أعلى.',
+    settings: { automation_enabled: true, security_rules_enabled: true, balance_check_enabled: true, above_limit_to_manual: true, sms_feed_circuit_breaker_enabled: false, wallet_switch_auto_enabled: true, turbo_mode: true, max_auto_amount: 8000, decline_grace_minutes: 1, score_threshold: 75 },
+  },
+  {
+    id: 'maintenance', label: 'صيانة (إيقاف)', desc: 'إيقاف الأتمتة بالكامل — كل معاملة تروح مراجعة يدوية. الأمان يفضل مفعّل.',
+    settings: { automation_enabled: false, security_rules_enabled: true, balance_check_enabled: true, above_limit_to_manual: true, sms_feed_circuit_breaker_enabled: true, wallet_switch_auto_enabled: false, turbo_mode: false, max_auto_amount: 5000, decline_grace_minutes: 3, score_threshold: 80 },
+  },
+]
+
+function activeTemplateId(current: Record<string, unknown> | null): string | null {
+  if (!current) return null
+  for (const tpl of AUTOMATION_TEMPLATES) {
+    const match = (Object.keys(tpl.settings) as (keyof Posture)[]).every((k) => {
+      const cur = current[k]
+      const want = tpl.settings[k]
+      if (typeof want === 'number') return Number(cur) === want
+      return Boolean(cur) === want
+    })
+    if (match) return tpl.id
+  }
+  return null
+}
+
+controlRoutes.get('/automation/templates', async (c) => {
+  const old = oldDb()
+  if (!old) return c.json({ error: 'old_db_not_configured' }, 500)
+  const { data: current } = await old.from('automation_settings').select('*').limit(1).maybeSingle()
+  return c.json({
+    templates: AUTOMATION_TEMPLATES,
+    current: current ?? null,
+    active_id: activeTemplateId(current as Record<string, unknown> | null),
+  })
+})
+
+controlRoutes.post('/automation/template', async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const tpl = AUTOMATION_TEMPLATES.find((t) => t.id === body?.id)
+  if (!tpl) return c.json({ error: 'unknown_template' }, 400)
+  const url = panelUrl()
+  if (!url) return c.json({ error: 'panel_not_configured' }, 500)
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'save_settings', ...tpl.settings }),
+  })
+  const result = await res.json().catch(() => ({ error: 'bad_upstream' }))
+  if (!res.ok || (result as Record<string, unknown>).ok === false) {
+    return c.json({ error: 'apply_failed', detail: result }, 502)
+  }
+  await audit(c.get('actor'), 'automation.template_applied', { template: tpl.id, settings: tpl.settings })
+  return c.json({ ok: true, applied: tpl.id })
+})
+
 controlRoutes.post('/automation', async (c) => {
   const old = oldDb()
   if (!old) return c.json({ error: 'old_db_not_configured' }, 500)

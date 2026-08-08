@@ -2,6 +2,18 @@ import { useEffect, useState } from 'react'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
+import { useLocale } from '../lib/locale'
+import { useAuth } from '../auth/AuthContext'
+
+interface AutomationTemplate { id: string; settings: Record<string, number | boolean> }
+// Bilingual copy lives client-side so it follows the language switcher; the
+// server is the source of truth for the id + the actual settings payload.
+const TEMPLATE_COPY: Record<string, { label: [string, string]; desc: [string, string] }> = {
+  conservative: { label: ['محافظ', 'Conservative'], desc: ['أقل مخاطرة: حد أقل، مهلة أطول، ثقة أعلى، قاطع الأمان مفعّل.', 'Lowest risk: smaller cap, longer grace, higher confidence, circuit breaker on.'] },
+  balanced: { label: ['متوازن', 'Balanced'], desc: ['الوضع التشغيلي الافتراضي — توازن بين السرعة والأمان.', 'Default operating posture — balance of speed and safety.'] },
+  turbo: { label: ['سريع (Turbo)', 'Turbo'], desc: ['أعلى إنتاجية: حد أكبر، مهلة أقصر، تبديل محافظ تلقائي. مخاطرة أعلى.', 'Highest throughput: larger cap, shorter grace, auto wallet switch. Higher risk.'] },
+  maintenance: { label: ['صيانة (إيقاف)', 'Maintenance (off)'], desc: ['إيقاف الأتمتة بالكامل — كل معاملة تروح مراجعة يدوية. الأمان يفضل مفعّل.', 'Automation fully off — every transaction goes to manual review. Safety stays on.'] },
+}
 
 // Automation — matching engine settings (read-only), scoped rules, worker jobs, treasury.
 
@@ -64,8 +76,15 @@ export default function Automation() {
     rates: RateRow[]
   } | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const { t, locale } = useLocale()
+  const { can } = useAuth()
+  const li = locale === 'en' ? 1 : 0
+  const canControl = can('automation', 'can_edit')
   const [accounts, setAccounts] = useState<PayAccount[] | null>(null)
   const [crons, setCrons] = useState<CronJob[] | null>(null)
+  const [tpl, setTpl] = useState<{ templates: AutomationTemplate[]; active_id: string | null; current: Record<string, unknown> | null } | null>(null)
+  const [applying, setApplying] = useState<string | null>(null)
+  const [tplMsg, setTplMsg] = useState<string | null>(null)
   const [pf, setPf] = useState<PayfutureRoute[] | null>(null)
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [panelBusy, setPanelBusy] = useState(false)
@@ -81,6 +100,20 @@ export default function Automation() {
     api<{ jobs: CronJob[] }>('/api/control/crons')
       .then((r) => setCrons(r.jobs))
       .catch(() => setCrons(null))
+    api<{ templates: AutomationTemplate[]; active_id: string | null; current: Record<string, unknown> | null }>('/api/control/automation/templates')
+      .then(setTpl)
+      .catch(() => setTpl(null))
+  }
+
+  const applyTemplate = async (id: string) => {
+    setApplying(id); setTplMsg(null)
+    try {
+      await api('/api/control/automation/template', { method: 'POST', body: JSON.stringify({ id }) })
+      setTplMsg(t('تم تطبيق القالب على الأتمتة الحيّة.', 'Template applied to live automation.'))
+      api<{ templates: AutomationTemplate[]; active_id: string | null; current: Record<string, unknown> | null }>('/api/control/automation/templates').then(setTpl).catch(() => {})
+    } catch {
+      setTplMsg(t('تعذّر تطبيق القالب.', 'Failed to apply template.'))
+    } finally { setApplying(null) }
   }
 
   useEffect(() => {
@@ -131,6 +164,45 @@ export default function Automation() {
 
       {err && <div className="card warn">{err}</div>}
       {!data && !err && <p className="sidebar-hint">جارٍ التحميل…</p>}
+
+      {tpl && (
+        <section className="card recent-card">
+          <div className="recent-head">
+            <h3>🎛️ {t('قوالب الأتمتة', 'Automation templates')}</h3>
+            <span className="cell-sub">{t('بدّل وضع الأتمتة بالكامل بضغطة — يُطبَّق فوراً على المعاملات الجديدة.', 'Switch the whole automation posture in one click — applies live to new transactions.')}</span>
+          </div>
+          {tplMsg && <p className="page-sub">{tplMsg}</p>}
+          <div className="template-grid">
+            {tpl.templates.map((row) => {
+              const copy = TEMPLATE_COPY[row.id] ?? { label: [row.id, row.id], desc: ['', ''] }
+              const active = tpl.active_id === row.id
+              return (
+                <div key={row.id} className={`template-card${active ? ' active' : ''}`}>
+                  <div className="template-head">
+                    <strong>{copy.label[li]}</strong>
+                    {active && <span className="pay-status-badge st-paid">{t('نشط', 'Active')}</span>}
+                  </div>
+                  <p className="template-desc">{copy.desc[li]}</p>
+                  <div className="template-meta mono">
+                    {t('حد', 'Cap')} {money(Number(row.settings.max_auto_amount), 'EGP')} · {t('مهلة', 'Grace')} {String(row.settings.decline_grace_minutes)}{t('د', 'm')} · {t('ثقة', 'Score')} ≥{String(row.settings.score_threshold)}
+                    {row.settings.turbo_mode ? ` · Turbo` : ''}{row.settings.automation_enabled === false ? ` · ${t('موقوف', 'Off')}` : ''}
+                  </div>
+                  <button
+                    className="btn-primary btn-sm"
+                    disabled={active || !canControl || applying !== null}
+                    aria-label={t(`تطبيق قالب ${copy.label[0]}`, `Apply ${copy.label[1]} template`)}
+                    onClick={() => void applyTemplate(row.id)}
+                  >
+                    {applying === row.id ? t('جارٍ التطبيق…', 'Applying…') : active ? t('مُطبَّق', 'Applied') : t('تطبيق', 'Apply')}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+          {tpl.active_id === null && <p className="sidebar-hint">{t('الإعدادات الحالية لا تطابق أي قالب (تعديل يدوي مخصّص).', 'Current settings match no template (custom manual tuning).')}</p>}
+          {!canControl && <p className="sidebar-hint">{t('العرض فقط — تطبيق القوالب يتطلب صلاحية تعديل.', 'View only — applying templates needs edit permission.')}</p>}
+        </section>
+      )}
 
       {crons && (
         <section className="card recent-card">
