@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
+import { useLocale } from '../lib/locale'
 
 interface LinkStats { sessions: number; paid: number; paid_amount: number }
 interface PaymentLink {
@@ -24,6 +25,7 @@ interface Merchant { id: string; name: string; code: string | null }
 
 export default function LinkGenerator() {
   const { can } = useAuth()
+  const { t } = useLocale()
   const [links, setLinks] = useState<PaymentLink[]>([])
   const [merchants, setMerchants] = useState<Merchant[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -43,7 +45,7 @@ export default function LinkGenerator() {
       setLinks(links)
       setMerchants(merchants)
     } catch (err) {
-      setError(err instanceof ApiError && err.status === 403 ? 'دورك لا يملك صلاحية عرض روابط الدفع' : 'تعذر تحميل الروابط')
+      setError(err instanceof ApiError && err.status === 403 ? t('دورك لا يملك صلاحية عرض روابط الدفع', 'Your role cannot view payment links') : t('تعذر تحميل الروابط', 'Failed to load links'))
     }
   }, [])
 
@@ -72,7 +74,7 @@ export default function LinkGenerator() {
       setForm({ title: '', merchant_id: '', amount_mode: 'open', amount: '', min_amount: '', max_amount: '', expires_at: '', max_uses: '' })
       await load()
     } catch (err) {
-      setError(err instanceof ApiError && err.status === 403 ? 'دورك لا يملك صلاحية إنشاء روابط' : 'تعذر إنشاء الرابط')
+      setError(err instanceof ApiError && err.status === 403 ? t('دورك لا يملك صلاحية إنشاء روابط', 'Your role cannot create links') : t('تعذر إنشاء الرابط', 'Failed to create link'))
     } finally {
       setBusy(false)
     }
@@ -83,7 +85,7 @@ export default function LinkGenerator() {
       await api(`/api/links/${link.id}`, { method: 'PATCH', body: JSON.stringify({ active: !link.active }) })
       await load()
     } catch {
-      setError('تعذر تعديل الرابط')
+      setError(t('تعذر تعديل الرابط', 'Failed to update link'))
     }
   }
 
@@ -100,54 +102,54 @@ export default function LinkGenerator() {
 
   return (
     <main className="page">
-      <h2>مولد روابط الدفع</h2>
+      <h2>{t('مولد روابط الدفع', 'Payment link generator')}</h2>
       <div className="kpis">
-        <div className="kpi"><b>{totals.links}</b><span>رابط</span></div>
-        <div className="kpi"><b>{totals.sessions}</b><span>جلسة</span></div>
-        <div className="kpi"><b>{totals.paid}</b><span>مدفوعة</span></div>
-        <div className="kpi"><b className="mono">{totals.amount.toLocaleString()}</b><span>إجمالي مدفوع</span></div>
+        <div className="kpi"><b>{totals.links}</b><span>{t('رابط', 'links')}</span></div>
+        <div className="kpi"><b>{totals.sessions}</b><span>{t('جلسة', 'sessions')}</span></div>
+        <div className="kpi"><b>{totals.paid}</b><span>{t('مدفوعة', 'paid')}</span></div>
+        <div className="kpi"><b className="mono">{totals.amount.toLocaleString()}</b><span>{t('إجمالي مدفوع', 'total paid')}</span></div>
       </div>
 
       {can('checkout-builder', 'can_create') && (
         <form className="card link-form" onSubmit={create}>
           <div className="grid-3">
-            <label className="field"><span>العنوان</span>
-              <input value={form.title} onChange={set('title')} placeholder="مثال: إيداع عميل VIP" /></label>
-            <label className="field"><span>التاجر</span>
+            <label className="field"><span>{t('العنوان', 'Title')}</span>
+              <input value={form.title} onChange={set('title')} placeholder={t('مثال: إيداع عميل VIP', 'e.g. VIP client deposit')} /></label>
+            <label className="field"><span>{t('التاجر', 'Merchant')}</span>
               <select value={form.merchant_id} onChange={set('merchant_id')}>
-                <option value="">— بدون تاجر —</option>
+                <option value="">{t('— بدون تاجر —', '— no merchant —')}</option>
                 {merchants.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select></label>
-            <label className="field"><span>نوع المبلغ</span>
+            <label className="field"><span>{t('نوع المبلغ', 'Amount type')}</span>
               <select value={form.amount_mode} onChange={set('amount_mode')}>
-                <option value="open">مفتوح</option>
-                <option value="fixed">ثابت</option>
+                <option value="open">{t('مفتوح', 'Open')}</option>
+                <option value="fixed">{t('ثابت', 'Fixed')}</option>
               </select></label>
             {form.amount_mode === 'fixed' ? (
-              <label className="field"><span>المبلغ (EGP)</span>
+              <label className="field"><span>{t('المبلغ (EGP)', 'Amount (EGP)')}</span>
                 <input dir="ltr" inputMode="decimal" value={form.amount} onChange={set('amount')} required /></label>
             ) : (
               <>
-                <label className="field"><span>حد أدنى</span>
+                <label className="field"><span>{t('حد أدنى', 'Min')}</span>
                   <input dir="ltr" inputMode="decimal" value={form.min_amount} onChange={set('min_amount')} /></label>
-                <label className="field"><span>حد أقصى</span>
+                <label className="field"><span>{t('حد أقصى', 'Max')}</span>
                   <input dir="ltr" inputMode="decimal" value={form.max_amount} onChange={set('max_amount')} /></label>
               </>
             )}
-            <label className="field"><span>تاريخ الانتهاء</span>
+            <label className="field"><span>{t('تاريخ الانتهاء', 'Expiry')}</span>
               <input type="datetime-local" dir="ltr" value={form.expires_at} onChange={set('expires_at')} /></label>
-            <label className="field"><span>حد الاستخدامات</span>
+            <label className="field"><span>{t('حد الاستخدامات', 'Usage limit')}</span>
               <input dir="ltr" inputMode="numeric" value={form.max_uses} onChange={set('max_uses')} /></label>
           </div>
           {error && <div className="login-error" role="alert">{error}</div>}
-          <button className="btn-primary" disabled={busy}>{busy ? 'جارٍ الإنشاء…' : 'إنشاء رابط'}</button>
+          <button className="btn-primary" disabled={busy}>{busy ? t('جارٍ الإنشاء…', 'Creating…') : t('إنشاء رابط', 'Create link')}</button>
         </form>
       )}
 
       <div className="card table-card">
         <table className="links-table">
           <thead>
-            <tr><th>الكود</th><th>العنوان</th><th>المبلغ</th><th>الاستخدام</th><th>جلسات</th><th>مدفوع</th><th>الحالة</th><th /></tr>
+            <tr><th>{t('الكود', 'Code')}</th><th>{t('العنوان', 'Title')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('الاستخدام', 'Usage')}</th><th>{t('جلسات', 'Sessions')}</th><th>{t('مدفوع', 'Paid')}</th><th>{t('الحالة', 'Status')}</th><th /></tr>
           </thead>
           <tbody>
             {links.map((l) => (
@@ -160,16 +162,16 @@ export default function LinkGenerator() {
                 <td className="mono" dir="ltr">{l.use_count}{l.max_uses ? ` / ${l.max_uses}` : ''}</td>
                 <td className="mono">{l.stats.sessions}</td>
                 <td className="mono">{l.stats.paid} ({l.stats.paid_amount.toLocaleString()})</td>
-                <td>{l.active ? 'نشط' : 'موقوف'}</td>
+                <td>{l.active ? t('نشط', 'Active') : t('موقوف', 'Disabled')}</td>
                 <td className="row-actions">
-                  <button className="btn-ghost" onClick={() => void copyUrl(l)}>{copied === l.id ? '✓' : 'نسخ'}</button>
+                  <button className="btn-ghost" onClick={() => void copyUrl(l)}>{copied === l.id ? '✓' : t('نسخ', 'Copy')}</button>
                   {can('checkout-builder', 'can_edit') && (
-                    <button className="btn-ghost" onClick={() => void toggle(l)}>{l.active ? 'إيقاف' : 'تفعيل'}</button>
+                    <button className="btn-ghost" onClick={() => void toggle(l)}>{l.active ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>
                   )}
                 </td>
               </tr>
             ))}
-            {!links.length && <tr><td colSpan={8} className="empty">لا توجد روابط بعد</td></tr>}
+            {!links.length && <tr><td colSpan={8} className="empty">{t('لا توجد روابط بعد', 'No links yet')}</td></tr>}
           </tbody>
         </table>
       </div>
