@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
+import { useLocale } from '../lib/locale'
 
 // Settlements — per-merchant aggregates (approved deposits vs payouts) over a window.
 
@@ -17,6 +18,7 @@ interface SettleRow {
 }
 
 export default function Settlements() {
+  const { t } = useLocale()
   const [days, setDays] = useState(7)
   const [rows, setRows] = useState<SettleRow[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -25,7 +27,7 @@ export default function Settlements() {
     setRows(null)
     api<{ rows: SettleRow[] }>(`/api/settlements?days=${days}`)
       .then((r) => setRows(r.rows))
-      .catch((e) => setErr(e instanceof ApiError && e.status === 403 ? 'لا تملك صلاحية عرض التسويات.' : 'تعذّر تحميل التسويات.'))
+      .catch((e) => setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض التسويات.', 'You do not have permission to view settlements.') : t('تعذّر تحميل التسويات.', 'Failed to load settlements.')))
   }, [days])
 
   const totals = (rows ?? []).reduce(
@@ -41,15 +43,15 @@ export default function Settlements() {
   return (
     <PanelShell>
       <section className="page-head">
-        <h2>🧾 التسويات</h2>
-        <p className="page-sub">صافي كل تاجر خلال الفترة (إيداعات معتمدة − سحوبات معتمدة) · محسوبة من المعاملات الحقيقية</p>
+        <h2>🧾 {t('التسويات', 'Settlements')}</h2>
+        <p className="page-sub">{t('صافي كل تاجر خلال الفترة (إيداعات معتمدة − سحوبات معتمدة) · محسوبة من المعاملات الحقيقية', 'Net per merchant over the window (approved deposits − approved payouts) · computed from real transactions')}</p>
       </section>
 
       <div className="filter-bar">
         <div className="filter-pills">
           {[7, 14, 30].map((d) => (
             <button key={d} className={`pill${days === d ? ' active' : ''}`} onClick={() => setDays(d)}>
-              آخر {d} يوم
+              {t('آخر', 'Last')} {d} {t('يوم', 'days')}
             </button>
           ))}
         </div>
@@ -59,43 +61,43 @@ export default function Settlements() {
         <div className="kpi-card">
           <span className="kpi-icon">💰</span>
           <div className="kpi-value">{rows ? money(totals.depVolume, '') : '…'}</div>
-          <div className="kpi-label">إجمالي الإيداعات المعتمدة (EGP)</div>
+          <div className="kpi-label">{t('إجمالي الإيداعات المعتمدة (EGP)', 'Total approved deposits (EGP)')}</div>
         </div>
         <div className="kpi-card">
           <span className="kpi-icon">📤</span>
           <div className="kpi-value">{rows ? money(totals.payVolume, '') : '…'}</div>
-          <div className="kpi-label">إجمالي السحوبات المعتمدة (EGP)</div>
+          <div className="kpi-label">{t('إجمالي السحوبات المعتمدة (EGP)', 'Total approved payouts (EGP)')}</div>
         </div>
         <div className="kpi-card">
           <span className="kpi-icon">🧮</span>
           <div className="kpi-value">{rows ? money(totals.depVolume - totals.payVolume, '') : '…'}</div>
-          <div className="kpi-label">الصافي (EGP)</div>
+          <div className="kpi-label">{t('الصافي (EGP)', 'Net (EGP)')}</div>
         </div>
         <div className="kpi-card">
           <span className="kpi-icon">🪙</span>
           <div className="kpi-value">{rows ? money(totals.commission + totals.fees, '') : '…'}</div>
-          <div className="kpi-label">عمولات + رسوم (EGP)</div>
+          <div className="kpi-label">{t('عمولات + رسوم (EGP)', 'Commission + fees (EGP)')}</div>
         </div>
       </div>
 
       {err && <div className="card warn">{err}</div>}
 
       <section className="card recent-card">
-        {!rows && !err && <p className="sidebar-hint">جارٍ الحساب…</p>}
-        {rows && rows.length === 0 && <p>لا توجد معاملات معتمدة في الفترة.</p>}
+        {!rows && !err && <p className="sidebar-hint">{t('جارٍ الحساب…', 'Calculating…')}</p>}
+        {rows && rows.length === 0 && <p>{t('لا توجد معاملات معتمدة في الفترة.', 'No approved transactions in this window.')}</p>}
         {rows && rows.length > 0 && (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>التاجر</th>
-                  <th>إيداعات</th>
-                  <th>حجم الإيداعات</th>
-                  <th>سحوبات</th>
-                  <th>حجم السحوبات</th>
-                  <th>عمولة</th>
-                  <th>رسوم</th>
-                  <th>الصافي</th>
+                  <th>{t('التاجر', 'Merchant')}</th>
+                  <th>{t('إيداعات', 'Deposits')}</th>
+                  <th>{t('حجم الإيداعات', 'Deposit volume')}</th>
+                  <th>{t('سحوبات', 'Payouts')}</th>
+                  <th>{t('حجم السحوبات', 'Payout volume')}</th>
+                  <th>{t('عمولة', 'Commission')}</th>
+                  <th>{t('رسوم', 'Fees')}</th>
+                  <th>{t('الصافي', 'Net')}</th>
                 </tr>
               </thead>
               <tbody>
