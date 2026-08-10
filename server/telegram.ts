@@ -16,13 +16,32 @@ const audit = (actor: { sub: string; username: string }, action: string, entityI
 
 telegramRoutes.get('/', requireAnyPerm(TG_KEYS, 'can_view'), async (c) => {
   const [token, chats, gates, alerts] = await Promise.all([
-    db.from('maven_runtime_config').select('name').eq('name', 'TELEGRAM_BOT_TOKEN').eq('owner_name', 'global').maybeSingle(),
-    db.from('telegram_chats').select('id, chat_id, label, is_active, created_at').order('created_at'),
+    db.from('maven_runtime_config').select('value').eq('name', 'TELEGRAM_BOT_TOKEN').eq('owner_name', 'global').maybeSingle(),
+    db.from('telegram_chats').select('id, chat_id, label, is_active, created_at, receives_daily_report').order('created_at'),
     db.from('telegram_alert_gates').select('alert_type, label, enabled, updated_at').order('alert_type'),
     db.from('telegram_alerts').select('id, alert_type, chat_id, ok, error, created_at').order('created_at', { ascending: false }).limit(30),
   ])
+  // Bot identity (mirrors @ontargetEGBot into the panel) + whether its updates
+  // are bound to an external webhook (e.g. n8n) — in which case live message
+  // mirroring here is not possible without disrupting that automation.
+  let bot: { username: string | null; name: string | null; webhook: string | null } | null = null
+  const botToken = token.data?.value
+  if (botToken) {
+    try {
+      const [meRes, whRes] = await Promise.all([
+        fetch(`https://api.telegram.org/bot${botToken}/getMe`).then((r) => r.json()),
+        fetch(`https://api.telegram.org/bot${botToken}/getWebhookInfo`).then((r) => r.json()),
+      ])
+      bot = {
+        username: meRes?.result?.username ?? null,
+        name: meRes?.result?.first_name ?? null,
+        webhook: whRes?.result?.url || null,
+      }
+    } catch { /* bot unreachable — leave null */ }
+  }
   return c.json({
-    token_configured: !!token.data,
+    token_configured: !!botToken,
+    bot,
     chats: chats.data ?? [],
     gates: gates.data ?? [],
     alerts: alerts.data ?? [],

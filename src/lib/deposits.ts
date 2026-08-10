@@ -86,7 +86,7 @@ const timeFmt = new Intl.DateTimeFormat('en-GB', {
   month: '2-digit',
   hour: '2-digit',
   minute: '2-digit',
-  hour12: false,
+  hour12: true,
 })
 
 // Prefer created_utc (the REAL transaction time at the provider) over

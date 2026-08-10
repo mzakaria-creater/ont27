@@ -8,7 +8,8 @@ import { useLocale } from '../lib/locale'
 interface Chat { id: number; chat_id: string; label: string | null; is_active: boolean; created_at: string | null }
 interface Gate { alert_type: string; label: string | null; enabled: boolean; updated_at: string | null }
 interface Alert { id: number; alert_type: string; chat_id: string | null; ok: boolean; error: string | null; created_at: string | null }
-interface Data { token_configured: boolean; chats: Chat[]; gates: Gate[]; alerts: Alert[] }
+interface Bot { username: string | null; name: string | null; webhook: string | null }
+interface Data { token_configured: boolean; bot: Bot | null; chats: Chat[]; gates: Gate[]; alerts: Alert[] }
 
 export default function Telegram() {
   const { t } = useLocale(); const { can } = useAuth()
@@ -35,6 +36,19 @@ export default function Telegram() {
     {msg && <div className="card">{msg}</div>}
     {!data && !err && <p className="sidebar-hint">{t('جار التحميل…', 'Loading…')}</p>}
     {data && <>
+      {data.bot?.username && (
+        <section className="card recent-card">
+          <div className="recent-head"><h3>🤖 {t('بوت التنبيهات', 'Alerts bot')}</h3>
+            <a className="btn-ghost btn-sm" href={`https://t.me/${data.bot.username}`} target="_blank" rel="noreferrer">{t('فتح المحادثة ↗', 'Open chat ↗')}</a>
+          </div>
+          <p className="page-sub" style={{ margin: 0 }}>
+            <strong className="mono">@{data.bot.username}</strong>{data.bot.name && <> · {data.bot.name}</>}
+          </p>
+          {data.bot.webhook
+            ? <p className="page-sub">⚠️ {t('تحديثات البوت موجّهة لخدمة خارجية (n8n)، فلا يمكن عرض الرسائل الواردة هنا مباشرةً دون تعطيل تلك الأتمتة. الزر يفتح محادثة البوت في تيليجرام.', "The bot's updates are routed to an external service (n8n), so incoming messages can't be mirrored here without disrupting that automation. The button opens the bot chat in Telegram.")}</p>
+            : <p className="page-sub">{t('لا يوجد webhook — يمكن إضافة عرض الرسائل الواردة لاحقاً.', 'No webhook set — incoming-message mirroring can be added later.')}</p>}
+        </section>
+      )}
       <section className="card recent-card"><div className="recent-head"><h3>{t('التوكن', 'Bot token')}</h3>
         <span className={`pay-status-badge ${data.token_configured ? 'st-paid' : 'st-pending'}`}>{data.token_configured ? t('مُهيَّأ', 'Configured') : t('لم يُهيَّأ', 'Not configured')}</span></div>
         {canEdit && <form className="control-row" onSubmit={saveToken}><input className="login-input" type="password" placeholder="123456:ABC-..." aria-label={t('توكن بوت Telegram', 'Telegram bot token')} value={token} onChange={(e) => setToken(e.target.value)} /><button className="btn-primary btn-sm">{t('حفظ', 'Save')}</button>{data.token_configured && data.chats.some((ch) => ch.is_active) && <button type="button" className="btn-ghost btn-sm" onClick={() => void sendTest()}>{t('إرسال اختبار', 'Send test')}</button>}</form>}

@@ -86,7 +86,7 @@ export default function TvScreen() {
     { label: 'نُفّذ اليوم', value: (cStats.jobs_completed_today as number | undefined) ?? '—', cls: 'green' },
   ]
 
-  const clock = now.toLocaleTimeString('en-GB', { timeZone: 'Africa/Cairo', hour12: false })
+  const clock = now.toLocaleTimeString('en-US', { timeZone: 'Africa/Cairo', hour12: true })
 
   return (
     <div className="tv-page">
