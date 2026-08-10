@@ -5,6 +5,7 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useBulk } from '../lib/useBulk'
+import { useLocale } from '../lib/locale'
 
 // Approvals queue — every PENDING deposit and payout in one screen with
 // quick + bulk actions.
@@ -40,6 +41,7 @@ interface PayRow {
 
 export default function Approvals() {
   const { can } = useAuth()
+  const { t } = useLocale()
   const [deposits, setDeposits] = useState<DepRow[] | null>(null)
   const [payouts, setPayouts] = useState<PayRow[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -52,7 +54,7 @@ export default function Approvals() {
       setPayouts(res.payouts)
       setErr(null)
     } catch (e) {
-      setErr(e instanceof ApiError && e.status === 403 ? 'لا تملك صلاحية عرض طابور الموافقات.' : 'تعذّر تحميل الطابور.')
+      setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض طابور الموافقات.', 'You do not have permission to view the approval queue.') : t('تعذّر تحميل الطابور.', 'Failed to load the queue.'))
     }
   }, [])
 
@@ -69,7 +71,7 @@ export default function Approvals() {
       await api(`/api/deposits/${id}/decision`, { method: 'POST', body: JSON.stringify({ action }) })
       void load()
     } catch {
-      setErr('فشل تنفيذ القرار — أعد المحاولة.')
+      setErr(t('فشل تنفيذ القرار — أعد المحاولة.', 'Failed to apply the decision — try again.'))
     } finally {
       setRowBusy(null)
     }
@@ -80,10 +82,10 @@ export default function Approvals() {
   return (
     <PanelShell>
       <section className="page-head">
-        <h2>✅ طابور الموافقات</h2>
+        <h2>✅ {t('طابور الموافقات', 'Approval queue')}</h2>
         <p className="page-sub">
-          كل المعلّق في مكان واحد · تحديث تلقائي كل 30 ثانية
-          {deposits && payouts && <> · {deposits.length + payouts.length} بانتظار قرار</>}
+          {t('كل المعلّق في مكان واحد · تحديث تلقائي كل 30 ثانية', 'Everything pending in one place · auto-refresh every 30s')}
+          {deposits && payouts && <> · {deposits.length + payouts.length} {t('بانتظار قرار', 'awaiting decision')}</>}
         </p>
       </section>
 
@@ -92,19 +94,19 @@ export default function Approvals() {
       {/* deposits */}
       <section className="card recent-card">
         <div className="recent-head">
-          <h3>💰 إيداعات معلّقة {deposits && <span className="mono">({deposits.length})</span>}</h3>
-          <Link to="/deposits?status=PENDING" className="pay-status-link">فتح صفحة الإيداعات ←</Link>
+          <h3>💰 {t('إيداعات معلّقة', 'Pending deposits')} {deposits && <span className="mono">({deposits.length})</span>}</h3>
+          <Link to="/deposits?status=PENDING" className="pay-status-link">{t('فتح صفحة الإيداعات ←', 'Open deposits page →')}</Link>
         </div>
         {depBulk.progress && <div className="card bulk-progress">{depBulk.progress}</div>}
         {depBulk.selected.size > 0 && canDep && (
           <div className="bulk-bar">
-            <span>{depBulk.selected.size} محدد</span>
-            <button className="btn-primary btn-sm" disabled={depBulk.busy} onClick={() => void depBulk.run('approve')}>✅ اعتماد الكل</button>
-            <button className="btn-ghost danger btn-sm" disabled={depBulk.busy} onClick={() => void depBulk.run('decline')}>❌ رفض الكل</button>
+            <span>{depBulk.selected.size} {t('محدد', 'selected')}</span>
+            <button className="btn-primary btn-sm" disabled={depBulk.busy} onClick={() => void depBulk.run('approve')}>✅ {t('اعتماد الكل', 'Approve all')}</button>
+            <button className="btn-ghost danger btn-sm" disabled={depBulk.busy} onClick={() => void depBulk.run('decline')}>❌ {t('رفض الكل', 'Decline all')}</button>
           </div>
         )}
-        {!deposits && <p className="sidebar-hint">جارٍ التحميل…</p>}
-        {deposits && deposits.length === 0 && <p>لا توجد إيداعات معلّقة 🎉</p>}
+        {!deposits && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
+        {deposits && deposits.length === 0 && <p>{t('لا توجد إيداعات معلّقة 🎉', 'No pending deposits 🎉')}</p>}
         {deposits && deposits.length > 0 && (
           <div className="table-wrap">
             <table className="data-table">
@@ -119,13 +121,13 @@ export default function Approvals() {
                       />
                     </th>
                   )}
-                  <th>رقم العملية</th>
-                  <th>المبلغ</th>
-                  <th>المُرسِل</th>
-                  <th>الطريقة</th>
-                  <th>التاجر</th>
-                  <th>الوقت</th>
-                  <th>إجراء</th>
+                  <th>{t('رقم العملية', 'Ref')}</th>
+                  <th>{t('المبلغ', 'Amount')}</th>
+                  <th>{t('المُرسِل', 'Sender')}</th>
+                  <th>{t('الطريقة', 'Method')}</th>
+                  <th>{t('التاجر', 'Merchant')}</th>
+                  <th>{t('الوقت', 'Time')}</th>
+                  <th>{t('إجراء', 'Action')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -164,24 +166,24 @@ export default function Approvals() {
       {/* payouts */}
       <section className="card recent-card">
         <div className="recent-head">
-          <h3>📤 سحوبات معلّقة {payouts && <span className="mono">({payouts.length})</span>}</h3>
-          <Link to="/payouts?status=PENDING" className="pay-status-link">فتح صفحة السحوبات ←</Link>
+          <h3>📤 {t('سحوبات معلّقة', 'Pending payouts')} {payouts && <span className="mono">({payouts.length})</span>}</h3>
+          <Link to="/payouts?status=PENDING" className="pay-status-link">{t('فتح صفحة السحوبات ←', 'Open payouts page →')}</Link>
         </div>
-        <p className="drawer-note">تسجيل قرارات السحب يتم من صفحة السحوبات فقط، حيث يلزم رفع إثبات للمقبول ويظهر بوضوح أن تنفيذ المزود يدوي.</p>
-        {!payouts && <p className="sidebar-hint">جارٍ التحميل…</p>}
-        {payouts && payouts.length === 0 && <p>لا توجد سحوبات معلّقة 🎉</p>}
+        <p className="drawer-note">{t('تسجيل قرارات السحب يتم من صفحة السحوبات فقط، حيث يلزم رفع إثبات للمقبول ويظهر بوضوح أن تنفيذ المزود يدوي.', 'Payout decisions are recorded from the payouts page only, where a proof upload is required for approvals and provider execution is clearly manual.')}</p>
+        {!payouts && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
+        {payouts && payouts.length === 0 && <p>{t('لا توجد سحوبات معلّقة 🎉', 'No pending payouts 🎉')}</p>}
         {payouts && payouts.length > 0 && (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>رقم العملية</th>
-                  <th>المبلغ</th>
-                  <th>المستفيد</th>
-                  <th>الطريقة</th>
-                  <th>التاجر</th>
-                  <th>الوقت</th>
-                  <th>إجراء</th>
+                  <th>{t('رقم العملية', 'Ref')}</th>
+                  <th>{t('المبلغ', 'Amount')}</th>
+                  <th>{t('المستفيد', 'Beneficiary')}</th>
+                  <th>{t('الطريقة', 'Method')}</th>
+                  <th>{t('التاجر', 'Merchant')}</th>
+                  <th>{t('الوقت', 'Time')}</th>
+                  <th>{t('إجراء', 'Action')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -193,7 +195,7 @@ export default function Approvals() {
                     <td>{r.pay_by ?? '—'}</td>
                     <td>{r.merchant ?? '—'}</td>
                     <td className="mono">{depositTime(r)}</td>
-                    <td><Link to={`/payouts?status=PENDING&q=${encodeURIComponent(r.ontarget_ref ?? String(r.maven_id))}`} className="btn-ghost btn-sm">فتح السحب</Link></td>
+                    <td><Link to={`/payouts?status=PENDING&q=${encodeURIComponent(r.ontarget_ref ?? String(r.maven_id))}`} className="btn-ghost btn-sm">{t('فتح السحب', 'Open payout')}</Link></td>
                   </tr>
                 ))}
               </tbody>
