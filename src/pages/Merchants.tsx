@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
+import { useLocale } from '../lib/locale'
 
 // Merchants directory (view). The API never returns api_key/secret_key/
 // callback_secret — key management stays a separate super_admin flow.
@@ -44,11 +45,11 @@ interface MasterRow {
   base_currency: string | null
 }
 
-const KYC_META: Record<string, { label: string; cls: string }> = {
-  approved: { label: 'موثّق', cls: 'st-paid' },
-  verified: { label: 'موثّق', cls: 'st-paid' },
-  pending: { label: 'قيد التوثيق', cls: 'st-pending' },
-  rejected: { label: 'مرفوض', cls: 'st-declined' },
+const KYC_META: Record<string, { ar: string; en: string; cls: string }> = {
+  approved: { ar: 'موثّق', en: 'Verified', cls: 'st-paid' },
+  verified: { ar: 'موثّق', en: 'Verified', cls: 'st-paid' },
+  pending: { ar: 'قيد التوثيق', en: 'Pending', cls: 'st-pending' },
+  rejected: { ar: 'مرفوض', en: 'Rejected', cls: 'st-declined' },
 }
 
 function isLive(m: MerchantRow): boolean {
@@ -56,6 +57,7 @@ function isLive(m: MerchantRow): boolean {
 }
 
 export default function Merchants() {
+  const { t } = useLocale()
   const [rows, setRows] = useState<MerchantRow[] | null>(null)
   const [masters, setMasters] = useState<MasterRow[]>([])
   const [err, setErr] = useState<string | null>(null)
@@ -66,7 +68,7 @@ export default function Merchants() {
     api<{ rows: MerchantRow[]; masters: MasterRow[] }>('/api/merchants')
       .then((res) => { setRows(res.rows); setMasters(res.masters) })
       .catch((e) => {
-        setErr(e instanceof ApiError && e.status === 403 ? 'لا تملك صلاحية عرض التجار.' : 'تعذّر تحميل التجار.')
+        setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض التجار.', 'You do not have permission to view merchants.') : t('تعذّر تحميل التجار.', 'Failed to load merchants.'))
       })
   }, [])
 
@@ -88,9 +90,9 @@ export default function Merchants() {
   return (
     <PanelShell>
       <section className="page-head">
-        <h2>🏬 التجار</h2>
+        <h2>🏬 {t('التجار', 'Merchants')}</h2>
         <p className="page-sub">
-          {rows && <>{rows.length.toLocaleString('en-US')} تاجر · {masters.length} تاجر رئيسي</>}
+          {rows && <>{rows.length.toLocaleString('en-US')} {t('تاجر', 'merchants')} · {masters.length} {t('تاجر رئيسي', 'master merchants')}</>}
         </p>
       </section>
 
@@ -98,7 +100,7 @@ export default function Merchants() {
         <form className="search-row" onSubmit={(e) => e.preventDefault()}>
           <input
             className="login-input search-input"
-            placeholder="بحث: اسم / كود / MID / بريد / دولة…"
+            placeholder={t('بحث: اسم / كود / MID / بريد / دولة…', 'Search: name / code / MID / email / country…')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -108,20 +110,20 @@ export default function Merchants() {
       {err && <div className="card warn">{err}</div>}
 
       <section className="card recent-card">
-        {!rows && !err && <p className="sidebar-hint">جارٍ التحميل…</p>}
-        {filtered && filtered.length === 0 && <p>لا توجد نتائج مطابقة.</p>}
+        {!rows && !err && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
+        {filtered && filtered.length === 0 && <p>{t('لا توجد نتائج مطابقة.', 'No matching results.')}</p>}
         {filtered && filtered.length > 0 && (
           <div className="table-wrap">
             <table className="data-table clickable">
               <thead>
                 <tr>
-                  <th>التاجر</th>
+                  <th>{t('التاجر', 'Merchant')}</th>
                   <th>MID</th>
-                  <th>التاجر الرئيسي</th>
-                  <th>الدولة / العملة</th>
+                  <th>{t('التاجر الرئيسي', 'Master merchant')}</th>
+                  <th>{t('الدولة / العملة', 'Country / currency')}</th>
                   <th>KYC</th>
-                  <th>الحالة</th>
-                  <th>مبالغ محجوزة</th>
+                  <th>{t('الحالة', 'Status')}</th>
+                  <th>{t('مبالغ محجوزة', 'Blocked amount')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -138,12 +140,12 @@ export default function Merchants() {
                       <td className="mono">{m.country_code ?? m.country ?? '—'} · {m.base_currency ?? '—'}</td>
                       <td>
                         {kyc
-                          ? <span className={`pay-status-badge ${kyc.cls}`}>{kyc.label}</span>
+                          ? <span className={`pay-status-badge ${kyc.cls}`}>{t(kyc.ar, kyc.en)}</span>
                           : <span className="mono">{m.kyc_status ?? '—'}</span>}
                       </td>
                       <td>
                         <span className={`pay-status-badge ${isLive(m) ? 'st-paid' : 'st-dim'}`}>
-                          {isLive(m) ? 'نشط' : 'موقوف'}
+                          {isLive(m) ? t('نشط', 'Active') : t('موقوف', 'Disabled')}
                         </span>
                       </td>
                       <td className="mono">{money(m.blocked_amount, m.base_currency)}</td>
@@ -165,28 +167,28 @@ export default function Merchants() {
             </div>
 
             <dl className="detail-grid">
-              <dt>الكود</dt><dd className="mono">{selected.code ?? '—'}</dd>
+              <dt>{t('الكود', 'Code')}</dt><dd className="mono">{selected.code ?? '—'}</dd>
               <dt>MID</dt><dd className="mono">{selected.MID ?? '—'}</dd>
-              <dt>الحالة</dt><dd>{isLive(selected) ? 'نشط' : 'موقوف'}{selected.status && <> · <span className="mono">{selected.status}</span></>}</dd>
+              <dt>{t('الحالة', 'Status')}</dt><dd>{isLive(selected) ? t('نشط', 'Active') : t('موقوف', 'Disabled')}{selected.status && <> · <span className="mono">{selected.status}</span></>}</dd>
               <dt>KYC</dt><dd className="mono">{selected.kyc_status ?? '—'}</dd>
-              <dt>التاجر الرئيسي</dt><dd>{masterName(selected.master_merchant_id) ?? '—'}</dd>
-              <dt>النشاط</dt><dd>{selected.business_type ?? '—'}</dd>
-              <dt>جهة الاتصال</dt><dd>{selected.primary_contact_name ?? '—'}</dd>
-              <dt>البريد</dt><dd className="mono small">{selected.email ?? '—'}</dd>
-              <dt>الهاتف</dt><dd className="mono">{selected.phone ?? '—'}</dd>
-              <dt>الدولة</dt><dd>{selected.country ?? selected.country_code ?? '—'}</dd>
-              <dt>العملة</dt><dd className="mono">{selected.base_currency ?? '—'}</dd>
-              <dt>الموقع</dt><dd className="mono small">{selected.website ?? '—'}</dd>
-              <dt>السجل التجاري</dt><dd className="mono">{selected.registration_id ?? '—'}</dd>
-              <dt>العنوان</dt><dd>{selected.business_address ?? '—'}</dd>
+              <dt>{t('التاجر الرئيسي', 'Master merchant')}</dt><dd>{masterName(selected.master_merchant_id) ?? '—'}</dd>
+              <dt>{t('النشاط', 'Business type')}</dt><dd>{selected.business_type ?? '—'}</dd>
+              <dt>{t('جهة الاتصال', 'Contact')}</dt><dd>{selected.primary_contact_name ?? '—'}</dd>
+              <dt>{t('البريد', 'Email')}</dt><dd className="mono small">{selected.email ?? '—'}</dd>
+              <dt>{t('الهاتف', 'Phone')}</dt><dd className="mono">{selected.phone ?? '—'}</dd>
+              <dt>{t('الدولة', 'Country')}</dt><dd>{selected.country ?? selected.country_code ?? '—'}</dd>
+              <dt>{t('العملة', 'Currency')}</dt><dd className="mono">{selected.base_currency ?? '—'}</dd>
+              <dt>{t('الموقع', 'Website')}</dt><dd className="mono small">{selected.website ?? '—'}</dd>
+              <dt>{t('السجل التجاري', 'Registration ID')}</dt><dd className="mono">{selected.registration_id ?? '—'}</dd>
+              <dt>{t('العنوان', 'Address')}</dt><dd>{selected.business_address ?? '—'}</dd>
               <dt>Callback URL</dt><dd className="mono small">{selected.callback_url ?? '—'}</dd>
-              <dt>مبالغ محجوزة</dt><dd className="mono">{money(selected.blocked_amount, selected.base_currency)}</dd>
-              <dt>آخر تدوير مفاتيح</dt><dd className="mono">{selected.key_rotated_at?.slice(0, 10) ?? '—'}</dd>
+              <dt>{t('مبالغ محجوزة', 'Blocked amount')}</dt><dd className="mono">{money(selected.blocked_amount, selected.base_currency)}</dd>
+              <dt>{t('آخر تدوير مفاتيح', 'Last key rotation')}</dt><dd className="mono">{selected.key_rotated_at?.slice(0, 10) ?? '—'}</dd>
             </dl>
 
             <p className="drawer-note">
-              مفاتيح الـ API والأسرار لا تُعرض في اللوحة — إدارتها تتم من تدفق منفصل لدور
-              <span className="mono"> super_admin</span>.
+              {t('مفاتيح الـ API والأسرار لا تُعرض في اللوحة — إدارتها تتم من تدفق منفصل لدور', 'API keys and secrets are never shown in the panel — managed via a separate flow for the')}
+              <span className="mono"> super_admin</span>{t(' فقط.', ' role.')}
             </p>
           </aside>
         </div>
