@@ -29,8 +29,8 @@ telegramRoutes.get('/', requireAnyPerm(TG_KEYS, 'can_view'), async (c) => {
   if (botToken) {
     try {
       const [meRes, whRes] = await Promise.all([
-        fetch(`https://api.telegram.org/bot${botToken}/getMe`).then((r) => r.json()),
-        fetch(`https://api.telegram.org/bot${botToken}/getWebhookInfo`).then((r) => r.json()),
+        fetch(`https://api.telegram.org/bot${botToken}/getMe`).then((r) => r.json() as Promise<{ result?: { username?: string; first_name?: string } }>),
+        fetch(`https://api.telegram.org/bot${botToken}/getWebhookInfo`).then((r) => r.json() as Promise<{ result?: { url?: string } }>),
       ])
       bot = {
         username: meRes?.result?.username ?? null,
