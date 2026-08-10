@@ -1205,3 +1205,7 @@ a.stat-card:hover { border-color: var(--accent); }
 .proof-actions { display: flex; gap: 6px; }
 .proof-body { overflow: auto; padding: 12px; display: flex; justify-content: center; background: var(--bg); }
 .proof-body img { max-width: 100%; max-height: calc(90vh - 60px); border-radius: 8px; object-fit: contain; }
+
+/* Binance treasury config grid */
+.binance-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+@media (max-width: 640px) { .binance-grid { grid-template-columns: 1fr; } }
