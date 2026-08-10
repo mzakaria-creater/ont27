@@ -191,6 +191,32 @@ extraRoutes.get('/crm', requirePerm('client_crm', 'can_view'), async (c) => {
   return c.json({ rows: data ?? [], total: count ?? 0, limit, offset })
 })
 
+// Full client profile + their transactions (matched by sender_number against
+// the client's phone). sms_names surfaces the different sender names seen for
+// this number — the signal behind the name-mismatch investigations.
+extraRoutes.get('/crm/:id', requirePerm('client_crm', 'can_view'), async (c) => {
+  const { data: client, error } = await db
+    .from('crm_clients')
+    .select('id, client_name, phone_no, email_address, normalized_phone, merchant_name, first_transaction_at, last_transaction_at, total_deposit, approved_deposit, total_transactions, approved_transactions, declined_transactions, pending_transactions, approval_rate, risk_score, is_vip, is_repeat_client, needs_review, sms_names')
+    .eq('id', c.req.param('id'))
+    .maybeSingle()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  if (!client) return c.json({ error: 'not_found' }, 404)
+
+  const phones = [client.phone_no, client.normalized_phone].filter(Boolean) as string[]
+  let txns: unknown[] = []
+  if (phones.length) {
+    const { data: rows } = await db
+      .from('maven_transactions')
+      .select('ontarget_ref, status, amount, sender_name, sender_number, payment_method, master_merchant, first_seen_at')
+      .in('sender_number', phones)
+      .order('first_seen_at', { ascending: false })
+      .limit(50)
+    txns = rows ?? []
+  }
+  return c.json({ client, transactions: txns })
+})
+
 // ---- Risk: blacklist + suspicious SMS + clients flagged for review ----
 extraRoutes.get(
   '/risk',

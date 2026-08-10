@@ -1209,3 +1209,12 @@ a.stat-card:hover { border-color: var(--accent); }
 /* Binance treasury config grid */
 .binance-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 @media (max-width: 640px) { .binance-grid { grid-template-columns: 1fr; } }
+
+/* CRM clickable rows + client detail modal */
+.clickable-row { cursor: pointer; transition: background 0.15s var(--ease); }
+.clickable-row:hover { background: var(--hover); }
+.crm-detail { max-width: min(680px, 95vw); }
+.crm-detail-body { display: block; padding: 16px; text-align: start; }
+.crm-detail-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.crm-sms-names { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.crm-sms-names .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
