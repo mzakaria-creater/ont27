@@ -140,6 +140,32 @@ controlRoutes.post('/automation/template', async (c) => {
   return c.json({ ok: true, applied: tpl.id })
 })
 
+// Operations archive — the browser_jobs execution log lives on the OLD DB
+// (31k+ rows, still written by the live workers). Read-only, management-gated
+// (all /control routes require CONTROL_ROLES). Restores the financial-audit
+// ability to review every automated/manual execution that was lost after the
+// migration archived these rows out of the panel's reach.
+const JOB_COLS = 'id, tx_id, amount, target_status, provider, source, state, attempts, max_attempts, maven_before_status, maven_after_status, last_error, error_code, operator_username, created_at, completed_at, failed_at'
+
+controlRoutes.get('/browser-jobs', async (c) => {
+  const old = oldDb()
+  if (!old) return c.json({ error: 'old_db_not_configured' }, 500)
+  const limit = Math.min(Math.max(Number(c.req.query('limit')) || 30, 1), 100)
+  const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
+  const state = c.req.query('state')?.trim()
+  const source = c.req.query('source')?.trim()
+  const txId = c.req.query('tx_id')?.trim()
+  let query = old.from('browser_jobs').select(JOB_COLS, { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+  if (state) query = query.eq('state', state)
+  if (source) query = query.eq('source', source)
+  if (txId && /^\d+$/.test(txId)) query = query.eq('tx_id', Number(txId))
+  const { data, count, error } = await query
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  return c.json({ rows: data ?? [], total: count ?? 0, limit, offset })
+})
+
 controlRoutes.post('/automation', async (c) => {
   const old = oldDb()
   if (!old) return c.json({ error: 'old_db_not_configured' }, 500)
