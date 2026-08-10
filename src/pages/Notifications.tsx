@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import PanelShell from '../components/PanelShell'
 import { api } from '../lib/api'
 import { money } from '../lib/deposits'
+import { useLocale } from '../lib/locale'
 
 // Notifications center — the bell's data, expanded.
 
@@ -16,6 +17,7 @@ export interface NotifData {
 }
 
 export default function Notifications() {
+  const { t } = useLocale()
   const [data, setData] = useState<NotifData | null>(null)
 
   useEffect(() => {
@@ -28,46 +30,46 @@ export default function Notifications() {
   return (
     <PanelShell>
       <section className="page-head">
-        <h2>🔔 الإشعارات</h2>
-        <p className="page-sub">كل ما يحتاج انتباهك الآن · تحديث تلقائي كل 30 ثانية</p>
+        <h2>🔔 {t('الإشعارات', 'Notifications')}</h2>
+        <p className="page-sub">{t('كل ما يحتاج انتباهك الآن · تحديث تلقائي كل 30 ثانية', 'Everything that needs your attention now · auto-refresh every 30s')}</p>
       </section>
 
-      {!data && <p className="sidebar-hint">جارٍ التحميل…</p>}
+      {!data && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
       {data && (
         <>
           <div className="kpi-grid">
             <Link to="/deposits?status=PENDING" className="kpi-card amber">
               <span className="kpi-icon">💰</span>
               <div className="kpi-value">{data.pendingDeposits}</div>
-              <div className="kpi-label">إيداعات معلّقة</div>
+              <div className="kpi-label">{t('إيداعات معلّقة', 'Pending deposits')}</div>
             </Link>
             <Link to="/payouts?status=PENDING" className="kpi-card amber">
               <span className="kpi-icon">📤</span>
               <div className="kpi-value">{data.pendingPayouts}</div>
-              <div className="kpi-label">سحوبات معلّقة</div>
+              <div className="kpi-label">{t('سحوبات معلّقة', 'Pending payouts')}</div>
             </Link>
             <Link to="/sms?match=review" className="kpi-card">
               <span className="kpi-icon">📨</span>
               <div className="kpi-value">{data.smsReview}</div>
-              <div className="kpi-label">رسائل تحتاج مراجعة (48 ساعة)</div>
+              <div className="kpi-label">{t('رسائل تحتاج مراجعة (48 ساعة)', 'SMS needing review (48h)')}</div>
             </Link>
             <Link to="/wallets" className="kpi-card">
               <span className="kpi-icon">📵</span>
               <div className="kpi-value">{data.offlineDevices.length}</div>
-              <div className="kpi-label">أجهزة غير متصلة{data.offlineDevices.length > 0 && `: ${data.offlineDevices.join('، ')}`}</div>
+              <div className="kpi-label">{t('أجهزة غير متصلة', 'Offline devices')}{data.offlineDevices.length > 0 && `: ${data.offlineDevices.join('، ')}`}</div>
             </Link>
           </div>
 
           <section className="card recent-card">
             <div className="recent-head">
-              <h3>أحدث الإيداعات المعلّقة</h3>
-              <Link to="/approvals" className="pay-status-link">فتح طابور الموافقات ←</Link>
+              <h3>{t('أحدث الإيداعات المعلّقة', 'Latest pending deposits')}</h3>
+              <Link to="/approvals" className="pay-status-link">{t('فتح طابور الموافقات ←', 'Open approval queue →')}</Link>
             </div>
-            {data.latestPending.length === 0 && <p>لا يوجد شيء معلّق 🎉</p>}
+            {data.latestPending.length === 0 && <p>{t('لا يوجد شيء معلّق 🎉', 'Nothing pending 🎉')}</p>}
             {data.latestPending.length > 0 && (
               <div className="table-wrap">
                 <table className="data-table">
-                  <thead><tr><th>رقم العملية</th><th>المبلغ</th><th>المُرسِل</th><th>التاجر</th></tr></thead>
+                  <thead><tr><th>{t('رقم العملية', 'Ref')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('المُرسِل', 'Sender')}</th><th>{t('التاجر', 'Merchant')}</th></tr></thead>
                   <tbody>
                     {data.latestPending.map((r) => (
                       <tr key={r.tx_id}>

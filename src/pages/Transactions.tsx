@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money, statusMeta } from '../lib/deposits'
+import { useLocale } from '../lib/locale'
 
 // All transactions — deposits + payouts merged, sorted by our ref.
 
@@ -38,6 +39,7 @@ interface ListResponse {
 }
 
 export default function Transactions() {
+  const { t } = useLocale()
   const [params, setParams] = useSearchParams()
   const type = params.get('type') ?? ''
   const status = params.get('status') ?? ''
@@ -58,7 +60,7 @@ export default function Transactions() {
     try {
       setData(await api<ListResponse>(`/api/transactions?${search}`))
     } catch (e) {
-      setErr(e instanceof ApiError && e.status === 403 ? 'لا تملك صلاحية عرض المعاملات.' : 'تعذّر تحميل المعاملات.')
+      setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض المعاملات.', 'You do not have permission to view transactions.') : t('تعذّر تحميل المعاملات.', 'Failed to load transactions.'))
     } finally {
       setLoading(false)
     }
@@ -87,18 +89,18 @@ export default function Transactions() {
   return (
     <PanelShell>
       <section className="page-head">
-        <h2>📋 كل المعاملات</h2>
-        <p className="page-sub">إيداعات وسحوبات موحّدة{data && <> · {data.total.toLocaleString('en-US')} نتيجة</>}</p>
+        <h2>📋 {t('كل المعاملات', 'All transactions')}</h2>
+        <p className="page-sub">{t('إيداعات وسحوبات موحّدة', 'Deposits and payouts unified')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p>
       </section>
 
       <div className="filter-bar">
         <div className="filter-pills">
-          <button className={`pill${type === '' ? ' active' : ''}`} onClick={() => setFilter({ type: '' })}>الكل</button>
-          <button className={`pill${type === 'deposit' ? ' active' : ''}`} onClick={() => setFilter({ type: 'deposit' })}>💰 إيداعات</button>
-          <button className={`pill${type === 'payout' ? ' active' : ''}`} onClick={() => setFilter({ type: 'payout' })}>📤 سحوبات</button>
+          <button className={`pill${type === '' ? ' active' : ''}`} onClick={() => setFilter({ type: '' })}>{t('الكل', 'All')}</button>
+          <button className={`pill${type === 'deposit' ? ' active' : ''}`} onClick={() => setFilter({ type: 'deposit' })}>💰 {t('إيداعات', 'Deposits')}</button>
+          <button className={`pill${type === 'payout' ? ' active' : ''}`} onClick={() => setFilter({ type: 'payout' })}>📤 {t('سحوبات', 'Payouts')}</button>
         </div>
         <div className="chip-row">
-          <button className={`chip${status === '' ? ' chip-active' : ''}`} onClick={() => setFilter({ status: '' })}>الكل</button>
+          <button className={`chip${status === '' ? ' chip-active' : ''}`} onClick={() => setFilter({ status: '' })}>{t('الكل', 'All')}</button>
           {STATUS_FILTERS.map((s) => (
             <button key={s} className={`chip${status === s ? ' chip-active' : ''}`} onClick={() => setFilter({ status: s })}>
               {statusMeta(s).label}
@@ -106,30 +108,30 @@ export default function Transactions() {
           ))}
         </div>
         <form className="search-row" onSubmit={(e) => { e.preventDefault(); setFilter({ q: q.trim() }) }}>
-          <input className="login-input search-input" placeholder="بحث: مرجع / اسم / موبايل / تاجر…" value={q} onChange={(e) => setQ(e.target.value)} />
-          <button type="submit" className="btn-primary btn-sm">بحث</button>
+          <input className="login-input search-input" placeholder={t('بحث: مرجع / اسم / موبايل / تاجر…', 'Search: ref / name / phone / merchant…')} value={q} onChange={(e) => setQ(e.target.value)} />
+          <button type="submit" className="btn-primary btn-sm">{t('بحث', 'Search')}</button>
         </form>
       </div>
 
       {err && <div className="card warn">{err}</div>}
 
       <section className="card recent-card">
-        {loading && <p className="sidebar-hint">جارٍ التحميل…</p>}
-        {!loading && data && data.rows.length === 0 && <p>لا توجد نتائج مطابقة.</p>}
+        {loading && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
+        {!loading && data && data.rows.length === 0 && <p>{t('لا توجد نتائج مطابقة.', 'No matching results.')}</p>}
         {!loading && data && data.rows.length > 0 && (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>رقم العملية</th>
-                  <th>النوع</th>
-                  <th>المبلغ</th>
-                  <th>الطرف</th>
-                  <th>التاجر</th>
-                  <th>الحالة</th>
-                  <th>اعتمد بواسطة</th>
-                  <th>الوقت</th>
-                  <th>إجراء</th>
+                  <th>{t('رقم العملية', 'Ref')}</th>
+                  <th>{t('النوع', 'Type')}</th>
+                  <th>{t('المبلغ', 'Amount')}</th>
+                  <th>{t('الطرف', 'Party')}</th>
+                  <th>{t('التاجر', 'Merchant')}</th>
+                  <th>{t('الحالة', 'Status')}</th>
+                  <th>{t('اعتمد بواسطة', 'Approved by')}</th>
+                  <th>{t('الوقت', 'Time')}</th>
+                  <th>{t('إجراء', 'Action')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -145,14 +147,14 @@ export default function Transactions() {
                       </td>
                       <td>
                         <span className={`pay-status-badge ${r.kind === 'deposit' ? 'st-paid' : 'st-under'}`}>
-                          {r.kind === 'deposit' ? '💰 إيداع' : '📤 سحب'}
+                          {r.kind === 'deposit' ? `💰 ${t('إيداع', 'Deposit')}` : `📤 ${t('سحب', 'Payout')}`}
                         </span>
                       </td>
                       <td className="mono">{money(r.amount, r.currency ?? 'EGP')}</td>
                       <td>{party ?? '—'}</td>
                       <td>{r.merchant ?? '—'}{r.master_merchant && <div className="cell-sub">{r.master_merchant}</div>}</td>
                       <td><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></td>
-                      <td>{r.status === 'PENDING' ? '—' : (!r.approved_by || r.approved_by === 'Manual' ? 'النظام (آلي)' : r.approved_by)}</td>
+                      <td>{r.status === 'PENDING' ? '—' : (!r.approved_by || r.approved_by === 'Manual' ? t('النظام (آلي)', 'System (auto)') : r.approved_by)}</td>
                       <td className="mono">{depositTime(r)}</td>
                       <td>
                         <Link
@@ -161,7 +163,7 @@ export default function Transactions() {
                             ? `/transactions/${encodeURIComponent(r.ontarget_ref)}`
                             : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}
                         >
-                          👁 تفاصيل
+                          👁 {t('تفاصيل', 'Details')}
                         </Link>
                       </td>
                     </tr>
@@ -173,9 +175,9 @@ export default function Transactions() {
         )}
         {data && totalPages > 1 && (
           <div className="pager">
-            <button className="btn-ghost btn-sm" disabled={page <= 1} onClick={() => setFilter({ page: page - 1 })}>→ السابق</button>
+            <button className="btn-ghost btn-sm" disabled={page <= 1} onClick={() => setFilter({ page: page - 1 })}>→ {t('السابق', 'Prev')}</button>
             <span className="pager-info mono">{page} / {totalPages}</span>
-            <button className="btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setFilter({ page: page + 1 })}>التالي ←</button>
+            <button className="btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setFilter({ page: page + 1 })}>{t('التالي', 'Next')} ←</button>
           </div>
         )}
       </section>

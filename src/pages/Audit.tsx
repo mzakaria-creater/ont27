@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime } from '../lib/deposits'
+import { useLocale } from '../lib/locale'
 
 // Audit log viewer.
 
@@ -24,6 +25,7 @@ interface AuditRow {
 interface ListResponse { rows: AuditRow[]; total: number }
 
 export default function Audit() {
+  const { t } = useLocale()
   const [params, setParams] = useSearchParams()
   const page = Math.max(Number(params.get('page')) || 1, 1)
   const [q, setQ] = useState(params.get('q') ?? '')
@@ -39,7 +41,7 @@ export default function Audit() {
       setData(await api<ListResponse>(`/api/audit?${search}`))
       setErr(null)
     } catch (e) {
-      setErr(e instanceof ApiError && e.status === 403 ? 'لا تملك صلاحية عرض سجل التدقيق.' : 'تعذّر تحميل السجل.')
+      setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض سجل التدقيق.', 'You do not have permission to view the audit log.') : t('تعذّر تحميل السجل.', 'Failed to load the log.'))
     }
   }, [appliedQ, page])
 
@@ -62,27 +64,27 @@ export default function Audit() {
   return (
     <PanelShell>
       <section className="page-head">
-        <h2>🕵️ سجل التدقيق</h2>
-        <p className="page-sub">كل إجراء على النظام موثّق{data && <> · {data.total.toLocaleString('en-US')} سجل</>}</p>
+        <h2>🕵️ {t('سجل التدقيق', 'Audit log')}</h2>
+        <p className="page-sub">{t('كل إجراء على النظام موثّق', 'Every system action is recorded')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p>
       </section>
 
       <div className="filter-bar">
         <form className="search-row" onSubmit={(e) => { e.preventDefault(); setFilter({ q: q.trim() }) }}>
-          <input className="login-input search-input" placeholder="بحث: إجراء / مستخدم / رقم عملية…" value={q} onChange={(e) => setQ(e.target.value)} />
-          <button type="submit" className="btn-primary btn-sm">بحث</button>
+          <input className="login-input search-input" placeholder={t('بحث: إجراء / مستخدم / رقم عملية…', 'Search: action / user / tx id…')} value={q} onChange={(e) => setQ(e.target.value)} />
+          <button type="submit" className="btn-primary btn-sm">{t('بحث', 'Search')}</button>
         </form>
       </div>
 
       {err && <div className="card warn">{err}</div>}
 
       <section className="card recent-card">
-        {!data && !err && <p className="sidebar-hint">جارٍ التحميل…</p>}
-        {data && data.rows.length === 0 && <p>لا توجد سجلات.</p>}
+        {!data && !err && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
+        {data && data.rows.length === 0 && <p>{t('لا توجد سجلات.', 'No records.')}</p>}
         {data && data.rows.length > 0 && (
           <div className="table-wrap">
             <table className="data-table clickable">
               <thead>
-                <tr><th>الوقت</th><th>المستخدم</th><th>الإجراء</th><th>الكيان</th><th>التغيير</th></tr>
+                <tr><th>{t('الوقت', 'Time')}</th><th>{t('المستخدم', 'User')}</th><th>{t('الإجراء', 'Action')}</th><th>{t('الكيان', 'Entity')}</th><th>{t('التغيير', 'Change')}</th></tr>
               </thead>
               <tbody>
                 {data.rows.map((r) => (
@@ -94,8 +96,8 @@ export default function Audit() {
                     <td className="mono small">
                       {open === r.id ? (
                         <>
-                          {r.before && <div>قبل: {JSON.stringify(r.before)}</div>}
-                          {r.after && <div>بعد: {JSON.stringify(r.after)}</div>}
+                          {r.before && <div>{t('قبل', 'Before')}: {JSON.stringify(r.before)}</div>}
+                          {r.after && <div>{t('بعد', 'After')}: {JSON.stringify(r.after)}</div>}
                         </>
                       ) : (
                         <span className="cell-sub">{r.after ? JSON.stringify(r.after).slice(0, 40) + '…' : '—'}</span>
@@ -109,9 +111,9 @@ export default function Audit() {
         )}
         {data && totalPages > 1 && (
           <div className="pager">
-            <button className="btn-ghost btn-sm" disabled={page <= 1} onClick={() => setFilter({ page: page - 1 })}>→ السابق</button>
+            <button className="btn-ghost btn-sm" disabled={page <= 1} onClick={() => setFilter({ page: page - 1 })}>→ {t('السابق', 'Prev')}</button>
             <span className="pager-info mono">{page} / {totalPages}</span>
-            <button className="btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setFilter({ page: page + 1 })}>التالي ←</button>
+            <button className="btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setFilter({ page: page + 1 })}>{t('التالي', 'Next')} ←</button>
           </div>
         )}
       </section>
