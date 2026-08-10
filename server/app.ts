@@ -16,6 +16,7 @@ import { adminRoutes } from './admin.js'
 import { reportsRoutes } from './reports.js'
 import { reviewRoutes } from './review.js'
 import { telegramRoutes } from './telegram.js'
+import { publicApiRoutes } from './publicApi.js'
 
 export const app = new Hono().basePath('/api')
 
@@ -39,4 +40,5 @@ app.route('/admin', adminRoutes)
 app.route('/reports', reportsRoutes)
 app.route('/review', reviewRoutes)
 app.route('/telegram', telegramRoutes)
+app.route('/v1', publicApiRoutes)
 app.route('/', extraRoutes)
