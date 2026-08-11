@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
@@ -250,7 +250,10 @@ export default function SmsLive() {
   return (
     <PanelShell>
       <section className="page-head">
-        <h2>📨 {t('SMS مباشر', 'Live SMS')}</h2>
+        <div className="recent-head">
+          <h2 style={{ margin: 0 }}>📨 {t('SMS مباشر', 'Live SMS')}</h2>
+          <Link to="/wallet-report" className="btn-ghost btn-sm">📊 {t('تقرير المحافظ ←', 'Wallet report →')}</Link>
+        </div>
         <p className="page-sub">
           {t('صندوق الرسائل الوارد من أجهزة المحافظ · تحديث تلقائي كل', 'Inbox from the wallet devices · auto-refresh every')} {REFRESH_MS / 1000} {t('ثانية', 's')}
           {data && <> · {data.total.toLocaleString('en-US')}</>}

@@ -169,6 +169,16 @@ extraRoutes.get(
   },
 )
 
+// ---- Wallet SMS report — per-wallet aggregate (idea from the old
+// wallet-sms-report): SMS count/amount, deposits, withdrawals, unconfirmed,
+// and current balance for each receiving wallet, over a window. ----
+extraRoutes.get('/wallet-report', requireAnyPerm(['sms_live', 'wallets'], 'can_view'), async (c) => {
+  const days = Math.min(Math.max(Number(c.req.query('days')) || 30, 1), 365)
+  const { data, error } = await db.rpc('panel_wallet_sms_report', { p_days: days })
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  return c.json({ rows: data ?? [], days })
+})
+
 // ---- CRM clients ----
 extraRoutes.get('/crm', requirePerm('client_crm', 'can_view'), async (c) => {
   const q = c.req.query('q')?.trim()
