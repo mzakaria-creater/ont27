@@ -1218,3 +1218,7 @@ a.stat-card:hover { border-color: var(--accent); }
 .crm-detail-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 .crm-sms-names { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
 .crm-sms-names .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Wallet report detail drawer */
+.wallet-drawer { max-width: min(560px, 96vw); }
+.wallet-sms-feed { display: flex; flex-direction: column; gap: 8px; max-height: 40vh; overflow-y: auto; }

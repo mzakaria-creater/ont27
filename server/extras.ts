@@ -179,6 +179,27 @@ extraRoutes.get('/wallet-report', requireAnyPerm(['sms_live', 'wallets'], 'can_v
   return c.json({ rows: data ?? [], days })
 })
 
+// Per-wallet detail: recent SMS for the wallet + transactions that landed on
+// it, shown inline in the wallet-report drawer.
+extraRoutes.get('/wallet-report/:wallet', requireAnyPerm(['sms_live', 'wallets'], 'can_view'), async (c) => {
+  const wallet = c.req.param('wallet')
+  if (!/^\d{6,}$/.test(wallet)) return c.json({ error: 'bad_wallet' }, 400)
+  const [sms, txns] = await Promise.all([
+    db.from('inbound_sms')
+      .select('id, sms_first_line, message, amount, sms_category, matched, match_status, balance_after, device_name, received_at')
+      .eq('receiver_number', wallet)
+      .order('received_at', { ascending: false })
+      .limit(40),
+    db.from('maven_transactions')
+      .select('ontarget_ref, status, amount, sender_name, master_merchant, first_seen_at')
+      .or(`receiving_wallet.eq.${wallet},to_account_number.eq.${wallet}`)
+      .order('first_seen_at', { ascending: false })
+      .limit(40),
+  ])
+  if (sms.error) return c.json({ error: 'db_error', detail: sms.error.message }, 500)
+  return c.json({ wallet, sms: sms.data ?? [], transactions: txns.data ?? [] })
+})
+
 // ---- CRM clients ----
 extraRoutes.get('/crm', requirePerm('client_crm', 'can_view'), async (c) => {
   const q = c.req.query('q')?.trim()

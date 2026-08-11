@@ -25,11 +25,25 @@ function balanceDiff(r: WalletRow): number | null {
   return Math.round(((r.balance - r.first_balance) - ((r.deposits_amount ?? 0) - (r.withdrawals_amount ?? 0))) * 100) / 100
 }
 
+interface WalletSms { id: number; sms_first_line: string | null; message: string | null; amount: number | null; sms_category: string | null; matched: boolean | null; match_status: string | null; balance_after: number | null; device_name: string | null; received_at: string | null }
+interface WalletTxn { ontarget_ref: string; status: string | null; amount: number | null; sender_name: string | null; master_merchant: string | null; first_seen_at: string | null }
+interface WalletDetail { wallet: string; sms: WalletSms[]; transactions: WalletTxn[] }
+
 export default function WalletReport() {
   const { t } = useLocale()
   const [rows, setRows] = useState<WalletRow[] | null>(null)
   const [days, setDays] = useState(30)
   const [err, setErr] = useState<string | null>(null)
+  const [detail, setDetail] = useState<WalletDetail | null>(null)
+  const [detailBusy, setDetailBusy] = useState(false)
+
+  const openDetail = async (wallet: string) => {
+    setDetailBusy(true); setDetail(null)
+    try { setDetail(await api<WalletDetail>(`/api/wallet-report/${encodeURIComponent(wallet)}`)) }
+    catch { setErr(t('تعذّر تحميل تفاصيل المحفظة.', 'Failed to load wallet details.')) }
+    finally { setDetailBusy(false) }
+  }
+  const stCls = (s: string | null) => s === 'PAID' || s === 'APPROVED' ? 'st-paid' : s === 'DECLINED' ? 'st-declined' : s === 'PENDING' ? 'st-pending' : 'st-dim'
 
   const load = useCallback(async () => {
     setRows(null)
@@ -80,7 +94,7 @@ export default function WalletReport() {
           <th>{t('غير مؤكدة', 'Unconfirmed')}</th><th>{t('الرصيد الحالي', 'Balance')}</th>
           <th title={t('فرق نشاط SMS عن تغيّر الرصيد — غالباً تحويلات للخزينة', 'SMS activity vs balance change — usually treasury sweeps')}>{t('فرق الرصيد', 'Balance diff')}</th><th /></tr></thead>
         <tbody>{rows.map((r) => (
-          <tr key={r.wallet}>
+          <tr key={r.wallet} className="clickable-row" onClick={() => void openDetail(r.wallet)}>
             <td className="mono">{r.wallet}</td>
             <td>{r.device ?? '—'}{r.merchant && <div className="cell-sub">{r.merchant}</div>}</td>
             <td className="mono">{r.sms_count}</td>
@@ -90,10 +104,43 @@ export default function WalletReport() {
             <td>{r.unconfirmed > 0 ? <span className="pay-status-badge st-pending">{r.unconfirmed}</span> : <span className="mono">0</span>}</td>
             <td className="mono">{money(r.balance, 'EGP')}</td>
             <td className="mono" style={balanceDiff(r) != null && balanceDiff(r) !== 0 ? { color: 'var(--status-declined)' } : undefined}>{balanceDiff(r) != null ? money(balanceDiff(r), 'EGP') : '—'}</td>
-            <td><Link className="btn-ghost btn-sm" to={`/sms?q=${encodeURIComponent(r.wallet)}`}>{t('👁 الرسائل', '👁 Messages')}</Link></td>
+            <td onClick={(e) => e.stopPropagation()}><Link className="btn-ghost btn-sm" to={`/sms?q=${encodeURIComponent(r.wallet)}`}>{t('👁 الرسائل', '👁 Messages')}</Link></td>
           </tr>
         ))}</tbody>
       </table></div>}
     </section>
+
+    {(detail || detailBusy) && (
+      <div className="drawer-backdrop" onClick={() => setDetail(null)}>
+        <aside className="drawer wallet-drawer" onClick={(e) => e.stopPropagation()}>
+          <div className="drawer-head">
+            <h3 className="mono">{detailBusy ? t('جارٍ التحميل…', 'Loading…') : `📱 ${detail?.wallet}`}</h3>
+            <button className="btn-ghost btn-sm" onClick={() => setDetail(null)} aria-label={t('إغلاق', 'Close')}>✕</button>
+          </div>
+          {detail && <>
+            <div className="section-label" style={{ marginTop: 0 }}>{t('المعاملات على هذه المحفظة', 'Transactions to this wallet')} ({detail.transactions.length})</div>
+            {detail.transactions.length === 0 ? <p className="sidebar-hint">{t('لا توجد معاملات مرتبطة.', 'No linked transactions.')}</p> : (
+              <div className="table-wrap"><table className="data-table">
+                <thead><tr><th>{t('المرجع', 'Ref')}</th><th>{t('الحالة', 'Status')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('المُرسِل', 'Sender')}</th></tr></thead>
+                <tbody>{detail.transactions.map((tx) => <tr key={tx.ontarget_ref}><td className="mono"><Link to={`/transactions/${encodeURIComponent(tx.ontarget_ref)}`}>{tx.ontarget_ref}</Link></td><td><span className={`pay-status-badge ${stCls(tx.status)}`}>{tx.status ?? '—'}</span></td><td className="mono">{money(tx.amount, 'EGP')}</td><td>{tx.sender_name ?? '—'}</td></tr>)}</tbody>
+              </table></div>
+            )}
+            <div className="section-label">{t('آخر الرسائل', 'Recent messages')} ({detail.sms.length})</div>
+            {detail.sms.length === 0 ? <p className="sidebar-hint">{t('لا توجد رسائل.', 'No messages.')}</p> : (
+              <div className="wallet-sms-feed">{detail.sms.map((s) => (
+                <div key={s.id} className={`tv-item${s.matched ? ' ok' : ''}`}>
+                  <div className="tv-item-head">
+                    <span className="mono">{money(s.amount, 'EGP')} · {s.sms_category === 'withdrawal' ? '📤' : '📥'} {s.matched ? '🔗' : ''}</span>
+                    <span className="mono dim">{s.received_at ? new Date(s.received_at).toLocaleString('en-GB', { timeZone: 'Africa/Cairo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}</span>
+                  </div>
+                  <div className="cell-sub">{s.sms_first_line ?? (s.message ?? '').slice(0, 90)}</div>
+                  {s.balance_after != null && <div className="cell-sub mono">{t('الرصيد بعدها', 'balance after')}: {money(s.balance_after, 'EGP')} · {s.device_name ?? '—'}</div>}
+                </div>
+              ))}</div>
+            )}
+          </>}
+        </aside>
+      </div>
+    )}
   </PanelShell>
 }
