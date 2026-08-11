@@ -55,18 +55,26 @@ export interface DepositStats {
   recent: DepositRow[]
 }
 
-export const STATUS_META: Record<string, { label: string; cls: string }> = {
-  PENDING: { label: 'معلّق', cls: 'st-pending' },
-  PAID: { label: 'مدفوع', cls: 'st-paid' },
-  APPROVED: { label: 'مُعتمد', cls: 'st-paid' },
-  DECLINED: { label: 'مرفوض', cls: 'st-declined' },
-  EXPIRED: { label: 'منتهي', cls: 'st-dim' },
-  EXPIRED_LOCAL: { label: 'منتهي (محلي)', cls: 'st-dim' },
-  UNDERPAID: { label: 'دفع ناقص', cls: 'st-under' },
+export const STATUS_META: Record<string, { ar: string; en: string; cls: string }> = {
+  PENDING: { ar: 'معلّق', en: 'Pending', cls: 'st-pending' },
+  PAID: { ar: 'مدفوع', en: 'Paid', cls: 'st-paid' },
+  APPROVED: { ar: 'مُعتمد', en: 'Approved', cls: 'st-paid' },
+  DECLINED: { ar: 'مرفوض', en: 'Declined', cls: 'st-declined' },
+  EXPIRED: { ar: 'منتهي', en: 'Expired', cls: 'st-dim' },
+  EXPIRED_LOCAL: { ar: 'منتهي (محلي)', en: 'Expired (local)', cls: 'st-dim' },
+  UNDERPAID: { ar: 'دفع ناقص', en: 'Underpaid', cls: 'st-under' },
 }
 
+// Current UI language, mirrored from the LocaleProvider so statusMeta() can pick
+// the right label without every call site threading a hook through. Updated
+// synchronously by setStatusLocale() during the provider's render.
+let statusLocale: 'ar' | 'en' = (typeof localStorage !== 'undefined' && localStorage.getItem('panel-language') === 'en') ? 'en' : 'ar'
+export function setStatusLocale(locale: 'ar' | 'en') { statusLocale = locale }
+
 export function statusMeta(status: string) {
-  return STATUS_META[status] ?? { label: status, cls: 'st-dim' }
+  const m = STATUS_META[status]
+  if (!m) return { label: status, cls: 'st-dim', ar: status, en: status }
+  return { label: statusLocale === 'en' ? m.en : m.ar, cls: m.cls, ar: m.ar, en: m.en }
 }
 
 export function parseUtcText(value: string | null | undefined): Date | null {

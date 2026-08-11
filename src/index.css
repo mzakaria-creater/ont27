@@ -1222,3 +1222,14 @@ a.stat-card:hover { border-color: var(--accent); }
 /* Wallet report detail drawer */
 .wallet-drawer { max-width: min(560px, 96vw); }
 .wallet-sms-feed { display: flex; flex-direction: column; gap: 8px; max-height: 40vh; overflow-y: auto; }
+
+/* Status summary chips with live counts */
+.chip-count { display: inline-block; margin-inline-start: 6px; padding: 0 6px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--hover-2); color: var(--text-dim); }
+.chip.chip-active .chip-count { background: rgba(255,255,255,0.18); color: inherit; }
+.status-chip { display: inline-flex; align-items: center; gap: 5px; }
+.status-chip [class^="dot-st-"] { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.dot-st-paid { background: var(--status-paid); }
+.dot-st-pending { background: var(--status-pending); }
+.dot-st-declined { background: var(--status-declined); }
+.dot-st-under { background: var(--payfuture, #a89ee8); }
+.dot-st-dim { background: var(--text-muted); }

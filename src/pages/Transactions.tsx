@@ -49,6 +49,7 @@ export default function Transactions() {
   const [data, setData] = useState<ListResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
+  const [counts, setCounts] = useState<Record<string, number>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -67,6 +68,14 @@ export default function Transactions() {
   }, [type, status, appliedQ, page])
 
   useEffect(() => { void load() }, [load])
+
+  // Status summary counts (respects the deposit/payout filter, ignores search).
+  useEffect(() => {
+    const qp = type ? `?type=${type}` : ''
+    api<{ counts: { status: string; count: number }[] }>(`/api/transactions/status-counts${qp}`)
+      .then((r) => setCounts(Object.fromEntries(r.counts.map((c) => [c.status, c.count]))))
+      .catch(() => setCounts({}))
+  }, [type])
 
   const setFilter = (next: { type?: string; status?: string; q?: string; page?: number }) => {
     const p = new URLSearchParams(params)
@@ -100,10 +109,13 @@ export default function Transactions() {
           <button className={`pill${type === 'payout' ? ' active' : ''}`} onClick={() => setFilter({ type: 'payout' })}>📤 {t('سحوبات', 'Payouts')}</button>
         </div>
         <div className="chip-row">
-          <button className={`chip${status === '' ? ' chip-active' : ''}`} onClick={() => setFilter({ status: '' })}>{t('الكل', 'All')}</button>
+          <button className={`chip${status === '' ? ' chip-active' : ''}`} onClick={() => setFilter({ status: '' })}>
+            {t('الكل', 'All')}{Object.keys(counts).length > 0 && <span className="chip-count">{Object.values(counts).reduce((a, b) => a + b, 0).toLocaleString('en-US')}</span>}
+          </button>
           {STATUS_FILTERS.map((s) => (
-            <button key={s} className={`chip${status === s ? ' chip-active' : ''}`} onClick={() => setFilter({ status: s })}>
-              {statusMeta(s).label}
+            <button key={s} className={`chip status-chip st-${statusMeta(s).cls.replace('st-', '')}${status === s ? ' chip-active' : ''}`} onClick={() => setFilter({ status: status === s ? '' : s })}>
+              <span className={`dot-${statusMeta(s).cls}`} />{statusMeta(s).label}
+              {counts[s] != null && <span className="chip-count">{counts[s].toLocaleString('en-US')}</span>}
             </button>
           ))}
         </div>

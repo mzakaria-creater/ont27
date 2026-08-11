@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import { setStatusLocale } from './deposits'
 
 export type Locale = 'ar' | 'en'
 
@@ -16,6 +17,10 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   const [locale, setLocale] = useState<Locale>(() => (
     localStorage.getItem('panel-language') === 'en' ? 'en' : 'ar'
   ))
+
+  // Keep the status-label locale in sync synchronously so statusMeta() picks the
+  // right language on the same render the toggle happens (no stale frame).
+  setStatusLocale(locale)
 
   useEffect(() => {
     localStorage.setItem('panel-language', locale)

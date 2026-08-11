@@ -5,7 +5,7 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { useBulk } from '../lib/useBulk'
 import { useLocale } from '../lib/locale'
-import { depositTime, money, statusMeta, STATUS_META } from '../lib/deposits'
+import { depositTime, money, statusMeta } from '../lib/deposits'
 import type { DepositDetail, DepositRow, DepositStats } from '../lib/deposits'
 
 const PAGE_SIZE = 25
@@ -251,7 +251,7 @@ export default function Deposits() {
               className={`chip${status === s ? ' chip-active' : ''}`}
               onClick={() => setFilter({ status: s })}
             >
-              {STATUS_META[s]?.label ?? s}
+              {statusMeta(s).label}
             </button>
           ))}
         </div>
@@ -554,7 +554,7 @@ export default function Deposits() {
                     <div className="timeline-item">
                       <div className={`timeline-dot ${selected.status === 'PAID' || selected.status === 'APPROVED' ? 'done' : 'neutral'}`} />
                       <div>
-                        <div className="timeline-title">القرار: {statusMeta(selected.status).label}</div>
+                        <div className="timeline-title">{t('القرار', 'Decision')}: {statusMeta(selected.status).label}</div>
                         <div className="timeline-meta mono">
                           {depositTime({ first_seen_at: selected.last_status_change })}
                           {selected.approved_by && <> · {selected.approved_by}</>}

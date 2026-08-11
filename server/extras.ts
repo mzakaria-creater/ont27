@@ -83,6 +83,18 @@ extraRoutes.get(
   },
 )
 
+// Per-status transaction counts for the summary strip (respects type filter).
+extraRoutes.get(
+  '/transactions/status-counts',
+  requireAnyPerm(['transactions', 'all_transactions', 'refunds', 'reversals'], 'can_view'),
+  async (c) => {
+    const type = c.req.query('type') === 'payout' ? 'payout' : c.req.query('type') === 'deposit' ? 'deposit' : ''
+    const { data, error } = await db.rpc('panel_tx_status_counts', { p_type: type })
+    if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+    return c.json({ counts: data ?? [] })
+  },
+)
+
 // ---- Approvals queue (everything PENDING) ----
 extraRoutes.get(
   '/approvals',
