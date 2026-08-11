@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import QRCode from 'qrcode'
 import { api, ApiError } from '../lib/api'
+import { useLocale } from '../lib/locale'
 
 interface PayLink {
   short_code: string
@@ -35,19 +36,20 @@ export function providerLabel(provider: string | null, fallback: string | null):
   return provider.split(/[-_]/).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
 
-const payErrors: Record<string, string> = {
-  invalid_phone: 'أدخل رقم موبايل مصري صحيح (01xxxxxxxxx)',
-  invalid_amount: 'أدخل مبلغاً صحيحاً',
-  link_not_found: 'رابط الدفع غير موجود',
-  link_disabled: 'رابط الدفع موقوف',
-  link_expired: 'انتهت صلاحية رابط الدفع',
-  link_exhausted: 'اكتمل عدد استخدامات هذا الرابط',
-  no_channel_available: 'لا توجد قناة دفع متاحة حالياً — حاول لاحقاً',
-  amount_below_min: 'المبلغ أقل من الحد الأدنى',
-  amount_above_max: 'المبلغ أكبر من الحد الأقصى',
+const payErrors: Record<string, [string, string]> = {
+  invalid_phone: ['أدخل رقم موبايل مصري صحيح (01xxxxxxxxx)', 'Enter a valid Egyptian mobile (01xxxxxxxxx)'],
+  invalid_amount: ['أدخل مبلغاً صحيحاً', 'Enter a valid amount'],
+  link_not_found: ['رابط الدفع غير موجود', 'Payment link not found'],
+  link_disabled: ['رابط الدفع موقوف', 'Payment link disabled'],
+  link_expired: ['انتهت صلاحية رابط الدفع', 'Payment link expired'],
+  link_exhausted: ['اكتمل عدد استخدامات هذا الرابط', "This link's usage limit is reached"],
+  no_channel_available: ['لا توجد قناة دفع متاحة حالياً — حاول لاحقاً', 'No payment channel available now — try later'],
+  amount_below_min: ['المبلغ أقل من الحد الأدنى', 'Amount is below the minimum'],
+  amount_above_max: ['المبلغ أكبر من الحد الأقصى', 'Amount is above the maximum'],
 }
 
 export default function PaymentCheckout() {
+  const { t } = useLocale()
   const [params] = useSearchParams()
   const code = params.get('code')
   const [link, setLink] = useState<PayLink | null>(null)
@@ -68,7 +70,7 @@ export default function PaymentCheckout() {
         setLink(link)
         if (link.amount_mode === 'fixed' && link.amount) setAmount(String(link.amount))
       })
-      .catch((err) => setLinkError(err instanceof ApiError ? payErrors[err.code] ?? 'تعذر تحميل الرابط' : 'تعذر تحميل الرابط'))
+      .catch((err) => setLinkError(err instanceof ApiError && payErrors[err.code] ? t(payErrors[err.code][0], payErrors[err.code][1]) : t('تعذر تحميل الرابط', 'Failed to load the link')))
   }, [code])
 
   useEffect(() => {
@@ -98,7 +100,7 @@ export default function PaymentCheckout() {
       })
       setSession(session)
     } catch (err) {
-      setError(err instanceof ApiError ? payErrors[err.code] ?? 'حدث خطأ — حاول مرة أخرى' : 'تعذر الاتصال بالخادم')
+      setError(err instanceof ApiError && payErrors[err.code] ? t(payErrors[err.code][0], payErrors[err.code][1]) : (err instanceof ApiError ? t('حدث خطأ — حاول مرة أخرى', 'An error occurred — try again') : t('تعذر الاتصال بالخادم', 'Failed to reach the server')))
     } finally {
       setBusy(false)
     }
@@ -116,34 +118,34 @@ export default function PaymentCheckout() {
       <div className="pay-wrap">
         <div className="card pay-card">
           <img src="/logo.svg" alt="OnTarget" className="login-logo" />
-          <p className="login-sub">حوّل المبلغ من محفظتك إلى الرقم التالي</p>
+          <p className="login-sub">{t('حوّل المبلغ من محفظتك إلى الرقم التالي', 'Transfer the amount from your wallet to the number below')}</p>
           <div className="pay-amount">{session.amount} <span>{session.currency}</span></div>
           <div className="pay-channel">{pLabel}</div>
           <div className="pay-wallet mono">{session.wallet_number}</div>
           {qr && <img src={qr} alt="QR" className="pay-qr" />}
           <div className="pay-actions">
             <button className="btn-primary" onClick={() => void copy(session.wallet_number ?? '', 'wallet')}>
-              {copied === 'wallet' ? '✓ تم النسخ' : 'نسخ رقم المحفظة'}
+              {copied === 'wallet' ? t('✓ تم النسخ', '✓ Copied') : t('نسخ رقم المحفظة', 'Copy wallet number')}
             </button>
             {session.deeplink && (
-              <a className="btn-primary" href={session.deeplink}>فتح التطبيق</a>
+              <a className="btn-primary" href={session.deeplink}>{t('فتح التطبيق', 'Open app')}</a>
             )}
             {qr && (
-              <a className="btn-ghost" href={qr} download={`ontarget-${session.reference}.png`}>تحميل QR</a>
+              <a className="btn-ghost" href={qr} download={`ontarget-${session.reference}.png`}>{t('تحميل QR', 'Download QR')}</a>
             )}
             <button
               className="btn-ghost"
               onClick={() => void copy(`${location.origin}/payment-status?id=${session.id}`, 'status')}
             >
-              {copied === 'status' ? '✓ تم النسخ' : 'نسخ رابط المتابعة'}
+              {copied === 'status' ? t('✓ تم النسخ', '✓ Copied') : t('نسخ رابط المتابعة', 'Copy tracking link')}
             </button>
           </div>
           <p className="pay-note">
-            المرجع: <span className="mono">{session.reference}</span> · صالح حتى{' '}
+            {t('المرجع', 'Reference')}: <span className="mono">{session.reference}</span> · {t('صالح حتى', 'valid until')}{' '}
             {new Date(session.expires_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
           </p>
           <Link className="btn-ghost pay-status-link" to={`/payment-status?id=${session.id}`}>
-            متابعة حالة الدفع ←
+            {t('متابعة حالة الدفع ←', 'Track payment status →')}
           </Link>
         </div>
       </div>
@@ -154,22 +156,22 @@ export default function PaymentCheckout() {
     <div className="pay-wrap">
       <form className="card pay-card" onSubmit={onSubmit}>
         <img src="/logo.svg" alt="OnTarget" className="login-logo" />
-        <h2>{link?.title ?? 'إيداع جديد'}</h2>
-        <p className="login-sub">ادفع عبر المحفظة الإلكترونية</p>
+        <h2>{link?.title ?? t('إيداع جديد', 'New deposit')}</h2>
+        <p className="login-sub">{t('ادفع عبر المحفظة الإلكترونية', 'Pay via your mobile wallet')}</p>
         <label className="field">
-          <span>رقم الموبايل</span>
+          <span>{t('رقم الموبايل', 'Mobile number')}</span>
           <input inputMode="numeric" dir="ltr" placeholder="01xxxxxxxxx" value={phone}
             onChange={(e) => setPhone(e.target.value)} required autoFocus />
         </label>
         <label className="field">
-          <span>الاسم (اختياري)</span>
+          <span>{t('الاسم (اختياري)', 'Name (optional)')}</span>
           <input value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <label className="field">
           <span>
-            المبلغ ({link?.currency ?? 'EGP'})
-            {link?.amount_mode === 'open' && link.min_amount !== null && ` · من ${link.min_amount}`}
-            {link?.amount_mode === 'open' && link.max_amount !== null && ` إلى ${link.max_amount}`}
+            {t('المبلغ', 'Amount')} ({link?.currency ?? 'EGP'})
+            {link?.amount_mode === 'open' && link.min_amount !== null && ` · ${t('من', 'from')} ${link.min_amount}`}
+            {link?.amount_mode === 'open' && link.max_amount !== null && ` ${t('إلى', 'to')} ${link.max_amount}`}
           </span>
           <input inputMode="decimal" dir="ltr" value={amount}
             onChange={(e) => setAmount(e.target.value)}
@@ -177,7 +179,7 @@ export default function PaymentCheckout() {
         </label>
         {error && <div className="login-error" role="alert">{error}</div>}
         <button className="btn-primary" type="submit" disabled={busy}>
-          {busy ? 'جارٍ التجهيز…' : 'متابعة الدفع'}
+          {busy ? t('جارٍ التجهيز…', 'Preparing…') : t('متابعة الدفع', 'Continue to payment')}
         </button>
       </form>
     </div>
