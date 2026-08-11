@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { depositTime, money, statusMeta } from '../lib/deposits'
 import type { DepositRow, DepositStats } from '../lib/deposits'
+import { useLocale } from '../lib/locale'
 
 // 🖥️ شاشة TV — full-screen live operations wall (from the control room's
 // tvscreen view), driven by the panel's own APIs. Auto-refreshes every 10s.
@@ -41,6 +42,7 @@ interface ControlStats {
 }
 
 export default function TvScreen() {
+  const { t } = useLocale()
   const [stats, setStats] = useState<DepositStats | null>(null)
   const [control, setControl] = useState<ControlStats | null>(null)
   const [sms, setSms] = useState<TvSms[]>([])
@@ -77,13 +79,13 @@ export default function TvScreen() {
       : null)
 
   const kpis: { label: string; value: string | number; cls?: string }[] = [
-    { label: 'معلّقة الآن', value: stats?.pending ?? '…', cls: 'amber' },
-    { label: 'مقبول اليوم', value: (cStats.today_approved as number | undefined) ?? stats?.day.paid.count ?? '…', cls: 'green' },
-    { label: 'مرفوض اليوم', value: (cStats.today_declined as number | undefined) ?? stats?.day.declined ?? '…', cls: 'red' },
-    { label: 'نسبة القبول', value: acceptRate != null ? `${acceptRate}%` : '…' },
-    { label: 'حجم اليوم EGP', value: stats ? money(stats.day.paid.volume, '') : '…' },
-    { label: 'طابور التحكم', value: control ? control.queue.length : '—', cls: 'amber' },
-    { label: 'نُفّذ اليوم', value: (cStats.jobs_completed_today as number | undefined) ?? '—', cls: 'green' },
+    { label: t('معلّقة الآن', 'Pending now'), value: stats?.pending ?? '…', cls: 'amber' },
+    { label: t('مقبول اليوم', 'Approved today'), value: (cStats.today_approved as number | undefined) ?? stats?.day.paid.count ?? '…', cls: 'green' },
+    { label: t('مرفوض اليوم', 'Declined today'), value: (cStats.today_declined as number | undefined) ?? stats?.day.declined ?? '…', cls: 'red' },
+    { label: t('نسبة القبول', 'Approval rate'), value: acceptRate != null ? `${acceptRate}%` : '…' },
+    { label: t('حجم اليوم EGP', "Today's volume EGP"), value: stats ? money(stats.day.paid.volume, '') : '…' },
+    { label: t('طابور التحكم', 'Control queue'), value: control ? control.queue.length : '—', cls: 'amber' },
+    { label: t('نُفّذ اليوم', 'Executed today'), value: (cStats.jobs_completed_today as number | undefined) ?? '—', cls: 'green' },
   ]
 
   const clock = now.toLocaleTimeString('en-US', { timeZone: 'Africa/Cairo', hour12: true })
@@ -91,16 +93,16 @@ export default function TvScreen() {
   return (
     <div className="tv-page">
       <header className="tv-head">
-        <h1>⚡ OnTarget — غرفة المراقبة الحية</h1>
+        <h1>⚡ OnTarget — {t('غرفة المراقبة الحية', 'Live monitoring wall')}</h1>
         <div className="tv-head-side">
           {control?.settings && (
             <span className={`pay-status-badge ${control.settings.automation_enabled ? 'st-paid' : 'st-declined'}`}>
-              الأتمتة {control.settings.automation_enabled ? 'تعمل' : 'متوقفة'}
+              {t('الأتمتة', 'Automation')} {control.settings.automation_enabled ? t('تعمل', 'on') : t('متوقفة', 'off')}
             </span>
           )}
-          <span className="live-dot"><span className="ld" />مباشر</span>
+          <span className="live-dot"><span className="ld" />{t('مباشر', 'Live')}</span>
           <span className="tv-clock mono">{clock}</span>
-          <Link to="/" className="btn-ghost btn-sm">✕ خروج</Link>
+          <Link to="/" className="btn-ghost btn-sm">✕ {t('خروج', 'Exit')}</Link>
         </div>
       </header>
 
@@ -115,7 +117,7 @@ export default function TvScreen() {
 
       <div className="tv-cols">
         <section className="tv-col">
-          <h3>📨 رسائل SMS حية</h3>
+          <h3>📨 {t('رسائل SMS حية', 'Live SMS')}</h3>
           <div className="tv-feed">
             {sms.map((s) => (
               <div key={s.id} className={`tv-item${s.matched ? ' ok' : ''}`}>
@@ -134,7 +136,7 @@ export default function TvScreen() {
         </section>
 
         <section className="tv-col">
-          <h3>🎯 مطابقة تلقائية</h3>
+          <h3>🎯 {t('مطابقة تلقائية', 'Auto matching')}</h3>
           <div className="tv-feed">
             {matched.map((s) => (
               <div key={s.id} className="tv-item ok">
@@ -143,17 +145,17 @@ export default function TvScreen() {
                   <span className="mono dim">{depositTime({ first_seen_at: s.received_at })}</span>
                 </div>
                 <div className="tv-item-main">
-                  <b className="mono">{money(s.amount, 'EGP')}</b> ← معاملة{' '}
+                  <b className="mono">{money(s.amount, 'EGP')}</b> ← {t('معاملة', 'tx')}{' '}
                   <span className="mono">{s.maven_transaction_id ?? s.trx_id ?? '—'}</span>
                 </div>
               </div>
             ))}
-            {matched.length === 0 && <p className="dim">لا توجد مطابقات بعد.</p>}
+            {matched.length === 0 && <p className="dim">{t('لا توجد مطابقات بعد.', 'No matches yet.')}</p>}
           </div>
         </section>
 
         <section className="tv-col">
-          <h3>💳 معاملات حية</h3>
+          <h3>💳 {t('معاملات حية', 'Live transactions')}</h3>
           <div className="tv-feed">
             {(stats?.recent ?? []).slice(0, 9).map((r: DepositRow) => {
               const st = statusMeta(r.status)
@@ -175,7 +177,7 @@ export default function TvScreen() {
       </div>
 
       <footer className="tv-payouts">
-        <h3>💸 السحب الصادر</h3>
+        <h3>💸 {t('السحب الصادر', 'Outgoing payouts')}</h3>
         <div className="tv-payout-row">
           {payouts.map((p) => {
             const st = statusMeta(p.status)

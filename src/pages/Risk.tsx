@@ -3,6 +3,7 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useAuth } from '../auth/AuthContext'
+import { useLocale } from '../lib/locale'
 
 // Risk & compliance — blacklist, suspicious SMS, clients flagged for review,
 // and sender-number velocity/fraud detection.
@@ -14,6 +15,7 @@ interface Offender { sender_number: string; sender_names: string[] | null; merch
 
 export default function Risk() {
   const { can } = useAuth()
+  const { t } = useLocale()
   const [data, setData] = useState<{ blacklist: BlacklistRow[]; sms: RiskSms[]; clients: RiskClient[] } | null>(null)
   const [vel, setVel] = useState<{ offenders: Offender[]; min_txns: number; window_days: number } | null>(null)
   const [minTxns, setMinTxns] = useState(20); const [windowDays, setWindowDays] = useState(30)
@@ -23,7 +25,7 @@ export default function Risk() {
   const loadRisk = useCallback(() => {
     api<{ blacklist: BlacklistRow[]; sms: RiskSms[]; clients: RiskClient[] }>('/api/risk')
       .then(setData)
-      .catch((e) => setErr(e instanceof ApiError && e.status === 403 ? 'لا تملك صلاحية عرض المخاطر.' : 'تعذّر تحميل بيانات المخاطر.'))
+      .catch((e) => setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض المخاطر.', 'You do not have permission to view risk data.') : t('تعذّر تحميل بيانات المخاطر.', 'Failed to load risk data.')))
   }, [])
   const loadVelocity = useCallback(() => {
     api<{ offenders: Offender[]; min_txns: number; window_days: number }>(`/api/risk/velocity?min_txns=${minTxns}&window_days=${windowDays}`)
@@ -36,44 +38,44 @@ export default function Risk() {
     try {
       await api('/api/risk/blacklist', { method: 'POST', body: JSON.stringify({ value: o.sender_number, type: 'phone', reason: `Velocity: ${o.txns} txns / ${o.decline_rate}% declined` }) })
       loadVelocity(); loadRisk()
-    } catch { setErr('تعذّر الإضافة للقائمة السوداء.') }
+    } catch { setErr(t('تعذّر الإضافة للقائمة السوداء.', 'Failed to add to the blacklist.')) }
   }
 
   return (
     <PanelShell>
       <section className="page-head">
-        <h2>🛡️ المخاطر والامتثال</h2>
+        <h2>🛡️ {t('المخاطر والامتثال', 'Risk & compliance')}</h2>
         <p className="page-sub">
-          {data && <>{data.blacklist.length} في القائمة السوداء · {data.sms.length} رسالة مشبوهة · {data.clients.length} عميل يحتاج مراجعة</>}
+          {data && <>{data.blacklist.length} {t('في القائمة السوداء', 'blacklisted')} · {data.sms.length} {t('رسالة مشبوهة', 'suspicious SMS')} · {data.clients.length} {t('عميل يحتاج مراجعة', 'clients need review')}</>}
         </p>
       </section>
 
       {err && <div className="card warn">{err}</div>}
-      {!data && !err && <p className="sidebar-hint">جارٍ التحميل…</p>}
+      {!data && !err && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
 
       <section className="card recent-card">
-        <div className="recent-head"><h3>🚀 كثافة المُرسِلين (Velocity / كشف الاحتيال)</h3>
-          <span className="cell-sub">أرقام أرسلت معاملات كثيرة خلال النافذة، مرتبة حسب نسبة الرفض</span>
+        <div className="recent-head"><h3>🚀 {t('كثافة المُرسِلين (Velocity / كشف الاحتيال)', 'Sender velocity (fraud detection)')}</h3>
+          <span className="cell-sub">{t('أرقام أرسلت معاملات كثيرة خلال النافذة، مرتبة حسب نسبة الرفض', 'Numbers with many transactions in the window, ranked by decline rate')}</span>
         </div>
         <div className="filter-bar">
-          <label className="filter-field">حد أدنى للمعاملات <input className="login-input" type="number" min={2} max={500} value={minTxns} onChange={(e) => setMinTxns(Number(e.target.value) || 20)} /></label>
-          <label className="filter-field">النافذة (يوم) <input className="login-input" type="number" min={1} max={365} value={windowDays} onChange={(e) => setWindowDays(Number(e.target.value) || 30)} /></label>
+          <label className="filter-field">{t('حد أدنى للمعاملات', 'Min transactions')} <input className="login-input" type="number" min={2} max={500} value={minTxns} onChange={(e) => setMinTxns(Number(e.target.value) || 20)} /></label>
+          <label className="filter-field">{t('النافذة (يوم)', 'Window (days)')} <input className="login-input" type="number" min={1} max={365} value={windowDays} onChange={(e) => setWindowDays(Number(e.target.value) || 30)} /></label>
         </div>
-        {!vel && <p className="sidebar-hint">جارٍ الحساب…</p>}
-        {vel && vel.offenders.length === 0 && <p>لا يوجد أرقام تتجاوز الحد في هذه النافذة.</p>}
+        {!vel && <p className="sidebar-hint">{t('جارٍ الحساب…', 'Calculating…')}</p>}
+        {vel && vel.offenders.length === 0 && <p>{t('لا يوجد أرقام تتجاوز الحد في هذه النافذة.', 'No numbers exceed the threshold in this window.')}</p>}
         {vel && vel.offenders.length > 0 && (
           <div className="table-wrap"><table className="data-table">
-            <thead><tr><th>الرقم</th><th>الأسماء</th><th>المزوّد</th><th>المعاملات</th><th>رفض %</th><th>الإجمالي</th><th>القائمة السوداء</th></tr></thead>
+            <thead><tr><th>{t('الرقم', 'Number')}</th><th>{t('الأسماء', 'Names')}</th><th>{t('المزوّد', 'Provider')}</th><th>{t('المعاملات', 'Txns')}</th><th>{t('رفض %', 'Decline %')}</th><th>{t('الإجمالي', 'Total')}</th><th>{t('القائمة السوداء', 'Blacklist')}</th></tr></thead>
             <tbody>{vel.offenders.map((o) => {
               const hot = (o.decline_rate ?? 0) >= 70 || o.distinct_names > 1
               return <tr key={o.sender_number}>
                 <td className="mono">{o.sender_number}</td>
-                <td>{(o.sender_names ?? []).join('، ') || '—'}{o.distinct_names > 1 && <span className="pay-status-badge st-pending"> {o.distinct_names} أسماء</span>}</td>
+                <td>{(o.sender_names ?? []).join('، ') || '—'}{o.distinct_names > 1 && <span className="pay-status-badge st-pending"> {o.distinct_names} {t('أسماء', 'names')}</span>}</td>
                 <td>{o.merchant ?? '—'}</td>
-                <td className="mono">{o.txns} <span className="cell-sub">({o.declined} رفض)</span></td>
+                <td className="mono">{o.txns} <span className="cell-sub">({o.declined} {t('رفض', 'declined')})</span></td>
                 <td><span className={`pay-status-badge ${hot ? 'st-declined' : 'st-dim'}`}>{o.decline_rate ?? 0}%</span></td>
                 <td className="mono">{money(o.total_amount, 'EGP')}</td>
-                <td>{o.blacklisted ? <span className="pay-status-badge st-declined">محظور</span> : (canEdit ? <button className="btn-ghost btn-sm" onClick={() => void blacklistNumber(o)}>حظر</button> : '—')}</td>
+                <td>{o.blacklisted ? <span className="pay-status-badge st-declined">{t('محظور', 'Blocked')}</span> : (canEdit ? <button className="btn-ghost btn-sm" onClick={() => void blacklistNumber(o)}>{t('حظر', 'Block')}</button> : '—')}</td>
               </tr>
             })}</tbody>
           </table></div>
@@ -83,12 +85,12 @@ export default function Risk() {
       {data && (
         <>
           <section className="card recent-card">
-            <div className="recent-head"><h3>🚫 القائمة السوداء</h3></div>
-            {data.blacklist.length === 0 && <p>القائمة فارغة.</p>}
+            <div className="recent-head"><h3>🚫 {t('القائمة السوداء', 'Blacklist')}</h3></div>
+            {data.blacklist.length === 0 && <p>{t('القائمة فارغة.', 'The list is empty.')}</p>}
             {data.blacklist.length > 0 && (
               <div className="table-wrap">
                 <table className="data-table">
-                  <thead><tr><th>النوع</th><th>القيمة</th><th>السبب</th><th>أضيفت</th></tr></thead>
+                  <thead><tr><th>{t('النوع', 'Type')}</th><th>{t('القيمة', 'Value')}</th><th>{t('السبب', 'Reason')}</th><th>{t('أضيفت', 'Added')}</th></tr></thead>
                   <tbody>
                     {data.blacklist.map((r) => (
                       <tr key={r.id}>
@@ -105,12 +107,12 @@ export default function Risk() {
           </section>
 
           <section className="card recent-card">
-            <div className="recent-head"><h3>⚠️ رسائل SMS مشبوهة / مكررة</h3></div>
-            {data.sms.length === 0 && <p>لا توجد رسائل مشبوهة.</p>}
+            <div className="recent-head"><h3>⚠️ {t('رسائل SMS مشبوهة / مكررة', 'Suspicious / duplicate SMS')}</h3></div>
+            {data.sms.length === 0 && <p>{t('لا توجد رسائل مشبوهة.', 'No suspicious messages.')}</p>}
             {data.sms.length > 0 && (
               <div className="table-wrap">
                 <table className="data-table">
-                  <thead><tr><th>#</th><th>المُرسِل ← المحفظة</th><th>المبلغ</th><th>السبب</th><th>الجهاز</th><th>الوقت</th></tr></thead>
+                  <thead><tr><th>#</th><th>{t('المُرسِل ← المحفظة', 'Sender ← wallet')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('السبب', 'Reason')}</th><th>{t('الجهاز', 'Device')}</th><th>{t('الوقت', 'Time')}</th></tr></thead>
                   <tbody>
                     {data.sms.map((r) => (
                       <tr key={r.id}>
@@ -118,8 +120,8 @@ export default function Risk() {
                         <td>{r.sender_name ?? r.sender_number ?? '—'}<div className="cell-sub mono">← {r.receiver_number ?? '—'}</div></td>
                         <td className="mono">{money(r.amount, 'EGP')}</td>
                         <td>
-                          {r.is_duplicate && <span className="pay-status-badge st-pending">مكررة</span>}{' '}
-                          {r.suspicious && <span className="pay-status-badge st-declined">مشبوهة</span>}
+                          {r.is_duplicate && <span className="pay-status-badge st-pending">{t('مكررة', 'Duplicate')}</span>}{' '}
+                          {r.suspicious && <span className="pay-status-badge st-declined">{t('مشبوهة', 'Suspicious')}</span>}
                           {r.risk_reason && <div className="cell-sub">{r.risk_reason}</div>}
                         </td>
                         <td className="mono">{r.device_name ?? '—'}</td>
@@ -133,12 +135,12 @@ export default function Risk() {
           </section>
 
           <section className="card recent-card">
-            <div className="recent-head"><h3>👥 عملاء بحاجة لمراجعة</h3></div>
-            {data.clients.length === 0 && <p>لا يوجد عملاء بانتظار المراجعة.</p>}
+            <div className="recent-head"><h3>👥 {t('عملاء بحاجة لمراجعة', 'Clients needing review')}</h3></div>
+            {data.clients.length === 0 && <p>{t('لا يوجد عملاء بانتظار المراجعة.', 'No clients awaiting review.')}</p>}
             {data.clients.length > 0 && (
               <div className="table-wrap">
                 <table className="data-table">
-                  <thead><tr><th>العميل</th><th>التاجر</th><th>المعاملات</th><th>نسبة القبول</th><th>درجة الخطورة</th></tr></thead>
+                  <thead><tr><th>{t('العميل', 'Client')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('المعاملات', 'Txns')}</th><th>{t('نسبة القبول', 'Approval rate')}</th><th>{t('درجة الخطورة', 'Risk score')}</th></tr></thead>
                   <tbody>
                     {data.clients.map((r) => (
                       <tr key={r.id}>
