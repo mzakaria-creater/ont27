@@ -14,7 +14,15 @@ interface WalletRow {
   sms_count: number; sms_amount: number | null
   deposits_count: number; deposits_amount: number | null
   withdrawals_count: number; withdrawals_amount: number | null
-  unconfirmed: number; balance: number | null; last_sms: string | null
+  unconfirmed: number; balance: number | null; first_balance: number | null; last_sms: string | null
+}
+
+// Balance diff = (balance change) − (deposits − withdrawals). Mirrors the old
+// report's "Balance extra": SMS-reported activity vs the actual balance move.
+// Large values are usually treasury sweeps out of the wallet, not errors.
+function balanceDiff(r: WalletRow): number | null {
+  if (r.balance == null || r.first_balance == null) return null
+  return Math.round(((r.balance - r.first_balance) - ((r.deposits_amount ?? 0) - (r.withdrawals_amount ?? 0))) * 100) / 100
 }
 
 export default function WalletReport() {
@@ -69,7 +77,8 @@ export default function WalletReport() {
           <th>{t('المحفظة', 'Wallet')}</th><th>{t('الجهاز / التاجر', 'Device / merchant')}</th>
           <th>SMS</th><th>{t('مبلغ SMS', 'SMS amount')}</th>
           <th>{t('إيداعات', 'Deposits')}</th><th>{t('سحوبات', 'Withdrawals')}</th>
-          <th>{t('غير مؤكدة', 'Unconfirmed')}</th><th>{t('الرصيد الحالي', 'Balance')}</th><th /></tr></thead>
+          <th>{t('غير مؤكدة', 'Unconfirmed')}</th><th>{t('الرصيد الحالي', 'Balance')}</th>
+          <th title={t('فرق نشاط SMS عن تغيّر الرصيد — غالباً تحويلات للخزينة', 'SMS activity vs balance change — usually treasury sweeps')}>{t('فرق الرصيد', 'Balance diff')}</th><th /></tr></thead>
         <tbody>{rows.map((r) => (
           <tr key={r.wallet}>
             <td className="mono">{r.wallet}</td>
@@ -80,6 +89,7 @@ export default function WalletReport() {
             <td className="mono">{r.withdrawals_count}{r.withdrawals_count > 0 && <div className="cell-sub mono">{money(r.withdrawals_amount, 'EGP')}</div>}</td>
             <td>{r.unconfirmed > 0 ? <span className="pay-status-badge st-pending">{r.unconfirmed}</span> : <span className="mono">0</span>}</td>
             <td className="mono">{money(r.balance, 'EGP')}</td>
+            <td className="mono" style={balanceDiff(r) != null && balanceDiff(r) !== 0 ? { color: 'var(--status-declined)' } : undefined}>{balanceDiff(r) != null ? money(balanceDiff(r), 'EGP') : '—'}</td>
             <td><Link className="btn-ghost btn-sm" to={`/sms?q=${encodeURIComponent(r.wallet)}`}>{t('👁 الرسائل', '👁 Messages')}</Link></td>
           </tr>
         ))}</tbody>
