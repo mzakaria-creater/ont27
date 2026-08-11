@@ -4,32 +4,33 @@ import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money, statusMeta } from '../lib/deposits'
+import { useLocale } from '../lib/locale'
 
 // SMS Live — the inbound_sms queue with its Maven links, auto-refreshing.
 
 const PAGE_SIZE = 25
 const REFRESH_MS = 15_000
 
-const CATEGORY_META: Record<string, { label: string; cls: string }> = {
-  deposit: { label: 'إيداع', cls: 'st-paid' },
-  withdrawal: { label: 'سحب', cls: 'st-declined' },
-  balance: { label: 'رصيد', cls: 'st-dim' },
-  otp: { label: 'OTP', cls: 'st-dim' },
-  promotion: { label: 'دعاية', cls: 'st-dim' },
-  unknown: { label: 'غير معروف', cls: 'st-under' },
+const CATEGORY_META: Record<string, { ar: string; en: string; cls: string }> = {
+  deposit: { ar: 'إيداع', en: 'Deposit', cls: 'st-paid' },
+  withdrawal: { ar: 'سحب', en: 'Withdrawal', cls: 'st-declined' },
+  balance: { ar: 'رصيد', en: 'Balance', cls: 'st-dim' },
+  otp: { ar: 'OTP', en: 'OTP', cls: 'st-dim' },
+  promotion: { ar: 'دعاية', en: 'Promo', cls: 'st-dim' },
+  unknown: { ar: 'غير معروف', en: 'Unknown', cls: 'st-under' },
 }
 
-const MATCH_META: Record<string, { label: string; cls: string }> = {
-  auto: { label: 'مرتبطة (آلي)', cls: 'st-paid' },
-  manual: { label: 'مرتبطة (يدوي)', cls: 'st-paid' },
-  matched_paid: { label: 'مرتبطة ومدفوعة', cls: 'st-paid' },
-  unmatched: { label: 'غير مرتبطة', cls: 'st-dim' },
+const MATCH_META: Record<string, { ar: string; en: string; cls: string }> = {
+  auto: { ar: 'مرتبطة (آلي)', en: 'Linked (auto)', cls: 'st-paid' },
+  manual: { ar: 'مرتبطة (يدوي)', en: 'Linked (manual)', cls: 'st-paid' },
+  matched_paid: { ar: 'مرتبطة ومدفوعة', en: 'Linked & paid', cls: 'st-paid' },
+  unmatched: { ar: 'غير مرتبطة', en: 'Unlinked', cls: 'st-dim' },
 }
 
 const MATCH_FILTERS = [
-  { key: 'linked', label: 'مرتبطة بمعاملة' },
-  { key: 'unmatched', label: 'غير مرتبطة' },
-  { key: 'review', label: 'تحتاج مراجعة' },
+  { key: 'linked', ar: 'مرتبطة بمعاملة', en: 'Linked to tx' },
+  { key: 'unmatched', ar: 'غير مرتبطة', en: 'Unlinked' },
+  { key: 'review', ar: 'تحتاج مراجعة', en: 'Needs review' },
 ]
 
 interface SmsRow {
@@ -107,6 +108,7 @@ function firstLine(r: SmsRow): string {
 
 export default function SmsLive() {
   const { can } = useAuth()
+  const { t } = useLocale()
   const [params, setParams] = useSearchParams()
   const category = params.get('category') ?? ''
   const match = params.get('match') ?? ''
@@ -146,7 +148,7 @@ export default function SmsLive() {
       setStats(st)
       setErr(null)
     } catch (e) {
-      setErr(e instanceof ApiError && e.status === 403 ? 'لا تملك صلاحية عرض رسائل SMS.' : 'تعذّر تحميل الرسائل.')
+      setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض رسائل SMS.', 'You do not have permission to view SMS.') : t('تعذّر تحميل الرسائل.', 'Failed to load messages.'))
     } finally {
       if (!silent) setLoading(false)
     }
@@ -198,7 +200,7 @@ export default function SmsLive() {
       setSelected(res.sms)
       if (!res.sms.matched && can('sms_live', 'can_edit')) void loadCandidates(id)
     } catch {
-      setErr('تعذّر تحميل تفاصيل الرسالة.')
+      setErr(t('تعذّر تحميل تفاصيل الرسالة.', 'Failed to load message details.'))
     } finally {
       setDetailLoading(false)
     }
@@ -217,11 +219,11 @@ export default function SmsLive() {
       void load(true)
     } catch (e) {
       if (e instanceof ApiError && e.code === 'already_linked') {
-        setLinkErr('الرسالة مرتبطة بالفعل — أعد الفتح.')
+        setLinkErr(t('الرسالة مرتبطة بالفعل — أعد الفتح.', 'Message already linked — reopen.'))
       } else if (e instanceof ApiError && e.status === 403) {
-        setLinkErr('لا تملك صلاحية الربط (can_edit غير ممنوحة لدورك).')
+        setLinkErr(t('لا تملك صلاحية الربط (can_edit غير ممنوحة لدورك).', 'You lack link permission (can_edit not granted to your role).'))
       } else {
-        setLinkErr('فشل الربط — حاول مرة أخرى.')
+        setLinkErr(t('فشل الربط — حاول مرة أخرى.', 'Link failed — try again.'))
       }
     } finally {
       setLinkBusy(false)
@@ -237,7 +239,7 @@ export default function SmsLive() {
       setSelected(null)
       void load(true)
     } catch {
-      setLinkErr('فشل فك الربط — حاول مرة أخرى.')
+      setLinkErr(t('فشل فك الربط — حاول مرة أخرى.', 'Unlink failed — try again.'))
     } finally {
       setLinkBusy(false)
     }
@@ -248,35 +250,35 @@ export default function SmsLive() {
   return (
     <PanelShell>
       <section className="page-head">
-        <h2>📨 SMS مباشر</h2>
+        <h2>📨 {t('SMS مباشر', 'Live SMS')}</h2>
         <p className="page-sub">
-          صندوق الرسائل الوارد من أجهزة المحافظ · تحديث تلقائي كل {REFRESH_MS / 1000} ثانية
-          {data && <> · {data.total.toLocaleString('en-US')} نتيجة</>}
+          {t('صندوق الرسائل الوارد من أجهزة المحافظ · تحديث تلقائي كل', 'Inbox from the wallet devices · auto-refresh every')} {REFRESH_MS / 1000} {t('ثانية', 's')}
+          {data && <> · {data.total.toLocaleString('en-US')}</>}
         </p>
       </section>
 
       <div className="stat-grid">
         <div className="stat-card">
-          <span className="stat-label">إجمالي الرسائل</span>
+          <span className="stat-label">{t('إجمالي الرسائل', 'Total messages')}</span>
           <span className="stat-value">{stats ? stats.total.toLocaleString('en-US') : '…'}</span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">إيداعات</span>
+          <span className="stat-label">{t('إيداعات', 'Deposits')}</span>
           <span className="stat-value">{stats ? stats.deposits.count.toLocaleString('en-US') : '…'}</span>
-          <span className="stat-sub">{stats ? `${money(stats.deposits.dayVolume, 'EGP')} · آخر 24س` : ''}</span>
+          <span className="stat-sub">{stats ? `${money(stats.deposits.dayVolume, 'EGP')} · ${t('آخر 24س', 'last 24h')}` : ''}</span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">سحوبات</span>
+          <span className="stat-label">{t('سحوبات', 'Withdrawals')}</span>
           <span className="stat-value">{stats ? stats.withdrawals.count.toLocaleString('en-US') : '…'}</span>
-          <span className="stat-sub">{stats ? `${money(stats.withdrawals.dayVolume, 'EGP')} · آخر 24س` : ''}</span>
+          <span className="stat-sub">{stats ? `${money(stats.withdrawals.dayVolume, 'EGP')} · ${t('آخر 24س', 'last 24h')}` : ''}</span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">مرتبطة بمعاملات</span>
+          <span className="stat-label">{t('مرتبطة بمعاملات', 'Linked to tx')}</span>
           <span className="stat-value">{stats ? stats.linked.toLocaleString('en-US') : '…'}</span>
-          <span className="stat-sub">{stats && stats.total > 0 ? `${Math.round((stats.linked / stats.total) * 100)}% تغطية` : ''}</span>
+          <span className="stat-sub">{stats && stats.total > 0 ? `${Math.round((stats.linked / stats.total) * 100)}% ${t('تغطية', 'coverage')}` : ''}</span>
         </div>
         <div className="stat-card stat-pending">
-          <span className="stat-label">تحتاج مراجعة</span>
+          <span className="stat-label">{t('تحتاج مراجعة', 'Needs review')}</span>
           <span className="stat-value">{stats ? stats.review.toLocaleString('en-US') : '…'}</span>
         </div>
       </div>
@@ -287,7 +289,7 @@ export default function SmsLive() {
             className={`chip${category === '' ? ' chip-active' : ''}`}
             onClick={() => setFilter({ category: '' })}
           >
-            الكل
+            {t('الكل', 'All')}
           </button>
           {['deposit', 'withdrawal', 'unknown'].map((c) => (
             <button
@@ -295,7 +297,7 @@ export default function SmsLive() {
               className={`chip${category === c ? ' chip-active' : ''}`}
               onClick={() => setFilter({ category: category === c ? '' : c })}
             >
-              {CATEGORY_META[c].label}
+              {t(CATEGORY_META[c].ar, CATEGORY_META[c].en)}
             </button>
           ))}
           <span className="chip-sep" />
@@ -305,7 +307,7 @@ export default function SmsLive() {
               className={`chip${match === f.key ? ' chip-active' : ''}`}
               onClick={() => setFilter({ match: match === f.key ? '' : f.key })}
             >
-              {f.label}
+              {t(f.ar, f.en)}
             </button>
           ))}
         </div>
@@ -315,14 +317,14 @@ export default function SmsLive() {
         >
           <input
             className="login-input search-input"
-            placeholder="بحث: مُرسِل / محفظة / رقم عملية / جهاز…"
+            placeholder={t('بحث: مُرسِل / محفظة / رقم عملية / جهاز…', 'Search: sender / wallet / tx id / device…')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
-          <button type="submit" className="btn-primary btn-sm">بحث</button>
+          <button type="submit" className="btn-primary btn-sm">{t('بحث', 'Search')}</button>
           {appliedQ && (
             <button type="button" className="btn-ghost btn-sm" onClick={() => { setQ(''); setFilter({ q: '' }) }}>
-              مسح
+              {t('مسح', 'Clear')}
             </button>
           )}
           {amount && (
@@ -331,7 +333,7 @@ export default function SmsLive() {
               className="chip chip-active"
               onClick={() => { const p = new URLSearchParams(params); p.delete('amount'); setParams(p) }}
             >
-              مبلغ = {amount} ✕
+              {t('مبلغ', 'Amount')} = {amount} ✕
             </button>
           )}
         </form>
@@ -340,21 +342,21 @@ export default function SmsLive() {
       {err && <div className="card warn">{err}</div>}
 
       <section className="card recent-card">
-        {loading && <p className="sidebar-hint">جارٍ التحميل…</p>}
-        {!loading && data && data.rows.length === 0 && <p>لا توجد نتائج مطابقة.</p>}
+        {loading && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
+        {!loading && data && data.rows.length === 0 && <p>{t('لا توجد نتائج مطابقة.', 'No matching results.')}</p>}
         {!loading && data && data.rows.length > 0 && (
           <div className="table-wrap">
             <table className="data-table clickable">
               <thead>
                 <tr>
-                  <th>الرسالة</th>
-                  <th>النوع</th>
-                  <th>المبلغ</th>
-                  <th>مُرسِل ← مستقبِل</th>
-                  <th>الجهاز</th>
-                  <th>رقم العملية</th>
-                  <th>الربط</th>
-                  <th>الوقت</th>
+                  <th>{t('الرسالة', 'Message')}</th>
+                  <th>{t('النوع', 'Type')}</th>
+                  <th>{t('المبلغ', 'Amount')}</th>
+                  <th>{t('مُرسِل ← مستقبِل', 'Sender ← receiver')}</th>
+                  <th>{t('الجهاز', 'Device')}</th>
+                  <th>{t('رقم العملية', 'Tx id')}</th>
+                  <th>{t('الربط', 'Link')}</th>
+                  <th>{t('الوقت', 'Time')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -369,12 +371,12 @@ export default function SmsLive() {
                       </td>
                       <td>
                         {cat
-                          ? <span className={`pay-status-badge ${cat.cls}`}>{cat.label}</span>
+                          ? <span className={`pay-status-badge ${cat.cls}`}>{t(cat.ar, cat.en)}</span>
                           : <span className="mono">—</span>}
                       </td>
                       <td className="mono">
                         {money(r.amount, 'EGP')}
-                        {r.balance_after != null && <div className="cell-sub mono">رصيد {money(r.balance_after, 'EGP')}</div>}
+                        {r.balance_after != null && <div className="cell-sub mono">{t('رصيد', 'bal')} {money(r.balance_after, 'EGP')}</div>}
                       </td>
                       <td>
                         {r.sender_name ?? r.sender_number ?? '—'}
@@ -390,9 +392,9 @@ export default function SmsLive() {
                       </td>
                       <td>
                         {mt
-                          ? <span className={`pay-status-badge ${mt.cls}`}>{mt.label}</span>
+                          ? <span className={`pay-status-badge ${mt.cls}`}>{t(mt.ar, mt.en)}</span>
                           : <span className="mono">{r.match_status ?? '—'}</span>}
-                        {r.review_required && !r.matched && <div className="cell-sub">⚠ مراجعة</div>}
+                        {r.review_required && !r.matched && <div className="cell-sub">⚠ {t('مراجعة', 'review')}</div>}
                       </td>
                       <td className="mono">{depositTime({ first_seen_at: r.received_at })}</td>
                     </tr>
@@ -405,11 +407,11 @@ export default function SmsLive() {
         {data && totalPages > 1 && (
           <div className="pager">
             <button className="btn-ghost btn-sm" disabled={page <= 1} onClick={() => setFilter({ page: page - 1 })}>
-              → السابق
+              → {t('السابق', 'Prev')}
             </button>
             <span className="pager-info mono">{page} / {totalPages}</span>
             <button className="btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setFilter({ page: page + 1 })}>
-              التالي ←
+              {t('التالي', 'Next')} ←
             </button>
           </div>
         )}
@@ -418,7 +420,7 @@ export default function SmsLive() {
       {(selected || detailLoading) && (
         <div className="drawer-backdrop" onClick={() => setSelected(null)}>
           <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-            {detailLoading && <p className="sidebar-hint">جارٍ التحميل…</p>}
+            {detailLoading && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
             {selected && (
               <>
                 <div className="drawer-head">
@@ -430,7 +432,7 @@ export default function SmsLive() {
                   <span className="mono">{money(selected.amount, 'EGP')}</span>
                   {selected.sms_category && CATEGORY_META[selected.sms_category] && (
                     <span className={`pay-status-badge ${CATEGORY_META[selected.sms_category].cls}`}>
-                      {CATEGORY_META[selected.sms_category].label}
+                      {t(CATEGORY_META[selected.sms_category].ar, CATEGORY_META[selected.sms_category].en)}
                     </span>
                   )}
                 </div>
@@ -440,21 +442,21 @@ export default function SmsLive() {
                 )}
 
                 <dl className="detail-grid">
-                  <dt>المُرسِل</dt><dd>{selected.sender_name ?? '—'} {selected.sender_number && <span className="mono">({selected.sender_number})</span>}</dd>
-                  <dt>المحفظة المستقبِلة</dt><dd className="mono">{selected.receiver_number ?? selected.wallet ?? '—'}</dd>
-                  <dt>المزوّد</dt><dd>{selected.provider ?? '—'} · <span className="mono">{selected.sms_sender ?? '—'}</span></dd>
-                  <dt>الجهاز</dt><dd className="mono">{selected.device_name ?? '—'}{selected.sim_slot != null && <> · SIM {selected.sim_slot}</>}</dd>
-                  <dt>رقم العملية (SMS)</dt><dd className="mono">{selected.trx_id ?? '—'}</dd>
-                  <dt>معاملة Maven</dt><dd className="mono">{selected.maven_transaction_id ?? selected.matched_transaction_id ?? '—'}</dd>
-                  <dt>حالة الربط</dt><dd className="mono">{selected.match_status ?? '—'}{selected.review_required && !selected.matched && <> · ⚠ تحتاج مراجعة</>}</dd>
-                  <dt>الرصيد بعد العملية</dt><dd className="mono">{money(selected.balance_after, 'EGP')}</dd>
+                  <dt>{t('المُرسِل', 'Sender')}</dt><dd>{selected.sender_name ?? '—'} {selected.sender_number && <span className="mono">({selected.sender_number})</span>}</dd>
+                  <dt>{t('المحفظة المستقبِلة', 'Receiving wallet')}</dt><dd className="mono">{selected.receiver_number ?? selected.wallet ?? '—'}</dd>
+                  <dt>{t('المزوّد', 'Provider')}</dt><dd>{selected.provider ?? '—'} · <span className="mono">{selected.sms_sender ?? '—'}</span></dd>
+                  <dt>{t('الجهاز', 'Device')}</dt><dd className="mono">{selected.device_name ?? '—'}{selected.sim_slot != null && <> · SIM {selected.sim_slot}</>}</dd>
+                  <dt>{t('رقم العملية (SMS)', 'Tx id (SMS)')}</dt><dd className="mono">{selected.trx_id ?? '—'}</dd>
+                  <dt>{t('معاملة Maven', 'Maven tx')}</dt><dd className="mono">{selected.maven_transaction_id ?? selected.matched_transaction_id ?? '—'}</dd>
+                  <dt>{t('حالة الربط', 'Link status')}</dt><dd className="mono">{selected.match_status ?? '—'}{selected.review_required && !selected.matched && <> · ⚠ {t('تحتاج مراجعة', 'needs review')}</>}</dd>
+                  <dt>{t('الرصيد بعد العملية', 'Balance after')}</dt><dd className="mono">{money(selected.balance_after, 'EGP')}</dd>
                   {selected.risk_score != null && selected.risk_score > 0 && (
-                    <><dt>درجة الخطورة</dt><dd className="mono">{selected.risk_score}{selected.risk_reason && <> — {selected.risk_reason}</>}</dd></>
+                    <><dt>{t('درجة الخطورة', 'Risk score')}</dt><dd className="mono">{selected.risk_score}{selected.risk_reason && <> — {selected.risk_reason}</>}</dd></>
                   )}
-                  {selected.is_duplicate && <><dt>تكرار</dt><dd>⚠ رسالة مكررة</dd></>}
-                  <dt>المشغّل المسؤول</dt><dd>{selected.assigned_operator ?? '—'}</dd>
-                  {selected.notes && <><dt>ملاحظات</dt><dd>{selected.notes}</dd></>}
-                  <dt>وقت الاستلام</dt><dd className="mono">{depositTime({ first_seen_at: selected.received_at })}</dd>
+                  {selected.is_duplicate && <><dt>{t('تكرار', 'Duplicate')}</dt><dd>⚠ {t('رسالة مكررة', 'Duplicate message')}</dd></>}
+                  <dt>{t('المشغّل المسؤول', 'Assigned operator')}</dt><dd>{selected.assigned_operator ?? '—'}</dd>
+                  {selected.notes && <><dt>{t('ملاحظات', 'Notes')}</dt><dd>{selected.notes}</dd></>}
+                  <dt>{t('وقت الاستلام', 'Received at')}</dt><dd className="mono">{depositTime({ first_seen_at: selected.received_at })}</dd>
                 </dl>
 
                 {linkErr && <div className="card warn">{linkErr}</div>}
@@ -462,50 +464,50 @@ export default function SmsLive() {
                 {selected.matched && can('sms_live', 'can_edit') && (
                   <div className="drawer-actions">
                     <button className="btn-ghost danger" disabled={linkBusy} onClick={() => void unlink()}>
-                      🔗 فك الربط عن المعاملة
+                      🔗 {t('فك الربط عن المعاملة', 'Unlink from transaction')}
                     </button>
                   </div>
                 )}
 
                 {!selected.matched && can('sms_live', 'can_edit') && (
                   <div className="link-section">
-                    <h4>🔗 ربط بمعاملة</h4>
+                    <h4>🔗 {t('ربط بمعاملة', 'Link to a transaction')}</h4>
                     <form
                       className="search-row"
                       onSubmit={(e) => { e.preventDefault(); void loadCandidates(selected.id, candQ.trim() || undefined) }}
                     >
                       <input
                         className="login-input search-input"
-                        placeholder="بحث بالمرجع أو tx_id… (فارغ = ترشيح بنفس المبلغ)"
+                        placeholder={t('بحث بالمرجع أو tx_id… (فارغ = ترشيح بنفس المبلغ)', 'Search by ref or tx_id… (empty = same-amount candidates)')}
                         value={candQ}
                         onChange={(e) => setCandQ(e.target.value)}
                       />
-                      <button type="submit" className="btn-ghost btn-sm" disabled={candLoading}>بحث</button>
+                      <button type="submit" className="btn-ghost btn-sm" disabled={candLoading}>{t('بحث', 'Search')}</button>
                     </form>
-                    {candLoading && <p className="sidebar-hint">جارٍ البحث عن معاملات مطابقة…</p>}
+                    {candLoading && <p className="sidebar-hint">{t('جارٍ البحث عن معاملات مطابقة…', 'Searching for matching transactions…')}</p>}
                     {candidates && candidates.length === 0 && !candLoading && (
-                      <p className="sidebar-hint">لا توجد معاملات مرشّحة — جرّب البحث بالمرجع.</p>
+                      <p className="sidebar-hint">{t('لا توجد معاملات مرشّحة — جرّب البحث بالمرجع.', 'No candidate transactions — try searching by ref.')}</p>
                     )}
                     {candidates && candidates.length > 0 && (
                       <ul className="cand-list">
-                        {candidates.map((t) => (
-                          <li key={t.tx_id} className="cand-item">
+                        {candidates.map((cand) => (
+                          <li key={cand.tx_id} className="cand-item">
                             <div className="cand-info">
-                              <span className="mono">{t.ontarget_ref ?? t.tx_id}</span>
-                              <span className={`pay-status-badge ${statusMeta(t.status).cls}`}>{statusMeta(t.status).label}</span>
+                              <span className="mono">{cand.ontarget_ref ?? cand.tx_id}</span>
+                              <span className={`pay-status-badge ${statusMeta(cand.status).cls}`}>{statusMeta(cand.status).label}</span>
                               <div className="cell-sub">
-                                <span className="mono">{money(t.amount, t.currency)}</span>
-                                {' · '}{t.sender_name ?? t.sender_number ?? '—'}
-                                {' · '}{t.merchant ?? '—'}
-                                {' · '}<span className="mono">{depositTime({ first_seen_at: t.first_seen_at })}</span>
+                                <span className="mono">{money(cand.amount, cand.currency)}</span>
+                                {' · '}{cand.sender_name ?? cand.sender_number ?? '—'}
+                                {' · '}{cand.merchant ?? '—'}
+                                {' · '}<span className="mono">{depositTime({ first_seen_at: cand.first_seen_at })}</span>
                               </div>
                             </div>
                             <button
                               className="btn-primary btn-sm"
                               disabled={linkBusy}
-                              onClick={() => void link(t.tx_id)}
+                              onClick={() => void link(cand.tx_id)}
                             >
-                              ربط
+                              {t('ربط', 'Link')}
                             </button>
                           </li>
                         ))}
