@@ -391,7 +391,7 @@ export default function SmsLive() {
                       </td>
                       <td className="mono">
                         {r.trx_id ?? '—'}
-                        {r.maven_transaction_id && <div className="cell-sub mono">Maven {r.maven_transaction_id}</div>}
+                        {r.maven_transaction_id && <div className="cell-sub mono">OnTarget {r.maven_transaction_id}</div>}
                       </td>
                       <td>
                         {mt
@@ -450,7 +450,7 @@ export default function SmsLive() {
                   <dt>{t('المزوّد', 'Provider')}</dt><dd>{selected.provider ?? '—'} · <span className="mono">{selected.sms_sender ?? '—'}</span></dd>
                   <dt>{t('الجهاز', 'Device')}</dt><dd className="mono">{selected.device_name ?? '—'}{selected.sim_slot != null && <> · SIM {selected.sim_slot}</>}</dd>
                   <dt>{t('رقم العملية (SMS)', 'Tx id (SMS)')}</dt><dd className="mono">{selected.trx_id ?? '—'}</dd>
-                  <dt>{t('معاملة Maven', 'Maven tx')}</dt><dd className="mono">{selected.maven_transaction_id ?? selected.matched_transaction_id ?? '—'}</dd>
+                  <dt>{t('معاملة OnTarget', 'OnTarget tx')}</dt><dd className="mono">{selected.maven_transaction_id ?? selected.matched_transaction_id ?? '—'}</dd>
                   <dt>{t('حالة الربط', 'Link status')}</dt><dd className="mono">{selected.match_status ?? '—'}{selected.review_required && !selected.matched && <> · ⚠ {t('تحتاج مراجعة', 'needs review')}</>}</dd>
                   <dt>{t('الرصيد بعد العملية', 'Balance after')}</dt><dd className="mono">{money(selected.balance_after, 'EGP')}</dd>
                   {selected.risk_score != null && selected.risk_score > 0 && (

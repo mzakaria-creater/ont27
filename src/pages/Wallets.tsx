@@ -172,7 +172,7 @@ export default function Wallets() {
       {data && data.live.length > 0 && (
         <section className="card recent-card">
           <div className="recent-head">
-            <h3>✅ المحافظ النشطة الآن (Maven مباشر)</h3>
+            <h3>✅ المحافظ النشطة الآن (بيانات حيّة)</h3>
             <span className="cell-sub">المصدر الرسمي — بيتفحص كل دقايق</span>
           </div>
           <div className="table-wrap">
