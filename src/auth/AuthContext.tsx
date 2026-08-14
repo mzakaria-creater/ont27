@@ -10,7 +10,7 @@ interface AuthState {
   user: PanelUser | null
   permissions: PagePermission[]
   twofaEnrolled: boolean
-  login: (username: string, password: string) => Promise<void>
+  login: (username: string, password: string, remember?: boolean) => Promise<void>
   logout: () => Promise<void>
   refreshPermissions: () => Promise<void>
   can: (pageKey: string, action?: keyof Omit<PagePermission, 'page_key'>) => boolean
@@ -45,10 +45,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(iv)
   }, [status])
 
-  const login = useCallback(async (username: string, password: string) => {
+  const login = useCallback(async (username: string, password: string, remember = true) => {
     await api('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, remember }),
     })
     await loadMe()
   }, [loadMe])

@@ -10,7 +10,10 @@ const key = new TextEncoder().encode(JWT_SECRET)
 export const ACCESS_COOKIE = 'ot_access'
 export const REFRESH_COOKIE = 'ot_refresh'
 export const ACCESS_TTL_SEC = 15 * 60
-export const REFRESH_TTL_SEC = 30 * 24 * 60 * 60
+// "Remember me" controls both the refresh token's DB-side expiry and whether
+// its cookie persists past the browser session (see setAuthCookies in auth.ts).
+export const REFRESH_TTL_SEC_REMEMBER = 30 * 24 * 60 * 60
+export const REFRESH_TTL_SEC_SESSION = 24 * 60 * 60
 const BCRYPT_COST = 12
 
 export interface AccessClaims {
@@ -63,12 +66,14 @@ export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, BCRYPT_COST)
 }
 
-export async function issueRefreshToken(userId: string): Promise<string> {
+export async function issueRefreshToken(userId: string, remember: boolean): Promise<string> {
   const raw = randomBytes(32).toString('hex')
+  const ttlSec = remember ? REFRESH_TTL_SEC_REMEMBER : REFRESH_TTL_SEC_SESSION
   const { error } = await db.from('panel_refresh_tokens').insert({
     user_id: userId,
     token_hash: sha256Hex(raw),
-    expires_at: new Date(Date.now() + REFRESH_TTL_SEC * 1000).toISOString(),
+    expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
+    remember,
   })
   if (error) throw new Error(`refresh token insert failed: ${error.message}`)
   return raw
@@ -77,6 +82,7 @@ export async function issueRefreshToken(userId: string): Promise<string> {
 export interface RotationResult {
   userId: string
   newToken: string
+  remember: boolean
 }
 
 // Rotates a refresh token. A revoked token being replayed is a theft signal:
@@ -85,7 +91,7 @@ export async function rotateRefreshToken(raw: string): Promise<RotationResult | 
   const hash = sha256Hex(raw)
   const { data: row } = await db
     .from('panel_refresh_tokens')
-    .select('id, user_id, expires_at, revoked_at')
+    .select('id, user_id, expires_at, revoked_at, remember')
     .eq('token_hash', hash)
     .maybeSingle()
   if (!row) return null
@@ -100,13 +106,16 @@ export async function rotateRefreshToken(raw: string): Promise<RotationResult | 
   }
   if (new Date(row.expires_at).getTime() < Date.now()) return null
 
+  const remember = row.remember ?? true
   const newToken = randomBytes(32).toString('hex')
+  const ttlSec = remember ? REFRESH_TTL_SEC_REMEMBER : REFRESH_TTL_SEC_SESSION
   const { data: inserted, error } = await db
     .from('panel_refresh_tokens')
     .insert({
       user_id: row.user_id,
       token_hash: sha256Hex(newToken),
-      expires_at: new Date(Date.now() + REFRESH_TTL_SEC * 1000).toISOString(),
+      expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
+      remember,
     })
     .select('id')
     .single()
@@ -117,7 +126,7 @@ export async function rotateRefreshToken(raw: string): Promise<RotationResult | 
     .update({ revoked_at: new Date().toISOString(), replaced_by: inserted.id })
     .eq('id', row.id)
 
-  return { userId: row.user_id, newToken }
+  return { userId: row.user_id, newToken, remember }
 }
 
 export async function revokeRefreshToken(raw: string): Promise<void> {

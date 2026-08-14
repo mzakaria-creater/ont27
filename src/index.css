@@ -261,6 +261,24 @@ body {
 .login-btn:hover:not(:disabled) { opacity: 0.9; }
 .login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.login-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin: 2px 0 14px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.login-remember input[type='checkbox'] {
+  inline-size: 15px;
+  block-size: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .login-err {
   background: rgba(229, 72, 77, 0.12);
   border: 1px solid rgba(229, 72, 77, 0.3);

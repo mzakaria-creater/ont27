@@ -20,6 +20,7 @@ export default function LoginPage() {
   const location = useLocation()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [remember, setRemember] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -31,7 +32,7 @@ export default function LoginPage() {
     setBusy(true)
     setError(null)
     try {
-      await login(username.trim(), password)
+      await login(username.trim(), password, remember)
       navigate(from, { replace: true })
     } catch (err) {
       setError(loginErrorMessage(err))
@@ -85,6 +86,11 @@ export default function LoginPage() {
             <label className="login-label" htmlFor="password">{t('كلمة المرور', 'Password')}</label>
             <input id="password" className="login-input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
           </div>
+
+          <label className="login-remember">
+            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} disabled={busy} />
+            {t('تذكّرني لمدة 30 يوماً', 'Remember me for 30 days')}
+          </label>
 
           <button className="login-btn" type="submit" disabled={busy || !username.trim() || !password}>
             {busy ? t('جارٍ التحقق…', 'Checking…') : t('دخول', 'Sign in')}

@@ -3,7 +3,7 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import type { Context } from 'hono'
 import { db } from './db.js'
 import {
-  ACCESS_COOKIE, REFRESH_COOKIE, ACCESS_TTL_SEC, REFRESH_TTL_SEC,
+  ACCESS_COOKIE, REFRESH_COOKIE, ACCESS_TTL_SEC, REFRESH_TTL_SEC_REMEMBER,
   signAccessToken, verifyAccessToken, verifyPassword, hashPassword,
   issueRefreshToken, rotateRefreshToken, revokeRefreshToken,
 } from './tokens.js'
@@ -33,12 +33,19 @@ async function audit(c: Context, action: string, entityId: string, actor?: { id?
   if (error) console.error(`audit_log insert failed (${action}):`, error.message)
 }
 
-function setAuthCookies(c: Context, access: string, refresh: string) {
+// The access cookie always carries maxAge (short-lived regardless of "remember
+// me" — it's re-minted from the refresh cookie on every /refresh anyway). The
+// refresh cookie's persistence is what "remember me" actually controls: with
+// remember=false we omit maxAge so it's a session cookie the browser drops on
+// close, backed by a matching short-lived DB row (REFRESH_TTL_SEC_SESSION) so
+// a cookie that somehow survives (session restore, etc.) still expires soon.
+function setAuthCookies(c: Context, access: string, refresh: string, remember: boolean) {
   setCookie(c, ACCESS_COOKIE, access, {
     httpOnly: true, sameSite: 'Lax', secure: isProd, path: '/', maxAge: ACCESS_TTL_SEC,
   })
   setCookie(c, REFRESH_COOKIE, refresh, {
-    httpOnly: true, sameSite: 'Lax', secure: isProd, path: '/api/auth', maxAge: REFRESH_TTL_SEC,
+    httpOnly: true, sameSite: 'Lax', secure: isProd, path: '/api/auth',
+    ...(remember ? { maxAge: REFRESH_TTL_SEC_REMEMBER } : {}),
   })
 }
 
@@ -53,6 +60,7 @@ authRoutes.post('/login', async (c) => {
   const body = await c.req.json().catch(() => null)
   const username = typeof body?.username === 'string' ? body.username.trim() : ''
   const password = typeof body?.password === 'string' ? body.password : ''
+  const remember = body?.remember !== false // default true — matches the prior always-30d behavior
   if (!username || !password) return c.json({ error: 'missing_credentials' }, 400)
 
   // Case-insensitive, backslash-safe lookup via SECURITY DEFINER helper
@@ -91,8 +99,8 @@ authRoutes.post('/login', async (c) => {
   await db.from('panel_users').update(updates).eq('id', user.id)
 
   const access = await signAccessToken({ sub: user.id, username: user.username, role: user.role })
-  const refresh = await issueRefreshToken(user.id)
-  setAuthCookies(c, access, refresh)
+  const refresh = await issueRefreshToken(user.id, remember)
+  setAuthCookies(c, access, refresh, remember)
   await audit(c, 'auth.login', user.id, { id: user.id, name: user.username })
 
   return c.json({
@@ -121,7 +129,7 @@ authRoutes.post('/refresh', async (c) => {
   }
 
   const access = await signAccessToken({ sub: user.id, username: user.username, role: user.role })
-  setAuthCookies(c, access, rotated.newToken)
+  setAuthCookies(c, access, rotated.newToken, rotated.remember)
   return c.json({ ok: true })
 })
 
