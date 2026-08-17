@@ -300,7 +300,8 @@ body {
 
 /* ===== Rebuilt sign-in: two-panel brand + form ===== */
 .auth-screen {
-  min-height: 100%;
+  flex: 1;
+  min-height: 100dvh;
   display: flex; align-items: center; justify-content: center;
   padding: 24px;
   background:
