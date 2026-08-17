@@ -17,7 +17,31 @@ const TEMPLATE_COPY: Record<string, { label: [string, string]; desc: [string, st
 
 // Automation — matching engine settings (read-only), scoped rules, worker jobs, treasury.
 
-interface RuleRow { id: string; scope_type: string | null; master_merchant: string | null; merchant: string | null; payment_method: string | null; provider: string | null; enabled: boolean | null; min_amount: number | null; max_amount: number | null; action_type: string | null; priority: number | null }
+interface RuleRow {
+  id: string; scope_type: string | null; master_merchant: string | null; merchant: string | null; sub_merchant: string | null
+  account_wallet: string | null; payment_method: string | null; provider: string | null; enabled: boolean | null
+  min_amount: number | null; max_amount: number | null; time_window_minutes: number | null; action_type: string | null; priority: number | null
+  use_crm_matching: boolean | null; use_near_amount: boolean | null; use_unique_amount: boolean | null
+}
+
+type NewRule = {
+  scope_type: string; master_merchant: string; sub_merchant: string; min_amount: string; max_amount: string
+  time_window_minutes: string; action_type: 'approve' | 'decline'; priority: string
+  use_crm_matching: boolean; use_near_amount: boolean; use_unique_amount: boolean
+}
+const EMPTY_RULE: NewRule = { scope_type: 'global', master_merchant: 'ngpay', sub_merchant: '', min_amount: '1', max_amount: '10000', time_window_minutes: '5', action_type: 'approve', priority: '10', use_crm_matching: false, use_near_amount: false, use_unique_amount: false }
+
+// Flow templates — presets that prefill the form, never saved directly (the
+// operator must review + click Save, per the explicit requirement that no
+// template writes unreviewed values). "Strict matching" is included even
+// though the live evaluator currently blocks any approve rule that requires
+// matching (not implemented yet) -- picking it will show that block plainly
+// once saved, rather than silently pretending to work.
+const RULE_TEMPLATES: { id: string; label: [string, string]; desc: [string, string]; rule: Partial<NewRule> }[] = [
+  { id: 'small-auto-approve', label: ['موافقة تلقائية للمبالغ الصغيرة', 'Auto-approve small amounts'], desc: ['حد أقصى منخفض، بدون شرط مطابقة، مهلة قصيرة.', 'Low cap, no matching requirement, short window.'], rule: { action_type: 'approve', min_amount: '1', max_amount: '500', time_window_minutes: '5', use_crm_matching: false, use_near_amount: false, use_unique_amount: false } },
+  { id: 'strict-matching', label: ['مطابقة صارمة', 'Strict matching'], desc: ['يتطلب كل أدوات المطابقة معاً — سيُرفض تلقائياً من المحرّك اليوم لأن المطابقة الفعلية غير مُنفَّذة بعد (fail-safe).', 'Requires every matching tool — the live engine blocks this today since real matching isn’t implemented yet (fail-safe).'], rule: { action_type: 'approve', min_amount: '1', max_amount: '10000', use_crm_matching: true, use_near_amount: true, use_unique_amount: true } },
+  { id: 'decline-after-wait', label: ['رفض تلقائي بعد فترة انتظار', 'Auto-decline after a wait'], desc: ['يرفض معاملات ظلّت معلّقة أكثر من المهلة المحددة (7 دقائق كحد أدنى).', 'Declines transactions pending longer than the window (7 min minimum).'], rule: { action_type: 'decline', min_amount: '1', max_amount: '10000', time_window_minutes: '7' } },
+]
 interface JobRow { id: string; tx_id: number | null; amount: number | null; target_status: string | null; provider: string | null; state: string | null; mission: string | null; attempts: number | null; last_error: string | null; operator_username: string | null; created_at: string | null; completed_at: string | null }
 interface BalanceRow { account_id: string | null; total_balance: number | null; available_balance: number | null; usdt_value: number | null; measured_at: string | null }
 interface RateRow { currency_pair: string | null; rate: number | null; fetched_at: string | null }
@@ -90,6 +114,72 @@ export default function Automation() {
   const [panelBusy, setPanelBusy] = useState(false)
   const [panelMsg, setPanelMsg] = useState<string | null>(null)
 
+  const [newRule, setNewRule] = useState<NewRule>(EMPTY_RULE)
+  const [ruleBusy, setRuleBusy] = useState(false)
+  const [ruleMsg, setRuleMsg] = useState<string | null>(null)
+  const [ruleConflict, setRuleConflict] = useState<{ id: string; action_type: string; priority: number }[] | null>(null)
+  const [settingsBusy, setSettingsBusy] = useState<string | null>(null)
+
+  const reloadAutomation = () => api<NonNullable<typeof data>>('/api/automation').then(setData).catch(() => {})
+
+  const saveRule = async (confirmConflict = false) => {
+    setRuleBusy(true); setRuleMsg(null); if (!confirmConflict) setRuleConflict(null)
+    try {
+      await api('/api/automation/rules', {
+        method: 'POST',
+        body: JSON.stringify({
+          scope_type: newRule.scope_type, master_merchant: newRule.master_merchant || null, sub_merchant: newRule.sub_merchant || null,
+          min_amount: newRule.min_amount, max_amount: newRule.max_amount, time_window_minutes: newRule.time_window_minutes,
+          action_type: newRule.action_type, priority: newRule.priority,
+          use_crm_matching: newRule.use_crm_matching, use_near_amount: newRule.use_near_amount, use_unique_amount: newRule.use_unique_amount,
+          confirm_conflict: confirmConflict,
+        }),
+      })
+      setRuleMsg(t('تم حفظ القاعدة ✅', 'Rule saved ✅'))
+      setNewRule(EMPTY_RULE)
+      reloadAutomation()
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'priority_conflict') {
+        setRuleConflict((e.body?.conflicts as typeof ruleConflict) ?? [])
+        setRuleMsg(t('يوجد تعارض في الأولوية مع قاعدة مفعّلة أخرى بنفس النطاق.', 'This priority conflicts with another enabled rule in the same scope.'))
+      } else {
+        setRuleMsg(t('تعذّر حفظ القاعدة.', 'Unable to save the rule.'))
+      }
+    } finally {
+      setRuleBusy(false)
+    }
+  }
+
+  const toggleRule = async (row: RuleRow) => {
+    try {
+      await api(`/api/automation/rules/${row.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: !row.enabled, confirm_conflict: true }) })
+      reloadAutomation()
+    } catch {
+      setRuleMsg(t('تعذّر تغيير حالة القاعدة.', 'Unable to change the rule state.'))
+    }
+  }
+
+  const deleteRule = async (row: RuleRow) => {
+    try {
+      await api(`/api/automation/rules/${row.id}`, { method: 'DELETE' })
+      reloadAutomation()
+    } catch {
+      setRuleMsg(t('تعذّر حذف القاعدة.', 'Unable to delete the rule.'))
+    }
+  }
+
+  const toggleGlobalSetting = async (key: string, value: boolean) => {
+    setSettingsBusy(key)
+    try {
+      await api('/api/automation/settings', { method: 'PATCH', body: JSON.stringify({ [key]: value }) })
+      reloadAutomation()
+    } catch {
+      setRuleMsg(t('تعذّر تحديث الإعداد.', 'Unable to update the setting.'))
+    } finally {
+      setSettingsBusy(null)
+    }
+  }
+
   const loadPanel = () => {
     api<{ accounts: PayAccount[] }>('/api/control/panel?data=all_accounts')
       .then((r) => setAccounts(r.accounts))
@@ -159,17 +249,142 @@ export default function Automation() {
     <PanelShell>
       <section className="page-head">
         <h2>🤖 الأتمتة والتكامل</h2>
-        <p className="page-sub">إعدادات محرّك المطابقة والقواعد ومهام الـ workers (عرض فقط — التعديل من نظام الأتمتة نفسه)</p>
+        <p className="page-sub">{t('محرّك القواعد الحي على هذا المشروع (قابل للتعديل) + إعدادات المحرّك ومهام الـ workers.', 'The live rule engine on this project (editable) + engine settings and worker jobs.')}</p>
       </section>
 
       {err && <div className="card warn">{err}</div>}
       {!data && !err && <p className="sidebar-hint">جارٍ التحميل…</p>}
 
+      {settings && (
+        <section className="card recent-card">
+          <div className="recent-head">
+            <h3>🚦 {t('المفتاح العام للأتمتة الحيّة', 'Live automation master switch')}</h3>
+          </div>
+          <p className="page-sub">
+            {t('هذا هو المحرّك الحقيقي على هذا المشروع — يُقيّم كل معاملة NGPay معلّقة كل دقيقة (cron) وينفّذ القرار فعلياً عبر ngpay-approve. المشروع القديم أدناه لم يعد يُستخدَم.', 'This is the real engine on this project — it evaluates every pending NGPay transaction every minute (cron) and executes decisions for real through ngpay-approve. The old-project section below is no longer used.')}
+          </p>
+          <div className="control-row">
+            <label className="login-remember" style={{ margin: 0 }}>
+              <input type="checkbox" checked={settings.automation_enabled === true} disabled={!canControl || settingsBusy === 'automation_enabled'} onChange={(e) => void toggleGlobalSetting('automation_enabled', e.target.checked)} />
+              <strong>{t('تشغيل الأتمتة (الموافقة/الرفض التلقائي)', 'Automation on (auto approve/decline)')}</strong>
+            </label>
+            <span className={`pay-status-badge ${settings.automation_enabled ? 'st-paid' : 'st-dim'}`}>{settings.automation_enabled ? t('حي الآن', 'Live now') : t('متوقف', 'Off')}</span>
+          </div>
+          <div className="control-row">
+            <label className="login-remember" style={{ margin: 0 }}>
+              <input type="checkbox" checked={settings.sms_feed_circuit_breaker_enabled !== true} disabled={!canControl || settingsBusy === 'sms_feed_circuit_breaker_enabled'} onChange={(e) => void toggleGlobalSetting('sms_feed_circuit_breaker_enabled', !e.target.checked)} />
+              <strong>{t('مطابقة SMS مستمرة', 'SMS matching keeps running')}</strong>
+            </label>
+            <span className="cell-sub">{t('مستقلة تماماً عن مفتاح الموافقة أعلاه — إيقاف الموافقة لا يوقف استلام/مطابقة SMS.', 'Fully independent of the switch above — turning approval off does not stop SMS ingestion/matching.')}</span>
+          </div>
+        </section>
+      )}
+
+      <section className="card recent-card">
+        <div className="recent-head"><h3>➕ {t('قواعد المحرّك — قوالب جاهزة', 'Engine rules — quick templates')}</h3></div>
+        <div className="template-grid">
+          {RULE_TEMPLATES.map((tpl2) => (
+            <div key={tpl2.id} className="template-card">
+              <div className="template-head"><strong>{tpl2.label[li]}</strong></div>
+              <p className="template-desc">{tpl2.desc[li]}</p>
+              {canControl && <button className="btn-primary btn-sm" onClick={() => { setNewRule({ ...EMPTY_RULE, ...tpl2.rule }); setRuleConflict(null); setRuleMsg(null) }}>{t('استخدام كنقطة بداية', 'Use as starting point')}</button>}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="card recent-card">
+        <div className="recent-head"><h3>🛠️ {t('تخصيص قاعدة جديدة', 'Customize a new rule')}</h3></div>
+        {!canControl && <p className="sidebar-hint">{t('عرض فقط — إضافة قواعد تتطلب صلاحية تعديل.', 'View only — adding rules needs edit permission.')}</p>}
+        {canControl && (
+          <>
+            <div className="control-row">
+              <span>{t('النطاق', 'Scope')}</span>
+              <select className="login-input" value={newRule.scope_type} onChange={(e) => setNewRule({ ...newRule, scope_type: e.target.value })}>
+                <option value="global">{t('عام', 'Global')}</option>
+                <option value="wallet">{t('محفظة', 'Wallet')}</option>
+              </select>
+              <span>{t('التاجر الرئيسي', 'Master merchant')}</span>
+              <select className="login-input" value={newRule.master_merchant} onChange={(e) => setNewRule({ ...newRule, master_merchant: e.target.value })}>
+                <option value="ngpay">NGPay ({t('حي', 'live')})</option>
+                <option value="payfuture">PayFuture ({t('لا يوجد تنفيذ آلي بعد', 'no execution worker yet')})</option>
+              </select>
+              <span>{t('تاجر فرعي (اختياري)', 'Sub-merchant (optional)')}</span>
+              <input className="login-input" placeholder={t('مثال: MelBet', 'e.g. MelBet')} value={newRule.sub_merchant} onChange={(e) => setNewRule({ ...newRule, sub_merchant: e.target.value })} />
+            </div>
+            <div className="control-row">
+              <span>{t('المدى (EGP)', 'Range (EGP)')}</span>
+              <input className="login-input" style={{ width: 100 }} type="number" value={newRule.min_amount} onChange={(e) => setNewRule({ ...newRule, min_amount: e.target.value })} />
+              <span>–</span>
+              <input className="login-input" style={{ width: 100 }} type="number" value={newRule.max_amount} onChange={(e) => setNewRule({ ...newRule, max_amount: e.target.value })} />
+              <span>{t('المهلة (دقائق)', 'Window (minutes)')}</span>
+              <input className="login-input" style={{ width: 80 }} type="number" value={newRule.time_window_minutes} onChange={(e) => setNewRule({ ...newRule, time_window_minutes: e.target.value })} />
+              <span>{t('الأولوية', 'Priority')}</span>
+              <input className="login-input" style={{ width: 70 }} type="number" value={newRule.priority} onChange={(e) => setNewRule({ ...newRule, priority: e.target.value })} />
+            </div>
+            <div className="control-row">
+              <span>{t('الإجراء', 'Action')}</span>
+              <select className="login-input" value={newRule.action_type} onChange={(e) => setNewRule({ ...newRule, action_type: e.target.value as 'approve' | 'decline' })}>
+                <option value="approve">{t('موافقة', 'Approve')}</option>
+                <option value="decline">{t('رفض', 'Decline')}</option>
+              </select>
+            </div>
+            {newRule.action_type === 'approve' && (
+              <div className="control-row">
+                <label className="login-remember" style={{ margin: 0 }}><input type="checkbox" checked={newRule.use_crm_matching} onChange={(e) => setNewRule({ ...newRule, use_crm_matching: e.target.checked })} />{t('مطابقة CRM', 'CRM matching')}</label>
+                <label className="login-remember" style={{ margin: 0 }}><input type="checkbox" checked={newRule.use_near_amount} onChange={(e) => setNewRule({ ...newRule, use_near_amount: e.target.checked })} />{t('مطابقة مبلغ تقريبي', 'Near-amount matching')}</label>
+                <label className="login-remember" style={{ margin: 0 }}><input type="checkbox" checked={newRule.use_unique_amount} onChange={(e) => setNewRule({ ...newRule, use_unique_amount: e.target.checked })} />{t('مطابقة مبلغ فريد', 'Unique-amount matching')}</label>
+              </div>
+            )}
+            {newRule.action_type === 'approve' && (newRule.use_crm_matching || newRule.use_near_amount || newRule.use_unique_amount) && (
+              <div className="card warn">{t('⚠️ المحرّك الحي سيرفض تنفيذ هذه القاعدة تلقائياً (matching_not_implemented) لأن أدوات المطابقة الفعلية غير مبنية بعد — ستُحفظ لكن لن تُنفَّذ حتى تُبنى.', '⚠️ The live engine will refuse to execute this rule (matching_not_implemented) — real matching verification isn’t built yet. It will save but won’t fire until it is.')}</div>
+            )}
+            {ruleMsg && <p className="page-sub">{ruleMsg}</p>}
+            {ruleConflict && ruleConflict.length > 0 && (
+              <div className="card warn">
+                {t('قواعد متعارضة بنفس الأولوية:', 'Conflicting rules at the same priority:')} {ruleConflict.map((c) => `${c.action_type}#${c.priority}`).join(', ')}
+                <div><button className="btn-ghost danger btn-sm" onClick={() => void saveRule(true)}>{t('احفظ رغم التعارض', 'Save anyway')}</button></div>
+              </div>
+            )}
+            <button className="btn-primary btn-sm" disabled={ruleBusy} onClick={() => void saveRule(false)}>{ruleBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ القاعدة', 'Save rule')}</button>
+          </>
+        )}
+      </section>
+
+      <section className="card recent-card">
+        <div className="recent-head"><h3>📐 {t('قواعد المحرّك الحي', 'Live engine rules')} ({data?.rules.length ?? 0})</h3></div>
+        {data && data.rules.length === 0 && <p>{t('لا توجد قواعد.', 'No rules.')}</p>}
+        {data && data.rules.length > 0 && (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead><tr><th>{t('النطاق', 'Scope')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('المدى', 'Range')}</th><th>{t('المهلة', 'Window')}</th><th>{t('الإجراء', 'Action')}</th><th>{t('مطابقة', 'Matching')}</th><th>{t('الحالة', 'Status')}</th><th /></tr></thead>
+              <tbody>
+                {data.rules.map((r) => (
+                  <tr key={r.id}>
+                    <td className="mono">{r.scope_type ?? '—'}<div className="cell-sub">{t('أولوية', 'priority')} {r.priority ?? '—'}</div></td>
+                    <td>{r.sub_merchant ?? r.merchant ?? r.master_merchant ?? t('الكل', 'any')}</td>
+                    <td className="mono">{money(r.min_amount, '')} – {money(r.max_amount, '')}</td>
+                    <td className="mono">{r.time_window_minutes ?? '—'}{t('د', 'm')}</td>
+                    <td className="mono">{r.action_type ?? '—'}</td>
+                    <td className="cell-sub">{[r.use_crm_matching && 'CRM', r.use_near_amount && t('تقريبي', 'near'), r.use_unique_amount && t('فريد', 'unique')].filter(Boolean).join(', ') || '—'}</td>
+                    <td><span className={`pay-status-badge ${r.enabled ? 'st-paid' : 'st-dim'}`}>{r.enabled ? t('مفعّلة', 'Enabled') : t('موقوفة', 'Disabled')}</span></td>
+                    <td>{canControl && <div className="row-actions">
+                      <button className="btn-ghost btn-sm" onClick={() => void toggleRule(r)}>{r.enabled ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>
+                      <button className="btn-ghost danger btn-sm" onClick={() => void deleteRule(r)}>{t('حذف', 'Delete')}</button>
+                    </div>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       {tpl && (
         <section className="card recent-card">
           <div className="recent-head">
-            <h3>🎛️ {t('قوالب الأتمتة', 'Automation templates')}</h3>
-            <span className="cell-sub">{t('بدّل وضع الأتمتة بالكامل بضغطة — يُطبَّق فوراً على المعاملات الجديدة.', 'Switch the whole automation posture in one click — applies live to new transactions.')}</span>
+            <h3>🗄️ {t('قوالب النظام القديم (غير مُستخدَمة بعد الآن)', 'Old-project templates (no longer used)')}</h3>
+            <span className="cell-sub">{t('يبقى المشروع القديم كما هو دون تعديل — هذا القسم مرجعي فقط بعد نقل الأتمتة الحقيقية إلى هذا المشروع.', 'The old project stays untouched — this section is reference-only now that real automation moved to this project.')}</span>
           </div>
           {tplMsg && <p className="page-sub">{tplMsg}</p>}
           <div className="template-grid">
@@ -249,30 +464,6 @@ export default function Automation() {
 
       {data && (
         <>
-          <section className="card recent-card">
-            <div className="recent-head"><h3>📐 القواعد ({data.rules.length})</h3></div>
-            {data.rules.length === 0 && <p>لا توجد قواعد.</p>}
-            {data.rules.length > 0 && (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead><tr><th>النطاق</th><th>التاجر</th><th>الطريقة</th><th>المدى</th><th>الإجراء</th><th>الحالة</th></tr></thead>
-                  <tbody>
-                    {data.rules.map((r) => (
-                      <tr key={r.id}>
-                        <td className="mono">{r.scope_type ?? '—'}<div className="cell-sub">أولوية {r.priority ?? '—'}</div></td>
-                        <td>{r.merchant ?? r.master_merchant ?? 'الكل'}</td>
-                        <td>{r.payment_method ?? r.provider ?? 'الكل'}</td>
-                        <td className="mono">{money(r.min_amount, '')} – {money(r.max_amount, '')}</td>
-                        <td className="mono">{r.action_type ?? '—'}</td>
-                        <td><span className={`pay-status-badge ${r.enabled ? 'st-paid' : 'st-dim'}`}>{r.enabled ? 'مفعّلة' : 'موقوفة'}</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
           <section className="card recent-card">
             <div className="recent-head"><h3>🧑‍💻 مهام المتصفح الأخيرة</h3></div>
             {data.jobs.length === 0 && <p>لا توجد مهام.</p>}

@@ -330,6 +330,9 @@ extraRoutes.post(
 )
 
 // ---- Automation: settings + rules + worker jobs + treasury ----
+const RULE_COLS =
+  'id, scope_type, master_merchant, merchant, sub_merchant, account_wallet, payment_method, provider, enabled, min_amount, max_amount, time_window_minutes, action_type, priority, use_crm_matching, use_near_amount, use_unique_amount, created_at, updated_at'
+
 extraRoutes.get(
   '/automation',
   requireAnyPerm(
@@ -339,11 +342,7 @@ extraRoutes.get(
   async (c) => {
     const [settings, rules, jobs, balances, rates] = await Promise.all([
       db.from('automation_settings').select('*').limit(1).maybeSingle(),
-      db
-        .from('automation_rules_scoped')
-        .select('id, scope_type, master_merchant, merchant, payment_method, provider, enabled, min_amount, max_amount, action_type, priority')
-        .order('priority')
-        .limit(100),
+      db.from('automation_rules_scoped').select(RULE_COLS).order('priority', { ascending: false }).limit(100),
       db
         .from('browser_jobs')
         .select('id, tx_id, amount, target_status, provider, source, state, mission, attempts, last_error, operator_username, created_at, completed_at')
@@ -362,6 +361,154 @@ extraRoutes.get(
     })
   },
 )
+
+// Only the NGPay live evaluator (evaluate_and_dispatch_ngpay_decision, wired
+// 2026-08-17) actually executes rule matches -- PayFuture has no execution
+// worker on this project yet, so a rule scoped to it would only ever sit
+// unenforced. Rules aren't restricted to master_merchant='ngpay' here (the
+// evaluator itself hard-guards on gateway), but the UI should make this
+// distinction obvious rather than implying both providers are live.
+async function ruleConflict(db_: typeof db, scope_type: string, master_merchant: string | null, sub_merchant: string | null, priority: number, excludeId?: string) {
+  let q = db_
+    .from('automation_rules_scoped')
+    .select('id, action_type, priority')
+    .eq('enabled', true)
+    .eq('scope_type', scope_type)
+    .eq('priority', priority)
+  q = master_merchant ? q.eq('master_merchant', master_merchant) : q.is('master_merchant', null)
+  q = sub_merchant ? q.eq('sub_merchant', sub_merchant) : q.is('sub_merchant', null)
+  if (excludeId) q = q.neq('id', excludeId)
+  const { data } = await q
+  return data ?? []
+}
+
+function num(v: unknown): number | null {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+function str(v: unknown, max = 80): string | null {
+  return typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null
+}
+
+extraRoutes.post('/automation/rules', requirePerm('automation', 'can_edit'), async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const actor = c.get('actor')
+  const scope_type = str(body?.scope_type, 20) ?? 'global'
+  const action_type = body?.action_type === 'decline' ? 'decline' : 'approve'
+  const min_amount = num(body?.min_amount) ?? 1
+  const max_amount = num(body?.max_amount)
+  const priority = num(body?.priority) ?? 0
+  const time_window_minutes = num(body?.time_window_minutes) ?? 5
+  if (max_amount == null || max_amount < min_amount) return c.json({ error: 'invalid_amount_range' }, 400)
+
+  const master_merchant = str(body?.master_merchant)
+  const sub_merchant = str(body?.sub_merchant)
+  if (body?.confirm_conflict !== true) {
+    const conflicts = await ruleConflict(db, scope_type, master_merchant, sub_merchant, priority)
+    if (conflicts.length) return c.json({ error: 'priority_conflict', conflicts }, 409)
+  }
+
+  const row = {
+    scope_type, master_merchant, merchant: str(body?.merchant), sub_merchant, account_wallet: str(body?.account_wallet),
+    payment_method: str(body?.payment_method), provider: str(body?.provider),
+    min_amount, max_amount, time_window_minutes, action_type, priority,
+    enabled: body?.enabled !== false,
+    use_crm_matching: body?.use_crm_matching === true,
+    use_near_amount: body?.use_near_amount === true,
+    use_unique_amount: body?.use_unique_amount === true,
+  }
+  const { data, error } = await db.from('automation_rules_scoped').insert(row).select(RULE_COLS).single()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
+  await db.from('audit_log').insert({
+    actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
+    action: 'automation.rule_created', entity: 'automation_rules_scoped', entity_id: data.id, after: row,
+  })
+  return c.json({ rule: data }, 201)
+})
+
+extraRoutes.patch('/automation/rules/:id', requirePerm('automation', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => null)
+  const actor = c.get('actor')
+  const { data: before, error: beforeErr } = await db.from('automation_rules_scoped').select(RULE_COLS).eq('id', id).maybeSingle()
+  if (beforeErr) return c.json({ error: 'db_error', detail: beforeErr.message }, 500)
+  if (!before) return c.json({ error: 'not_found' }, 404)
+
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (body?.enabled !== undefined) update.enabled = body.enabled === true
+  if (body?.priority !== undefined) update.priority = num(body.priority) ?? before.priority
+  if (body?.min_amount !== undefined) update.min_amount = num(body.min_amount) ?? before.min_amount
+  if (body?.max_amount !== undefined) update.max_amount = num(body.max_amount) ?? before.max_amount
+  if (body?.time_window_minutes !== undefined) update.time_window_minutes = num(body.time_window_minutes) ?? before.time_window_minutes
+  for (const key of ['use_crm_matching', 'use_near_amount', 'use_unique_amount'] as const) {
+    if (body?.[key] !== undefined) update[key] = body[key] === true
+  }
+
+  const nextEnabled = (update.enabled as boolean | undefined) ?? before.enabled
+  const nextPriority = (update.priority as number | undefined) ?? before.priority
+  if (nextEnabled && body?.confirm_conflict !== true && (update.priority !== undefined || update.enabled === true)) {
+    const conflicts = await ruleConflict(db, before.scope_type, before.master_merchant, before.sub_merchant, nextPriority, id)
+    if (conflicts.length) return c.json({ error: 'priority_conflict', conflicts }, 409)
+  }
+
+  const { data, error } = await db.from('automation_rules_scoped').update(update).eq('id', id).select(RULE_COLS).maybeSingle()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
+  await db.from('audit_log').insert({
+    actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
+    action: 'automation.rule_updated', entity: 'automation_rules_scoped', entity_id: id, before, after: data,
+  })
+  return c.json({ rule: data })
+})
+
+extraRoutes.delete('/automation/rules/:id', requirePerm('automation', 'can_delete'), async (c) => {
+  const id = c.req.param('id')
+  const actor = c.get('actor')
+  const { data: before } = await db.from('automation_rules_scoped').select(RULE_COLS).eq('id', id).maybeSingle()
+  if (!before) return c.json({ error: 'not_found' }, 404)
+  const { error } = await db.from('automation_rules_scoped').delete().eq('id', id)
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
+  await db.from('audit_log').insert({
+    actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
+    action: 'automation.rule_deleted', entity: 'automation_rules_scoped', entity_id: id, before,
+  })
+  return c.json({ ok: true })
+})
+
+// Settings PATCH covers both the master kill switch (automation_enabled) and
+// the SMS-matching circuit breaker as two genuinely independent toggles --
+// disabling automation_enabled does not touch sms_feed_circuit_breaker_enabled
+// (verified live today: SMS kept flowing while automation_enabled=false).
+const SETTINGS_BOOL_FIELDS = [
+  'automation_enabled', 'sms_feed_circuit_breaker_enabled', 'ngpay_enabled', 'payfuture_enabled',
+  'balance_check_enabled', 'above_limit_to_manual', 'security_rules_enabled', 'wallet_switch_auto_enabled', 'turbo_mode',
+  'use_crm_name_matching', 'use_near_amount_matching', 'use_unique_amount_matching', 'use_trxid_matching',
+  'use_balance_timing_matching', 'use_wallet_verify_ocr', 'use_direct_field_matching', 'use_nameonly_ocr_matching', 'use_account_number_matching',
+] as const
+
+extraRoutes.patch('/automation/settings', requirePerm('automation', 'can_edit'), async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const actor = c.get('actor')
+  const { data: before, error: beforeErr } = await db.from('automation_settings').select('*').eq('id', 1).maybeSingle()
+  if (beforeErr) return c.json({ error: 'db_error', detail: beforeErr.message }, 500)
+  if (!before) return c.json({ error: 'not_found' }, 404)
+
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString(), updated_by: actor.username }
+  for (const key of SETTINGS_BOOL_FIELDS) {
+    if (body?.[key] !== undefined) update[key] = body[key] === true
+  }
+  if (body?.max_auto_amount !== undefined) update.max_auto_amount = num(body.max_auto_amount) ?? before.max_auto_amount
+  if (body?.decline_grace_minutes !== undefined) update.decline_grace_minutes = num(body.decline_grace_minutes) ?? before.decline_grace_minutes
+  if (body?.score_threshold !== undefined) update.score_threshold = num(body.score_threshold) ?? before.score_threshold
+  if (Object.keys(update).length <= 2) return c.json({ error: 'nothing_to_update' }, 400)
+
+  const { data, error } = await db.from('automation_settings').update(update).eq('id', 1).select('*').maybeSingle()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
+  await db.from('audit_log').insert({
+    actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
+    action: 'automation.settings_updated', entity: 'automation_settings', entity_id: '1', before, after: data,
+  })
+  return c.json({ settings: data })
+})
 
 // ---- Audit log ----
 extraRoutes.get('/audit', requireAnyPerm(['audit_log', 'audit-logs'], 'can_view'), async (c) => {
