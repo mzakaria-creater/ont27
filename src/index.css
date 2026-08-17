@@ -741,6 +741,7 @@ a.stat-card:hover { border-color: var(--accent); }
 .data-table.clickable tbody tr:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .data-table .pay-status-badge { font-size: 12px; padding: 4px 10px; }
 .cell-sub { color: var(--text-dim); font-size: 11px; }
+.cell-sub.warn-text { color: var(--status-declined); font-weight: 600; }
 
 .page-head { margin-block-end: 12px; }
 .page-head h2 { margin: 0 0 4px; font-size: 18px; }

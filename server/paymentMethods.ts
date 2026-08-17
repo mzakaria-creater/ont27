@@ -7,7 +7,7 @@ export const paymentMethodRoutes = new Hono<AuthEnv>()
 paymentMethodRoutes.use('*', requireAuth)
 
 const methodColumns = 'id, method_code, method_name, channel_type, is_active, sort_order, created_at'
-const accountColumns = 'id, payment_method_id, payment_pool_id, account_number, account_name, iban, bank_name, currency, country_code, device_name, label, is_active, created_at'
+const accountColumns = 'id, payment_method_id, payment_pool_id, account_number, account_name, iban, bank_name, currency, country_code, device_name, label, is_active, current_balance, balance_updated_at, created_at'
 const poolColumns = 'id, master_merchant_id, pool_name, pool_code, is_active, notes, created_at'
 
 function text(value: unknown, max = 120): string | null {
