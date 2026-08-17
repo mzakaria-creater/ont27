@@ -138,7 +138,31 @@ export default function Deposits() {
   }
 
   const [rowBusy, setRowBusy] = useState<number | null>(null)
+  const [retryLocked, setRetryLocked] = useState(false)
   const bulk = useBulk((id) => `/api/deposits/${id}/decision`, () => void load())
+  const armRetryCooldown = (ms: number) => {
+    setRetryLocked(true)
+    setTimeout(() => setRetryLocked(false), ms)
+  }
+
+  // The provider worker (ngpay-approve) already retries transient 5xx errors
+  // internally before giving up — a failed response here means that already
+  // failed a few times. Surface the real reason instead of a generic message,
+  // and enforce a short cooldown so the operator can't immediately hammer the
+  // same failing call again (that's what produced 3 identical failed attempts
+  // on tx_id=138452815).
+  const RETRY_COOLDOWN_MS = 10_000
+  function describeDecisionError(e: unknown): string {
+    if (e instanceof ApiError) {
+      if (e.code === 'not_pending') return 'حالة الإيداع اتغيّرت بالفعل — أعد التحميل.'
+      if (e.status === 403) return 'لا تملك صلاحية الاعتماد (can_approve غير ممنوحة لدورك).'
+      if (e.code === 'worker_failed') {
+        const providerMsg = (e.body?.worker as Record<string, unknown> | undefined)?.error
+        return `فشل الاتصال بمزوّد NGPay${typeof providerMsg === 'string' ? `: ${providerMsg}` : ''} — لم يُنفَّذ أي تغيير، حاول مرة أخرى بعد قليل.`
+      }
+    }
+    return 'فشل تنفيذ القرار — حاول مرة أخرى.'
+  }
 
   const quickDecide = async (txId: number, action: 'approve' | 'decline') => {
     setRowBusy(txId)
@@ -150,14 +174,9 @@ export default function Deposits() {
       })
       void load()
     } catch (e) {
-      if (e instanceof ApiError && e.code === 'not_pending') {
-        setErr('حالة الإيداع اتغيّرت بالفعل — أعد التحميل.')
-        void load()
-      } else if (e instanceof ApiError && e.status === 403) {
-        setErr('لا تملك صلاحية الاعتماد (can_approve غير ممنوحة لدورك).')
-      } else {
-        setErr('فشل تنفيذ القرار — حاول مرة أخرى.')
-      }
+      setErr(describeDecisionError(e))
+      if (e instanceof ApiError && e.code === 'not_pending') void load()
+      else armRetryCooldown(RETRY_COOLDOWN_MS)
     } finally {
       setRowBusy(null)
     }
@@ -175,13 +194,8 @@ export default function Deposits() {
       setSelected(null)
       void load()
     } catch (e) {
-      if (e instanceof ApiError && e.code === 'not_pending') {
-        setDecisionErr('حالة الإيداع اتغيّرت بالفعل — أعد التحميل.')
-      } else if (e instanceof ApiError && e.status === 403) {
-        setDecisionErr('لا تملك صلاحية الموافقة (can_approve غير ممنوحة لدورك).')
-      } else {
-        setDecisionErr('فشل تنفيذ القرار — حاول مرة أخرى.')
-      }
+      setDecisionErr(describeDecisionError(e))
+      if (!(e instanceof ApiError && e.code === 'not_pending')) armRetryCooldown(RETRY_COOLDOWN_MS)
     } finally {
       setDecisionBusy(false)
     }
@@ -415,14 +429,14 @@ export default function Deposits() {
                             <>
                               <button
                                 className="btn-primary btn-sm"
-                                disabled={rowBusy === r.tx_id}
+                                disabled={rowBusy === r.tx_id || retryLocked}
                                 onClick={() => void quickDecide(r.tx_id, 'approve')}
                               >
                                 ✅
                               </button>
                               <button
                                 className="btn-ghost danger btn-sm"
-                                disabled={rowBusy === r.tx_id}
+                                disabled={rowBusy === r.tx_id || retryLocked}
                                 onClick={() => void quickDecide(r.tx_id, 'decline')}
                               >
                                 ❌
@@ -584,14 +598,14 @@ export default function Deposits() {
                   </div>
                 </div>
 
-                {decisionErr && <div className="card warn">{decisionErr}</div>}
+                {decisionErr && <div className="card warn">{decisionErr}{retryLocked && <div className="cell-sub">{' '}({t('انتظر قليلاً قبل إعادة المحاولة', 'wait a moment before retrying')})</div>}</div>}
 
                 {selected.status === 'PENDING' && can('deposits', 'can_approve') && (
                   <div className="drawer-actions">
-                    <button className="btn-primary" disabled={decisionBusy} onClick={() => void decide('approve')}>
+                    <button className="btn-primary" disabled={decisionBusy || retryLocked} onClick={() => void decide('approve')}>
                       ✅ اعتماد (PAID)
                     </button>
-                    <button className="btn-ghost danger" disabled={decisionBusy} onClick={() => void decide('decline')}>
+                    <button className="btn-ghost danger" disabled={decisionBusy || retryLocked} onClick={() => void decide('decline')}>
                       ❌ رفض
                     </button>
                   </div>
