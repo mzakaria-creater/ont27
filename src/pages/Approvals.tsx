@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
+import ProofModal from '../components/ProofModal'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useBulk } from '../lib/useBulk'
@@ -24,6 +25,11 @@ interface DepRow {
   master_merchant: string | null
   first_seen_at: string | null
   created_utc: string | null
+  proof_image_url: string | null
+  to_account_number: string | null
+  to_account_name: string | null
+  receiving_wallet: string | null
+  to_bank: string | null
 }
 
 interface PayRow {
@@ -46,6 +52,7 @@ export default function Approvals() {
   const [payouts, setPayouts] = useState<PayRow[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [rowBusy, setRowBusy] = useState<string | null>(null)
+  const [proof, setProof] = useState<{ url: string; ref: string } | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -121,9 +128,11 @@ export default function Approvals() {
                       />
                     </th>
                   )}
+                  <th>{t('الإثبات', 'Proof')}</th>
                   <th>{t('رقم العملية', 'Ref')}</th>
                   <th>{t('المبلغ', 'Amount')}</th>
-                  <th>{t('المُرسِل', 'Sender')}</th>
+                  <th>{t('العميل / المُرسِل', 'Customer / sender')}</th>
+                  <th>{t('المحفظة المستلِمة', 'Receiving wallet')}</th>
                   <th>{t('الطريقة', 'Method')}</th>
                   <th>{t('التاجر', 'Merchant')}</th>
                   <th>{t('الوقت', 'Time')}</th>
@@ -138,12 +147,31 @@ export default function Approvals() {
                         <input type="checkbox" checked={depBulk.selected.has(r.tx_id)} onChange={() => depBulk.toggle(r.tx_id)} />
                       </td>
                     )}
+                    <td>
+                      {r.proof_image_url ? (
+                        <button
+                          type="button"
+                          className="proof-thumb-btn"
+                          title={t('عرض إثبات الدفع', 'View payment proof')}
+                          aria-label={t(`عرض إثبات الدفع للعملية ${r.ontarget_ref ?? r.tx_id}`, `View payment proof for ${r.ontarget_ref ?? r.tx_id}`)}
+                          onClick={() => setProof({ url: r.proof_image_url!, ref: String(r.ontarget_ref ?? r.tx_id) })}
+                        >
+                          <img src={r.proof_image_url} alt="" loading="lazy" />
+                        </button>
+                      ) : (
+                        <span className="cell-sub">{t('بدون', 'None')}</span>
+                      )}
+                    </td>
                     <td className="mono">
                       {r.ontarget_ref ?? r.tx_id}
                       {r.merchant_tx_reference && <div className="cell-sub mono">{r.merchant_tx_reference}</div>}
                     </td>
                     <td className="mono">{money(r.amount, r.currency)}</td>
                     <td>{r.sender_name ?? '—'}{r.sender_number && <div className="cell-sub mono">{r.sender_number}</div>}</td>
+                    <td>
+                      <span className="mono">{r.receiving_wallet ?? r.to_account_number ?? '—'}</span>
+                      {(r.to_account_name ?? r.to_bank) && <div className="cell-sub">{r.to_account_name ?? r.to_bank}</div>}
+                    </td>
                     <td>{r.payment_method ?? '—'}</td>
                     <td>{r.merchant ?? '—'}</td>
                     <td className="mono">{depositTime(r)}</td>
@@ -203,6 +231,14 @@ export default function Approvals() {
           </div>
         )}
       </section>
+
+      {proof && (
+        <ProofModal
+          url={proof.url}
+          title={`${t('إثبات الدفع', 'Payment proof')} · ${proof.ref}`}
+          onClose={() => setProof(null)}
+        />
+      )}
     </PanelShell>
   )
 }

@@ -1226,6 +1226,15 @@ a.stat-card:hover { border-color: var(--accent); }
 .proof-body { overflow: auto; padding: 12px; display: flex; justify-content: center; background: var(--bg); }
 .proof-body img { max-width: 100%; max-height: calc(90vh - 60px); border-radius: 8px; object-fit: contain; }
 
+/* Proof thumbnail in the approvals queue — evidence visible without leaving the row. */
+.proof-thumb-btn {
+  padding: 0; border: 1px solid var(--border); background: var(--bg);
+  border-radius: 8px; cursor: pointer; overflow: hidden; display: block;
+  inline-size: 46px; block-size: 46px; transition: border-color 0.15s var(--ease), transform 0.15s var(--ease);
+}
+.proof-thumb-btn:hover { border-color: var(--accent); transform: scale(1.06); }
+.proof-thumb-btn img { inline-size: 100%; block-size: 100%; object-fit: cover; display: block; }
+
 /* Binance treasury config grid */
 .binance-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 @media (max-width: 640px) { .binance-grid { grid-template-columns: 1fr; } }

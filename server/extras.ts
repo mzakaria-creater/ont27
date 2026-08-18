@@ -96,6 +96,14 @@ extraRoutes.get(
 )
 
 // ---- Approvals queue (everything PENDING) ----
+// Reviewer-facing evidence columns on top of DEPOSIT_COLS: the proof image and
+// the receiving wallet are what an operator actually checks before deciding, so
+// the queue shouldn't force a round-trip to the detail page for them.
+// Note: sender_number is the same value the provider sends as raw->>'PhoneNo'
+// (verified: 0 of 801 recent NGPay rows differ), so there is only ONE customer
+// phone here — it is deliberately not rendered twice under two labels.
+const APPROVAL_DEPOSIT_COLS = `${DEPOSIT_COLS}, proof_image_url, to_account_number, to_account_name, receiving_wallet, to_bank`
+
 extraRoutes.get(
   '/approvals',
   requireAnyPerm(['approvals', 'approval-queue', 'my-queue', 'my-tasks', 'assigned_to_me'], 'can_view'),
@@ -103,7 +111,7 @@ extraRoutes.get(
     const [dep, pay] = await Promise.all([
       db
         .from('maven_transactions')
-        .select(DEPOSIT_COLS)
+        .select(APPROVAL_DEPOSIT_COLS)
         .eq('status', 'PENDING')
         .order('ontarget_ref', { ascending: false, nullsFirst: false })
         .limit(100),
