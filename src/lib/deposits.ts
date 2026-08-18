@@ -12,6 +12,8 @@ export interface DepositRow {
   currency: string | null
   sender_name: string | null
   sender_number: string | null
+  agent_name: string | null
+  email: string | null
   payment_method: string | null
   gateway: string | null
   merchant: string | null
@@ -122,4 +124,27 @@ export function merchantChipCls(master: string | null | undefined): string {
   if (m.includes('ngpay')) return 'ngpay'
   if (m.includes('payfuture')) return 'payfuture'
   return 'other'
+}
+
+// Provider-channel chip. The raw gateway values are NagupayP2P (live) and
+// AVADAPAY/RSC (PayFuture, still test-only), which don't literally contain
+// "ngpay"/"payfuture" — map them onto the same two colours so the live/test
+// split stays visually identical everywhere. Falls back to the master merchant.
+export function gatewayChipCls(gateway: string | null | undefined, master?: string | null): string {
+  const g = (gateway ?? '').trim().toLowerCase()
+  if (g.includes('nagupay') || g.includes('ngpay')) return 'ngpay'
+  if (g.includes('avadapay') || g === 'rsc') return 'payfuture'
+  return merchantChipCls(master)
+}
+
+// Icons for the payment methods that actually occur in maven_transactions:
+// Mobile Wallet / VodafoneCash / Orange Money / Orange / Etissalat, InstaPay,
+// Express Deposit, Bank Deposit, WireTransfer.
+export function methodIcon(method: string | null | undefined): string {
+  const m = (method ?? '').toLowerCase()
+  if (!m) return '💳'
+  if (m.includes('instapay') || m.includes('express')) return '⚡'
+  if (m.includes('bank') || m.includes('wire')) return '🏦'
+  if (m.includes('wallet') || m.includes('cash') || m.includes('orange') || m.includes('etissalat') || m.includes('vodafone')) return '📱'
+  return '💳'
 }

@@ -1259,6 +1259,96 @@ a.stat-card:hover { border-color: var(--accent); }
   inline-size: 46px; block-size: 46px; transition: border-color 0.15s var(--ease), transform 0.15s var(--ease);
 }
 .proof-thumb-btn:hover { border-color: var(--accent); transform: scale(1.06); }
+
+/* ===== Deposits: card review layout (alternative to the row table) =====
+   Four across on a wide screen, degrading to one on a phone. Each card is a
+   self-contained review unit so an operator can scan several pending
+   transactions at once instead of reading a long table row by row. */
+.view-toggle { display: flex; gap: 6px; margin-inline-start: auto; }
+
+.dep-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(288px, 1fr));
+  align-items: start; /* each card is as tall as its own content */
+  gap: 14px;
+  margin-block: 4px 16px;
+}
+@media (min-width: 1500px) { .dep-card-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 560px) { .dep-card-grid { grid-template-columns: 1fr; gap: 12px; } }
+
+.dep-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+.dep-card:hover { border-color: var(--border-soft); box-shadow: var(--shadow-hover); }
+.dep-card.is-pending { border-color: var(--amber-border); }
+
+.dep-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dep-ref {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--text); font: inherit; font-size: 14px; font-weight: 600;
+  text-align: start; overflow-wrap: anywhere;
+}
+.dep-ref:hover { color: var(--accent); text-decoration: underline; }
+
+.dep-amount { display: flex; align-items: baseline; gap: 6px; }
+.dep-amount .mono { font-size: 25px; font-weight: 700; letter-spacing: -0.5px; }
+.dep-cur { font-size: 12px; color: var(--text-dim); font-weight: 500; }
+
+.dep-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dep-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10px; font-weight: 600; padding: 3px 8px;
+  border-radius: 6px; background: var(--hover-2); color: var(--text-dim);
+}
+
+.dep-fields {
+  display: grid; grid-template-columns: auto 1fr;
+  gap: 5px 12px; margin: 0; font-size: 12px;
+}
+.dep-fields dt { color: var(--text-muted); font-size: 10.5px; padding-block-start: 1px; }
+.dep-fields dd { margin: 0; overflow-wrap: anywhere; }
+.dep-fields dd.small { font-size: 10.5px; }
+/* .mono sets direction:ltr — needed so "18/08, 09:00 pm" keeps its order —
+   but that also pins the run to the left edge, away from the name directly
+   above it. Keep the LTR run and only correct the alignment per page dir. */
+html[dir="rtl"] .dep-fields .mono { text-align: right; }
+html[dir="ltr"] .dep-fields .mono { text-align: left; }
+
+.dep-proof {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--hover); font-size: 10.5px; color: var(--text-dim);
+  text-align: start; cursor: pointer; font-family: inherit;
+  transition: border-color 0.15s var(--ease);
+}
+.dep-proof:hover { border-color: var(--accent); }
+.dep-proof img { inline-size: 42px; block-size: 42px; object-fit: cover; border-radius: 8px; flex: none; }
+.dep-proof.empty {
+  cursor: default; justify-content: center; border-style: dashed;
+  color: var(--text-muted); min-block-size: 44px;
+}
+
+.dep-sms {
+  font-size: 10.5px; color: var(--status-paid);
+  background: var(--green-bg); border-radius: 8px; padding: 6px 9px;
+}
+
+/* All four actions stay on one line even in the narrowest 4-up column — the
+   approve/decline pair shares whatever the two icon buttons leave over. */
+.dep-actions { display: flex; gap: 6px; margin-block-start: auto; padding-block-start: 4px; }
+.dep-actions .dep-approve, .dep-actions .dep-decline {
+  flex: 1 1 0; min-inline-size: 0; white-space: nowrap; padding-inline: 8px;
+}
+.dep-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.dep-exec-note { margin: 0; font-size: 10px; line-height: 1.6; color: var(--text-muted); }
 .proof-thumb-btn img { inline-size: 100%; block-size: 100%; object-fit: cover; display: block; }
 
 /* Selects sitting inside data tables (pool picker) need room for real pool
