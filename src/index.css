@@ -1235,6 +1235,10 @@ a.stat-card:hover { border-color: var(--accent); }
 .proof-thumb-btn:hover { border-color: var(--accent); transform: scale(1.06); }
 .proof-thumb-btn img { inline-size: 100%; block-size: 100%; object-fit: cover; display: block; }
 
+/* Selects sitting inside data tables (pool picker) need room for real pool
+   names — the default control width clipped "NGPay P2P Egypt Pool". */
+.data-table select.login-input { min-inline-size: 170px; padding-block: 6px; }
+
 /* Binance treasury config grid */
 .binance-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 @media (max-width: 640px) { .binance-grid { grid-template-columns: 1fr; } }

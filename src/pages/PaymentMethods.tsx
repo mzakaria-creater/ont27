@@ -5,67 +5,293 @@ import { useAuth } from '../auth/AuthContext'
 import { useLocale } from '../lib/locale'
 
 interface Method { id: string; method_code: string; method_name: string; channel_type: string; is_active: boolean; sort_order: number }
-interface Account { id: string; payment_method_id: string; payment_pool_id: string | null; account_number: string; account_name: string | null; iban: string | null; bank_name: string | null; currency: string | null; country_code: string | null; device_name: string | null; label: string | null; is_active: boolean; current_balance: number | null; balance_updated_at: string | null }
-
-// "منذ متى" — relative age of the last known balance, so a stale figure never
-// reads as if it were just refreshed. STALE_MINUTES matches the device-offline
-// threshold used elsewhere (inbound_sms recency).
-const STALE_MINUTES = 15
-function balanceAge(iso: string | null, t: (ar: string, en: string) => string): { text: string; stale: boolean } | null {
-  if (!iso) return null
-  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000))
-  const stale = mins > STALE_MINUTES
-  const text = mins < 1 ? t('الآن', 'just now') : mins < 60 ? t(`منذ ${mins} د`, `${mins}m ago`) : mins < 1440 ? t(`منذ ${Math.round(mins / 60)} س`, `${Math.round(mins / 60)}h ago`) : t(`منذ ${Math.round(mins / 1440)} يوم`, `${Math.round(mins / 1440)}d ago`)
-  return { text, stale }
+interface Account {
+  id: string; payment_method_id: string; payment_pool_id: string | null; account_number: string
+  account_name: string | null; iban: string | null; bank_name: string | null; currency: string | null
+  country_code: string | null; device_name: string | null; label: string | null; is_active: boolean
+  current_balance: number | null; balance_updated_at: string | null
 }
 interface Pool { id: string; master_merchant_id: string; pool_name: string; pool_code: string; is_active: boolean; notes: string | null }
 interface PoolMember { id: string; payment_pool_id: string; merchant_hierarchy_id: number; is_active: boolean }
 interface HierarchyRow { id: number; name: string; payin_commission_pct: number | null }
 interface Master { id: string; name: string; code: string }
+type Data = { methods: Method[]; accounts: Account[]; pools: Pool[]; poolMembers: PoolMember[]; hierarchy: HierarchyRow[]; masters: Master[] }
+
 const emptyAccount = { account_number: '', label: '', device_name: '', bank_name: '' }
 const emptyPool = { pool_name: '', pool_code: '', master_merchant_id: '' }
 
+// Balance freshness — matches the 15-minute window used when the SMS→wallet
+// sync was built, so a figure that stopped updating never reads as live.
+const STALE_MINUTES = 15
+function balanceAge(iso: string | null, t: (ar: string, en: string) => string): { text: string; stale: boolean } | null {
+  if (!iso) return null
+  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000))
+  const stale = mins > STALE_MINUTES
+  const text = mins < 1 ? t('الآن', 'just now')
+    : mins < 60 ? t(`منذ ${mins} د`, `${mins}m ago`)
+    : mins < 1440 ? t(`منذ ${Math.round(mins / 60)} س`, `${Math.round(mins / 60)}h ago`)
+    : t(`منذ ${Math.round(mins / 1440)} يوم`, `${Math.round(mins / 1440)}d ago`)
+  return { text, stale }
+}
+
+function masterCls(code: string | undefined): string {
+  if (code === 'ngpay') return 'ngpay'
+  if (code === 'payfuture') return 'payfuture'
+  return 'other'
+}
+
 export default function PaymentMethods() {
   const { t } = useLocale(); const { can } = useAuth()
-  const [data, setData] = useState<{ methods: Method[]; accounts: Account[]; pools: Pool[]; poolMembers: PoolMember[]; hierarchy: HierarchyRow[]; masters: Master[] } | null>(null)
-  const [error, setError] = useState<string | null>(null); const [open, setOpen] = useState<string | null>(null)
-  const [account, setAccount] = useState(emptyAccount); const [newMethod, setNewMethod] = useState({ method_code: '', method_name: '', channel_type: 'sms_device' })
-  const [newPool, setNewPool] = useState(emptyPool); const [assign, setAssign] = useState<Record<string, string>>({})
-  const editable = can('payment_methods', 'can_edit'); const create = can('payment_methods', 'can_create')
-  const load = useCallback(async () => { try { setData(await api('/api/payment-methods')); setError(null) } catch (e) { setError(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية طرق الدفع.', 'You do not have payment-method permission.') : t('تعذر التحميل.', 'Unable to load.')) } }, [t])
+  const [data, setData] = useState<Data | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [tab, setTab] = useState<'methods' | 'accounts'>('methods')
+  const [open, setOpen] = useState<string | null>(null)
+  const [account, setAccount] = useState(emptyAccount)
+  const [newMethod, setNewMethod] = useState({ method_code: '', method_name: '', channel_type: 'sms_device' })
+  const [newPool, setNewPool] = useState(emptyPool)
+  const [assign, setAssign] = useState<Record<string, string>>({})
+  const editable = can('payment_methods', 'can_edit')
+  const create = can('payment_methods', 'can_create')
+
+  const load = useCallback(async () => {
+    try { setData(await api<Data>('/api/payment-methods')); setError(null) } catch (e) {
+      setError(e instanceof ApiError && e.status === 403
+        ? t('لا تملك صلاحية طرق الدفع.', 'You do not have payment-method permission.')
+        : t('تعذر التحميل.', 'Unable to load.'))
+    }
+  }, [t])
   useEffect(() => { void load() }, [load])
-  const toggle = async (method: Method) => { try { await api(`/api/payment-methods/${method.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !method.is_active }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
+
+  const toggle = async (m: Method) => { try { await api(`/api/payment-methods/${m.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !m.is_active }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
   const addMethod = async (e: React.FormEvent) => { e.preventDefault(); try { await api('/api/payment-methods', { method: 'POST', body: JSON.stringify(newMethod) }); setNewMethod({ method_code: '', method_name: '', channel_type: 'sms_device' }); await load() } catch { setError(t('تعذر إضافة الطريقة.', 'Unable to add method.')) } }
   const addAccount = async (e: React.FormEvent) => { e.preventDefault(); if (!open) return; try { await api(`/api/payment-methods/${open}/accounts`, { method: 'POST', body: JSON.stringify(account) }); setAccount(emptyAccount); setOpen(null); await load() } catch { setError(t('تعذر إضافة الحساب.', 'Unable to add account.')) } }
-  const toggleAccount = async (row: Account) => { try { await api(`/api/payment-methods/accounts/${row.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !row.is_active }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
-  const setAccountPool = async (row: Account, poolId: string) => { try { await api(`/api/payment-methods/accounts/${row.id}`, { method: 'PATCH', body: JSON.stringify({ payment_pool_id: poolId || null }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
+  const toggleAccount = async (r: Account) => { try { await api(`/api/payment-methods/accounts/${r.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !r.is_active }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
+  const setAccountPool = async (r: Account, poolId: string) => { try { await api(`/api/payment-methods/accounts/${r.id}`, { method: 'PATCH', body: JSON.stringify({ payment_pool_id: poolId || null }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
   const addPool = async (e: React.FormEvent) => { e.preventDefault(); try { await api('/api/payment-methods/pools', { method: 'POST', body: JSON.stringify(newPool) }); setNewPool(emptyPool); await load() } catch { setError(t('تعذر إنشاء الـ pool.', 'Unable to create pool.')) } }
   const assignMerchant = async (poolId: string) => { const mh = assign[poolId]; if (!mh) return; try { await api(`/api/payment-methods/pools/${poolId}/merchants`, { method: 'POST', body: JSON.stringify({ merchant_hierarchy_id: Number(mh) }) }); setAssign({ ...assign, [poolId]: '' }); await load() } catch { setError(t('تعذر إسناد التاجر.', 'Unable to assign merchant.')) } }
-  const toggleMember = async (member: PoolMember) => { try { await api(`/api/payment-methods/pools/members/${member.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !member.is_active }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
-  const poolName = (id: string | null) => data?.pools.find((p) => p.id === id)?.pool_name ?? null
-  return <PanelShell><section className="page-head"><h2>{t('طرق الدفع والحسابات', 'Payment methods & accounts')}</h2><p className="page-sub">{t('طبقة عرض وإدارة فقط؛ لا تستبدل خرائط SMS التشغيلية.', 'Reference catalogue only; it does not replace operational SMS mapping.')}</p></section>
-    {error && <div className="card warn">{error}</div>}
-    {create && <form className="card control-row" onSubmit={addMethod}><strong>{t('إضافة طريقة', 'Add method')}</strong><input className="login-input" required placeholder="CODE" value={newMethod.method_code} onChange={(e) => setNewMethod({ ...newMethod, method_code: e.target.value })}/><input className="login-input" required placeholder={t('الاسم', 'Name')} value={newMethod.method_name} onChange={(e) => setNewMethod({ ...newMethod, method_name: e.target.value })}/><select className="login-input" value={newMethod.channel_type} onChange={(e) => setNewMethod({ ...newMethod, channel_type: e.target.value })}><option value="sms_device">SMS device</option><option value="bank_transfer">Bank transfer</option><option value="other">Other</option></select><button className="btn-primary btn-sm">{t('إضافة', 'Add')}</button></form>}
-    {!data && <p className="sidebar-hint">{t('جار التحميل…', 'Loading…')}</p>}
-    {data?.methods.map((method) => { const rows = data.accounts.filter((row) => row.payment_method_id === method.id); return <section className="card recent-card" key={method.id}><div className="recent-head"><div><h3>{method.method_name} <span className="cell-sub mono">{method.method_code} · {method.channel_type}</span></h3></div><div className="control-row">{editable && <button className="btn-ghost btn-sm" onClick={() => void toggle(method)}>{method.is_active ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>}{create && <button className="btn-primary btn-sm" onClick={() => setOpen(open === method.id ? null : method.id)}>{t('إضافة حساب', 'Add account')}</button>}</div></div>
-      {open === method.id && <form className="control-row" onSubmit={addAccount}><input required className="login-input" placeholder={t('رقم الحساب', 'Account number')} value={account.account_number} onChange={(e) => setAccount({ ...account, account_number: e.target.value })}/><input className="login-input" placeholder={t('تسمية', 'Label')} value={account.label} onChange={(e) => setAccount({ ...account, label: e.target.value })}/><input className="login-input" placeholder={t('الجهاز', 'Device')} value={account.device_name} onChange={(e) => setAccount({ ...account, device_name: e.target.value })}/><button className="btn-primary btn-sm">{t('حفظ', 'Save')}</button></form>}
-      <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('الرقم', 'Number')}</th><th>{t('التسمية', 'Label')}</th><th>{t('الجهاز', 'Device')}</th><th>{t('الرصيد', 'Balance')}</th><th>{t('التجمّع', 'Pool')}</th><th>{t('الحالة', 'Status')}</th><th /></tr></thead><tbody>{rows.length ? rows.map((row) => { const age = balanceAge(row.balance_updated_at, t); return <tr key={row.id}><td className="mono">{row.account_number}</td><td>{row.label ?? row.account_name ?? '—'}</td><td className="mono">{row.device_name ?? '—'}</td><td>{row.current_balance == null ? <span className="cell-sub">{t('غير معروف', 'Unknown')}</span> : <><span className="mono">{row.current_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {row.currency ?? ''}</span>{age && <div className={`cell-sub${age.stale ? ' warn-text' : ''}`}>{age.stale ? t(`قديم — ${age.text}`, `Stale — ${age.text}`) : age.text}</div>}</>}</td><td>{editable ? <select className="login-input" aria-label={t(`تجمّع الحساب ${row.account_number}`, `Pool for account ${row.account_number}`)} value={row.payment_pool_id ?? ''} onChange={(e) => void setAccountPool(row, e.target.value)}><option value="">{t('بدون', 'None')}</option>{data.pools.map((pool) => <option key={pool.id} value={pool.id}>{pool.pool_name}</option>)}</select> : (poolName(row.payment_pool_id) ?? '—')}</td><td><span className={`pay-status-badge ${row.is_active ? 'st-paid' : 'st-dim'}`}>{row.is_active ? t('نشط', 'Active') : t('موقوف', 'Disabled')}</span></td><td>{editable && <button className="btn-ghost btn-sm" onClick={() => void toggleAccount(row)}>{row.is_active ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>}</td></tr> }) : <tr><td colSpan={7} className="sidebar-hint">{t('لا توجد حسابات.', 'No accounts.')}</td></tr>}</tbody></table></div></section> })}
+  const toggleMember = async (m: PoolMember) => { try { await api(`/api/payment-methods/pools/members/${m.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !m.is_active }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
 
-    <section className="page-head"><h2>{t('تجمّعات الدفع (Pools)', 'Payment pools')}</h2><p className="page-sub">{t('التجمّع يتبع master merchant واحداً ويمكن مشاركته بين عدة تجار فرعيين. الحسابات غير المصنّفة تبقى بدون تجمّع.', 'A pool belongs to one master merchant and can be shared across sub-merchants. Unclassified accounts stay unpooled.')}</p></section>
-    {data && create && <form className="card control-row" onSubmit={addPool}><strong>{t('تجمّع جديد', 'New pool')}</strong><input required className="login-input" placeholder={t('الاسم', 'Name')} value={newPool.pool_name} onChange={(e) => setNewPool({ ...newPool, pool_name: e.target.value })}/><input required className="login-input" placeholder="code" value={newPool.pool_code} onChange={(e) => setNewPool({ ...newPool, pool_code: e.target.value })}/><select required className="login-input" value={newPool.master_merchant_id} onChange={(e) => setNewPool({ ...newPool, master_merchant_id: e.target.value })}><option value="">Master…</option>{data.masters.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.code})</option>)}</select><button className="btn-primary btn-sm">{t('إنشاء', 'Create')}</button></form>}
-    {data?.pools.map((pool) => {
-      const members = data.poolMembers.filter((m) => m.payment_pool_id === pool.id)
-      const accountsInPool = data.accounts.filter((a) => a.payment_pool_id === pool.id)
-      const master = data.masters.find((m) => m.id === pool.master_merchant_id)
-      const available = data.hierarchy.filter((h) => !members.some((m) => m.merchant_hierarchy_id === h.id && m.is_active))
-      return <section className="card recent-card" key={pool.id}>
-        <div className="recent-head"><div><h3>{pool.pool_name} <span className="cell-sub mono">{pool.pool_code}{master ? ` · ${master.name}` : ''} · {t(`${accountsInPool.length} حساب`, `${accountsInPool.length} accounts`)}</span></h3></div>
-          {editable && <div className="control-row"><select className="login-input" aria-label={t(`إسناد تاجر إلى ${pool.pool_name}`, `Assign merchant to ${pool.pool_name}`)} value={assign[pool.id] ?? ''} onChange={(e) => setAssign({ ...assign, [pool.id]: e.target.value })}><option value="">{t('إسناد تاجر…', 'Assign merchant…')}</option>{available.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}</select><button className="btn-primary btn-sm" onClick={() => void assignMerchant(pool.id)}>{t('إسناد', 'Assign')}</button></div>}
-        </div>
-        <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('التاجر الفرعي', 'Sub-merchant')}</th><th>{t('نسبة Payin', 'Payin %')}</th><th>{t('الحالة', 'Status')}</th><th /></tr></thead><tbody>
-          {members.length ? members.map((member) => { const h = data.hierarchy.find((row) => row.id === member.merchant_hierarchy_id); return <tr key={member.id}><td>{h?.name ?? member.merchant_hierarchy_id}</td><td className="mono">{h?.payin_commission_pct ?? '—'}%</td><td><span className={`pay-status-badge ${member.is_active ? 'st-paid' : 'st-dim'}`}>{member.is_active ? t('نشط', 'Active') : t('موقوف', 'Disabled')}</span></td><td>{editable && <button className="btn-ghost btn-sm" onClick={() => void toggleMember(member)}>{member.is_active ? t('إزالة', 'Remove') : t('تفعيل', 'Enable')}</button>}</td></tr> }) : <tr><td colSpan={4} className="sidebar-hint">{t('لا يوجد تجار مسندون.', 'No merchants assigned.')}</td></tr>}
-        </tbody></table></div>
+  // account → pool → master merchant + the sub-merchants sharing that pool.
+  const poolOf = (a: Account) => data?.pools.find((p) => p.id === a.payment_pool_id) ?? null
+  const masterOf = (a: Account) => { const p = poolOf(a); return p ? data?.masters.find((m) => m.id === p.master_merchant_id) ?? null : null }
+  const subsOf = (a: Account): string[] => {
+    const p = poolOf(a); if (!p || !data) return []
+    return data.poolMembers
+      .filter((m) => m.payment_pool_id === p.id && m.is_active)
+      .map((m) => data.hierarchy.find((h) => h.id === m.merchant_hierarchy_id)?.name)
+      .filter((n): n is string => !!n)
+  }
+
+  const activeMethods = data?.methods.filter((m) => m.is_active).length ?? 0
+  const activeAccounts = data?.accounts.filter((a) => a.is_active).length ?? 0
+  const linkedSubs = data ? new Set(data.poolMembers.filter((m) => m.is_active).map((m) => m.merchant_hierarchy_id)).size : 0
+
+  return (
+    <PanelShell>
+      <section className="page-head">
+        <h2>💳 {t('طرق الدفع والحسابات', 'Payment methods & accounts')}</h2>
+        <p className="page-sub">{t('طبقة عرض وإدارة فقط؛ لا تستبدل خرائط SMS التشغيلية.', 'Reference catalogue only; it does not replace operational SMS mapping.')}</p>
       </section>
-    })}
-  </PanelShell>
+
+      {error && <div className="card warn">{error}</div>}
+
+      <div className="stat-grid">
+        <div className="stat-card">
+          <span className="stat-label">💳 {t('طرق دفع نشطة', 'Active methods')}</span>
+          <span className="stat-value">{data ? activeMethods : '…'}</span>
+          <span className="stat-sub">{data ? t(`من ${data.methods.length} طريقة`, `of ${data.methods.length} total`) : ''}</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-label">🏦 {t('حسابات نشطة', 'Active accounts')}</span>
+          <span className="stat-value">{data ? activeAccounts : '…'}</span>
+          <span className="stat-sub">{data ? t(`من ${data.accounts.length} حساب`, `of ${data.accounts.length} total`) : ''}</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-label">🏢 {t('تجار رئيسيون', 'Master merchants')}</span>
+          <span className="stat-value">{data ? data.masters.length : '…'}</span>
+          <span className="stat-sub">{data ? data.masters.map((m) => m.name).join(' · ') : ''}</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-label">🔗 {t('تجار فرعيون مرتبطون', 'Sub-merchants linked')}</span>
+          <span className="stat-value">{data ? linkedSubs : '…'}</span>
+          <span className="stat-sub">{data ? t(`عبر ${data.pools.length} تجمّع`, `across ${data.pools.length} pools`) : ''}</span>
+        </div>
+      </div>
+
+      <div className="filter-pills" role="tablist" style={{ marginBlock: 14 }}>
+        <button role="tab" aria-selected={tab === 'methods'} className={`pill${tab === 'methods' ? ' active' : ''}`} onClick={() => setTab('methods')}>
+          {t('طرق الدفع', 'Payment methods')} <span className="mono">{data?.methods.length ?? 0}</span>
+        </button>
+        <button role="tab" aria-selected={tab === 'accounts'} className={`pill${tab === 'accounts' ? ' active' : ''}`} onClick={() => setTab('accounts')}>
+          {t('الحسابات المُسندة', 'Assigned accounts')} <span className="mono">{data?.accounts.length ?? 0}</span>
+        </button>
+      </div>
+
+      {!data && <p className="sidebar-hint">{t('جار التحميل…', 'Loading…')}</p>}
+
+      {data && tab === 'methods' && (
+        <>
+          {create && (
+            <form className="card control-row" onSubmit={addMethod}>
+              <strong>{t('إضافة طريقة', 'Add method')}</strong>
+              <input className="login-input" required placeholder="CODE" value={newMethod.method_code} onChange={(e) => setNewMethod({ ...newMethod, method_code: e.target.value })} />
+              <input className="login-input" required placeholder={t('الاسم', 'Name')} value={newMethod.method_name} onChange={(e) => setNewMethod({ ...newMethod, method_name: e.target.value })} />
+              <select className="login-input" value={newMethod.channel_type} onChange={(e) => setNewMethod({ ...newMethod, channel_type: e.target.value })}>
+                <option value="sms_device">SMS device</option>
+                <option value="bank_transfer">Bank transfer</option>
+                <option value="other">Other</option>
+              </select>
+              <button className="btn-primary btn-sm">{t('إضافة', 'Add')}</button>
+            </form>
+          )}
+          {data.methods.map((method) => {
+            const rows = data.accounts.filter((r) => r.payment_method_id === method.id)
+            return (
+              <section className="card recent-card" key={method.id}>
+                <div className="recent-head">
+                  <h3>{method.method_name} <span className="cell-sub mono">{method.method_code}</span></h3>
+                  <div className="control-row">
+                    <span className="pay-status-badge st-dim">{method.channel_type}</span>
+                    <span className={`pay-status-badge ${method.is_active ? 'st-paid' : 'st-dim'}`}>{method.is_active ? t('نشط', 'Active') : t('موقوف', 'Disabled')}</span>
+                    <span className="cell-sub">{t(`${rows.length} حساب`, `${rows.length} accounts`)}</span>
+                    {editable && <button className="btn-ghost btn-sm" onClick={() => void toggle(method)}>{method.is_active ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>}
+                    {create && <button className="btn-primary btn-sm" onClick={() => setOpen(open === method.id ? null : method.id)}>{t('إسناد حساب جديد', 'Assign new account')}</button>}
+                  </div>
+                </div>
+                {open === method.id && (
+                  <form className="control-row" onSubmit={addAccount}>
+                    <input required className="login-input" placeholder={t('رقم الحساب', 'Account number')} value={account.account_number} onChange={(e) => setAccount({ ...account, account_number: e.target.value })} />
+                    <input className="login-input" placeholder={t('تسمية', 'Label')} value={account.label} onChange={(e) => setAccount({ ...account, label: e.target.value })} />
+                    <input className="login-input" placeholder={t('الجهاز', 'Device')} value={account.device_name} onChange={(e) => setAccount({ ...account, device_name: e.target.value })} />
+                    <button className="btn-primary btn-sm">{t('حفظ', 'Save')}</button>
+                  </form>
+                )}
+              </section>
+            )
+          })}
+        </>
+      )}
+
+      {data && tab === 'accounts' && (
+        <section className="card recent-card">
+          <div className="recent-head">
+            <h3>🏦 {t('الحسابات المُسندة', 'Assigned accounts')}</h3>
+            <span className="cell-sub">{t('الرصيد يأتي من رسائل SMS الواردة لكل جهاز — ليس قيمة يدوية.', 'Balance comes from each device’s inbound SMS — not a manually entered figure.')}</span>
+          </div>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>{t('الحساب', 'Account')}</th>
+                  <th>{t('الطريقة', 'Method')}</th>
+                  <th>{t('الجهاز', 'Device')}</th>
+                  <th>{t('الرصيد الحالي', 'Current balance')}</th>
+                  <th>{t('التاجر الرئيسي', 'Master merchant')}</th>
+                  <th>{t('التجار الفرعيون', 'Sub-merchants')}</th>
+                  <th>{t('التجمّع', 'Pool')}</th>
+                  <th>{t('الحالة', 'Status')}</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {data.accounts.map((r) => {
+                  const method = data.methods.find((m) => m.id === r.payment_method_id)
+                  const master = masterOf(r)
+                  const subs = subsOf(r)
+                  const age = balanceAge(r.balance_updated_at, t)
+                  return (
+                    <tr key={r.id}>
+                      <td className="mono">{r.account_number}{r.label && <div className="cell-sub">{r.label}</div>}</td>
+                      <td>{method?.method_name ?? '—'}</td>
+                      <td className="mono">{r.device_name ?? '—'}</td>
+                      <td>
+                        {r.current_balance == null
+                          ? <span className="cell-sub">{t('غير معروف', 'Unknown')}</span>
+                          : <>
+                              <span className="mono" style={{ color: Number(r.current_balance) > 0 ? 'var(--status-paid)' : undefined }}>
+                                {Number(r.current_balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {r.currency ?? ''}
+                              </span>
+                              {age && <div className={`cell-sub${age.stale ? ' warn-text' : ''}`}>{age.stale ? t(`قديم — ${age.text}`, `Stale — ${age.text}`) : age.text}</div>}
+                            </>}
+                      </td>
+                      <td>{master ? <span className={`merchant-chip ${masterCls(master.code)}`}>{master.name}</span> : <span className="cell-sub">—</span>}</td>
+                      <td>{subs.length ? subs.join('، ') : <span className="cell-sub">{t('غير مُسند', 'Unassigned')}</span>}</td>
+                      <td>
+                        {editable
+                          ? <select className="login-input" aria-label={t(`تجمّع الحساب ${r.account_number}`, `Pool for account ${r.account_number}`)} value={r.payment_pool_id ?? ''} onChange={(e) => void setAccountPool(r, e.target.value)}>
+                              <option value="">{t('بدون', 'None')}</option>
+                              {data.pools.map((p) => <option key={p.id} value={p.id}>{p.pool_name}</option>)}
+                            </select>
+                          : (data.pools.find((p) => p.id === r.payment_pool_id)?.pool_name ?? '—')}
+                      </td>
+                      <td><span className={`pay-status-badge ${r.is_active ? 'st-paid' : 'st-dim'}`}>{r.is_active ? t('نشط', 'Active') : t('موقوف', 'Disabled')}</span></td>
+                      <td>{editable && <button className="btn-ghost btn-sm" onClick={() => void toggleAccount(r)}>{r.is_active ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>}</td>
+                    </tr>
+                  )
+                })}
+                {data.accounts.length === 0 && <tr><td colSpan={9} className="sidebar-hint">{t('لا توجد حسابات.', 'No accounts.')}</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      <section className="page-head">
+        <h2>{t('تجمّعات الدفع (Pools)', 'Payment pools')}</h2>
+        <p className="page-sub">{t('التجمّع يتبع master merchant واحداً ويمكن مشاركته بين عدة تجار فرعيين. الحسابات غير المصنّفة تبقى بدون تجمّع.', 'A pool belongs to one master merchant and can be shared across sub-merchants. Unclassified accounts stay unpooled.')}</p>
+      </section>
+      {data && create && (
+        <form className="card control-row" onSubmit={addPool}>
+          <strong>{t('تجمّع جديد', 'New pool')}</strong>
+          <input required className="login-input" placeholder={t('الاسم', 'Name')} value={newPool.pool_name} onChange={(e) => setNewPool({ ...newPool, pool_name: e.target.value })} />
+          <input required className="login-input" placeholder="code" value={newPool.pool_code} onChange={(e) => setNewPool({ ...newPool, pool_code: e.target.value })} />
+          <select required className="login-input" value={newPool.master_merchant_id} onChange={(e) => setNewPool({ ...newPool, master_merchant_id: e.target.value })}>
+            <option value="">Master…</option>
+            {data.masters.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.code})</option>)}
+          </select>
+          <button className="btn-primary btn-sm">{t('إنشاء', 'Create')}</button>
+        </form>
+      )}
+      {data?.pools.map((pool) => {
+        const members = data.poolMembers.filter((m) => m.payment_pool_id === pool.id)
+        const accountsInPool = data.accounts.filter((a) => a.payment_pool_id === pool.id)
+        const master = data.masters.find((m) => m.id === pool.master_merchant_id)
+        const available = data.hierarchy.filter((h) => !members.some((m) => m.merchant_hierarchy_id === h.id && m.is_active))
+        return (
+          <section className="card recent-card" key={pool.id}>
+            <div className="recent-head">
+              <h3>{pool.pool_name} <span className="cell-sub mono">{pool.pool_code}{master ? ` · ${master.name}` : ''} · {t(`${accountsInPool.length} حساب`, `${accountsInPool.length} accounts`)}</span></h3>
+              {editable && (
+                <div className="control-row">
+                  <select className="login-input" aria-label={t(`إسناد تاجر إلى ${pool.pool_name}`, `Assign merchant to ${pool.pool_name}`)} value={assign[pool.id] ?? ''} onChange={(e) => setAssign({ ...assign, [pool.id]: e.target.value })}>
+                    <option value="">{t('إسناد تاجر…', 'Assign merchant…')}</option>
+                    {available.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                  </select>
+                  <button className="btn-primary btn-sm" onClick={() => void assignMerchant(pool.id)}>{t('إسناد', 'Assign')}</button>
+                </div>
+              )}
+            </div>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead><tr><th>{t('التاجر الفرعي', 'Sub-merchant')}</th><th>{t('نسبة Payin', 'Payin %')}</th><th>{t('الحالة', 'Status')}</th><th /></tr></thead>
+                <tbody>
+                  {members.length ? members.map((member) => {
+                    const h = data.hierarchy.find((row) => row.id === member.merchant_hierarchy_id)
+                    return (
+                      <tr key={member.id}>
+                        <td>{h?.name ?? member.merchant_hierarchy_id}</td>
+                        <td className="mono">{h?.payin_commission_pct ?? '—'}%</td>
+                        <td><span className={`pay-status-badge ${member.is_active ? 'st-paid' : 'st-dim'}`}>{member.is_active ? t('نشط', 'Active') : t('موقوف', 'Disabled')}</span></td>
+                        <td>{editable && <button className="btn-ghost btn-sm" onClick={() => void toggleMember(member)}>{member.is_active ? t('إزالة', 'Remove') : t('تفعيل', 'Enable')}</button>}</td>
+                      </tr>
+                    )
+                  }) : <tr><td colSpan={4} className="sidebar-hint">{t('لا يوجد تجار مسندون.', 'No merchants assigned.')}</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )
+      })}
+    </PanelShell>
+  )
 }
