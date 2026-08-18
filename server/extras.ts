@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { db } from './db.js'
+import { oldDb } from './oldDb.js'
 import { requireAuth, requirePerm, requireAnyPerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 
@@ -517,6 +518,55 @@ extraRoutes.patch('/automation/settings', requirePerm('automation', 'can_edit'),
   })
   return c.json({ settings: data })
 })
+
+// ---- Mismatch detector ----
+// Automates the two anomaly patterns found by hand today. Read-only: it
+// surfaces suspects for a human, it never changes a transaction itself.
+extraRoutes.get(
+  '/mismatch',
+  requireAnyPerm(['review', 'audit_log', 'audit-logs', 'risk', 'risk_audit', 'compliance'], 'can_view'),
+  async (c) => {
+    const hours = Math.min(Math.max(Number(c.req.query('hours')) || 24, 1), 720)
+    const [undoc, counts, sms] = await Promise.all([
+      db.rpc('panel_mismatch_undocumented', { p_hours: hours, p_limit: 100 }),
+      db.rpc('panel_mismatch_undocumented_counts'),
+      db.rpc('panel_mismatch_sms', { p_hours: Math.max(hours, 48), p_limit: 100 }),
+    ])
+    const firstErr = undoc.error ?? counts.error ?? sms.error
+    if (firstErr) return c.json({ error: 'db_error', detail: firstErr.message }, 500)
+
+    // Sync gap vs the old project. Best-effort: if the old DB isn't reachable
+    // the rest of the page must still render, so this degrades to null rather
+    // than failing the whole request.
+    let syncGap: Record<string, { old: number | null; current: number | null }> | null = null
+    const old = oldDb()
+    if (old) {
+      try {
+        const tables = ['api_risk_blacklist', 'crm_clients'] as const
+        const pairs = await Promise.all(
+          tables.map(async (tbl) => {
+            const [o, n] = await Promise.all([
+              old.from(tbl).select('*', { count: 'exact', head: true }),
+              db.from(tbl).select('*', { count: 'exact', head: true }),
+            ])
+            return [tbl, { old: o.count ?? null, current: n.count ?? null }] as const
+          }),
+        )
+        syncGap = Object.fromEntries(pairs)
+      } catch {
+        syncGap = null
+      }
+    }
+
+    return c.json({
+      undocumented: undoc.data ?? [],
+      undocumentedCounts: Array.isArray(counts.data) ? counts.data[0] ?? null : counts.data ?? null,
+      smsMismatch: sms.data ?? [],
+      syncGap,
+      hours,
+    })
+  },
+)
 
 // ---- Audit log ----
 extraRoutes.get('/audit', requireAnyPerm(['audit_log', 'audit-logs'], 'can_view'), async (c) => {

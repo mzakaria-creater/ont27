@@ -21,6 +21,7 @@ import Audit from './pages/Audit'
 import AdminPage from './pages/AdminPage'
 import Reports from './pages/Reports'
 import Review from './pages/Review'
+import Mismatch from './pages/Mismatch'
 import Telegram from './pages/Telegram'
 import Binance from './pages/Binance'
 import OperationsArchive from './pages/OperationsArchive'
@@ -196,6 +197,7 @@ export default function App() {
             <Route path="/audit" element={<Audit />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/review" element={<Review />} />
+            <Route path="/mismatch" element={<Mismatch />} />
             <Route path="/telegram" element={<Telegram />} />
             <Route path="/binance" element={<Binance />} />
             <Route path="/operations-archive" element={<OperationsArchive />} />
