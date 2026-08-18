@@ -22,6 +22,15 @@ const GROWING: { table: string; pk: string; ts: string; updatedTs?: string }[] =
   { table: 'maven_transactions', pk: 'tx_id', ts: 'first_seen_at', updatedTs: 'last_status_change' },
   { table: 'maven_payout_transactions', pk: 'maven_id', ts: 'first_seen_at', updatedTs: 'updated_utc' },
   { table: 'inbound_sms', pk: 'id', ts: 'created_at' },
+  // 2026-08-18: these two were never synced, so both silently froze while the
+  // old project kept writing — crm_clients last moved 2026-08-02 (310 rows
+  // behind) and api_risk_blacklist 2026-07-30 (13 blocked numbers behind).
+  // A stale blacklist is the dangerous one: a number the old system had
+  // already blocked for repeated declines was still accepted here.
+  // Both carry uuid PKs that the original migration preserved, so the upsert
+  // is idempotent and the first run backfills the whole gap on its own.
+  { table: 'crm_clients', pk: 'id', ts: 'created_at', updatedTs: 'updated_at' },
+  { table: 'api_risk_blacklist', pk: 'id', ts: 'created_at' },
 ]
 
 const OVERLAP_MS = 5 * 60_000
