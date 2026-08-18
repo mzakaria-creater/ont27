@@ -114,3 +114,12 @@ export function money(amount: number | null | undefined, currency?: string | nul
   if (amount == null) return '—'
   return `${moneyFmt.format(Number(amount))} ${currency ?? ''}`.trim()
 }
+
+// Master-merchant chip colour. NGPay is the live channel and PayFuture is
+// still test-only, so they must stay visually distinct wherever both appear.
+export function merchantChipCls(master: string | null | undefined): string {
+  const m = (master ?? '').toLowerCase()
+  if (m.includes('ngpay')) return 'ngpay'
+  if (m.includes('payfuture')) return 'payfuture'
+  return 'other'
+}

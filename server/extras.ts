@@ -729,7 +729,7 @@ extraRoutes.get('/notifications', async (c) => {
     const { count } = await apply(db.from('maven_transactions').select('tx_id', { count: 'exact', head: true }))
     return count ?? 0
   }
-  const [pendingDeposits, pendingPayouts, smsReview, devices, latestPending] = await Promise.all([
+  const [pendingDeposits, pendingPayouts, smsReview, devices, latestPending, latestPayouts, recentMatches] = await Promise.all([
     countOf((q: any) => q.eq('status', 'PENDING')),
     db
       .from('maven_payout_transactions')
@@ -744,11 +744,28 @@ extraRoutes.get('/notifications', async (c) => {
       .gte('received_at', twoDays)
       .then(({ count }) => count ?? 0),
     db.from('device_status').select('device, online').then(({ data }) => data ?? []),
+    // master_merchant is carried so the alert center can keep the live NGPay
+    // and test-only PayFuture queues visually distinct, per the standing rule
+    // that the two are never blended.
     db
       .from('maven_transactions')
-      .select('tx_id, ontarget_ref, amount, currency, sender_name, merchant')
+      .select('tx_id, ontarget_ref, amount, currency, sender_name, merchant, master_merchant')
       .eq('status', 'PENDING')
       .order('ontarget_ref', { ascending: false, nullsFirst: false })
+      .limit(5)
+      .then(({ data }) => data ?? []),
+    db
+      .from('maven_payout_transactions')
+      .select('maven_id, ontarget_ref, amount, account_name, mobile_no, merchant')
+      .eq('status', 'PENDING')
+      .order('ontarget_ref', { ascending: false, nullsFirst: false })
+      .limit(5)
+      .then(({ data }) => data ?? []),
+    db
+      .from('inbound_sms')
+      .select('id, received_at, device_name, sender_name, amount, trx_id, matched_transaction_id')
+      .eq('matched', true)
+      .order('received_at', { ascending: false })
       .limit(5)
       .then(({ data }) => data ?? []),
   ])
@@ -759,6 +776,8 @@ extraRoutes.get('/notifications', async (c) => {
     smsReview,
     offlineDevices,
     latestPending,
+    latestPayouts,
+    recentMatches,
     total: pendingDeposits + pendingPayouts + (smsReview > 0 ? 1 : 0) + (offlineDevices.length > 0 ? 1 : 0),
   })
 })

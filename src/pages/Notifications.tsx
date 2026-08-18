@@ -12,7 +12,9 @@ export interface NotifData {
   pendingPayouts: number
   smsReview: number
   offlineDevices: string[]
-  latestPending: { tx_id: number; ontarget_ref: string | null; amount: number | null; currency: string | null; sender_name: string | null; merchant: string | null }[]
+  latestPending: { tx_id: number; ontarget_ref: string | null; amount: number | null; currency: string | null; sender_name: string | null; merchant: string | null; master_merchant?: string | null }[]
+  latestPayouts?: { maven_id: number; ontarget_ref: string | null; amount: number | null; account_name: string | null; mobile_no: string | null; merchant: string | null }[]
+  recentMatches?: { id: number; received_at: string | null; device_name: string | null; sender_name: string | null; amount: number | null; trx_id: string | null; matched_transaction_id: number | null }[]
   total: number
 }
 

@@ -39,6 +39,7 @@ import TreasuryHub from './pages/TreasuryHub'
 import ExecutiveDashboard from './pages/ExecutiveDashboard'
 import AnalyticsDashboard from './pages/AnalyticsDashboard'
 import { api } from './lib/api'
+import { merchantChipCls, money } from './lib/deposits'
 import { SUPABASE_URL, SUPABASE_KEY } from './lib/supabase'
 import { LocaleProvider, useLocale } from './lib/locale'
 
@@ -83,16 +84,60 @@ function Bell() {
         {count > 0 && <span className="bell-badge">{count > 99 ? '99+' : count}</span>}
       </button>
       {open && data && (
-        <div className="bell-menu">
-          <Link to="/deposits?status=PENDING" className="bell-item" onClick={() => setOpen(false)}>
-            {t('💰 إيداعات معلّقة', '💰 Pending deposits')} <span className="bell-count">{data.pendingDeposits}</span>
-          </Link>
-          <Link to="/payouts?status=PENDING" className="bell-item" onClick={() => setOpen(false)}>
-            {t('📤 سحوبات معلّقة', '📤 Pending payouts')} <span className="bell-count">{data.pendingPayouts}</span>
-          </Link>
-          <Link to="/sms?match=review" className="bell-item" onClick={() => setOpen(false)}>
-            {t('📨 رسائل تحتاج مراجعة', '📨 SMS awaiting review')} <span className="bell-count">{data.smsReview}</span>
-          </Link>
+        <div className="bell-menu alert-center">
+          <div className="alert-head">
+            <strong>{t('مركز التنبيهات المباشر', 'Live alert center')}</strong>
+            <span className="live-dot"><span className="ld" />{t('حي', 'Live')}</span>
+          </div>
+
+          <div className="alert-section">
+            <Link to="/deposits?status=PENDING" className="alert-section-head" onClick={() => setOpen(false)}>
+              <span>💰 {t('طابور الإيداعات', 'Deposits queue')}</span>
+              <span className="bell-count">{data.pendingDeposits}</span>
+            </Link>
+            {(data.latestPending ?? []).length === 0 && <div className="alert-empty">{t('لا شيء معلّق', 'Nothing pending')}</div>}
+            {(data.latestPending ?? []).map((r) => (
+              <Link key={r.tx_id} to={r.ontarget_ref ? `/transactions/${r.ontarget_ref}` : '/deposits?status=PENDING'} className="alert-row" onClick={() => setOpen(false)}>
+                <span className="mono">{r.ontarget_ref ?? r.tx_id}</span>
+                <span className="alert-row-mid">
+                  {r.sender_name ?? '—'}
+                  {r.master_merchant && <span className={`merchant-chip ${merchantChipCls(r.master_merchant)}`}>{r.master_merchant}</span>}
+                </span>
+                <span className="mono">{money(r.amount, r.currency)}</span>
+              </Link>
+            ))}
+          </div>
+
+          <div className="alert-section">
+            <Link to="/payouts?status=PENDING" className="alert-section-head" onClick={() => setOpen(false)}>
+              <span>📤 {t('طابور السحوبات', 'Payouts queue')}</span>
+              <span className="bell-count">{data.pendingPayouts}</span>
+            </Link>
+            {(data.latestPayouts ?? []).length === 0 && <div className="alert-empty">{t('لا شيء معلّق', 'Nothing pending')}</div>}
+            {(data.latestPayouts ?? []).map((r) => (
+              <Link key={r.maven_id} to={`/payouts?status=PENDING&q=${encodeURIComponent(r.ontarget_ref ?? String(r.maven_id))}`} className="alert-row" onClick={() => setOpen(false)}>
+                <span className="mono">{r.ontarget_ref ?? r.maven_id}</span>
+                <span className="alert-row-mid">{r.account_name ?? r.mobile_no ?? '—'}</span>
+                <span className="mono">{money(r.amount, 'EGP')}</span>
+              </Link>
+            ))}
+          </div>
+
+          <div className="alert-section">
+            <Link to="/sms" className="alert-section-head" onClick={() => setOpen(false)}>
+              <span>📨 {t('آخر الرسائل المطابَقة', 'Recent SMS matches')}</span>
+              {data.smsReview > 0 && <span className="bell-count warn">{t(`${data.smsReview} للمراجعة`, `${data.smsReview} to review`)}</span>}
+            </Link>
+            {(data.recentMatches ?? []).length === 0 && <div className="alert-empty">{t('لا توجد مطابقات حديثة', 'No recent matches')}</div>}
+            {(data.recentMatches ?? []).map((s) => (
+              <Link key={s.id} to="/sms" className="alert-row" onClick={() => setOpen(false)}>
+                <span className="mono">{s.device_name ?? '—'}</span>
+                <span className="alert-row-mid">{s.sender_name ?? '—'}</span>
+                <span className="mono">{money(s.amount, 'EGP')}</span>
+              </Link>
+            ))}
+          </div>
+
           {data.offlineDevices.length > 0 && (
             <Link to="/wallets" className="bell-item warn-item" onClick={() => setOpen(false)}>
               {t('📵 أجهزة غير متصلة: ', '📵 Offline devices: ')}{data.offlineDevices.join(', ')}

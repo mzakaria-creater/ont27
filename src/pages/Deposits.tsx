@@ -5,7 +5,7 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { useBulk } from '../lib/useBulk'
 import { useLocale } from '../lib/locale'
-import { depositTime, money, statusMeta } from '../lib/deposits'
+import { depositTime, merchantChipCls, money, statusMeta } from '../lib/deposits'
 import type { DepositDetail, DepositRow, DepositStats } from '../lib/deposits'
 
 const PAGE_SIZE = 25
@@ -40,13 +40,6 @@ interface ClientHistory {
   total: number
   paid: number
   declined: number
-}
-
-function merchantChipCls(master: string | null | undefined): string {
-  const m = (master ?? '').toLowerCase()
-  if (m.includes('ngpay')) return 'ngpay'
-  if (m.includes('payfuture')) return 'payfuture'
-  return 'other'
 }
 
 function smsFirstLine(s: MatchedSms): string {
