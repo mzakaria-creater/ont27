@@ -1167,6 +1167,12 @@ a.stat-card:hover { border-color: var(--accent); }
 .tv-item-main { font-size: 13px; }
 .tv-item-sub { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
 
+/* Active/disabled toggle row in the user editor. */
+.user-active-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-block: 14px 4px; font-size: 12.5px; cursor: pointer;
+}
+
 /* Field caption above an input in a card form (transaction edit panel). */
 .field-label {
   display: block; font-size: 11px; color: var(--text-dim);
