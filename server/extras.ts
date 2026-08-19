@@ -527,12 +527,16 @@ extraRoutes.get(
   requireAnyPerm(['review', 'audit_log', 'audit-logs', 'risk', 'risk_audit', 'compliance'], 'can_view'),
   async (c) => {
     const hours = Math.min(Math.max(Number(c.req.query('hours')) || 24, 1), 720)
-    const [undoc, counts, sms] = await Promise.all([
+    const [undoc, counts, sms, decisions] = await Promise.all([
       db.rpc('panel_mismatch_undocumented', { p_hours: hours, p_limit: 100 }),
       db.rpc('panel_mismatch_undocumented_counts'),
       db.rpc('panel_mismatch_sms', { p_hours: Math.max(hours, 48), p_limit: 100 }),
+      // A decision confirmed on the provider whose transaction still disagrees
+      // 5+ minutes later. Silence here is what let a rolled-back status sit
+      // unnoticed for 14-27 minutes.
+      db.rpc('panel_mismatch_decisions', { p_grace_minutes: 5, p_hours: Math.max(hours, 72), p_limit: 100 }),
     ])
-    const firstErr = undoc.error ?? counts.error ?? sms.error
+    const firstErr = undoc.error ?? counts.error ?? sms.error ?? decisions.error
     if (firstErr) return c.json({ error: 'db_error', detail: firstErr.message }, 500)
 
     // Sync gap vs the old project. Best-effort: if the old DB isn't reachable
@@ -562,6 +566,7 @@ extraRoutes.get(
       undocumented: undoc.data ?? [],
       undocumentedCounts: Array.isArray(counts.data) ? counts.data[0] ?? null : counts.data ?? null,
       smsMismatch: sms.data ?? [],
+      decisionMismatch: decisions.data ?? [],
       syncGap,
       hours,
     })

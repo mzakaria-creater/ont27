@@ -85,7 +85,41 @@ async function runSync(): Promise<Record<string, number | string>> {
         }
       }
 
-      const { error: upErr } = await db.from(table).upsert(rows, { onConflict: pk })
+      // maven_transactions is the one table BOTH sides write: ngpay-approve
+      // executes a decision on the provider, verifies it with a read-back, and
+      // writes the new status here immediately — but the old project's
+      // collector has not re-polled Maven yet, so its row still says PENDING.
+      // A blind upsert then reverted our just-executed decision, and the row
+      // only became correct again 14–27 minutes later when the old collector
+      // finally caught up. approved_by survived (it is stripped above) while
+      // status and last_status_change were rolled back, which is exactly the
+      // fingerprint seen on tx_id 138453864: local last_status_change fell
+      // back to 02:46:05 for a decision executed at 02:50:00, while a live
+      // read of the provider said DECLINED.
+      //
+      // Never let an incoming row move a transaction's status backwards in
+      // time. Rows we already hold with a newer last_status_change keep their
+      // status columns; everything else about them still refreshes.
+      let payload = rows as Record<string, unknown>[]
+      if (table === 'maven_transactions') {
+        const ids = payload.map((r) => r.tx_id as number)
+        const { data: locals } = await db
+          .from('maven_transactions')
+          .select('tx_id, last_status_change')
+          .in('tx_id', ids)
+        const localTs = new Map(
+          (locals ?? []).map((l) => [l.tx_id, l.last_status_change ? Date.parse(l.last_status_change) : 0]),
+        )
+        payload = payload.map((r) => {
+          const mine = localTs.get(r.tx_id as number)
+          const theirs = typeof r.last_status_change === 'string' ? Date.parse(r.last_status_change) : 0
+          if (mine == null || !(mine > theirs)) return r
+          const { status: _s, last_status_change: _l, ...rest } = r
+          return rest
+        })
+      }
+
+      const { error: upErr } = await db.from(table).upsert(payload, { onConflict: pk })
       if (upErr) throw new Error(`upsert: ${upErr.message}`)
       upserted += rows.length
       if (rows.length < PAGE) break
