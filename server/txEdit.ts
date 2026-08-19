@@ -72,27 +72,38 @@ async function loadTx(txId: number) {
   return data
 }
 
-async function notifyApprovers(alertType: string, message: string): Promise<{ sent: number; chatIds: string[]; error?: string }> {
+export interface SentMessage { chat_id: string; message_id: number }
+
+async function notifyApprovers(
+  alertType: string,
+  message: string,
+  replyMarkup?: unknown,
+): Promise<{ sent: number; chatIds: string[]; messages: SentMessage[]; error?: string }> {
   const { data: chats } = await db.from('telegram_chats').select('chat_id, label').eq('is_active', true)
   const chatIds = (chats ?? [])
     .filter((c) => APPROVER_LABEL_PREFIXES.some((p) => (c.label ?? '').trim().toLowerCase().startsWith(p.toLowerCase())))
     .map((c) => String(c.chat_id))
-  if (!chatIds.length) return { sent: 0, chatIds: [], error: 'no_approver_chats' }
+  if (!chatIds.length) return { sent: 0, chatIds: [], messages: [], error: 'no_approver_chats' }
 
   const baseUrl = process.env.SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SECRET_KEY
-  if (!baseUrl || !serviceKey) return { sent: 0, chatIds, error: 'telegram_not_configured' }
+  if (!baseUrl || !serviceKey) return { sent: 0, chatIds, messages: [], error: 'telegram_not_configured' }
   try {
     const res = await fetch(`${baseUrl}/functions/v1/telegram-notify`, {
       method: 'POST',
       headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
-      body: JSON.stringify({ alert_type: alertType, message, chat_ids: chatIds }),
+      body: JSON.stringify({ alert_type: alertType, message, chat_ids: chatIds, reply_markup: replyMarkup }),
     })
     const out = await res.json().catch(() => ({})) as Record<string, unknown>
-    if (!res.ok) return { sent: 0, chatIds, error: String(out.error ?? `HTTP ${res.status}`) }
-    return { sent: Number(out.sent ?? 0), chatIds }
+    if (!res.ok) return { sent: 0, chatIds, messages: [], error: String(out.error ?? `HTTP ${res.status}`) }
+    // Only messages that actually landed carry an id, and only those can be
+    // edited later to switch the buttons off.
+    const messages = ((out.results ?? []) as { chat_id?: string; ok?: boolean; message_id?: number }[])
+      .filter((r) => r.ok && r.chat_id && typeof r.message_id === 'number')
+      .map((r) => ({ chat_id: String(r.chat_id), message_id: Number(r.message_id) }))
+    return { sent: Number(out.sent ?? 0), chatIds, messages }
   } catch (e) {
-    return { sent: 0, chatIds, error: e instanceof Error ? e.message : 'send_failed' }
+    return { sent: 0, chatIds, messages: [], error: e instanceof Error ? e.message : 'send_failed' }
   }
 }
 
@@ -226,10 +237,23 @@ txEditRoutes.post('/:txId/edit-request', async (c) => {
   ]
   if (parsed.status) lines.push(`الحالة: <b>${esc(tx.status)}</b> ← <b>${esc(parsed.status)}</b>`)
   if (parsed.amount != null) lines.push(`المبلغ: <b>${esc(tx.amount)}</b> ← <b>${esc(parsed.amount)}</b> ${esc(tx.currency ?? '')}`)
-  lines.push(`السبب: ${esc(parsed.reason)}`, '', `رقم الطلب: <code>${row.id}</code> — يُنفَّذ فقط بعد الموافقة من اللوحة.`)
+  lines.push(`السبب: ${esc(parsed.reason)}`, '', `رقم الطلب: <code>${row.id}</code> — لا يُنفَّذ إلا بعد موافقتك، من الأزرار هنا أو من اللوحة.`)
 
-  const notified = await notifyApprovers('transaction_edit_request', lines.join('\n'))
-  await db.from('transaction_edit_requests').update({ notified_chat_ids: notified.chatIds }).eq('id', row.id)
+  // The buttons carry only the request id and the verb. Everything that decides
+  // what actually happens — the target status, the amount, the transaction — is
+  // read from the row at press time, so a stale or copied button can never
+  // smuggle in different values.
+  const keyboard = {
+    inline_keyboard: [[
+      { text: '✅ موافقة', callback_data: `txedit:${row.id}:approve` },
+      { text: '❌ رفض', callback_data: `txedit:${row.id}:reject` },
+    ]],
+  }
+
+  const notified = await notifyApprovers('transaction_edit_request', lines.join('\n'), keyboard)
+  await db.from('transaction_edit_requests')
+    .update({ notified_chat_ids: notified.chatIds, telegram_message_ids: notified.messages })
+    .eq('id', row.id)
 
   await db.from('audit_log').insert({
     actor_type: 'manual_panel',
