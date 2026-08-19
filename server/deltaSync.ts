@@ -102,18 +102,31 @@ async function runSync(): Promise<Record<string, number | string>> {
       // status columns; everything else about them still refreshes.
       let payload = rows as Record<string, unknown>[]
       if (table === 'maven_transactions') {
+        const localTs = new Map<number, number>()
+        // A full page is 1000 ids, and PostgREST puts .in() in the query
+        // string — one request would build a ~10KB URL and be rejected. It
+        // must also THROW on failure rather than fall through: an empty map
+        // silently disables the guard, which is worse than not having it.
+        const LOOKUP_CHUNK = 200
         const ids = payload.map((r) => r.tx_id as number)
-        const { data: locals } = await db
-          .from('maven_transactions')
-          .select('tx_id, last_status_change')
-          .in('tx_id', ids)
-        const localTs = new Map(
-          (locals ?? []).map((l) => [l.tx_id, l.last_status_change ? Date.parse(l.last_status_change) : 0]),
-        )
+        for (let i = 0; i < ids.length; i += LOOKUP_CHUNK) {
+          const { data: locals, error: localErr } = await db
+            .from('maven_transactions')
+            .select('tx_id, last_status_change')
+            .in('tx_id', ids.slice(i, i + LOOKUP_CHUNK))
+          if (localErr) throw new Error(`status guard lookup: ${localErr.message}`)
+          for (const l of locals ?? []) {
+            localTs.set(l.tx_id, l.last_status_change ? Date.parse(l.last_status_change) : 0)
+          }
+        }
         payload = payload.map((r) => {
           const mine = localTs.get(r.tx_id as number)
-          const theirs = typeof r.last_status_change === 'string' ? Date.parse(r.last_status_change) : 0
-          if (mine == null || !(mine > theirs)) return r
+          if (mine == null) return r // not held locally yet — a plain insert
+          const raw = r.last_status_change
+          const theirs = typeof raw === 'string' ? Date.parse(raw) : NaN
+          // An incoming row with no usable timestamp cannot prove it is newer,
+          // so it does not get to move a status we already hold.
+          if (Number.isFinite(theirs) && theirs >= mine) return r
           const { status: _s, last_status_change: _l, ...rest } = r
           return rest
         })
