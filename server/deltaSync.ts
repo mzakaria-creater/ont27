@@ -41,9 +41,22 @@ const OVERLAP_MS = 5 * 60_000
 const UPDATED_OVERLAP_MS = 24 * 60 * 60_000
 const PAGE = 1000
 
-let lastRunAt = 0
+// Two cadences, because the two passes cost very different amounts.
+//
+// The "new rows" pass walks a 5-minute overlap window and normally returns a
+// handful of rows — cheap enough to run every few seconds, and it is the one
+// that decides how quickly a fresh transaction shows up in the panel.
+//
+// The "updated" pass re-pulls everything whose status moved in the last 24h so
+// an upstream flip is never missed. That is a much bigger read, and running it
+// at the fast cadence would multiply load for no gain in how fast new rows
+// appear.
+const FAST_THROTTLE_MS = 15_000
+const FULL_THROTTLE_MS = 120_000
+let lastFastRunAt = 0
+let lastFullRunAt = 0
 
-async function runSync(): Promise<Record<string, number | string>> {
+async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, number | string>> {
   const oldUrl = process.env.OLD_SUPABASE_URL
   const oldKey = process.env.OLD_SERVICE_KEY
   if (!oldUrl || !oldKey) throw new Error('old_db_not_configured')
@@ -163,7 +176,7 @@ async function runSync(): Promise<Record<string, number | string>> {
       results[table] = `error: ${(e as Error).message}`
     }
 
-    if (!updatedTs) continue
+    if (!updatedTs || mode === 'fast') continue
     try {
       const since = await watermark(table, updatedTs, UPDATED_OVERLAP_MS)
       results[`${table}:updated`] = await pullSince(table, pk, updatedTs, since)
@@ -186,15 +199,27 @@ deltaSyncRoutes.get('/delta-sync', async (c) => {
   return c.json({ ok: true, results, at: new Date().toISOString() })
 })
 
-// Piggyback trigger from the authed panel (SMS rail polls this). Throttled
-// per warm lambda; the overlap-window upsert keeps concurrent runs idempotent.
+// Piggyback trigger from the authed panel. Throttled per warm lambda; the
+// overlap-window upsert keeps concurrent runs idempotent.
+//
+// Every caller runs the fast pass when its 15s window has elapsed, and
+// additionally the full pass when its 2-minute window has. Measured before
+// this split: a transaction reached the old project in ~75s (median) but took
+// ~53 minutes (median) to reach ont27, because the only unattended sync was a
+// daily cron and the in-panel pump was throttled to 60s.
 deltaSyncRoutes.post('/delta-sync', async (c) => {
   const token = getCookie(c, ACCESS_COOKIE)
   const claims = token ? await verifyAccessToken(token) : null
   if (!claims) return c.json({ error: 'unauthenticated' }, 401)
 
-  if (Date.now() - lastRunAt < 60_000) return c.json({ ok: true, skipped: 'throttled' })
-  lastRunAt = Date.now()
-  const results = await runSync().catch((e) => ({ error: (e as Error).message }))
-  return c.json({ ok: true, results, at: new Date().toISOString() })
+  const now = Date.now()
+  const wantFull = now - lastFullRunAt >= FULL_THROTTLE_MS
+  const wantFast = now - lastFastRunAt >= FAST_THROTTLE_MS
+  if (!wantFull && !wantFast) return c.json({ ok: true, skipped: 'throttled' })
+
+  const mode = wantFull ? 'full' : 'fast'
+  lastFastRunAt = now
+  if (wantFull) lastFullRunAt = now
+  const results = await runSync(mode).catch((e) => ({ error: (e as Error).message }))
+  return c.json({ ok: true, mode, results, at: new Date().toISOString() })
 })

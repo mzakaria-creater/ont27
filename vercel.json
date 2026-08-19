@@ -4,6 +4,6 @@
     { "source": "/((?!api).*)", "destination": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/cron/delta-sync", "schedule": "0 2 * * *" }
+    { "path": "/api/cron/delta-sync", "schedule": "* * * * *" }
   ]
 }

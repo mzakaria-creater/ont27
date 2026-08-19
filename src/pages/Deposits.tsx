@@ -146,6 +146,20 @@ export default function Deposits() {
   const [notice, setNotice] = useState<string | null>(null)
   const [retryLocked, setRetryLocked] = useState(false)
   const bulk = useBulk((id) => `/api/deposits/${id}/decision`, () => void load())
+
+  // The deposits list had no auto-refresh at all: an operator watching this page
+  // never saw a new transaction until they reloaded by hand. Refresh every 15s,
+  // but hold off while a decision is in flight, the detail drawer is open, or
+  // rows are selected for a bulk action — re-rendering the table under someone
+  // mid-decision is worse than a few seconds of staleness. Filters and page are
+  // captured in `load`, so a refresh keeps whatever the operator is looking at.
+  useEffect(() => {
+    const iv = setInterval(() => {
+      if (rowBusy || decisionBusy || selected || bulk.selected.size > 0) return
+      void load()
+    }, 15_000)
+    return () => clearInterval(iv)
+  }, [load, rowBusy, decisionBusy, selected, bulk.selected.size])
   const armRetryCooldown = (ms: number) => {
     setRetryLocked(true)
     setTimeout(() => setRetryLocked(false), ms)
