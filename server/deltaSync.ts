@@ -71,10 +71,68 @@ async function runSync(): Promise<Record<string, number | string>> {
       if (table === 'maven_transactions') {
         for (const r of rows as Record<string, unknown>[]) {
           if (r.approved_by == null || r.approved_by === 'Manual') delete r.approved_by
+          // The upstream collector emits a trailing TAB on the MelBet
+          // sub-merchant ("NGPay-MelBet-Prod-EGP-Others\t"), which splits one
+          // real sub-merchant into two values — 3,385 rows carried the tab
+          // against 8,739 clean ones, so every GROUP BY sub_merchant listed
+          // MelBet twice and any `= 'NGPay-MelBet-Prod-EGP-Others'` filter
+          // (including a sub-merchant-scoped automation rule) silently missed
+          // 28% of its transactions. Normalise on the way in; the upstream
+          // collector still needs the same fix at the source.
+          for (const k of ['merchant', 'sub_merchant', 'master_merchant']) {
+            if (typeof r[k] === 'string') r[k] = (r[k] as string).trim()
+          }
         }
       }
 
-      const { error: upErr } = await db.from(table).upsert(rows, { onConflict: pk })
+      // maven_transactions is the one table BOTH sides write: ngpay-approve
+      // executes a decision on the provider, verifies it with a read-back, and
+      // writes the new status here immediately — but the old project's
+      // collector has not re-polled Maven yet, so its row still says PENDING.
+      // A blind upsert then reverted our just-executed decision, and the row
+      // only became correct again 14–27 minutes later when the old collector
+      // finally caught up. approved_by survived (it is stripped above) while
+      // status and last_status_change were rolled back, which is exactly the
+      // fingerprint seen on tx_id 138453864: local last_status_change fell
+      // back to 02:46:05 for a decision executed at 02:50:00, while a live
+      // read of the provider said DECLINED.
+      //
+      // Never let an incoming row move a transaction's status backwards in
+      // time. Rows we already hold with a newer last_status_change keep their
+      // status columns; everything else about them still refreshes.
+      let payload = rows as Record<string, unknown>[]
+      if (table === 'maven_transactions') {
+        const localTs = new Map<number, number>()
+        // A full page is 1000 ids, and PostgREST puts .in() in the query
+        // string — one request would build a ~10KB URL and be rejected. It
+        // must also THROW on failure rather than fall through: an empty map
+        // silently disables the guard, which is worse than not having it.
+        const LOOKUP_CHUNK = 200
+        const ids = payload.map((r) => r.tx_id as number)
+        for (let i = 0; i < ids.length; i += LOOKUP_CHUNK) {
+          const { data: locals, error: localErr } = await db
+            .from('maven_transactions')
+            .select('tx_id, last_status_change')
+            .in('tx_id', ids.slice(i, i + LOOKUP_CHUNK))
+          if (localErr) throw new Error(`status guard lookup: ${localErr.message}`)
+          for (const l of locals ?? []) {
+            localTs.set(l.tx_id, l.last_status_change ? Date.parse(l.last_status_change) : 0)
+          }
+        }
+        payload = payload.map((r) => {
+          const mine = localTs.get(r.tx_id as number)
+          if (mine == null) return r // not held locally yet — a plain insert
+          const raw = r.last_status_change
+          const theirs = typeof raw === 'string' ? Date.parse(raw) : NaN
+          // An incoming row with no usable timestamp cannot prove it is newer,
+          // so it does not get to move a status we already hold.
+          if (Number.isFinite(theirs) && theirs >= mine) return r
+          const { status: _s, last_status_change: _l, ...rest } = r
+          return rest
+        })
+      }
+
+      const { error: upErr } = await db.from(table).upsert(payload, { onConflict: pk })
       if (upErr) throw new Error(`upsert: ${upErr.message}`)
       upserted += rows.length
       if (rows.length < PAGE) break

@@ -18,6 +18,7 @@ import { reviewRoutes } from './review.js'
 import { telegramRoutes } from './telegram.js'
 import { publicApiRoutes } from './publicApi.js'
 import { binanceRoutes } from './binance.js'
+import { txEditRoutes } from './txEdit.js'
 
 export const app = new Hono().basePath('/api')
 
@@ -42,5 +43,7 @@ app.route('/reports', reportsRoutes)
 app.route('/review', reviewRoutes)
 app.route('/telegram', telegramRoutes)
 app.route('/binance', binanceRoutes)
+// Transaction status/amount edits + the operator request queue behind them.
+app.route('/tx', txEditRoutes)
 app.route('/v1', publicApiRoutes)
 app.route('/', extraRoutes)

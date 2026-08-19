@@ -19,11 +19,16 @@ interface SmsRow {
   sms_id: number; sms_sender: string | null; sms_received_at: string | null
   device_name: string | null; minutes_offset: number | null
 }
+interface DecisionRow {
+  tx_id: number; ontarget_ref: string | null; decision: string; actor_name: string | null
+  decided_at: string; status_now: string; last_status_change: string | null
+  minutes_stale: number | null; status_rolled_back: boolean
+}
 interface Counts { h1: number; h3: number; h24: number; newest: string | null }
 type SyncGap = Record<string, { old: number | null; current: number | null }> | null
 interface Data {
   undocumented: UndocRow[]; undocumentedCounts: Counts | null
-  smsMismatch: SmsRow[]; syncGap: SyncGap; hours: number
+  smsMismatch: SmsRow[]; decisionMismatch: DecisionRow[]; syncGap: SyncGap; hours: number
 }
 
 function fmt(ts: string | null): string {
@@ -37,7 +42,7 @@ export default function Mismatch() {
   const [data, setData] = useState<Data | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [hours, setHours] = useState(24)
-  const [tab, setTab] = useState<'undocumented' | 'sms' | 'sync'>('undocumented')
+  const [tab, setTab] = useState<'undocumented' | 'sms' | 'decisions' | 'sync'>('undocumented')
 
   const load = useCallback(async () => {
     try {
@@ -55,6 +60,7 @@ export default function Mismatch() {
   const counts = data?.undocumentedCounts ?? null
   const undocTotal = data?.undocumented.length ?? 0
   const smsTotal = data?.smsMismatch.length ?? 0
+  const decisionTotal = data?.decisionMismatch?.length ?? 0
   const gapEntries = data?.syncGap ? Object.entries(data.syncGap) : []
   const gapCount = gapEntries.filter(([, v]) => v.old != null && v.current != null && v.old !== v.current).length
 
@@ -87,6 +93,13 @@ export default function Mismatch() {
           <span className="stat-value" style={{ color: smsTotal > 0 ? 'var(--status-pending)' : undefined }}>{data ? smsTotal : '…'}</span>
           <span className="stat-sub">{t('رسالة بنفس المبلغ ونفس المحفظة', 'Same amount, same wallet, unconsumed')}</span>
         </div>
+        <div className={`stat-card${decisionTotal > 0 ? ' stat-pending' : ''}`}>
+          <span className="stat-label">⚙️ {t('قرارات لم تنعكس', 'Decisions not reflected')}</span>
+          <span className="stat-value" style={{ color: decisionTotal > 0 ? 'var(--status-declined)' : 'var(--status-paid)' }}>
+            {data ? decisionTotal : '…'}
+          </span>
+          <span className="stat-sub">{t('مؤكَّدة على المزوّد وحالتها عندنا مختلفة', 'Confirmed on the provider, different here')}</span>
+        </div>
         <div className="stat-card">
           <span className="stat-label">🔄 {t('فروقات مزامنة', 'Sync gaps')}</span>
           <span className="stat-value" style={{ color: gapCount > 0 ? 'var(--status-pending)' : undefined }}>{data ? gapCount : '…'}</span>
@@ -106,6 +119,9 @@ export default function Mismatch() {
           </button>
           <button role="tab" aria-selected={tab === 'sms'} className={`pill${tab === 'sms' ? ' active' : ''}`} onClick={() => setTab('sms')}>
             {t('تعارض SMS', 'SMS mismatch')} <span className="mono">{smsTotal}</span>
+          </button>
+          <button role="tab" aria-selected={tab === 'decisions'} className={`pill${tab === 'decisions' ? ' active' : ''}`} onClick={() => setTab('decisions')}>
+            {t('قرارات لم تنعكس', 'Decisions not reflected')} <span className="mono">{decisionTotal}</span>
           </button>
           <button role="tab" aria-selected={tab === 'sync'} className={`pill${tab === 'sync' ? ' active' : ''}`} onClick={() => setTab('sync')}>
             {t('فروقات المزامنة', 'Sync gaps')} <span className="mono">{gapCount}</span>
@@ -157,6 +173,51 @@ export default function Mismatch() {
                       <td>{r.approved_by ?? <span className="cell-sub">{t('غير معروف', 'unknown')}</span>}</td>
                       <td className="mono">{fmt(r.modified_utc)}</td>
                       <td><span className="pay-status-badge st-declined">UNDOCUMENTED</span></td>
+                      <td>{r.ontarget_ref && <Link className="btn-ghost btn-sm" to={`/transactions/${r.ontarget_ref}`}>{t('فتح', 'Open')}</Link>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {data && tab === 'decisions' && (
+        <section className="card recent-card">
+          <div className="recent-head">
+            <h3>⚙️ {t('قرارات مؤكَّدة لم تنعكس', 'Confirmed decisions not reflected')}</h3>
+            <span className="cell-sub">{t('بعد مهلة 5 دقائق', 'After a 5-minute grace period')}</span>
+          </div>
+          <p className="drawer-note">
+            {t(
+              'ngpay-approve لا تكتب executed_on_provider=true إلا بعد إعادة قراءة الحالة من المزوّد والتأكد أنها تطابق القرار — فأي صف هنا يعني أن حالتنا المحلية خالفت المزوّد بعد تنفيذ مؤكَّد. عمود "أُعيدت للخلف" يميّز السبب: إن كان نعم فقد كُتبت الحالة الصحيحة ثم دهسها استيراد لاحق، وإن كان لا فالاختلاف من مصدر آخر.',
+              'ngpay-approve only writes executed_on_provider=true after re-reading the provider and confirming the status matches the decision, so any row here means our local status diverged after a confirmed execution. The "rolled back" column separates the causes: yes means the correct status was written and then overwritten by a later import; no means the divergence came from somewhere else.',
+            )}
+          </p>
+          {decisionTotal === 0 && <p>{t('كل قرار مؤكَّد منعكس في قاعدتنا ✅', 'Every confirmed decision is reflected locally ✅')}</p>}
+          {decisionTotal > 0 && (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t('المرجع', 'Ref')}</th><th>{t('القرار', 'Decision')}</th><th>{t('حالتنا الآن', 'Our status')}</th>
+                    <th>{t('بواسطة', 'By')}</th><th>{t('وقت القرار', 'Decided at')}</th>
+                    <th>{t('منذ (دقيقة)', 'Stale (min)')}</th><th>{t('أُعيدت للخلف', 'Rolled back')}</th><th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.decisionMismatch.map((r) => (
+                    <tr key={`${r.tx_id}-${r.decided_at}`}>
+                      <td className="mono">{r.ontarget_ref ?? r.tx_id}<div className="cell-sub mono">{r.tx_id}</div></td>
+                      <td><span className={`pay-status-badge ${r.decision === 'PAID' ? 'st-paid' : 'st-declined'}`}>{r.decision}</span></td>
+                      <td><span className="pay-status-badge st-pending">{r.status_now}</span></td>
+                      <td>{r.actor_name ?? '—'}</td>
+                      <td className="mono">{fmt(r.decided_at)}</td>
+                      <td className="mono">{r.minutes_stale ?? '—'}</td>
+                      <td>{r.status_rolled_back
+                        ? <span className="pay-status-badge st-declined">{t('نعم', 'Yes')}</span>
+                        : <span className="cell-sub">{t('لا', 'No')}</span>}</td>
                       <td>{r.ontarget_ref && <Link className="btn-ghost btn-sm" to={`/transactions/${r.ontarget_ref}`}>{t('فتح', 'Open')}</Link>}</td>
                     </tr>
                   ))}

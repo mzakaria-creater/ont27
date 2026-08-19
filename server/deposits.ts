@@ -15,8 +15,11 @@ export const depositRoutes = new Hono<AuthEnv>()
 
 depositRoutes.use('*', requireAuth)
 
+// agent_name/email are only populated on part of the rows (agent_name ~71%,
+// email <1%) — the card layout hides those lines entirely when empty rather
+// than rendering a dash, so shipping them in the list payload is safe.
 const LIST_COLUMNS =
-  'tx_id, guid, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, payment_method, gateway, merchant, sub_merchant, master_merchant, manual_entry, approved_by, to_account_number, receiving_wallet, proof_image_url, first_seen_at, last_status_change, created_utc'
+  'tx_id, guid, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, agent_name, email, payment_method, gateway, merchant, sub_merchant, master_merchant, manual_entry, approved_by, to_account_number, receiving_wallet, proof_image_url, first_seen_at, last_status_change, created_utc'
 
 // Attach the matched SMS (id, name, balance) to each visible row.
 async function attachSms(rows: Record<string, unknown>[]): Promise<void> {

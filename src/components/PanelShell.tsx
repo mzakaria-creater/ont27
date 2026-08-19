@@ -21,8 +21,24 @@ interface NavLinkDef {
   labelEn: string
   /** visible when the role can_view ANY of these keys; empty = always */
   keys: string[]
+  /**
+   * Roles the SERVER additionally requires. Only for pages whose API is gated
+   * by role rather than by permission — /admin runs behind requireAdminRole.
+   * Without this the link rendered for any role holding can_view on 'settings'
+   * (19 of 21 roles), and clicking it produced "This page is for owner or
+   * admin only". The nav now asks the same question the server asks.
+   */
+  roles?: string[]
   group: NavGroupId
 }
+
+// Mirrors ADMIN_ROLES in server/rbac.ts. Kept in sync by hand — the server
+// stays the enforcement point; this only decides whether to draw the link.
+const ADMIN_ROLES = ['owner', 'admin', 'super_admin']
+// Mirrors the ALLOWED set in server/complaints.ts, which is also role-gated
+// rather than permission-gated — every role holds can_view on 'support', so
+// the key alone would keep showing the link to the 16 roles the API refuses.
+const COMPLAINT_ROLES = ['owner', 'admin', 'super_admin', 'operator', 'operations_admin']
 
 // Ordered nav groups. Only groups with at least one visible link render.
 const NAV_GROUPS: { id: NavGroupId; ar: string; en: string }[] = [
@@ -35,8 +51,8 @@ const NAV_GROUPS: { id: NavGroupId; ar: string; en: string }[] = [
 
 const BUILT_LINKS: NavLinkDef[] = [
   // Main — dashboards & live monitoring
-  { to: '/', icon: '🏠', labelAr: 'لوحة التحكم', labelEn: 'Dashboard', keys: [], group: 'main' },
-  { to: '/monitor', icon: '📡', labelAr: 'المراقبة المباشرة', labelEn: 'Live Monitor', keys: [], group: 'main' },
+  { to: '/', icon: '🏠', labelAr: 'لوحة التحكم', labelEn: 'Dashboard', keys: ['dashboard'], group: 'main' },
+  { to: '/monitor', icon: '📡', labelAr: 'المراقبة المباشرة', labelEn: 'Live Monitor', keys: ['dashboard'], group: 'main' },
   { to: '/executive-dashboard', icon: '▦', labelAr: 'لوحة الإدارة التنفيذية', labelEn: 'Executive Dashboard', keys: ['dashboard', 'reports', 'advanced_analysis', 'treasury', 'wallets'], group: 'main' },
   { to: '/analytics-dashboard', icon: '◫', labelAr: 'لوحة التحليلات', labelEn: 'Analytics Dashboard', keys: ['dashboard', 'reports', 'advanced_analysis', 'wallets'], group: 'main' },
   // Operations — the daily transaction workflow
@@ -50,7 +66,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/sms', icon: '📨', labelAr: 'SMS مباشر', labelEn: 'Live SMS', keys: ['sms_live'], group: 'operations' },
   { to: '/wallet-report', icon: '📊', labelAr: 'تقرير المحافظ', labelEn: 'Wallet report', keys: ['sms_live', 'wallets'], group: 'operations' },
   { to: '/tv', icon: '🖥️', labelAr: 'شاشة TV', labelEn: 'TV screen', keys: ['sms_live'], group: 'operations' },
-  { to: '/complaints', icon: '🛎️', labelAr: 'الشكاوى', labelEn: 'Complaints', keys: [], group: 'operations' },
+  { to: '/complaints', icon: '🛎️', labelAr: 'الشكاوى', labelEn: 'Complaints', keys: ['support'], roles: COMPLAINT_ROLES, group: 'operations' },
   { to: '/merchant-link-generator', icon: '🔗', labelAr: 'روابط الدفع', labelEn: 'Payment links', keys: ['checkout-builder'], group: 'operations' },
   // Management — merchants, wallets, money movement
   { to: '/merchants', icon: '🏬', labelAr: 'التجار', labelEn: 'Merchants', keys: ['merchants'], group: 'management' },
@@ -68,8 +84,10 @@ const BUILT_LINKS: NavLinkDef[] = [
   // System — reporting, audit, admin
   { to: '/reports', icon: '📊', labelAr: 'التقارير', labelEn: 'Reports', keys: ['reports', 'advanced_analysis'], group: 'system' },
   { to: '/audit', icon: '🕵️', labelAr: 'سجل التدقيق', labelEn: 'Audit log', keys: ['audit_log', 'audit-logs'], group: 'system' },
-  { to: '/notifications', icon: '🔔', labelAr: 'الإشعارات', labelEn: 'Notifications', keys: [], group: 'system' },
-  { to: '/admin', icon: '⚙️', labelAr: 'الإدارة', labelEn: 'Administration', keys: ['users', 'permissions', 'api-keys', 'webhooks', 'developers', 'settings'], group: 'system' },
+  { to: '/notifications', icon: '🔔', labelAr: 'الإشعارات', labelEn: 'Notifications', keys: ['notifications'], group: 'system' },
+  // 'settings' alone is not enough here: 19 of 21 roles hold it, but the API
+  // is behind requireAdminRole. Both conditions must hold for the link to draw.
+  { to: '/admin', icon: '⚙️', labelAr: 'الإدارة', labelEn: 'Administration', keys: ['users', 'permissions', 'api-keys', 'webhooks', 'developers', 'settings'], roles: ADMIN_ROLES, group: 'system' },
 ]
 
 // Every page_key now represented by a real page — the "قريباً" module list
@@ -204,7 +222,7 @@ function SmsRail() {
 }
 
 export default function PanelShell({ children }: { children: ReactNode }) {
-  const { permissions, can, refreshPermissions } = useAuth()
+  const { permissions, can, refreshPermissions, user } = useAuth()
   const { locale, t } = useLocale()
   const { pathname } = useLocation()
   const modules = usePermittedModules()
@@ -216,7 +234,13 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   // page visit so button visibility follows the current authenticated role.
   useEffect(() => { void refreshPermissions() }, [pathname, refreshPermissions])
 
-  const visible = (l: NavLinkDef) => l.keys.length === 0 || l.keys.some((k) => can(k))
+  // A link draws only when the role satisfies BOTH gates the server applies:
+  // can_view on one of the page keys, and — where the API is role-gated — the
+  // role itself. Hiding is presentation only; server/rbac.ts still refuses a
+  // direct URL hit.
+  const visible = (l: NavLinkDef) =>
+    (l.keys.length === 0 || l.keys.some((k) => can(k))) &&
+    (!l.roles || l.roles.includes(user?.role ?? ''))
   const renderLinks = (group: NavGroupId) => BUILT_LINKS.filter((l) => l.group === group && visible(l)).map((l) => (
     <Link key={l.to} to={l.to} onClick={() => setNavOpen(false)} className={`sidebar-item sidebar-link${pathname === l.to ? ' active' : ''}`}>
       <span className="sidebar-icon">{l.icon}</span><span>{locale === 'en' ? l.labelEn : l.labelAr}</span>

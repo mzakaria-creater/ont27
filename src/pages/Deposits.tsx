@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
+import ProofModal from '../components/ProofModal'
+import DepositCard from '../components/DepositCard'
+import type { CardAction } from '../components/DepositCard'
 import { api, ApiError } from '../lib/api'
 import { useBulk } from '../lib/useBulk'
 import { useLocale } from '../lib/locale'
@@ -53,6 +56,7 @@ export default function Deposits() {
   const [params, setParams] = useSearchParams()
   const status = params.get('status') ?? ''
   const master = params.get('master') ?? ''
+  const view = params.get('view') === 'cards' ? 'cards' : 'table'
   const page = Math.max(Number(params.get('page')) || 1, 1)
   const [q, setQ] = useState(params.get('q') ?? '')
   const [data, setData] = useState<ListResponse | null>(null)
@@ -93,8 +97,11 @@ export default function Deposits() {
 
   useEffect(() => { void load() }, [load])
 
-  const setFilter = (next: { status?: string; master?: string; q?: string; page?: number }) => {
+  const setFilter = (next: { status?: string; master?: string; q?: string; page?: number; view?: string }) => {
     const p = new URLSearchParams(params)
+    if (next.view !== undefined) {
+      if (next.view === 'cards') p.set('view', 'cards'); else p.delete('view')
+    }
     if (next.status !== undefined) {
       if (next.status) p.set('status', next.status); else p.delete('status')
       p.delete('page')
@@ -130,7 +137,13 @@ export default function Deposits() {
     }
   }
 
-  const [rowBusy, setRowBusy] = useState<number | null>(null)
+  // Which card/row is mid-flight, and for which action — the card layout shows
+  // "جارٍ التنفيذ…" on the exact button that was pressed and disables the rest,
+  // which is the fix for operators double-clicking Approve during the (real,
+  // multi-second) provider round-trip.
+  const [rowBusy, setRowBusy] = useState<{ id: number; action: CardAction } | null>(null)
+  const [proofUrl, setProofUrl] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [retryLocked, setRetryLocked] = useState(false)
   const bulk = useBulk((id) => `/api/deposits/${id}/decision`, () => void load())
   const armRetryCooldown = (ms: number) => {
@@ -158,8 +171,10 @@ export default function Deposits() {
   }
 
   const quickDecide = async (txId: number, action: 'approve' | 'decline') => {
-    setRowBusy(txId)
+    if (rowBusy) return
+    setRowBusy({ id: txId, action })
     setErr(null)
+    setNotice(null)
     try {
       await api(`/api/deposits/${txId}/decision`, {
         method: 'POST',
@@ -174,6 +189,37 @@ export default function Deposits() {
       setRowBusy(null)
     }
   }
+
+  // Blocks the sender's number through the existing risk endpoint — same route
+  // the velocity view uses, which already writes an audit_log row. No new
+  // backend logic; a number that is already blocked comes back as 409.
+  const blockSender = async (row: DepositRow) => {
+    const value = row.sender_number?.trim()
+    if (!value || rowBusy) return
+    if (!window.confirm(t(`حظر الرقم ${value} نهائياً؟`, `Block ${value} permanently?`))) return
+    setRowBusy({ id: row.tx_id, action: 'block' })
+    setErr(null)
+    setNotice(null)
+    try {
+      await api('/api/risk/blacklist', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'phone',
+          value,
+          reason: `Blocked from the deposits card view · ${row.ontarget_ref ?? row.tx_id}`,
+        }),
+      })
+      setNotice(t(`تم حظر ${value}.`, `${value} is now blocked.`))
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) setNotice(t(`${value} محظور بالفعل.`, `${value} is already blocked.`))
+      else if (e instanceof ApiError && e.status === 403) setErr(t('لا تملك صلاحية الحظر (can_edit على صفحات المخاطر).', 'You lack blocking permission (can_edit on a risk page).'))
+      else setErr(t('تعذّر إضافة الرقم للقائمة السوداء.', 'Could not add the number to the blacklist.'))
+    } finally {
+      setRowBusy(null)
+    }
+  }
+
+  const canBlock = ['risk', 'risk_audit', 'flagged', 'velocity', 'compliance'].some((p) => can(p, 'can_edit'))
 
   const decide = async (action: 'approve' | 'decline') => {
     if (!selected) return
@@ -279,9 +325,26 @@ export default function Deposits() {
             </button>
           )}
         </form>
+        <div className="view-toggle" role="group" aria-label={t('طريقة العرض', 'View mode')}>
+          <button
+            className={`pill${view === 'table' ? ' active' : ''}`}
+            aria-pressed={view === 'table'}
+            onClick={() => setFilter({ view: 'table' })}
+          >
+            ☰ {t('جدول', 'Table')}
+          </button>
+          <button
+            className={`pill${view === 'cards' ? ' active' : ''}`}
+            aria-pressed={view === 'cards'}
+            onClick={() => setFilter({ view: 'cards' })}
+          >
+            ▦ {t('بطاقات', 'Cards')}
+          </button>
+        </div>
       </div>
 
       {err && <div className="card warn">{err}</div>}
+      {notice && <div className="card">{notice}</div>}
       {bulk.progress && <div className="card bulk-progress">{bulk.progress}</div>}
       {bulk.selected.size > 0 && can('deposits', 'can_approve') && (
         <div className="bulk-bar">
@@ -296,10 +359,33 @@ export default function Deposits() {
         </div>
       )}
 
-      <section className="card recent-card">
-        {loading && <p className="sidebar-hint">جارٍ التحميل…</p>}
-        {!loading && data && data.rows.length === 0 && <p>لا توجد نتائج مطابقة.</p>}
-        {!loading && data && data.rows.length > 0 && (
+      {loading && <p className="sidebar-hint">جارٍ التحميل…</p>}
+      {!loading && data && data.rows.length === 0 && (
+        <section className="card recent-card"><p>لا توجد نتائج مطابقة.</p></section>
+      )}
+
+      {view === 'cards' && !loading && data && data.rows.length > 0 && (
+        <div className="dep-card-grid">
+          {data.rows.map((r) => (
+            <DepositCard
+              key={r.tx_id}
+              row={r}
+              canApprove={can('deposits', 'can_approve')}
+              canBlock={canBlock}
+              busy={rowBusy?.id === r.tx_id ? rowBusy.action : null}
+              locked={retryLocked}
+              onOpen={() => void openDetail(r.tx_id)}
+              onProof={setProofUrl}
+              onApprove={() => void quickDecide(r.tx_id, 'approve')}
+              onDecline={() => void quickDecide(r.tx_id, 'decline')}
+              onBlock={() => void blockSender(r)}
+            />
+          ))}
+        </div>
+      )}
+
+      {view === 'table' && !loading && data && data.rows.length > 0 && (
+        <section className="card recent-card">
           <div className="table-wrap">
             <table className="data-table clickable">
               <thead>
@@ -422,17 +508,17 @@ export default function Deposits() {
                             <>
                               <button
                                 className="btn-primary btn-sm"
-                                disabled={rowBusy === r.tx_id || retryLocked}
+                                disabled={rowBusy !== null || retryLocked}
                                 onClick={() => void quickDecide(r.tx_id, 'approve')}
                               >
-                                ✅
+                                {rowBusy?.id === r.tx_id && rowBusy.action === 'approve' ? '⏳' : '✅'}
                               </button>
                               <button
                                 className="btn-ghost danger btn-sm"
-                                disabled={rowBusy === r.tx_id || retryLocked}
+                                disabled={rowBusy !== null || retryLocked}
                                 onClick={() => void quickDecide(r.tx_id, 'decline')}
                               >
-                                ❌
+                                {rowBusy?.id === r.tx_id && rowBusy.action === 'decline' ? '⏳' : '❌'}
                               </button>
                             </>
                           )}
@@ -444,19 +530,24 @@ export default function Deposits() {
               </tbody>
             </table>
           </div>
-        )}
-        {data && totalPages > 1 && (
-          <div className="pager">
-            <button className="btn-ghost btn-sm" disabled={page <= 1} onClick={() => setFilter({ page: page - 1 })}>
-              → السابق
-            </button>
-            <span className="pager-info mono">{page} / {totalPages}</span>
-            <button className="btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setFilter({ page: page + 1 })}>
-              التالي ←
-            </button>
-          </div>
-        )}
-      </section>
+        </section>
+      )}
+
+      {data && totalPages > 1 && (
+        <div className="card pager">
+          <button className="btn-ghost btn-sm" disabled={page <= 1} onClick={() => setFilter({ page: page - 1 })}>
+            → السابق
+          </button>
+          <span className="pager-info mono">{page} / {totalPages}</span>
+          <button className="btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setFilter({ page: page + 1 })}>
+            التالي ←
+          </button>
+        </div>
+      )}
+
+      {proofUrl && (
+        <ProofModal url={proofUrl} title={t('إثبات الدفع', 'Payment proof')} onClose={() => setProofUrl(null)} />
+      )}
 
       {(selected || detailLoading) && (
         <div className="drawer-backdrop" onClick={() => !decisionBusy && setSelected(null)}>

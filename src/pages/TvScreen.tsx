@@ -22,6 +22,8 @@ interface TvSms {
   match_status: string | null
   trx_id: string | null
   maven_transaction_id: number | null
+  matched_tx_id?: number | null
+  matched_ontarget_ref?: string | null
 }
 
 interface TvPayout {
@@ -51,6 +53,11 @@ export default function TvScreen() {
   const [now, setNow] = useState(new Date())
 
   const load = useCallback(async () => {
+    // The delta pull from the old prod DB is normally kicked off by the SMS
+    // rail inside PanelShell — but this wall renders outside PanelShell, so a
+    // TV left on its own would read a table nothing is refreshing until the
+    // daily cron. Pump it here too; the server throttles to one run per 60s.
+    void fetch('/api/cron/delta-sync', { method: 'POST', credentials: 'same-origin' }).catch(() => {})
     const results = await Promise.allSettled([
       api<DepositStats>('/api/deposits/stats'),
       api<{ rows: TvSms[] }>('/api/sms?limit=9'),
@@ -144,10 +151,16 @@ export default function TvScreen() {
                   <span className="mono">SMS #{s.id}</span>
                   <span className="mono dim">{depositTime({ first_seen_at: s.received_at })}</span>
                 </div>
+                {/* Show ontarget_ref, the same identifier the live-transactions
+                    column beside this one uses, so a matched SMS can be tied to
+                    its transaction by eye. tx_id stays underneath for lookups. */}
                 <div className="tv-item-main">
                   <b className="mono">{money(s.amount, 'EGP')}</b> ← {t('معاملة', 'tx')}{' '}
-                  <span className="mono">{s.maven_transaction_id ?? s.trx_id ?? '—'}</span>
+                  <span className="mono">{s.matched_ontarget_ref ?? s.matched_tx_id ?? s.maven_transaction_id ?? s.trx_id ?? '—'}</span>
                 </div>
+                {s.matched_ontarget_ref && (s.matched_tx_id ?? s.maven_transaction_id) != null && (
+                  <div className="tv-item-sub mono">tx {s.matched_tx_id ?? s.maven_transaction_id}</div>
+                )}
               </div>
             ))}
             {matched.length === 0 && <p className="dim">{t('لا توجد مطابقات بعد.', 'No matches yet.')}</p>}

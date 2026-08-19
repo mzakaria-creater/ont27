@@ -18,6 +18,40 @@ function sinceIso(hours: number): string {
   return new Date(Date.now() - hours * 3_600_000).toISOString()
 }
 
+// Resolve each matched SMS to the ontarget_ref of its transaction, so the UI
+// can show the same identifier the deposits/transactions views show instead of
+// a bare tx_id that an operator has to look up by hand.
+//
+// Three link sources with different coverage — sms_maven_matches is by far the
+// richest (1,315 rows vs 150 in matched_transaction_id and 100 in
+// maven_transaction_id), so it wins, with the two columns as fallbacks.
+async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> {
+  if (!rows.length) return
+  const ids = rows.map((r) => r.id as number)
+  const { data: links } = await db.from('sms_maven_matches').select('sms_id, tx_id').in('sms_id', ids)
+  const txBySms = new Map<number, number>((links ?? []).map((l) => [l.sms_id, l.tx_id]))
+
+  const resolveTx = (r: Record<string, unknown>): number | null => {
+    const fromJoin = txBySms.get(r.id as number)
+    if (fromJoin != null) return fromJoin
+    const direct = r.matched_transaction_id ?? r.maven_transaction_id
+    const n = Number(direct)
+    return direct != null && Number.isFinite(n) ? n : null
+  }
+
+  const txIds = [...new Set(rows.map(resolveTx).filter((v): v is number => v != null))]
+  if (!txIds.length) return
+  const { data: txs } = await db.from('maven_transactions').select('tx_id, ontarget_ref').in('tx_id', txIds)
+  const refByTx = new Map((txs ?? []).map((t) => [t.tx_id, t.ontarget_ref]))
+
+  for (const r of rows) {
+    const txId = resolveTx(r)
+    if (txId == null) continue
+    r.matched_tx_id = txId
+    r.matched_ontarget_ref = refByTx.get(txId) ?? null
+  }
+}
+
 smsRoutes.get('/stats', requirePerm('sms_live', 'can_view'), async (c) => {
   const day = sinceIso(24)
 
@@ -103,7 +137,9 @@ smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
 
   const { data, count, error } = await query
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  return c.json({ rows: data ?? [], total: count ?? 0, limit, offset })
+  const rows = (data ?? []) as unknown as Record<string, unknown>[]
+  await attachMatchedRef(rows)
+  return c.json({ rows, total: count ?? 0, limit, offset })
 })
 
 // Device chips for the live SMS rail.

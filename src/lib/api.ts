@@ -54,7 +54,10 @@ export interface PagePermission {
 
 export interface PanelUser {
   id: string
+  /** The login identifier. Not necessarily an email — most accounts are plain names. */
   username: string
+  /** Contact address, optional and separate from the credential. */
+  email?: string | null
   display_name: string
   role: string
   prefs?: Record<string, unknown>
