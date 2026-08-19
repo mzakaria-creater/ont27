@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
 import ProofModal from '../components/ProofModal'
+import EditRequestQueue from '../components/EditRequestQueue'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useBulk } from '../lib/useBulk'
@@ -95,6 +96,8 @@ export default function Approvals() {
           {deposits && payouts && <> · {deposits.length + payouts.length} {t('بانتظار قرار', 'awaiting decision')}</>}
         </p>
       </section>
+
+      <EditRequestQueue />
 
       {err && <div className="card warn">{err}</div>}
 

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
 import ProofModal from '../components/ProofModal'
+import TransactionEditPanel from '../components/TransactionEditPanel'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -249,6 +250,18 @@ export default function TransactionDetail() {
                   <div className="ch-tile"><div className="ch-value" style={{ color: 'var(--status-declined)' }}>{data.client.declined}</div><div className="ch-label">{t('مرفوضة', 'Declined')}</div></div>
                 </div>
               </section>
+            )}
+
+            {data && (
+              <TransactionEditPanel
+                txId={data.deposit.tx_id}
+                ontargetRef={data.deposit.ontarget_ref}
+                status={data.deposit.status}
+                amount={data.deposit.amount}
+                currency={data.deposit.currency}
+                gateway={data.deposit.gateway}
+                onDone={() => void load()}
+              />
             )}
 
             <Link to="/deposits" className="btn-ghost btn-sm">→ {t('رجوع للإيداعات', 'Back to deposits')}</Link>
