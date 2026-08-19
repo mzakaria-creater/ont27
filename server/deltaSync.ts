@@ -71,6 +71,17 @@ async function runSync(): Promise<Record<string, number | string>> {
       if (table === 'maven_transactions') {
         for (const r of rows as Record<string, unknown>[]) {
           if (r.approved_by == null || r.approved_by === 'Manual') delete r.approved_by
+          // The upstream collector emits a trailing TAB on the MelBet
+          // sub-merchant ("NGPay-MelBet-Prod-EGP-Others\t"), which splits one
+          // real sub-merchant into two values — 3,385 rows carried the tab
+          // against 8,739 clean ones, so every GROUP BY sub_merchant listed
+          // MelBet twice and any `= 'NGPay-MelBet-Prod-EGP-Others'` filter
+          // (including a sub-merchant-scoped automation rule) silently missed
+          // 28% of its transactions. Normalise on the way in; the upstream
+          // collector still needs the same fix at the source.
+          for (const k of ['merchant', 'sub_merchant', 'master_merchant']) {
+            if (typeof r[k] === 'string') r[k] = (r[k] as string).trim()
+          }
         }
       }
 

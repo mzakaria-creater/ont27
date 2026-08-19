@@ -1165,6 +1165,7 @@ a.stat-card:hover { border-color: var(--accent); }
 @keyframes tvSlideIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 .tv-item-head { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-dim); margin-bottom: 3px; }
 .tv-item-main { font-size: 13px; }
+.tv-item-sub { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
 .tv-payouts { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; }
 .tv-payouts h3 { margin: 0 0 8px; font-size: 14px; }
 .tv-payout-row { display: flex; gap: 10px; overflow-x: auto; }
