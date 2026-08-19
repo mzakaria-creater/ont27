@@ -109,22 +109,56 @@ payoutRoutes.post('/:mavenId/decision', requirePerm('payouts', 'can_approve'), a
     return c.json({ error: 'not_pending', status: before.status }, 409)
   }
 
-  // The worker is the only path allowed to record a payout decision. It writes
-  // payout_decision_log before its own controlled update and always discloses
-  // that provider execution remains manual.
+  // Two paths, and the operator picks. Manual records the decision and leaves
+  // the money movement to a person on the provider portal — the behaviour that
+  // has always been here. Auto calls UpdateP2PPayoutTransaction for real, and
+  // the provider refuses that without a UTR, so one must be supplied.
+  //
+  // Auto is additionally gated by payout_execution_settings.auto_execute_enabled,
+  // which the worker checks. A payout sends money OUT and, unlike a deposit,
+  // there is no immediate read-back to prove it, so the default is off.
+  const mode = body?.mode === 'auto' ? 'auto' : 'manual'
+  const utrNumber = typeof body?.utr_number === 'string' ? body.utr_number.trim().slice(0, 120) : ''
+  if (mode === 'auto' && !utrNumber) return c.json({ error: 'utr_required' }, 400)
+
   const actor = c.get('actor')
-  const workerUrl = `${baseUrl}/functions/v1/payout-decision-worker`
   const serviceKey = process.env.SUPABASE_SECRET_KEY
   if (!baseUrl || !serviceKey) return c.json({ error: 'worker_not_configured' }, 500)
+  const workerUrl = `${baseUrl}/functions/v1/payout-execute-worker`
   const workerResponse = await fetch(workerUrl, {
     method: 'POST',
     headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
     body: JSON.stringify({
       maven_id: Number(mavenId), decision, actor_name: actor.username,
-      proof_url: proofUrl, remark,
+      proof_url: proofUrl, remark, mode, utr_number: utrNumber || undefined,
     }),
   })
   const workerResult = await workerResponse.json().catch(() => ({ error: 'worker_invalid_response' })) as Record<string, unknown>
+
+  await db.from('audit_log').insert({
+    actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
+    action: `payout.${decision.toLowerCase()}`,
+    entity: 'maven_payout_transactions', entity_id: mavenId,
+    before: { status: before.status, amount: before.amount },
+    after: {
+      decision, mode, remark,
+      executed_on_provider: workerResult.executed_on_provider === true,
+      provider_status_after: workerResult.after_status ?? null,
+    },
+  })
+
   if (!workerResponse.ok) return c.json({ error: 'worker_failed', worker: workerResult }, workerResponse.status as 400 | 401 | 403 | 404 | 409 | 500)
-  return c.json({ ...workerResult, executed_on_provider: false, note: workerResult.note ?? 'Decision recorded only; provider execution remains manual.' })
+  // Report exactly what the worker verified — never a friendlier version of it.
+  return c.json(workerResult)
+})
+
+// Whether auto execution is available, so the UI can offer the choice honestly
+// instead of presenting a button that will be refused.
+payoutRoutes.get('/execution-settings', requirePerm('payouts', 'can_view'), async (c) => {
+  const { data } = await db
+    .from('payout_execution_settings')
+    .select('auto_execute_enabled, max_auto_amount, updated_at, updated_by')
+    .eq('id', 1)
+    .maybeSingle()
+  return c.json({ settings: data ?? { auto_execute_enabled: false, max_auto_amount: null } })
 })
