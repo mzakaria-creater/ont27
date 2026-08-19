@@ -218,7 +218,7 @@ authRoutes.get('/me', async (c) => {
 
   const [{ data: user }, { data: perms }, { data: twofa }] = await Promise.all([
     db.from('panel_users')
-      .select('id, username, display_name, role, active, prefs, last_login_at')
+      .select('id, username, email, display_name, role, active, prefs, last_login_at')
       .eq('id', claims.sub).maybeSingle(),
     db.from('role_page_permissions')
       .select('page_key, can_view, can_create, can_edit, can_delete, can_approve, can_export')

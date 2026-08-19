@@ -8,7 +8,7 @@ import type { AuthEnv } from './rbac.js'
 export const adminRoutes = new Hono<AuthEnv>()
 adminRoutes.use('*', requireAuth, requireAdminRole)
 
-const userColumns = 'id, username, display_name, role, active, last_login_at, failed_login_count, locked_until, created_at'
+const userColumns = 'id, username, email, display_name, role, active, last_login_at, failed_login_count, locked_until, created_at'
 const permColumns = 'role_key, page_key, can_view, can_create, can_edit, can_delete, can_approve, can_export'
 const keyColumns = 'id, merchant_id, key_name, api_key, environment, is_active, request_count, secret_prefix, last_used_at, revoked_at, expires_at, created_at'
 
@@ -48,11 +48,21 @@ adminRoutes.post('/users', requirePerm('users', 'can_create'), async (c) => {
   const password = typeof body?.password === 'string' ? body.password : ''
   const role = string(body?.role, 80)
   if (!username || !/^[^\s]{3,120}$/.test(username) || password.length < 8 || !role) return c.json({ error: 'invalid_user' }, 400)
+  // email is optional and separate from username — it is contact information,
+  // not a credential. Validated only when supplied, and stored lower-case to
+  // match the case-insensitive unique index.
+  const email = string(body?.email, 200)?.toLowerCase() ?? null
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return c.json({ error: 'invalid_email' }, 400)
   const { data: roleRow } = await db.from('app_roles').select('role_key').eq('role_key', role).eq('active', true).maybeSingle()
   if (!roleRow) return c.json({ error: 'invalid_role' }, 400)
-  const { data, error } = await db.from('panel_users').insert({ username, password_hash: await hashPassword(password), display_name: string(body?.display_name), role, active: body?.active !== false }).select(userColumns).single()
-  if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
-  await audit(c.get('actor'), 'admin.user_created', 'panel_users', data.id, { username: data.username, role: data.role })
+  const { data, error } = await db.from('panel_users').insert({ username, email, password_hash: await hashPassword(password), display_name: string(body?.display_name), role, active: body?.active !== false }).select(userColumns).single()
+  if (error) {
+    // 23505 is the unique index on lower(email) — say which field collided
+    // instead of surfacing a raw Postgres message.
+    const taken = error.code === '23505' && error.message.includes('email')
+    return c.json({ error: taken ? 'email_taken' : 'db_error', detail: error.message }, 400)
+  }
+  await audit(c.get('actor'), 'admin.user_created', 'panel_users', data.id, { username: data.username, email: data.email, role: data.role })
   return c.json({ user: data }, 201)
 })
 
