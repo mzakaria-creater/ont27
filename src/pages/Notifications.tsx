@@ -15,6 +15,15 @@ export interface NotifData {
   latestPending: { tx_id: number; ontarget_ref: string | null; amount: number | null; currency: string | null; sender_name: string | null; merchant: string | null; master_merchant?: string | null }[]
   latestPayouts?: { maven_id: number; ontarget_ref: string | null; amount: number | null; account_name: string | null; mobile_no: string | null; merchant: string | null }[]
   recentMatches?: { id: number; received_at: string | null; device_name: string | null; sender_name: string | null; amount: number | null; trx_id: string | null; matched_transaction_id: number | null }[]
+  // Edit requests raised by the signed-in user that have since been decided —
+  // the only place they learn the outcome, since the approval happens in
+  // Telegram or in a steward's panel.
+  myEditRequests?: {
+    id: number; tx_id: number; ontarget_ref: string | null; status: string
+    decided_by: string | null; decided_at: string | null
+    decision_note: string | null; apply_error: string | null
+    requested_status: string | null; requested_amount: number | null
+  }[]
   total: number
 }
 

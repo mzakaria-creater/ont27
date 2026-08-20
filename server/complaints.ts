@@ -16,6 +16,39 @@ complaintRoutes.use('*', async (c, next) => {
   await next()
 })
 
+// Complaints go to the chats that opted in via telegram_chats.receives_complaints
+// — the support group and the support agent — not to every active chat. Mina and
+// Eslam's thread is the approval queue; filling it with customer complaints would
+// bury the thing it exists for.
+//
+// Best effort by design: a Telegram outage must never stop a complaint being
+// recorded, so a send failure is reported back to the caller rather than thrown.
+async function notifySupport(alertType: string, message: string): Promise<{ sent: number; error?: string }> {
+  const { data: chats } = await db
+    .from('telegram_chats').select('chat_id').eq('is_active', true).eq('receives_complaints', true)
+  const chatIds = (chats ?? []).map((c) => String(c.chat_id))
+  if (!chatIds.length) return { sent: 0, error: 'no_complaint_chats' }
+
+  const baseUrl = process.env.SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SECRET_KEY
+  if (!baseUrl || !serviceKey) return { sent: 0, error: 'telegram_not_configured' }
+  try {
+    const res = await fetch(`${baseUrl}/functions/v1/telegram-notify`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
+      body: JSON.stringify({ alert_type: alertType, message, chat_ids: chatIds }),
+    })
+    const out = await res.json().catch(() => ({})) as Record<string, unknown>
+    if (!res.ok) return { sent: 0, error: String(out.error ?? `HTTP ${res.status}`) }
+    return { sent: Number(out.sent ?? 0) }
+  } catch (e) {
+    return { sent: 0, error: e instanceof Error ? e.message : 'send_failed' }
+  }
+}
+
+const esc = (v: unknown): string =>
+  String(v ?? '—').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
 const audit = (actor: { sub: string; username: string }, action: string, entityId: string, after: Record<string, unknown>) =>
   db.from('audit_log').insert({
     actor_type: 'manual_panel',
@@ -59,8 +92,20 @@ complaintRoutes.post('/log', async (c) => {
     p_note: note,
   })
   if (error) return c.json({ error: 'rpc_error', detail: error.message }, 500)
-  await audit(c.get('actor'), 'complaint.log', String(txId ?? phone), { phone, amount, note })
-  return c.json({ ok: true, result: data })
+  const actor = c.get('actor')
+  await audit(actor, 'complaint.log', String(txId ?? phone), { phone, amount, note })
+
+  const tg = await notifySupport('complaint_filed', [
+    '📣 <b>شكوى جديدة</b>',
+    txId ? `المعاملة: <code>${esc(txId)}</code>` : null,
+    phone ? `هاتف العميل: <code>${esc(phone)}</code>` : null,
+    amount != null ? `المبلغ: <b>${esc(amount)}</b>` : null,
+    note ? `التفاصيل: ${esc(note)}` : null,
+    `سُجِّلت بواسطة: ${esc(actor.username)}`,
+  ].filter(Boolean).join('\n'))
+
+  // Say plainly whether it reached anyone — never imply a send that failed.
+  return c.json({ ok: true, result: data, telegram: tg })
 })
 
 complaintRoutes.post('/investigate', async (c) => {
@@ -98,6 +143,18 @@ complaintRoutes.post('/:id/:decision', async (c) => {
   if (decision === 'approve') args.p_target_status = 'PAID'
   const { data, error } = await old.rpc(rpcName, args)
   if (error) return c.json({ error: 'rpc_error', detail: error.message }, 500)
-  await audit(c.get('actor'), `complaint.${decision}`, String(id), { tx_id: txId, note, result: data })
-  return c.json({ ok: true, result: data })
+  const actor = c.get('actor')
+  await audit(actor, `complaint.${decision}`, String(id), { tx_id: txId, note, result: data })
+
+  const headline = decision === 'approve' ? '✅ شكوى: تمت الموافقة (المعاملة → PAID)'
+    : decision === 'decline' ? '❌ شكوى: مرفوضة'
+    : '📕 شكوى: مغلقة'
+  const tg = await notifySupport('complaint_resolved', [
+    `<b>${headline}</b>`,
+    `رقم الشكوى: <code>${esc(id)}</code> · المعاملة: <code>${esc(txId)}</code>`,
+    note ? `ملاحظة: ${esc(note)}` : null,
+    `القرار بواسطة: ${esc(actor.username)}`,
+  ].filter(Boolean).join('\n'))
+
+  return c.json({ ok: true, result: data, telegram: tg })
 })
