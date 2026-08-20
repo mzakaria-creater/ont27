@@ -775,6 +775,21 @@ extraRoutes.get('/notifications', async (c) => {
       .then(({ data }) => data ?? []),
   ])
   const offlineDevices = devices.filter((d) => !d.online).map((d) => d.device)
+
+  // An operator who raised an edit request has no other way to learn it was
+  // decided — the approval happens in Telegram or in someone else's panel. So
+  // the requester gets their own settled requests back in their bell, scoped to
+  // requests THEY raised. Two days keeps it a notification rather than a log.
+  const { data: myDecided } = await db
+    .from('transaction_edit_requests')
+    .select('id, tx_id, ontarget_ref, status, decided_by, decided_at, decision_note, apply_error, requested_status, requested_amount')
+    .eq('requested_by', c.get('actor').username)
+    .neq('status', 'pending')
+    .gte('decided_at', twoDays)
+    .order('decided_at', { ascending: false })
+    .limit(10)
+  const myEditRequests = myDecided ?? []
+
   return c.json({
     pendingDeposits,
     pendingPayouts,
@@ -783,7 +798,10 @@ extraRoutes.get('/notifications', async (c) => {
     latestPending,
     latestPayouts,
     recentMatches,
-    total: pendingDeposits + pendingPayouts + (smsReview > 0 ? 1 : 0) + (offlineDevices.length > 0 ? 1 : 0),
+    myEditRequests,
+    total:
+      pendingDeposits + pendingPayouts + (smsReview > 0 ? 1 : 0) +
+      (offlineDevices.length > 0 ? 1 : 0) + myEditRequests.length,
   })
 })
 

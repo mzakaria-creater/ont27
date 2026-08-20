@@ -8,6 +8,7 @@ import type { CardAction } from '../components/DepositCard'
 import { api, ApiError } from '../lib/api'
 import { useBulk } from '../lib/useBulk'
 import { useLocale } from '../lib/locale'
+import MethodLogo from '../components/MethodLogo'
 import { depositTime, merchantChipCls, money, statusMeta } from '../lib/deposits'
 import type { DepositDetail, DepositRow, DepositStats } from '../lib/deposits'
 
@@ -479,7 +480,7 @@ export default function Deposits() {
                           <span className="cell-sub">— بدون رسالة</span>
                         )}
                       </td>
-                      <td>{r.payment_method ?? r.gateway ?? '—'}</td>
+                      <td><MethodLogo method={r.payment_method ?? r.gateway} /></td>
                       <td>
                         {r.master_merchant
                           ? <span className={`merchant-chip ${merchantChipCls(r.master_merchant)}`}>{r.master_merchant}</span>

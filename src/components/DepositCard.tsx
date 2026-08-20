@@ -1,4 +1,5 @@
 import { useLocale } from '../lib/locale'
+import MethodLogo from './MethodLogo'
 import { depositTime, gatewayChipCls, methodIcon, money, statusMeta } from '../lib/deposits'
 import type { DepositRow } from '../lib/deposits'
 
@@ -51,8 +52,9 @@ export default function DepositCard({
 
       <div className="dep-chips">
         <span className="dep-chip">
-          <span aria-hidden="true">{methodIcon(row.payment_method)}</span>
-          {row.payment_method ?? t('غير محدّد', 'Unspecified')}
+          {row.payment_method
+            ? <MethodLogo method={row.payment_method} />
+            : <>{methodIcon(null)} {t('غير محدّد', 'Unspecified')}</>}
         </span>
         {channel && (
           <span className={`merchant-chip ${gatewayChipCls(row.gateway, row.master_merchant)}`}>{channel}</span>

@@ -107,6 +107,52 @@ async function notifyApprovers(
   }
 }
 
+// Rewrite the approval messages in place once a request is settled.
+//
+// A decision taken in the panel has to reach Telegram too, otherwise Mina and
+// Eslam keep looking at a live pair of buttons for something already decided —
+// and pressing one then returns "already decided", which reads like a bug. The
+// message becomes the record of who decided and what happened.
+//
+// Editing needs the bot token directly (telegram-notify only sends), and this
+// is best-effort: a failure here must never undo a decision that was already
+// applied to the transaction.
+async function settleApproverMessages(
+  row: { id: number; ontarget_ref?: unknown; tx_id?: unknown; telegram_message_ids?: unknown },
+  headline: string,
+  detail: string,
+): Promise<void> {
+  const pairs = Array.isArray(row.telegram_message_ids) ? row.telegram_message_ids : []
+  if (!pairs.length) return
+  const { data: cfg } = await db
+    .from('maven_runtime_config').select('value')
+    .eq('name', 'TELEGRAM_BOT_TOKEN').eq('owner_name', 'global').maybeSingle()
+  const token = cfg?.value
+  if (!token) return
+
+  const text =
+    `<b>${esc(headline)}</b>\n` +
+    `المرجع: <code>${esc(row.ontarget_ref ?? row.tx_id)}</code>\n` +
+    `${esc(detail)}\n` +
+    `رقم الطلب: <code>${row.id}</code>`
+
+  for (const p of pairs as { chat_id?: string; message_id?: number }[]) {
+    if (!p?.chat_id || !p?.message_id) continue
+    try {
+      await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: p.chat_id, message_id: p.message_id, text,
+          parse_mode: 'HTML', reply_markup: { inline_keyboard: [] },
+        }),
+      })
+    } catch {
+      // Best effort — the decision is already recorded either way.
+    }
+  }
+}
+
 function esc(v: unknown): string {
   return String(v ?? '—').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
@@ -306,6 +352,8 @@ txEditRoutes.post('/edit-requests/:id/decision', async (c) => {
       action: 'transaction.edit_rejected', entity: 'transaction_edit_requests', entity_id: String(id),
       after: { tx_id: req.tx_id, note },
     })
+    await settleApproverMessages(req, '❌ رُفض الطلب',
+      `القرار بواسطة: ${actor.username}\nلم يتغيّر شيء في المعاملة.${note ? `\nملاحظة: ${note}` : ''}`)
     return c.json({ ok: true, status: 'rejected' })
   }
 
@@ -324,11 +372,20 @@ txEditRoutes.post('/edit-requests/:id/decision', async (c) => {
     await db.from('transaction_edit_requests')
       .update({ status: 'failed', decided_by: actor.username, decided_at: nowIso, decision_note: note, apply_error: JSON.stringify(result) })
       .eq('id', id)
+    // Never let Telegram show a settled request that actually failed here.
+    await settleApproverMessages(req, '⚠️ ووفِق عليه لكن التنفيذ فشل',
+      `القرار بواسطة: ${actor.username}\nالخطأ: ${result.error}\nالمعاملة لم تتغيّر.`)
     return c.json(result, 502)
   }
 
   await db.from('transaction_edit_requests')
     .update({ status: 'applied', decided_by: actor.username, decided_at: nowIso, decision_note: note })
     .eq('id', id)
+  await settleApproverMessages(req, '✅ ووفِق عليه ونُفِّذ',
+    `القرار بواسطة: ${actor.username}\n` +
+    (result.executed
+      ? 'نُفِّذ على المزوّد وتم التحقق منه.'
+      : 'تصحيح محلي فقط — لم يُبلَّغ المزوّد.') +
+    (note ? `\nملاحظة: ${note}` : ''))
   return c.json({ ok: true, status: 'applied', local_only: result.localOnly, executed_on_provider: result.executed ?? false })
 })

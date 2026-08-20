@@ -101,7 +101,7 @@ complaintRoutes.post('/log', async (c) => {
     phone ? `هاتف العميل: <code>${esc(phone)}</code>` : null,
     amount != null ? `المبلغ: <b>${esc(amount)}</b>` : null,
     note ? `التفاصيل: ${esc(note)}` : null,
-    `سُجِّلت بواسطة: ${esc(actor.username)}`,
+    `سُجِّلت بواسطة: ${esc(actor.username)}`,
   ].filter(Boolean).join('\n'))
 
   // Say plainly whether it reached anyone — never imply a send that failed.
