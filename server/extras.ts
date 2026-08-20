@@ -775,6 +775,21 @@ extraRoutes.get('/notifications', async (c) => {
       .then(({ data }) => data ?? []),
   ])
   const offlineDevices = devices.filter((d) => !d.online).map((d) => d.device)
+
+  // An operator who raised an edit request has no other way to learn it was
+  // decided — the approval happens in Telegram or in someone else's panel. So
+  // the requester gets their own settled requests back in their bell, scoped to
+  // requests THEY raised. Two days keeps it a notification rather than a log.
+  const { data: myDecided } = await db
+    .from('transaction_edit_requests')
+    .select('id, tx_id, ontarget_ref, status, decided_by, decided_at, decision_note, apply_error, requested_status, requested_amount')
+    .eq('requested_by', c.get('actor').username)
+    .neq('status', 'pending')
+    .gte('decided_at', twoDays)
+    .order('decided_at', { ascending: false })
+    .limit(10)
+  const myEditRequests = myDecided ?? []
+
   return c.json({
     pendingDeposits,
     pendingPayouts,
@@ -783,7 +798,10 @@ extraRoutes.get('/notifications', async (c) => {
     latestPending,
     latestPayouts,
     recentMatches,
-    total: pendingDeposits + pendingPayouts + (smsReview > 0 ? 1 : 0) + (offlineDevices.length > 0 ? 1 : 0),
+    myEditRequests,
+    total:
+      pendingDeposits + pendingPayouts + (smsReview > 0 ? 1 : 0) +
+      (offlineDevices.length > 0 ? 1 : 0) + myEditRequests.length,
   })
 })
 
@@ -1050,3 +1068,133 @@ extraRoutes.get(
     })
   },
 )
+
+// ---- System health ----
+//
+// Every number here is derived from data we actually hold. There are no CPU,
+// RAM or disk gauges: those belong to Supabase's own infrastructure metrics and
+// we have no truthful source for them from inside the app. Inventing a dial to
+// fill a grid would make the page look authoritative while being fiction, and
+// this page exists to be trusted during an incident.
+extraRoutes.get('/system-health', async (c) => {
+  const now = Date.now()
+  const dayAgo = new Date(now - 86_400_000).toISOString()
+
+  const [txRows, smsRows, devices, tgAlerts, pendingPayouts, editRequests] = await Promise.all([
+    db.from('maven_transactions')
+      .select('status, gateway, first_seen_at, last_status_change')
+      .gte('first_seen_at', dayAgo).limit(5000)
+      .then(({ data }) => data ?? []),
+    db.from('inbound_sms')
+      .select('received_at, matched, sms_category, webhook_name, device_name')
+      .gte('received_at', dayAgo).limit(5000)
+      .then(({ data }) => data ?? []),
+    // Device telemetry is written on the old project by the phones themselves
+    // and is NOT part of the delta sync, so this table holds 1 row here against
+    // 7 there. Read it at the source — a health page showing one device when
+    // seven are running would be worse than not showing the section at all.
+    (async () => {
+      const cols = 'device, sim_number, operator, battery, charging, net_type, online, balance, balance_at, last_seen_at'
+      const old = oldDb()
+      if (old) {
+        const { data, error } = await old.from('device_status').select(cols).order('device')
+        if (!error && data) return data
+      }
+      const { data } = await db.from('device_status').select(cols).order('device')
+      return data ?? []
+    })(),
+    db.from('telegram_alerts')
+      .select('alert_type, ok, error, created_at')
+      .gte('created_at', dayAgo).limit(500)
+      .then(({ data }) => data ?? []),
+    db.from('maven_payout_transactions')
+      .select('maven_id', { count: 'exact', head: true }).eq('status', 'PENDING')
+      .then(({ count }) => count ?? 0),
+    db.from('transaction_edit_requests')
+      .select('status').gte('created_at', dayAgo)
+      .then(({ data }) => data ?? []),
+  ])
+
+  // Hourly buckets, oldest first, so a flat line reads as "quiet" and a gap
+  // reads as "nothing arrived" rather than being silently dropped.
+  const hours: string[] = []
+  for (let i = 23; i >= 0; i--) hours.push(new Date(now - i * 3_600_000).toISOString().slice(0, 13))
+  const bucket = (iso: string | null | undefined) => (iso ? iso.slice(0, 13) : null)
+
+  const txByHour = hours.map((h) => ({ hour: h, paid: 0, declined: 0, pending: 0, other: 0 }))
+  const txIndex = new Map(txByHour.map((b, i) => [b.hour, i]))
+  for (const r of txRows) {
+    const i = txIndex.get(bucket(r.first_seen_at as string) ?? '')
+    if (i == null) continue
+    const s = String(r.status ?? '').toUpperCase()
+    if (s === 'PAID') txByHour[i].paid++
+    else if (s === 'DECLINED') txByHour[i].declined++
+    else if (s === 'PENDING') txByHour[i].pending++
+    else txByHour[i].other++
+  }
+
+  const smsByHour = hours.map((h) => ({ hour: h, total: 0, matched: 0 }))
+  const smsIndex = new Map(smsByHour.map((b, i) => [b.hour, i]))
+  for (const r of smsRows) {
+    const i = smsIndex.get(bucket(r.received_at as string) ?? '')
+    if (i == null) continue
+    smsByHour[i].total++
+    if (r.matched) smsByHour[i].matched++
+  }
+
+  const deposits = smsRows.filter((r) => r.sms_category === 'deposit')
+  const matchedDeposits = deposits.filter((r) => r.matched).length
+  const onlineDevices = devices.filter((d) => d.online).length
+  const tgOk = tgAlerts.filter((a) => a.ok).length
+
+  const newestTx = txRows.reduce<string | null>((acc, r) => {
+    const v = r.first_seen_at as string | null
+    return v && (!acc || v > acc) ? v : acc
+  }, null)
+  const newestSms = smsRows.reduce<string | null>((acc, r) => {
+    const v = r.received_at as string | null
+    return v && (!acc || v > acc) ? v : acc
+  }, null)
+
+  const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 1000) / 10 : null)
+  const ageSec = (iso: string | null) => (iso ? Math.max(0, Math.round((now - Date.parse(iso)) / 1000)) : null)
+
+  return c.json({
+    generatedAt: new Date(now).toISOString(),
+    gauges: {
+      // null means "nothing happened in the window", which the UI shows as no
+      // data rather than as a confident 0% or 100%.
+      smsMatchRate: { value: pct(matchedDeposits, deposits.length), of: deposits.length, unit: '%' },
+      devicesOnline: { value: pct(onlineDevices, devices.length), of: devices.length, unit: '%' },
+      telegramDelivery: { value: pct(tgOk, tgAlerts.length), of: tgAlerts.length, unit: '%' },
+      approvalRate: {
+        value: pct(
+          txByHour.reduce((a, b) => a + b.paid, 0),
+          txByHour.reduce((a, b) => a + b.paid + b.declined, 0),
+        ),
+        of: txByHour.reduce((a, b) => a + b.paid + b.declined, 0),
+        unit: '%',
+      },
+    },
+    freshness: {
+      newestTransactionAgeSec: ageSec(newestTx),
+      newestSmsAgeSec: ageSec(newestSms),
+    },
+    queues: {
+      pendingDeposits: txByHour.reduce((a, b) => a + b.pending, 0),
+      pendingPayouts,
+      editRequestsPending: editRequests.filter((r) => r.status === 'pending').length,
+    },
+    series: { txByHour, smsByHour },
+    devices,
+    telegram: Object.values(
+      tgAlerts.reduce<Record<string, { alert_type: string; ok: number; failed: number; lastError: string | null }>>((acc, a) => {
+        const k = String(a.alert_type)
+        acc[k] ??= { alert_type: k, ok: 0, failed: 0, lastError: null }
+        if (a.ok) acc[k].ok++
+        else { acc[k].failed++; acc[k].lastError = (a.error as string) ?? acc[k].lastError }
+        return acc
+      }, {}),
+    ),
+  })
+})

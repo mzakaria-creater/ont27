@@ -220,9 +220,10 @@ authRoutes.get('/me', async (c) => {
     db.from('panel_users')
       .select('id, username, email, display_name, role, active, prefs, last_login_at')
       .eq('id', claims.sub).maybeSingle(),
-    db.from('role_page_permissions')
-      .select('page_key, can_view, can_create, can_edit, can_delete, can_approve, can_export')
-      .eq('role_key', claims.role),
+    // Role matrix with any per-user override swapped in, resolved by the same
+    // rule server/rbac.ts enforces — so what the UI shows and what the API
+    // allows cannot drift apart.
+    db.rpc('panel_effective_permissions', { p_user_id: claims.sub }),
     db.from('panel_users_2fa')
       .select('enabled_at').eq('user_id', claims.sub).maybeSingle(),
   ])
@@ -231,7 +232,7 @@ authRoutes.get('/me', async (c) => {
 
   return c.json({
     user: {
-      id: user.id, username: user.username, display_name: user.display_name,
+      id: user.id, username: user.username, email: user.email, display_name: user.display_name,
       role: user.role, prefs: user.prefs, last_login_at: user.last_login_at,
     },
     permissions: perms ?? [],

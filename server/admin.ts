@@ -25,7 +25,7 @@ async function audit(actor: { sub: string; username: string }, action: string, e
 }
 
 adminRoutes.get('/', requirePerm('settings', 'can_view'), async (c) => {
-  const [users, roles, permissions, keys, merchants, masters, feeDefaults, hierarchy, capacities, accounts] = await Promise.all([
+  const [users, roles, permissions, keys, merchants, masters, feeDefaults, hierarchy, capacities, accounts, userPerms] = await Promise.all([
     db.from('panel_users').select(userColumns).order('username'),
     db.from('app_roles').select('role_key, label, active').eq('active', true).order('role_key'),
     db.from('role_page_permissions').select(permColumns).order('page_key').order('role_key'),
@@ -36,10 +36,11 @@ adminRoutes.get('/', requirePerm('settings', 'can_view'), async (c) => {
     db.from('merchants_hierarchy').select('id, master_merchant_id, name, payin_commission_pct, payout_commission_pct, commission_rate, active, created_at').order('name'),
     db.from('wallet_capacity_limits').select('payment_account_id, daily_limit, current_daily_used, updated_at'),
     db.from('payment_accounts').select('id, account_number, label, device_name, payment_method_id, is_active').order('created_at'),
+    db.from('user_page_permissions').select('user_id, page_key, can_view, can_create, can_edit, can_delete, can_approve, can_export, note, granted_by, updated_at'),
   ])
-  const error = [users, roles, permissions, keys, merchants, masters, feeDefaults, hierarchy, capacities, accounts].find((x) => x.error)?.error
+  const error = [users, roles, permissions, keys, merchants, masters, feeDefaults, hierarchy, capacities, accounts, userPerms].find((x) => x.error)?.error
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  return c.json({ users: users.data ?? [], roles: roles.data ?? [], permissions: permissions.data ?? [], apiKeys: keys.data ?? [], merchants: merchants.data ?? [], masters: masters.data ?? [], feeDefaults: feeDefaults.data ?? [], hierarchy: hierarchy.data ?? [], capacities: capacities.data ?? [], accounts: accounts.data ?? [] })
+  return c.json({ users: users.data ?? [], roles: roles.data ?? [], permissions: permissions.data ?? [], apiKeys: keys.data ?? [], merchants: merchants.data ?? [], masters: masters.data ?? [], feeDefaults: feeDefaults.data ?? [], hierarchy: hierarchy.data ?? [], capacities: capacities.data ?? [], accounts: accounts.data ?? [], userPermissions: userPerms.data ?? [] })
 })
 
 adminRoutes.post('/users', requirePerm('users', 'can_create'), async (c) => {
@@ -64,6 +65,127 @@ adminRoutes.post('/users', requirePerm('users', 'can_create'), async (c) => {
   }
   await audit(c.get('actor'), 'admin.user_created', 'panel_users', data.id, { username: data.username, email: data.email, role: data.role })
   return c.json({ user: data }, 201)
+})
+
+// Edit an existing user: display name, email, role, active flag, password.
+// Only the fields present in the body change.
+//
+// Two lock-out rails, because this endpoint can otherwise remove the last way
+// back in: nobody may deactivate or demote themselves, and the final active
+// steward cannot be deactivated or moved off a steward role by anyone.
+const STEWARD_ROLES = ['owner', 'admin', 'super_admin']
+
+adminRoutes.patch('/users/:id', requirePerm('users', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => null)
+  const actor = c.get('actor')
+
+  const { data: before } = await db.from('panel_users').select(userColumns).eq('id', id).maybeSingle()
+  if (!before) return c.json({ error: 'not_found' }, 404)
+
+  const update: Record<string, unknown> = {}
+
+  if (body?.display_name !== undefined) update.display_name = string(body.display_name)
+
+  if (body?.email !== undefined) {
+    const email = string(body.email, 200)?.toLowerCase() ?? null
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return c.json({ error: 'invalid_email' }, 400)
+    update.email = email
+  }
+
+  if (body?.role !== undefined) {
+    const role = string(body.role, 80)
+    if (!role) return c.json({ error: 'invalid_role' }, 400)
+    const { data: roleRow } = await db.from('app_roles').select('role_key').eq('role_key', role).eq('active', true).maybeSingle()
+    if (!roleRow) return c.json({ error: 'invalid_role' }, 400)
+    update.role = role
+  }
+
+  if (body?.active !== undefined) update.active = body.active === true
+
+  if (body?.password !== undefined && body.password !== '') {
+    const password = typeof body.password === 'string' ? body.password : ''
+    if (password.length < 8) return c.json({ error: 'password_too_short' }, 400)
+    update.password_hash = await hashPassword(password)
+  }
+
+  if (Object.keys(update).length === 0) return c.json({ error: 'nothing_to_update' }, 400)
+
+  const losingSteward =
+    (update.active === false || (update.role !== undefined && !STEWARD_ROLES.includes(update.role as string))) &&
+    STEWARD_ROLES.includes(before.role)
+
+  if (id === actor.sub && (update.active === false || (update.role !== undefined && update.role !== before.role))) {
+    return c.json({ error: 'cannot_change_own_access' }, 400)
+  }
+
+  if (losingSteward) {
+    const { count } = await db
+      .from('panel_users')
+      .select('id', { count: 'exact', head: true })
+      .in('role', STEWARD_ROLES)
+      .eq('active', true)
+    if ((count ?? 0) <= 1) return c.json({ error: 'last_active_admin' }, 409)
+  }
+
+  const { data, error } = await db.from('panel_users').update(update).eq('id', id).select(userColumns).single()
+  if (error) {
+    const taken = error.code === '23505' && error.message.includes('email')
+    return c.json({ error: taken ? 'email_taken' : 'db_error', detail: error.message }, 400)
+  }
+
+  // The password hash must never reach the audit log; record only that it moved.
+  const { password_hash: _ph, ...safe } = update as Record<string, unknown>
+  await audit(actor, 'admin.user_updated', 'panel_users', id, {
+    before: { role: before.role, active: before.active, email: before.email, display_name: before.display_name },
+    after: { ...safe, ...(update.password_hash ? { password_changed: true } : {}) },
+  })
+  return c.json({ user: data })
+})
+
+// Per-user permission override for one page. The body carries the full action
+// set, so this both grants and revokes relative to the role.
+adminRoutes.put('/users/:id/permissions/:page', requirePerm('permissions', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  const page_key = c.req.param('page')
+  const body = await c.req.json().catch(() => null)
+  const fields = ['can_view', 'can_create', 'can_edit', 'can_delete', 'can_approve', 'can_export'] as const
+  if (!/^[\w-]+$/.test(page_key) || !fields.every((k) => typeof body?.[k] === 'boolean')) {
+    return c.json({ error: 'invalid_permission' }, 400)
+  }
+  const actor = c.get('actor')
+  const { data: user } = await db.from('panel_users').select('id, role').eq('id', id).maybeSingle()
+  if (!user) return c.json({ error: 'not_found' }, 404)
+  // Editing your own permissions would let an admin quietly widen their own
+  // access with no second pair of eyes.
+  if (id === actor.sub) return c.json({ error: 'cannot_change_own_access' }, 400)
+
+  const record = Object.fromEntries(fields.map((k) => [k, body[k]]))
+  const { data, error } = await db
+    .from('user_page_permissions')
+    .upsert({
+      user_id: id, page_key, ...record,
+      note: string(body?.note, 300),
+      granted_by: actor.username,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,page_key' })
+    .select()
+    .single()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
+  await audit(actor, 'admin.user_permission_set', 'user_page_permissions', `${id}:${page_key}`, record)
+  return c.json({ override: data })
+})
+
+// Drop the override so the page falls back to the role default.
+adminRoutes.delete('/users/:id/permissions/:page', requirePerm('permissions', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  const page_key = c.req.param('page')
+  const actor = c.get('actor')
+  if (id === actor.sub) return c.json({ error: 'cannot_change_own_access' }, 400)
+  const { error } = await db.from('user_page_permissions').delete().eq('user_id', id).eq('page_key', page_key)
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
+  await audit(actor, 'admin.user_permission_cleared', 'user_page_permissions', `${id}:${page_key}`, { page_key })
+  return c.json({ ok: true, reverted_to: 'role_default' })
 })
 
 adminRoutes.post('/merchants', requirePerm('merchants', 'can_create'), async (c) => {

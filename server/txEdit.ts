@@ -72,27 +72,84 @@ async function loadTx(txId: number) {
   return data
 }
 
-async function notifyApprovers(alertType: string, message: string): Promise<{ sent: number; chatIds: string[]; error?: string }> {
+export interface SentMessage { chat_id: string; message_id: number }
+
+async function notifyApprovers(
+  alertType: string,
+  message: string,
+  replyMarkup?: unknown,
+): Promise<{ sent: number; chatIds: string[]; messages: SentMessage[]; error?: string }> {
   const { data: chats } = await db.from('telegram_chats').select('chat_id, label').eq('is_active', true)
   const chatIds = (chats ?? [])
     .filter((c) => APPROVER_LABEL_PREFIXES.some((p) => (c.label ?? '').trim().toLowerCase().startsWith(p.toLowerCase())))
     .map((c) => String(c.chat_id))
-  if (!chatIds.length) return { sent: 0, chatIds: [], error: 'no_approver_chats' }
+  if (!chatIds.length) return { sent: 0, chatIds: [], messages: [], error: 'no_approver_chats' }
 
   const baseUrl = process.env.SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SECRET_KEY
-  if (!baseUrl || !serviceKey) return { sent: 0, chatIds, error: 'telegram_not_configured' }
+  if (!baseUrl || !serviceKey) return { sent: 0, chatIds, messages: [], error: 'telegram_not_configured' }
   try {
     const res = await fetch(`${baseUrl}/functions/v1/telegram-notify`, {
       method: 'POST',
       headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
-      body: JSON.stringify({ alert_type: alertType, message, chat_ids: chatIds }),
+      body: JSON.stringify({ alert_type: alertType, message, chat_ids: chatIds, reply_markup: replyMarkup }),
     })
     const out = await res.json().catch(() => ({})) as Record<string, unknown>
-    if (!res.ok) return { sent: 0, chatIds, error: String(out.error ?? `HTTP ${res.status}`) }
-    return { sent: Number(out.sent ?? 0), chatIds }
+    if (!res.ok) return { sent: 0, chatIds, messages: [], error: String(out.error ?? `HTTP ${res.status}`) }
+    // Only messages that actually landed carry an id, and only those can be
+    // edited later to switch the buttons off.
+    const messages = ((out.results ?? []) as { chat_id?: string; ok?: boolean; message_id?: number }[])
+      .filter((r) => r.ok && r.chat_id && typeof r.message_id === 'number')
+      .map((r) => ({ chat_id: String(r.chat_id), message_id: Number(r.message_id) }))
+    return { sent: Number(out.sent ?? 0), chatIds, messages }
   } catch (e) {
-    return { sent: 0, chatIds, error: e instanceof Error ? e.message : 'send_failed' }
+    return { sent: 0, chatIds, messages: [], error: e instanceof Error ? e.message : 'send_failed' }
+  }
+}
+
+// Rewrite the approval messages in place once a request is settled.
+//
+// A decision taken in the panel has to reach Telegram too, otherwise Mina and
+// Eslam keep looking at a live pair of buttons for something already decided —
+// and pressing one then returns "already decided", which reads like a bug. The
+// message becomes the record of who decided and what happened.
+//
+// Editing needs the bot token directly (telegram-notify only sends), and this
+// is best-effort: a failure here must never undo a decision that was already
+// applied to the transaction.
+async function settleApproverMessages(
+  row: { id: number; ontarget_ref?: unknown; tx_id?: unknown; telegram_message_ids?: unknown },
+  headline: string,
+  detail: string,
+): Promise<void> {
+  const pairs = Array.isArray(row.telegram_message_ids) ? row.telegram_message_ids : []
+  if (!pairs.length) return
+  const { data: cfg } = await db
+    .from('maven_runtime_config').select('value')
+    .eq('name', 'TELEGRAM_BOT_TOKEN').eq('owner_name', 'global').maybeSingle()
+  const token = cfg?.value
+  if (!token) return
+
+  const text =
+    `<b>${esc(headline)}</b>\n` +
+    `المرجع: <code>${esc(row.ontarget_ref ?? row.tx_id)}</code>\n` +
+    `${esc(detail)}\n` +
+    `رقم الطلب: <code>${row.id}</code>`
+
+  for (const p of pairs as { chat_id?: string; message_id?: number }[]) {
+    if (!p?.chat_id || !p?.message_id) continue
+    try {
+      await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: p.chat_id, message_id: p.message_id, text,
+          parse_mode: 'HTML', reply_markup: { inline_keyboard: [] },
+        }),
+      })
+    } catch {
+      // Best effort — the decision is already recorded either way.
+    }
   }
 }
 
@@ -226,10 +283,23 @@ txEditRoutes.post('/:txId/edit-request', async (c) => {
   ]
   if (parsed.status) lines.push(`الحالة: <b>${esc(tx.status)}</b> ← <b>${esc(parsed.status)}</b>`)
   if (parsed.amount != null) lines.push(`المبلغ: <b>${esc(tx.amount)}</b> ← <b>${esc(parsed.amount)}</b> ${esc(tx.currency ?? '')}`)
-  lines.push(`السبب: ${esc(parsed.reason)}`, '', `رقم الطلب: <code>${row.id}</code> — يُنفَّذ فقط بعد الموافقة من اللوحة.`)
+  lines.push(`السبب: ${esc(parsed.reason)}`, '', `رقم الطلب: <code>${row.id}</code> — لا يُنفَّذ إلا بعد موافقتك، من الأزرار هنا أو من اللوحة.`)
 
-  const notified = await notifyApprovers('transaction_edit_request', lines.join('\n'))
-  await db.from('transaction_edit_requests').update({ notified_chat_ids: notified.chatIds }).eq('id', row.id)
+  // The buttons carry only the request id and the verb. Everything that decides
+  // what actually happens — the target status, the amount, the transaction — is
+  // read from the row at press time, so a stale or copied button can never
+  // smuggle in different values.
+  const keyboard = {
+    inline_keyboard: [[
+      { text: '✅ موافقة', callback_data: `txedit:${row.id}:approve` },
+      { text: '❌ رفض', callback_data: `txedit:${row.id}:reject` },
+    ]],
+  }
+
+  const notified = await notifyApprovers('transaction_edit_request', lines.join('\n'), keyboard)
+  await db.from('transaction_edit_requests')
+    .update({ notified_chat_ids: notified.chatIds, telegram_message_ids: notified.messages })
+    .eq('id', row.id)
 
   await db.from('audit_log').insert({
     actor_type: 'manual_panel',
@@ -282,6 +352,8 @@ txEditRoutes.post('/edit-requests/:id/decision', async (c) => {
       action: 'transaction.edit_rejected', entity: 'transaction_edit_requests', entity_id: String(id),
       after: { tx_id: req.tx_id, note },
     })
+    await settleApproverMessages(req, '❌ رُفض الطلب',
+      `القرار بواسطة: ${actor.username}\nلم يتغيّر شيء في المعاملة.${note ? `\nملاحظة: ${note}` : ''}`)
     return c.json({ ok: true, status: 'rejected' })
   }
 
@@ -300,11 +372,20 @@ txEditRoutes.post('/edit-requests/:id/decision', async (c) => {
     await db.from('transaction_edit_requests')
       .update({ status: 'failed', decided_by: actor.username, decided_at: nowIso, decision_note: note, apply_error: JSON.stringify(result) })
       .eq('id', id)
+    // Never let Telegram show a settled request that actually failed here.
+    await settleApproverMessages(req, '⚠️ ووفِق عليه لكن التنفيذ فشل',
+      `القرار بواسطة: ${actor.username}\nالخطأ: ${result.error}\nالمعاملة لم تتغيّر.`)
     return c.json(result, 502)
   }
 
   await db.from('transaction_edit_requests')
     .update({ status: 'applied', decided_by: actor.username, decided_at: nowIso, decision_note: note })
     .eq('id', id)
+  await settleApproverMessages(req, '✅ ووفِق عليه ونُفِّذ',
+    `القرار بواسطة: ${actor.username}\n` +
+    (result.executed
+      ? 'نُفِّذ على المزوّد وتم التحقق منه.'
+      : 'تصحيح محلي فقط — لم يُبلَّغ المزوّد.') +
+    (note ? `\nملاحظة: ${note}` : ''))
   return c.json({ ok: true, status: 'applied', local_only: result.localOnly, executed_on_provider: result.executed ?? false })
 })

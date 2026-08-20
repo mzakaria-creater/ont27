@@ -16,16 +16,39 @@ export const requireAuth = createMiddleware<AuthEnv>(async (c, next) => {
 
 type PermAction = 'can_view' | 'can_create' | 'can_edit' | 'can_delete' | 'can_approve' | 'can_export'
 
+// Permissions come from the role matrix, with any per-user override for that
+// page swapped in. The override REPLACES the role's row rather than being OR'd
+// onto it, so one person can be granted an extra page or have one taken away
+// without touching everyone else who shares the role.
+//
+// This resolution lives here, in the guard, not only in what the UI is told:
+// a per-user grant that the API did not honour would be a lie, and a per-user
+// revoke that the API ignored would be a hole.
+async function effectivePerms(userId: string, role: string, pageKeys: string[]): Promise<Record<string, Record<string, boolean>>> {
+  const [roleRes, overrideRes] = await Promise.all([
+    db.from('role_page_permissions').select('page_key, can_view, can_create, can_edit, can_delete, can_approve, can_export')
+      .eq('role_key', role).in('page_key', pageKeys),
+    db.from('user_page_permissions').select('page_key, can_view, can_create, can_edit, can_delete, can_approve, can_export')
+      .eq('user_id', userId).in('page_key', pageKeys),
+  ])
+  type PermRow = { page_key: string } & Record<string, boolean>
+  const merged: Record<string, Record<string, boolean>> = {}
+  // Role first, then overrides on top — last write wins, which is the replace
+  // semantics the override is meant to have.
+  for (const rows of [roleRes.data, overrideRes.data]) {
+    for (const row of (rows ?? []) as unknown as PermRow[]) {
+      const { page_key, ...actions } = row
+      merged[page_key] = actions
+    }
+  }
+  return merged
+}
+
 export function requirePerm(pageKey: string, action: PermAction) {
   return createMiddleware<AuthEnv>(async (c, next) => {
     const actor = c.get('actor')
-    const { data } = await db
-      .from('role_page_permissions')
-      .select(action)
-      .eq('role_key', actor.role)
-      .eq('page_key', pageKey)
-      .maybeSingle()
-    if (!(data as Record<string, boolean> | null)?.[action]) {
+    const perms = await effectivePerms(actor.sub, actor.role, [pageKey])
+    if (!perms[pageKey]?.[action]) {
       return c.json({ error: 'forbidden', page: pageKey, action }, 403)
     }
     await next()
@@ -37,13 +60,8 @@ export function requirePerm(pageKey: string, action: PermAction) {
 export function requireAnyPerm(pageKeys: string[], action: PermAction) {
   return createMiddleware<AuthEnv>(async (c, next) => {
     const actor = c.get('actor')
-    const { data } = await db
-      .from('role_page_permissions')
-      .select(`page_key, ${action}`)
-      .eq('role_key', actor.role)
-      .in('page_key', pageKeys)
-    const rows = (data ?? []) as unknown as Record<string, boolean>[]
-    if (!rows.some((r) => r[action])) {
+    const perms = await effectivePerms(actor.sub, actor.role, pageKeys)
+    if (!Object.values(perms).some((p) => p[action])) {
       return c.json({ error: 'forbidden', pages: pageKeys, action }, 403)
     }
     await next()

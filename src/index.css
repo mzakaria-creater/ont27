@@ -77,7 +77,15 @@ body {
   flex-direction: column;
 }
 
+/* Pinned to the top of the viewport. The shell is min-height:100%, so a long
+   page grows the document and the bar would otherwise scroll out of reach —
+   taking the connection dot, the alert bell and sign-out with it.
+   z-index sits below the drawer (50), modals (60) and the mobile nav (70-80)
+   so those still cover it. */
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1167,6 +1175,12 @@ a.stat-card:hover { border-color: var(--accent); }
 .tv-item-main { font-size: 13px; }
 .tv-item-sub { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
 
+/* Active/disabled toggle row in the user editor. */
+.user-active-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-block: 14px 4px; font-size: 12.5px; cursor: pointer;
+}
+
 /* Field caption above an input in a card form (transaction edit panel). */
 .field-label {
   display: block; font-size: 11px; color: var(--text-dim);
@@ -1389,3 +1403,134 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .dot-st-declined { background: var(--status-declined); }
 .dot-st-under { background: var(--payfuture, #a89ee8); }
 .dot-st-dim { background: var(--text-muted); }
+
+/* Payment method mark + name, so the column reads at a glance. The mark is a
+   drawn placeholder in the provider's colour, never the provider's real logo. */
+.method-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-inline-size: 0;
+}
+
+.method-logo {
+  inline-size: 22px;
+  block-size: 22px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  flex: none;
+  letter-spacing: -0.02em;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.method-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- System health: gauges, hourly bars, stat tiles ---- */
+.gauge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 12px;
+  margin-block-end: 16px;
+}
+
+.gauge-tile, .stat-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-inline-size: 0;
+}
+
+.gauge-title {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gauge-body { position: relative; display: flex; justify-content: center; }
+.gauge-svg { inline-size: 100%; max-inline-size: 150px; block-size: auto; display: block; }
+.gauge-track, .gauge-fill { fill: none; stroke-width: 9; stroke-linecap: round; }
+.gauge-track { stroke: var(--hover-2); }
+.gauge-fill { stroke: var(--text-dim); transition: stroke-dasharray 0.4s ease; }
+
+.band-good .gauge-fill { stroke: #3b9c5e; }
+.band-warn .gauge-fill { stroke: var(--accent); }
+.band-bad  .gauge-fill { stroke: #c0453f; }
+
+.gauge-value {
+  position: absolute;
+  inset-block-end: 2px;
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+}
+.gauge-unit { font-size: 12px; font-weight: 500; color: var(--text-dim); margin-inline-start: 1px; }
+.gauge-sub { font-size: 10.5px; color: var(--text-dim); }
+
+.stat-tile { justify-content: space-between; }
+.stat-big {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.25;
+  direction: ltr;
+  font-variant-numeric: tabular-nums;
+}
+
+.health-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+  margin-block-end: 16px;
+}
+.chart-card { padding: 12px 14px 10px; }
+
+.hchart-plot {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  block-size: 132px;
+  padding-block-start: 8px;
+  direction: ltr;
+}
+.hchart-col { flex: 1 1 0; min-inline-size: 0; display: flex; flex-direction: column; justify-content: flex-end; block-size: 100%; }
+.hchart-stack { display: flex; flex-direction: column-reverse; justify-content: flex-start; block-size: 100%; }
+.hchart-seg { inline-size: 100%; border-radius: 2px 2px 0 0; min-block-size: 2px; }
+.hchart-seg.seg-0 { background: #3b9c5e; }
+.hchart-seg.seg-1 { background: #c0453f; }
+.hchart-seg.seg-2 { background: var(--accent); }
+.hchart-seg.seg-3 { background: var(--text-dim); }
+/* A quiet hour still shows a hairline, so "nothing arrived" is visible
+   rather than indistinguishable from the axis. */
+.hchart-zero { block-size: 2px; background: var(--hover-2); border-radius: 2px; }
+.hchart-x { font-size: 9px; color: var(--text-dim); text-align: center; margin-block-start: 4px; }
+
+.hchart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  margin-block-start: 8px;
+}
+.hchart-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.hchart-legend i { inline-size: 9px; block-size: 9px; border-radius: 2px; display: inline-block; }
+.hchart-legend i.seg-0 { background: #3b9c5e; }
+.hchart-legend i.seg-1 { background: #c0453f; }
+.hchart-legend i.seg-2 { background: var(--accent); }
+.hchart-legend i.seg-3 { background: var(--text-dim); }

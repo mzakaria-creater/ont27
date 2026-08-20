@@ -38,6 +38,7 @@ import KnownRecipients from './pages/KnownRecipients'
 import TreasuryHub from './pages/TreasuryHub'
 import ExecutiveDashboard from './pages/ExecutiveDashboard'
 import AnalyticsDashboard from './pages/AnalyticsDashboard'
+import SystemHealth from './pages/SystemHealth'
 import { api } from './lib/api'
 import { merchantChipCls, money } from './lib/deposits'
 import { SUPABASE_URL, SUPABASE_KEY } from './lib/supabase'
@@ -138,6 +139,33 @@ function Bell() {
             ))}
           </div>
 
+          {(data.myEditRequests ?? []).length > 0 && (
+            <div className="alert-section">
+              <div className="alert-section-head">
+                <span>✏️ {t('طلبات التعديل الخاصة بك', 'Your edit requests')}</span>
+              </div>
+              {(data.myEditRequests ?? []).map((r) => {
+                const settled =
+                  r.status === 'applied' ? { icon: '✅', cls: '', label: t('نُفِّذ', 'Applied') }
+                  : r.status === 'rejected' ? { icon: '❌', cls: 'warn-item', label: t('رُفض', 'Rejected') }
+                  : { icon: '⚠️', cls: 'warn-item', label: t('فشل التنفيذ', 'Apply failed') }
+                return (
+                  <Link
+                    key={r.id}
+                    to={`/transactions/${r.tx_id}`}
+                    className={`bell-item ${settled.cls}`}
+                    onClick={() => setOpen(false)}
+                  >
+                    <span>{settled.icon} <span className="mono">{r.ontarget_ref ?? r.tx_id}</span> · {settled.label}</span>
+                    <span className="alert-row-mid">
+                      {r.decided_by ? t(`بواسطة ${r.decided_by}`, `by ${r.decided_by}`) : ''}
+                    </span>
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+
           {data.offlineDevices.length > 0 && (
             <Link to="/wallets" className="bell-item warn-item" onClick={() => setOpen(false)}>
               {t('📵 أجهزة غير متصلة: ', '📵 Offline devices: ')}{data.offlineDevices.join(', ')}
@@ -227,6 +255,7 @@ export default function App() {
             <Route path="/monitor" element={<Monitor />} />
             <Route path="/executive-dashboard" element={<ExecutiveDashboard />} />
             <Route path="/analytics-dashboard" element={<AnalyticsDashboard />} />
+            <Route path="/system-health" element={<SystemHealth />} />
             <Route path="/deposits" element={<Deposits />} />
             <Route path="/payouts" element={<Payouts />} />
             <Route path="/transactions" element={<Transactions />} />
