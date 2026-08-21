@@ -774,6 +774,8 @@ a.stat-card:hover { border-color: var(--accent); }
 
 .pager { display: flex; gap: 10px; align-items: center; justify-content: center; padding-block-start: 12px; }
 .pager-info { color: var(--text-dim); font-size: 13px; }
+.pager-size { display: flex; align-items: center; gap: 6px; }
+.pager-size .filter-select { min-height: 30px; padding-block: 2px; }
 
 .st-under { background: color-mix(in srgb, var(--status-pending) 20%, transparent); color: var(--status-pending); }
 
@@ -1095,6 +1097,13 @@ a.stat-card:hover { border-color: var(--accent); }
     max-height: none; overflow-y: auto;
   }
   html[dir="ltr"] .sidebar { transform: translateX(-100%); }
+  /* The open state must out-rank the direction rule, not merely follow it.
+     `html[dir="ltr"] .sidebar` scores (0,2,1) against `.sidebar.open` at
+     (0,2,0), so in English the drawer stayed parked at -100% and the toggle
+     did nothing — while Arabic worked, because RTL never matches the [dir]
+     rule at all. Both selectors are listed so neither direction loses. */
+  html[dir="ltr"] .sidebar.open,
+  html[dir="rtl"] .sidebar.open,
   .sidebar.open { transform: translateX(0); }
 
   .sms-rail { display: none; }

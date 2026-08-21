@@ -4,10 +4,11 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { usePageSize } from '../lib/pageSize'
+import PageSizeSelect from '../components/PageSizeSelect'
 
 // CRM — crm_clients directory.
 
-const PAGE_SIZE = 25
 
 interface ClientRow {
   id: string
@@ -38,6 +39,7 @@ interface ClientDetail {
 }
 
 export default function Crm() {
+  const [pageSize, setPageSize] = usePageSize('crm')
   const { t } = useLocale()
   const [params, setParams] = useSearchParams()
   const page = Math.max(Number(params.get('page')) || 1, 1)
@@ -54,7 +56,7 @@ export default function Crm() {
   }
 
   const load = useCallback(async () => {
-    const search = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String((page - 1) * PAGE_SIZE) })
+    const search = new URLSearchParams({ limit: String(pageSize), offset: String((page - 1) * pageSize) })
     if (appliedQ) search.set('q', appliedQ)
     try {
       setData(await api<ListResponse>(`/api/crm?${search}`))
@@ -62,7 +64,7 @@ export default function Crm() {
     } catch (e) {
       setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض العملاء.', 'You do not have permission to view clients.') : t('تعذّر تحميل العملاء.', 'Failed to load clients.'))
     }
-  }, [appliedQ, page])
+  }, [appliedQ, page, pageSize])
 
   useEffect(() => { void load() }, [load])
 
@@ -78,7 +80,7 @@ export default function Crm() {
     setParams(p)
   }
 
-  const totalPages = data ? Math.max(Math.ceil(data.total / PAGE_SIZE), 1) : 1
+  const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1
 
   return (
     <PanelShell>
@@ -150,6 +152,7 @@ export default function Crm() {
         {data && totalPages > 1 && (
           <div className="pager">
             <button className="btn-ghost btn-sm" disabled={page <= 1} onClick={() => setFilter({ page: page - 1 })}>→ {t('السابق', 'Prev')}</button>
+            <PageSizeSelect value={pageSize} onChange={(n) => { setPageSize(n); setFilter({ page: 1 }) }} />
             <span className="pager-info mono">{page} / {totalPages}</span>
             <button className="btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setFilter({ page: page + 1 })}>{t('التالي', 'Next')} ←</button>
           </div>

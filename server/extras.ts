@@ -3,6 +3,7 @@ import { db } from './db.js'
 import { oldDb } from './oldDb.js'
 import { requireAuth, requirePerm, requireAnyPerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
+import { MAX_PAGE } from './paging.js'
 
 // The remaining §5 module pages, one route each. Sensitive columns
 // (api_key, secret_hash, password_hash, raw_profile, tokens) are NEVER selected.
@@ -24,7 +25,7 @@ extraRoutes.get(
     const type = c.req.query('type') // deposit | payout | ''
     const status = c.req.query('status')?.toUpperCase()
     const q = c.req.query('q')?.trim()
-    const limit = Math.min(Number(c.req.query('limit')) || 25, 100)
+    const limit = Math.min(Number(c.req.query('limit')) || 25, MAX_PAGE)
     const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
     const fetchTo = offset + limit
 
@@ -224,7 +225,7 @@ extraRoutes.get('/wallet-report/:wallet', requireAnyPerm(['sms_live', 'wallets']
 // ---- CRM clients ----
 extraRoutes.get('/crm', requirePerm('client_crm', 'can_view'), async (c) => {
   const q = c.req.query('q')?.trim()
-  const limit = Math.min(Number(c.req.query('limit')) || 25, 100)
+  const limit = Math.min(Number(c.req.query('limit')) || 25, MAX_PAGE)
   const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
   let query = db
     .from('crm_clients')
@@ -588,7 +589,7 @@ extraRoutes.get(
 // ---- Audit log ----
 extraRoutes.get('/audit', requireAnyPerm(['audit_log', 'audit-logs'], 'can_view'), async (c) => {
   const q = c.req.query('q')?.trim()
-  const limit = Math.min(Number(c.req.query('limit')) || 25, 100)
+  const limit = Math.min(Number(c.req.query('limit')) || 25, MAX_PAGE)
   const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
   let query = db
     .from('audit_log')

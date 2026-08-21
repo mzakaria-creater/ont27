@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { db } from './db.js'
 import { requireAuth, requirePerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
+import { MAX_PAGE } from './paging.js'
 
 // Payouts = maven_payout_transactions. Key column is maven_id (Maven's id);
 // ontarget_ref is OUR reference and is what the panel surfaces first.
@@ -21,7 +22,7 @@ const PROOF_PREFIX = 'payout-proofs/'
 payoutRoutes.get('/', requirePerm('payouts', 'can_view'), async (c) => {
   const status = c.req.query('status')?.toUpperCase()
   const q = c.req.query('q')?.trim()
-  const limit = Math.min(Number(c.req.query('limit')) || 25, 100)
+  const limit = Math.min(Number(c.req.query('limit')) || 25, MAX_PAGE)
   const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
 
   let query = db

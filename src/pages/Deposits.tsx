@@ -11,8 +11,9 @@ import { useLocale } from '../lib/locale'
 import MethodLogo from '../components/MethodLogo'
 import { depositTime, merchantChipCls, money, statusMeta } from '../lib/deposits'
 import type { DepositDetail, DepositRow, DepositStats } from '../lib/deposits'
+import { usePageSize } from '../lib/pageSize'
+import PageSizeSelect from '../components/PageSizeSelect'
 
-const PAGE_SIZE = 25
 const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
 const MASTER_PILLS = [
   { key: 'NGPay', cls: 'ngpay' },
@@ -52,6 +53,7 @@ function smsFirstLine(s: MatchedSms): string {
 }
 
 export default function Deposits() {
+  const [pageSize, setPageSize] = usePageSize('deposits')
   const { can } = useAuth()
   const { t } = useLocale()
   const [params, setParams] = useSearchParams()
@@ -77,8 +79,8 @@ export default function Deposits() {
     setLoading(true)
     setErr(null)
     const search = new URLSearchParams({
-      limit: String(PAGE_SIZE),
-      offset: String((page - 1) * PAGE_SIZE),
+      limit: String(pageSize),
+      offset: String((page - 1) * pageSize),
     })
     if (status) search.set('status', status)
     if (master) search.set('master', master)
@@ -90,7 +92,7 @@ export default function Deposits() {
     } finally {
       setLoading(false)
     }
-  }, [status, master, appliedQ, page])
+  }, [status, master, appliedQ, page, pageSize])
 
   useEffect(() => {
     api<DepositStats>('/api/deposits/stats').then(setStats).catch(() => setStats(null))
@@ -255,7 +257,7 @@ export default function Deposits() {
     }
   }
 
-  const totalPages = data ? Math.max(Math.ceil(data.total / PAGE_SIZE), 1) : 1
+  const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1
 
   return (
     <PanelShell>
@@ -553,7 +555,8 @@ export default function Deposits() {
           <button className="btn-ghost btn-sm" disabled={page <= 1} onClick={() => setFilter({ page: page - 1 })}>
             → السابق
           </button>
-          <span className="pager-info mono">{page} / {totalPages}</span>
+          <PageSizeSelect value={pageSize} onChange={(n) => { setPageSize(n); setFilter({ page: 1 }) }} />
+            <span className="pager-info mono">{page} / {totalPages}</span>
           <button className="btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setFilter({ page: page + 1 })}>
             التالي ←
           </button>

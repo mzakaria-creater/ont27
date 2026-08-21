@@ -4,10 +4,11 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { usePageSize } from '../lib/pageSize'
+import PageSizeSelect from '../components/PageSizeSelect'
 
 // All transactions — deposits + payouts merged, sorted by our ref.
 
-const PAGE_SIZE = 25
 const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
 
 interface TxRow {
@@ -39,6 +40,7 @@ interface ListResponse {
 }
 
 export default function Transactions() {
+  const [pageSize, setPageSize] = usePageSize('transactions')
   const { t } = useLocale()
   const [params, setParams] = useSearchParams()
   const type = params.get('type') ?? ''
@@ -54,7 +56,7 @@ export default function Transactions() {
   const load = useCallback(async () => {
     setLoading(true)
     setErr(null)
-    const search = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String((page - 1) * PAGE_SIZE) })
+    const search = new URLSearchParams({ limit: String(pageSize), offset: String((page - 1) * pageSize) })
     if (type) search.set('type', type)
     if (status) search.set('status', status)
     if (appliedQ) search.set('q', appliedQ)
@@ -65,7 +67,7 @@ export default function Transactions() {
     } finally {
       setLoading(false)
     }
-  }, [type, status, appliedQ, page])
+  }, [type, status, appliedQ, page, pageSize])
 
   useEffect(() => { void load() }, [load])
 
@@ -93,7 +95,7 @@ export default function Transactions() {
     setParams(p)
   }
 
-  const totalPages = data ? Math.max(Math.ceil(data.total / PAGE_SIZE), 1) : 1
+  const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1
 
   return (
     <PanelShell>
@@ -188,6 +190,7 @@ export default function Transactions() {
         {data && totalPages > 1 && (
           <div className="pager">
             <button className="btn-ghost btn-sm" disabled={page <= 1} onClick={() => setFilter({ page: page - 1 })}>→ {t('السابق', 'Prev')}</button>
+            <PageSizeSelect value={pageSize} onChange={(n) => { setPageSize(n); setFilter({ page: 1 }) }} />
             <span className="pager-info mono">{page} / {totalPages}</span>
             <button className="btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setFilter({ page: page + 1 })}>{t('التالي', 'Next')} ←</button>
           </div>

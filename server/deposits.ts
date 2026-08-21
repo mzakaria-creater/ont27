@@ -4,6 +4,7 @@ import { db } from './db.js'
 import { oldDb } from './oldDb.js'
 import { requireAuth, requirePerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
+import { MAX_PAGE } from './paging.js'
 
 // Deposits = maven_transactions (ground truth for the deposit flow).
 // Real statuses observed in panel-v2 data: PENDING | PAID | APPROVED |
@@ -114,7 +115,7 @@ depositRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
   const status = c.req.query('status')?.toUpperCase()
   const master = c.req.query('master')?.trim()
   const q = c.req.query('q')?.trim()
-  const limit = Math.min(Number(c.req.query('limit')) || 25, 100)
+  const limit = Math.min(Number(c.req.query('limit')) || 25, MAX_PAGE)
   const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
 
   let query = db
