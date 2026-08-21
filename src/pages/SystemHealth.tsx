@@ -52,12 +52,19 @@ function Arc({ value }: { value: number | null }) {
   )
 }
 
-function GaugeTile({ title, gauge, sub }: { title: string; gauge: Gauge; sub: string }) {
+// `neutral` marks a tile whose value is a COUNT, not a success rate. Such a
+// tile is never banded: running a single device while the rest sit
+// deliberately off is normal operation, so "1 of 7" is not a 14% failure and
+// must not be painted red. The arc still fills by value/of to show proportion.
+function GaugeTile({ title, gauge, sub, neutral }: { title: string; gauge: Gauge; sub: string; neutral?: boolean }) {
+  const arc = neutral
+    ? (gauge.of > 0 && gauge.value != null ? (gauge.value / gauge.of) * 100 : null)
+    : gauge.value
   return (
-    <div className={`gauge-tile band-${band(gauge.value)}`}>
+    <div className={`gauge-tile band-${neutral ? 'none' : band(gauge.value)}`}>
       <div className="gauge-title">{title}</div>
       <div className="gauge-body">
-        <Arc value={gauge.value} />
+        <Arc value={arc} />
         <div className="gauge-value">
           {gauge.value == null ? '—' : <>{gauge.value}<span className="gauge-unit">{gauge.unit}</span></>}
         </div>
@@ -153,9 +160,13 @@ export default function SystemHealth() {
               sub={t(`من ${data.gauges.smsMatchRate.of} رسالة إيداع`, `of ${data.gauges.smsMatchRate.of} deposit SMS`)}
             />
             <GaugeTile
-              title={t('الأجهزة المتصلة', 'Devices online')}
+              title={t('الأجهزة النشطة', 'Devices active')}
               gauge={data.gauges.devicesOnline}
-              sub={t(`من ${data.gauges.devicesOnline.of} جهاز`, `of ${data.gauges.devicesOnline.of} devices`)}
+              sub={t(
+                `من ${data.gauges.devicesOnline.of} مسجّلة — التشغيل بجهاز واحد وضع طبيعي`,
+                `of ${data.gauges.devicesOnline.of} registered — running one device is normal`,
+              )}
+              neutral
             />
             <GaugeTile
               title={t('تسليم Telegram', 'Telegram delivery')}

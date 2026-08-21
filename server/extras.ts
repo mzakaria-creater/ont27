@@ -1165,7 +1165,11 @@ extraRoutes.get('/system-health', async (c) => {
       // null means "nothing happened in the window", which the UI shows as no
       // data rather than as a confident 0% or 100%.
       smsMatchRate: { value: pct(matchedDeposits, deposits.length), of: deposits.length, unit: '%' },
-      devicesOnline: { value: pct(onlineDevices, devices.length), of: devices.length, unit: '%' },
+      // A COUNT, not a success rate. Operations often run a single device
+      // while the rest sit deliberately off, so "1 of 7" is normal — expressed
+      // as a percentage it read 14% and the tile banded itself permanently
+      // red. The UI renders this one neutral (see GaugeTile `neutral`).
+      devicesOnline: { value: onlineDevices, of: devices.length, unit: '' },
       telegramDelivery: { value: pct(tgOk, tgAlerts.length), of: tgAlerts.length, unit: '%' },
       approvalRate: {
         value: pct(
