@@ -337,7 +337,10 @@ export default function Automation() {
               </div>
             )}
             {newRule.action_type === 'approve' && (newRule.use_crm_matching || newRule.use_near_amount || newRule.use_unique_amount) && (
-              <div className="card warn">{t('⚠️ المحرّك الحي سيرفض تنفيذ هذه القاعدة تلقائياً (matching_not_implemented) لأن أدوات المطابقة الفعلية غير مبنية بعد — ستُحفظ لكن لن تُنفَّذ حتى تُبنى.', '⚠️ The live engine will refuse to execute this rule (matching_not_implemented) — real matching verification isn’t built yet. It will save but won’t fire until it is.')}</div>
+              <div className="card">{t(
+                'هذه الخيارات تتجاوز إعدادات المطابقة العامة لهذه القاعدة وحدها. إلغاء تحديد أيٍّ منها يوقف تلك الطبقة لهذه القاعدة فقط — ولا يوقف المطابقة كلها: طبقات الهاتف والمحفظة والجهاز تظل تعمل.',
+                'These override the global matching settings for this rule only. Unticking one disables that layer for this rule alone — it does not disable matching: the phone, wallet and device layers still apply.',
+              )}</div>
             )}
             {ruleMsg && <p className="page-sub">{ruleMsg}</p>}
             {ruleConflict && ruleConflict.length > 0 && (
