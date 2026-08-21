@@ -838,6 +838,9 @@ a.stat-card:hover { border-color: var(--accent); }
 .link-section { margin-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px; }
 .link-section h4 { margin: 0 0 10px; font-size: 14px; }
 .cand-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+/* Unadorned stack of lines inside a card — used where each entry is a full
+   sentence and a bullet would fight the surrounding prose. */
+.plain-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .cand-item {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   background: rgba(255,255,255,0.04);

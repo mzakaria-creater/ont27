@@ -39,6 +39,7 @@ import TreasuryHub from './pages/TreasuryHub'
 import ExecutiveDashboard from './pages/ExecutiveDashboard'
 import AnalyticsDashboard from './pages/AnalyticsDashboard'
 import SystemHealth from './pages/SystemHealth'
+import Performance from './pages/Performance'
 import { api } from './lib/api'
 import { merchantChipCls, money } from './lib/deposits'
 import { SUPABASE_URL, SUPABASE_KEY } from './lib/supabase'
@@ -256,6 +257,7 @@ export default function App() {
             <Route path="/executive-dashboard" element={<ExecutiveDashboard />} />
             <Route path="/analytics-dashboard" element={<AnalyticsDashboard />} />
             <Route path="/system-health" element={<SystemHealth />} />
+            <Route path="/performance" element={<Performance />} />
             <Route path="/deposits" element={<Deposits />} />
             <Route path="/payouts" element={<Payouts />} />
             <Route path="/transactions" element={<Transactions />} />
