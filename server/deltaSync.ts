@@ -116,6 +116,9 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
       let payload = rows as Record<string, unknown>[]
       if (table === 'maven_transactions') {
         const localTs = new Map<number, number>()
+        // The guard needs our CURRENT values, not just the timestamp: a blocked
+        // row is rewritten with them rather than having the keys removed.
+        const localHold = new Map<number, { status: unknown; last_status_change: unknown }>()
         // A full page is 1000 ids, and PostgREST puts .in() in the query
         // string — one request would build a ~10KB URL and be rejected. It
         // must also THROW on failure rather than fall through: an empty map
@@ -125,11 +128,12 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
         for (let i = 0; i < ids.length; i += LOOKUP_CHUNK) {
           const { data: locals, error: localErr } = await db
             .from('maven_transactions')
-            .select('tx_id, last_status_change')
+            .select('tx_id, status, last_status_change')
             .in('tx_id', ids.slice(i, i + LOOKUP_CHUNK))
           if (localErr) throw new Error(`status guard lookup: ${localErr.message}`)
           for (const l of locals ?? []) {
             localTs.set(l.tx_id, l.last_status_change ? Date.parse(l.last_status_change) : 0)
+            localHold.set(l.tx_id, { status: l.status, last_status_change: l.last_status_change })
           }
         }
         payload = payload.map((r) => {
@@ -140,8 +144,16 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
           // An incoming row with no usable timestamp cannot prove it is newer,
           // so it does not get to move a status we already hold.
           if (Number.isFinite(theirs) && theirs >= mine) return r
-          const { status: _s, last_status_change: _l, ...rest } = r
-          return rest
+          // Rewrite the blocked columns with what we already hold instead of
+          // deleting the keys. Deleting them made this array heterogeneous, and
+          // PostgREST builds one bulk INSERT from the first object's columns —
+          // a mixed-key batch is rejected outright (PGRST102), so a SINGLE row
+          // needing the guard failed the whole updated-rows upsert. The error
+          // was caught into the results object that nothing reads, so status
+          // updates simply stopped arriving while new rows kept syncing through
+          // the other pass. Same protection, homogeneous payload.
+          const held = localHold.get(r.tx_id as number)
+          return { ...r, status: held?.status, last_status_change: held?.last_status_change }
         })
       }
 
@@ -173,7 +185,11 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
       const since = await watermark(table, ts, OVERLAP_MS)
       results[table] = await pullSince(table, pk, ts, since)
     } catch (e) {
+      // Recorded AND logged. These were only ever written into the returned
+      // results object, which no caller inspects — so a pass could fail every
+      // run for a day without anyone seeing it. That is exactly what happened.
       results[table] = `error: ${(e as Error).message}`
+      console.error(`deltaSync ${table} (new rows) failed:`, e)
     }
 
     if (!updatedTs || mode === 'fast') continue
@@ -182,6 +198,7 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
       results[`${table}:updated`] = await pullSince(table, pk, updatedTs, since)
     } catch (e) {
       results[`${table}:updated`] = `error: ${(e as Error).message}`
+      console.error(`deltaSync ${table} (status updates) failed:`, e)
     }
   }
 
