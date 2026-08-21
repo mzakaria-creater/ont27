@@ -324,8 +324,20 @@ extraRoutes.post(
     const reason = typeof body?.reason === 'string' ? body.reason.trim().slice(0, 300) : null
     if (!value) return c.json({ error: 'value_required' }, 400)
     const actor = c.get('actor')
-    const { data: existing } = await db.from('api_risk_blacklist').select('id').eq('value', value).maybeSingle()
-    if (existing) return c.json({ error: 'already_blacklisted', id: existing.id }, 409)
+    // Scoped by (type, value) — the table's real key — not by value alone, and
+    // NOT via .maybeSingle(): that errors out when more than one row matches,
+    // and the error was being discarded, so a duplicate read as "not present"
+    // and the insert went ahead. The upstream trigger had already piled up
+    // thousands of duplicate rows before a unique index was added, which is
+    // exactly the state this check silently mishandled.
+    const { data: existing, error: existErr } = await db
+      .from('api_risk_blacklist')
+      .select('id')
+      .eq('type', type)
+      .eq('value', value)
+      .limit(1)
+    if (existErr) return c.json({ error: 'db_error', detail: existErr.message }, 500)
+    if (existing?.length) return c.json({ error: 'already_blacklisted', id: existing[0].id }, 409)
     const { data, error } = await db.from('api_risk_blacklist')
       .insert({ type, value, reason: reason ?? `Added from velocity view by ${actor.username}` })
       .select('id, type, value, reason, created_at').single()

@@ -30,6 +30,12 @@ const GROWING: { table: string; pk: string; ts: string; updatedTs?: string }[] =
   // Both carry uuid PKs that the original migration preserved, so the upsert
   // is idempotent and the first run backfills the whole gap on its own.
   { table: 'crm_clients', pk: 'id', ts: 'created_at', updatedTs: 'updated_at' },
+  // Mirrored without a unique key on (type, value): this side is a copy, not a
+  // source. Upstream now enforces that key, so duplicates cannot arrive — but
+  // an unblock-then-reblock upstream would send a fresh id while the stale id
+  // still sat here, and a local unique key would turn that into a hard upsert
+  // failure for the whole batch. Delta sync carries inserts and updates only,
+  // never deletes.
   { table: 'api_risk_blacklist', pk: 'id', ts: 'created_at' },
 ]
 

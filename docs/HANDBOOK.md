@@ -66,7 +66,7 @@ TELEGRAM_CHAT_ID=...
 - **التجار:** `master_merchants` (NGPay + PayFuture)، `merchants` (11)، `merchants_hierarchy` (7)، `merchant_api_keys`
 - **الأتمتة:** `automation_settings` (Kill Switches)، `automation_rules_scoped` (3)، `maven_runtime_config` (37 — **أسرار، لا logs ولا commits**)
 - **SMS matching:** `inbound_sms`، `sms_balance_chains`، `sms_maven_matches`
-- **CRM + Risk:** `crm_clients`، `crm_client_names`، `client_transactions`، `api_risk_blacklist` (4,854)
+- **CRM + Risk:** `crm_clients`، `crm_client_names`، `client_transactions`، `api_risk_blacklist` (79 — صفّ واحد لكل رقم؛ كانت 5,168 صفاً مكرّراً قبل تنظيف 2026-08-21)
 - **الأجهزة:** `device_status`، `wallet_device_map` (ont1–ont6)، `wallet_device_history`
 - **Auth/RBAC:** `panel_users` (5)، `app_roles` (21 — بعد توحيد الأزواج المتطابقة)، `role_page_permissions` (525)، `role_migration_map`، `panel_users_2fa`، `panel_refresh_tokens`
 - **الجديد كلياً:** `local_deposit_channels` (4)، `exchange_rate_sources` (9)، `exchange_rates`، `checkout_sessions` (نظيف)، `audit_log`، `idempotency_keys`، `binance_treasury_config`، `binance_account_balances`
