@@ -1131,7 +1131,7 @@ extraRoutes.get('/system-health', async (c) => {
   const now = Date.now()
   const dayAgo = new Date(now - 86_400_000).toISOString()
 
-  const [txRows, smsRows, devices, tgAlerts, pendingPayouts, editRequests] = await Promise.all([
+  const [txRows, smsRows, devices, tgAlerts, pendingPayouts, editRequests, manualGap] = await Promise.all([
     db.from('maven_transactions')
       .select('status, gateway, first_seen_at, last_status_change')
       .gte('first_seen_at', dayAgo).limit(5000)
@@ -1164,6 +1164,21 @@ extraRoutes.get('/system-health', async (c) => {
     db.from('transaction_edit_requests')
       .select('status').gte('created_at', dayAgo)
       .then(({ data }) => data ?? []),
+    // Transactions approved by hand with NO SMS evidence (match_score = 0).
+    // This is the true size of the daily manual workload and the number that
+    // must fall if device coverage improves — an approval rate cannot show it,
+    // because these all end up approved either way.
+    //
+    // Read at the source: review_queue lives on the old project and is not
+    // part of the delta sync. Best-effort, so a failure here cannot take the
+    // health page down with it.
+    (async () => {
+      const old = oldDb()
+      if (!old) return null
+      const { data, error } = await old.rpc('manual_approval_gap_stats', { p_days: 14 })
+      if (error) { console.error('manual_approval_gap_stats failed:', error.message); return null }
+      return data
+    })(),
   ])
 
   // Hourly buckets, oldest first, so a flat line reads as "quiet" and a gap
@@ -1241,6 +1256,9 @@ extraRoutes.get('/system-health', async (c) => {
       editRequestsPending: editRequests.filter((r) => r.status === 'pending').length,
     },
     series: { txByHour, smsByHour },
+    // Null when the source is unreachable, so the UI can say "no data"
+    // instead of rendering a confident zero for work that did happen.
+    manualGap,
     devices,
     telegram: Object.values(
       tgAlerts.reduce<Record<string, { alert_type: string; ok: number; failed: number; lastError: string | null }>>((acc, a) => {
