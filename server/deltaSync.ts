@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { db } from './db.js'
 import { ACCESS_COOKIE, verifyAccessToken } from './tokens.js'
 import { repairPaidSmsMatches } from './smsMatcher.js'
+import { produceRiskAlerts } from './riskAlerts.js'
 
 // Pulls new rows from the OLD prod Supabase (where the Maven workers still
 // write) into the panel-v2 DB. Same overlap-window upsert idea as
@@ -251,6 +252,16 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
       results['sms_exact_matches'] = `error: ${(e as Error).message}`
       console.error('exact SMS matcher failed:', e)
     }
+  }
+
+  try {
+    const alerts = await produceRiskAlerts()
+    results['risk_alerts_sent'] = alerts.sent
+    console.info('risk alert producers completed', alerts)
+    if (alerts.errors.length) console.error('risk alert producer partial errors:', alerts.errors)
+  } catch (e) {
+    results['risk_alerts_sent'] = `error: ${(e as Error).message}`
+    console.error('risk alert producers failed:', e)
   }
 
   return results

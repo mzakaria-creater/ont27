@@ -1,6 +1,41 @@
 import { createHmac } from 'node:crypto'
 import { db } from './db.js'
 
+export interface TelegramDelivery {
+  ok: boolean
+  sent: number
+  error?: string
+  results?: unknown[]
+}
+
+// Canonical Telegram path. It keeps tokens and routing inside the Supabase
+// Edge Function, where alert gates and active chat selection are enforced.
+export async function sendTelegramAlert(alertType: string, text: string, chatIds?: string[]): Promise<TelegramDelivery> {
+  const baseUrl = process.env.SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SECRET_KEY
+  if (!baseUrl || !serviceKey) return { ok: false, sent: 0, error: 'telegram_not_configured' }
+  try {
+    const response = await fetch(`${baseUrl}/functions/v1/telegram-notify`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
+      body: JSON.stringify({ alert_type: alertType, message: text, ...(chatIds?.length ? { chat_ids: chatIds } : {}) }),
+    })
+    const result = await response.json().catch(() => ({})) as Record<string, unknown>
+    const delivery = {
+      ok: response.ok,
+      sent: Number(result.sent ?? 0),
+      error: response.ok ? undefined : String(result.error ?? `HTTP ${response.status}`),
+      results: Array.isArray(result.results) ? result.results : undefined,
+    }
+    if (!delivery.ok) console.error('telegram edge delivery failed:', { alertType, error: delivery.error })
+    return delivery
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'send_failed'
+    console.error('telegram edge delivery failed:', { alertType, error: message })
+    return { ok: false, sent: 0, error: message }
+  }
+}
+
 // Ops notification to Telegram — env-driven; silently skipped when unconfigured.
 export async function notifyTelegram(text: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN

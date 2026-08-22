@@ -136,13 +136,13 @@ extraRoutes.get(
         .from('maven_transactions')
         .select(APPROVAL_DEPOSIT_COLS)
         .eq('status', 'PENDING')
-        .order('ontarget_ref', { ascending: false, nullsFirst: false })
+        .order('first_seen_at', { ascending: false, nullsFirst: false })
         .limit(100),
       db
         .from('maven_payout_transactions')
         .select(PAYOUT_COLS)
         .eq('status', 'PENDING')
-        .order('ontarget_ref', { ascending: false, nullsFirst: false })
+        .order('first_seen_at', { ascending: false, nullsFirst: false })
         .limit(100),
     ])
     if (dep.error) return c.json({ error: 'db_error', detail: dep.error.message }, 500)

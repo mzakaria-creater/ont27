@@ -8,6 +8,7 @@ import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useBulk } from '../lib/useBulk'
 import { useLocale } from '../lib/locale'
+import { syncProviders } from '../lib/providerSync'
 
 // Approvals queue — every PENDING deposit and payout in one screen with
 // quick + bulk actions.
@@ -57,6 +58,9 @@ export default function Approvals() {
 
   const load = useCallback(async () => {
     try {
+      // Approval decisions must be based on the provider's current state, not
+      // the last background copy. This shared pump is throttled server-side.
+      await syncProviders()
       const res = await api<{ deposits: DepRow[]; payouts: PayRow[] }>('/api/approvals')
       setDeposits(res.deposits)
       setPayouts(res.payouts)
@@ -68,7 +72,7 @@ export default function Approvals() {
 
   useEffect(() => {
     void load()
-    const iv = setInterval(() => void load(), 30_000)
+    const iv = setInterval(() => void load(), 15_000)
     return () => clearInterval(iv)
   }, [load])
 
