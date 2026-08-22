@@ -270,6 +270,22 @@ extraRoutes.get('/crm/:id', requirePerm('client_crm', 'can_view'), async (c) => 
   return c.json({ client, transactions: txns })
 })
 
+// ---- CRM: the whole customer, keyed on their phone number ----
+//
+// Separate from /crm/:id, which keys on a crm_clients row and matches
+// transactions with `.in('sender_number', [phone_no, normalized_phone])` — an
+// exact string comparison that misses every row stored in another shape
+// (201…, +201…). This one normalises to the last 10 digits, the form the rest
+// of the system already compares on, and works for a customer who has no CRM
+// row at all — which is exactly when someone needs to look them up.
+extraRoutes.get('/crm/profile/:phone', requirePerm('client_crm', 'can_view'), async (c) => {
+  const phone = c.req.param('phone')
+  const limit = Math.min(Math.max(Number(c.req.query('limit')) || 200, 1), 1000)
+  const { data, error } = await db.rpc('crm_client_profile', { p_phone: phone, p_limit: limit })
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  return c.json(data)
+})
+
 // ---- Risk: blacklist + suspicious SMS + clients flagged for review ----
 extraRoutes.get(
   '/risk',
