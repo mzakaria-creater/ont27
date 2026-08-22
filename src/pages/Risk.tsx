@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
@@ -11,19 +12,30 @@ import { useLocale } from '../lib/locale'
 interface BlacklistRow { id: string; merchant_id: string | null; type: string | null; value: string | null; reason: string | null; created_at: string | null }
 interface RiskSms { id: number; received_at: string | null; device_name: string | null; sender_name: string | null; sender_number: string | null; receiver_number: string | null; amount: number | null; risk_score: number | null; risk_reason: string | null; suspicious: boolean | null; is_duplicate: boolean | null; sms_category: string | null }
 interface RiskClient { id: string; client_name: string | null; phone_no: string | null; merchant_name: string | null; risk_score: number | null; approval_rate: number | null; total_transactions: number | null }
+// What being on the list actually does, over the last 7 days. Shown because
+// a list of 80 numbers says nothing about whether listing changed an outcome
+// — and until the approval gate went in, it changed nothing at all.
+interface Enforcement {
+  days: number; listedNumbers: number
+  humanApprovedFromListed: number; autoApprovedFromListed: number
+  declinedFromListed: number; pendingFromListed: number
+  totalFromListed: number; totalDecisions: number
+  byNumber: { phone: string; total: number; approved: number; declined: number; pending: number; volume: number }[]
+}
+interface RiskData { blacklist: BlacklistRow[]; sms: RiskSms[]; clients: RiskClient[]; enforcement: Enforcement | null }
 interface Offender { sender_number: string; sender_names: string[] | null; merchant: string | null; txns: number; declined: number; approved: number; decline_rate: number | null; total_amount: number | null; distinct_names: number; first_seen: string | null; last_seen: string | null; blacklisted: boolean }
 
 export default function Risk() {
   const { can } = useAuth()
   const { t } = useLocale()
-  const [data, setData] = useState<{ blacklist: BlacklistRow[]; sms: RiskSms[]; clients: RiskClient[] } | null>(null)
+  const [data, setData] = useState<RiskData | null>(null)
   const [vel, setVel] = useState<{ offenders: Offender[]; min_txns: number; window_days: number } | null>(null)
   const [minTxns, setMinTxns] = useState(20); const [windowDays, setWindowDays] = useState(30)
   const [err, setErr] = useState<string | null>(null)
   const canEdit = can('risk', 'can_edit')
 
   const loadRisk = useCallback(() => {
-    api<{ blacklist: BlacklistRow[]; sms: RiskSms[]; clients: RiskClient[] }>('/api/risk')
+    api<RiskData>('/api/risk')
       .then(setData)
       .catch((e) => setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض المخاطر.', 'You do not have permission to view risk data.') : t('تعذّر تحميل بيانات المخاطر.', 'Failed to load risk data.')))
   }, [])
@@ -52,6 +64,68 @@ export default function Risk() {
 
       {err && <div className="card warn">{err}</div>}
       {!data && !err && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
+
+      {data?.enforcement && (
+        <section className="card">
+          <div className="section-label">{t('أثر القائمة على القرارات', 'What the list is doing')}</div>
+          <div className="kpi-grid">
+            <div className="kpi-card">
+              <div className="kpi-value">{data.enforcement.totalFromListed}</div>
+              <div className="kpi-label">{t('قرارات من أرقام مُدرَجة', 'Decisions from listed numbers')}</div>
+              <div className="cell-sub">{t(`من ${data.enforcement.totalDecisions} خلال ${data.enforcement.days} أيام`, `of ${data.enforcement.totalDecisions} over ${data.enforcement.days} days`)}</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-value">{data.enforcement.autoApprovedFromListed}</div>
+              <div className="kpi-label">{t('كانت تُعتمد آلياً', 'Were auto-approving')}</div>
+              <div className="cell-sub">{t('تذهب الآن لقرار بشري', 'now routed to a human')}</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-value">{data.enforcement.humanApprovedFromListed}</div>
+              <div className="kpi-label">{t('اعتمدها مشغّل بشري', 'A human approved')}</div>
+              <div className="cell-sub">{t('كان الرفض التلقائي سيرفضها', 'an auto-decline would have refused these')}</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-value">{data.enforcement.declinedFromListed}</div>
+              <div className="kpi-label">{t('مرفوضة', 'Declined')}</div>
+              <div className="cell-sub">{data.enforcement.pendingFromListed} {t('قيد المراجعة', 'pending')}</div>
+            </div>
+          </div>
+          <p className="cell-sub">
+            {t(
+              'الإدراج يمنع الاعتماد التلقائي فقط ولا يرفض أبداً: سلسلة رفض قد تكون عميلاً لديه مشكلة دفع حقيقية، وجعل القائمة ترفضه يجعل الحظر ذاتي التغذية.',
+              'Listing withholds automatic approval and never declines: a run of declines can be a customer with a real payment problem, and letting the list decline them makes the block self-feeding.',
+            )}
+          </p>
+          {data.enforcement.byNumber.length > 0 && (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t('الرقم', 'Number')}</th>
+                    <th>{t('الإجمالي', 'Total')}</th>
+                    <th>{t('معتمدة', 'Approved')}</th>
+                    <th>{t('مرفوضة', 'Declined')}</th>
+                    <th>{t('معلّقة', 'Pending')}</th>
+                    <th>{t('حجم معتمد', 'Approved volume')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.enforcement.byNumber.slice(0, 15).map((n) => (
+                    <tr key={n.phone}>
+                      <td className="mono"><Link to={`/client/${n.phone}`}>{n.phone}</Link></td>
+                      <td className="mono">{n.total}</td>
+                      <td className="mono">{n.approved}</td>
+                      <td className="mono">{n.declined}</td>
+                      <td className="mono">{n.pending}</td>
+                      <td className="mono">{money(n.volume, 'EGP')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="card recent-card">
         <div className="recent-head"><h3>🚀 {t('كثافة المُرسِلين (Velocity / كشف الاحتيال)', 'Sender velocity (fraud detection)')}</h3>

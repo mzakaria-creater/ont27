@@ -30,7 +30,25 @@ const GROWING: { table: string; pk: string; ts: string; updatedTs?: string }[] =
   // Both carry uuid PKs that the original migration preserved, so the upsert
   // is idempotent and the first run backfills the whole gap on its own.
   { table: 'crm_clients', pk: 'id', ts: 'created_at', updatedTs: 'updated_at' },
+  // Mirrored without a unique key on (type, value): this side is a copy, not a
+  // source. Upstream now enforces that key, so duplicates cannot arrive — but
+  // an unblock-then-reblock upstream would send a fresh id while the stale id
+  // still sat here, and a local unique key would turn that into a hard upsert
+  // failure for the whole batch. Delta sync carries inserts and updates only,
+  // never deletes.
   { table: 'api_risk_blacklist', pk: 'id', ts: 'created_at' },
+  // 2026-08-22: also never synced, and frozen since the original migration —
+  // 18 rows here against 23 upstream. The panel's wallet pages, the treasury
+  // hub and the wallet-movements report all read this table, so a wallet added
+  // to a device upstream was invisible to every one of them. It has no
+  // created_at, so `updatedTs` alone drives it; the update pass is the only
+  // pass that can move a config row anyway.
+  //
+  // Deletes still do not propagate — a wallet retired upstream lingers here
+  // until someone removes it. That is the same gap every table in this list
+  // has, and the upstream convention is to rename a retired wallet
+  // 'RETIRED_…' rather than delete it, which does carry across as an update.
+  { table: 'wallet_device_map', pk: 'to_account_number', ts: 'updated_at', updatedTs: 'updated_at' },
 ]
 
 const OVERLAP_MS = 5 * 60_000

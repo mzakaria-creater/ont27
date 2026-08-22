@@ -66,7 +66,7 @@ TELEGRAM_CHAT_ID=...
 - **التجار:** `master_merchants` (NGPay + PayFuture)، `merchants` (11)، `merchants_hierarchy` (7)، `merchant_api_keys`
 - **الأتمتة:** `automation_settings` (Kill Switches)، `automation_rules_scoped` (3)، `maven_runtime_config` (37 — **أسرار، لا logs ولا commits**)
 - **SMS matching:** `inbound_sms`، `sms_balance_chains`، `sms_maven_matches`
-- **CRM + Risk:** `crm_clients`، `crm_client_names`، `client_transactions`، `api_risk_blacklist` (4,854)
+- **CRM + Risk:** `crm_clients`، `crm_client_names`، `client_transactions`، `api_risk_blacklist` (79 — صفّ واحد لكل رقم؛ كانت 5,168 صفاً مكرّراً قبل تنظيف 2026-08-21)
 - **الأجهزة:** `device_status`، `wallet_device_map` (ont1–ont6)، `wallet_device_history`
 - **Auth/RBAC:** `panel_users` (5)، `app_roles` (21 — بعد توحيد الأزواج المتطابقة)، `role_page_permissions` (525)، `role_migration_map`، `panel_users_2fa`، `panel_refresh_tokens`
 - **الجديد كلياً:** `local_deposit_channels` (4)، `exchange_rate_sources` (9)، `exchange_rates`، `checkout_sessions` (نظيف)، `audit_log`، `idempotency_keys`، `binance_treasury_config`، `binance_account_balances`
@@ -82,6 +82,25 @@ TELEGRAM_CHAT_ID=...
 7. **ألوان الحالة محجوزة حصرياً:** PENDING كهرماني / PAID أخضر / DECLINED أحمر — لا تُستخدم لأي غرض آخر.
 8. **أعمدة الجداول:** `ontarget_ref` والمبلغ والحالة أول 3 أعمدة دائماً (sticky).
 9. **مؤشر الحداثة إلزامي:** "آخر تحديث منذ X ثانية" + حالة الاتصال في كل شاشة تعتمد بيانات حية.
+
+## 4.5) قائمتا الحظر — سلوكان مختلفان عمداً
+
+| الجدول | من يكتبه | الأثر على القرار |
+|---|---|---|
+| `wallet_blacklist` | إنسان | **رفض فوري** داخل `evaluate_transaction_for_auto_decision_core` |
+| `api_risk_blacklist` | تلقائي (5+ رفض خلال 24 ساعة) | **منع الاعتماد التلقائي فقط** → `pending_review` |
+
+القائمة التلقائية **لا ترفض أبداً**. سلسلة الرفض قد تكون عميلاً لديه مشكلة دفع حقيقية، وجعل القائمة ترفضه يجعل الحظر ذاتي التغذية: كل رفض جديد يعيد تسليحه فلا يتعافى العميل أبداً. قياس على 7 أيام: 53 من 692 اعتماداً تلقائياً (7.7%) تتحوّل لمراجعة بشرية، بينما اعتمد المشغّلون يدوياً 37 معاملة من نفس الأرقام — وهو الدليل على أن الرفض التلقائي كان سيكون خطأ.
+
+`api_risk_blacklist` يحمل فهرساً فريداً على `(type, value, merchant_id) NULLS NOT DISTINCT`. بدونه كان `ON CONFLICT DO NOTHING` في المُشغِّل بلا هدف تعارض حقيقي، فتراكم 5,292 صفاً لـ79 رقماً.
+
+## 4.6) تحليلات الأداء والتنبيه على التراجع
+
+- `panel_performance_slice(dimension, gateway, days, bucket)` — تجميع متعدد الأبعاد داخل Postgres. يُرجع لكل مجموعة نسبة الاعتماد والحجم وزمن التسوية p50/p90، مع نافذة أساس بنفس الطول ومؤشّر انحراف `z`.
+- `panel_volume_regime_start()` — بداية نظام الحجم الحالي (2026-08-17). ما قبله لا يُقارَن به.
+- **حاجز القابلية للمقارنة:** إذا حملت النافذة الأساس أقل من 40% من الحالية، تُحجب كل مخرجات الاتجاه. حجم NGPay كان 8–63/يوم بين 23 يوليو و16 أغسطس مقابل 400–780/يوم الآن، والمقارنة عبر الحدّ تُنتج «تحسّناً» سببه الحجم لا الأداء.
+- `performance_regression_scan()` — يمسح المحافظ والتجار الفرعيين وطرق الدفع كل ساعة (نافذتا 24 و72 ساعة)، ويُرسل عبر بوابة Telegram `performance_regression` بتهدئة 6 ساعات لكل مجموعة.
+- النافذة الطويلة ليست ترفاً: التراجع التدريجي يقع داخل نافذتي المقارنة القصيرتين معاً فيُلغي نفسه — محفظة `01217783437` هبطت 53.6% ← 35.5% وظهرت `z=-6.36` عند 72 ساعة ولم تظهر إطلاقاً عند 24.
 
 ## 5) ترتيب بناء الصفحات (لا قفز)
 

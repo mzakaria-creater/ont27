@@ -12,7 +12,7 @@ export const smsRoutes = new Hono<AuthEnv>()
 smsRoutes.use('*', requireAuth)
 
 const LIST_COLUMNS =
-  'id, received_at, device_name, sim_slot, sender_number, sender_name, receiver_number, amount, balance_after, sms_category, match_status, matched, review_required, trx_id, matched_transaction_id, maven_transaction_id, provider, sms_first_line'
+  'id, received_at, device_name, sim_slot, sender_number, sender_name, receiver_number, amount, balance_after, sms_category, match_status, matched, review_required, trx_id, matched_transaction_id, maven_transaction_id, consumed_by_tx_id, provider, sms_first_line'
 
 function sinceIso(hours: number): string {
   return new Date(Date.now() - hours * 3_600_000).toISOString()
@@ -22,9 +22,11 @@ function sinceIso(hours: number): string {
 // can show the same identifier the deposits/transactions views show instead of
 // a bare tx_id that an operator has to look up by hand.
 //
-// Three link sources with different coverage — sms_maven_matches is by far the
-// richest (1,315 rows vs 150 in matched_transaction_id and 100 in
-// maven_transaction_id), so it wins, with the two columns as fallbacks.
+// Four link sources. consumed_by_tx_id comes FIRST because it is the one the
+// live engine actually writes when it claims an SMS — 3,981 rows against 1,315
+// in sms_maven_matches — and the older sources stopped growing: match_status
+// last moved to 'auto' on 2026-07-11. Resolving by the legacy columns alone
+// left recent matches looking unlinked.
 async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> {
   if (!rows.length) return
   const ids = rows.map((r) => r.id as number)
@@ -32,6 +34,8 @@ async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> 
   const txBySms = new Map<number, number>((links ?? []).map((l) => [l.sms_id, l.tx_id]))
 
   const resolveTx = (r: Record<string, unknown>): number | null => {
+    const consumed = Number(r.consumed_by_tx_id)
+    if (r.consumed_by_tx_id != null && Number.isFinite(consumed)) return consumed
     const fromJoin = txBySms.get(r.id as number)
     if (fromJoin != null) return fromJoin
     const direct = r.matched_transaction_id ?? r.maven_transaction_id
@@ -80,7 +84,7 @@ smsRoutes.get('/stats', requirePerm('sms_live', 'can_view'), async (c) => {
       countWhere((q) => q),
       countWhere((q) => q.eq('sms_category', 'deposit')),
       countWhere((q) => q.eq('sms_category', 'withdrawal')),
-      countWhere((q) => q.neq('match_status', 'unmatched')),
+      countWhere((q) => q.not('consumed_by_tx_id', 'is', null)),
       countWhere((q) => q.eq('review_required', true).eq('matched', false)),
       volumeSince('deposit'),
       volumeSince('withdrawal'),
@@ -112,8 +116,14 @@ smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
     .range(offset, offset + limit - 1)
 
   if (category) query = query.eq('sms_category', category)
-  if (match === 'linked') query = query.neq('match_status', 'unmatched')
-  else if (match === 'unmatched') query = query.eq('match_status', 'unmatched')
+  // Linked means the engine claimed it, which it records in consumed_by_tx_id.
+  // Filtering on match_status instead showed only the 171 manually linked rows
+  // and 76 from July: 3,888 SMS that ARE consumed still carry
+  // match_status='unmatched', because nothing has maintained that column since
+  // 2026-07-11. On the live TV wall that made a busy matching engine look
+  // stalled for hours at a time.
+  if (match === 'linked') query = query.not('consumed_by_tx_id', 'is', null)
+  else if (match === 'unmatched') query = query.is('consumed_by_tx_id', null)
   else if (match === 'review') query = query.eq('review_required', true).eq('matched', false)
 
   if (q) {

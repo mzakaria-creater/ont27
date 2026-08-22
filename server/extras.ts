@@ -3,6 +3,7 @@ import { db } from './db.js'
 import { oldDb } from './oldDb.js'
 import { requireAuth, requirePerm, requireAnyPerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
+import { MAX_PAGE } from './paging.js'
 
 // The remaining §5 module pages, one route each. Sensitive columns
 // (api_key, secret_hash, password_hash, raw_profile, tokens) are NEVER selected.
@@ -24,7 +25,7 @@ extraRoutes.get(
     const type = c.req.query('type') // deposit | payout | ''
     const status = c.req.query('status')?.toUpperCase()
     const q = c.req.query('q')?.trim()
-    const limit = Math.min(Number(c.req.query('limit')) || 25, 100)
+    const limit = Math.min(Number(c.req.query('limit')) || 25, MAX_PAGE)
     const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
     const fetchTo = offset + limit
 
@@ -224,7 +225,7 @@ extraRoutes.get('/wallet-report/:wallet', requireAnyPerm(['sms_live', 'wallets']
 // ---- CRM clients ----
 extraRoutes.get('/crm', requirePerm('client_crm', 'can_view'), async (c) => {
   const q = c.req.query('q')?.trim()
-  const limit = Math.min(Number(c.req.query('limit')) || 25, 100)
+  const limit = Math.min(Number(c.req.query('limit')) || 25, MAX_PAGE)
   const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
   let query = db
     .from('crm_clients')
@@ -269,6 +270,22 @@ extraRoutes.get('/crm/:id', requirePerm('client_crm', 'can_view'), async (c) => 
   return c.json({ client, transactions: txns })
 })
 
+// ---- CRM: the whole customer, keyed on their phone number ----
+//
+// Separate from /crm/:id, which keys on a crm_clients row and matches
+// transactions with `.in('sender_number', [phone_no, normalized_phone])` — an
+// exact string comparison that misses every row stored in another shape
+// (201…, +201…). This one normalises to the last 10 digits, the form the rest
+// of the system already compares on, and works for a customer who has no CRM
+// row at all — which is exactly when someone needs to look them up.
+extraRoutes.get('/crm/profile/:phone', requirePerm('client_crm', 'can_view'), async (c) => {
+  const phone = c.req.param('phone')
+  const limit = Math.min(Math.max(Number(c.req.query('limit')) || 200, 1), 1000)
+  const { data, error } = await db.rpc('crm_client_profile', { p_phone: phone, p_limit: limit })
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  return c.json(data)
+})
+
 // ---- Risk: blacklist + suspicious SMS + clients flagged for review ----
 extraRoutes.get(
   '/risk',
@@ -292,7 +309,29 @@ extraRoutes.get(
     if (blacklist.error) return c.json({ error: 'db_error', detail: blacklist.error.message }, 500)
     if (sms.error) return c.json({ error: 'db_error', detail: sms.error.message }, 500)
     if (clients.error) return c.json({ error: 'db_error', detail: clients.error.message }, 500)
-    return c.json({ blacklist: blacklist.data ?? [], sms: sms.data ?? [], clients: clients.data ?? [] })
+
+    // What being on the list actually DOES. The page could already show 80
+    // blocked numbers while nothing on it said whether that changed any
+    // outcome — and until the gate went in, it did not: no function in the
+    // decision path read the table. Served from the old project because
+    // review_queue lives there and is not part of the delta sync.
+    //
+    // Best-effort: the list itself is the point of the page, so a failure to
+    // compute enforcement must not take the whole page down with it.
+    let enforcement: unknown = null
+    const old = oldDb()
+    if (old) {
+      const { data, error: encErr } = await old.rpc('risk_enforcement_stats', { p_days: 7 })
+      if (encErr) console.error('risk_enforcement_stats failed:', encErr.message)
+      else enforcement = data
+    }
+
+    return c.json({
+      blacklist: blacklist.data ?? [],
+      sms: sms.data ?? [],
+      clients: clients.data ?? [],
+      enforcement,
+    })
   },
 )
 
@@ -324,8 +363,20 @@ extraRoutes.post(
     const reason = typeof body?.reason === 'string' ? body.reason.trim().slice(0, 300) : null
     if (!value) return c.json({ error: 'value_required' }, 400)
     const actor = c.get('actor')
-    const { data: existing } = await db.from('api_risk_blacklist').select('id').eq('value', value).maybeSingle()
-    if (existing) return c.json({ error: 'already_blacklisted', id: existing.id }, 409)
+    // Scoped by (type, value) — the table's real key — not by value alone, and
+    // NOT via .maybeSingle(): that errors out when more than one row matches,
+    // and the error was being discarded, so a duplicate read as "not present"
+    // and the insert went ahead. The upstream trigger had already piled up
+    // thousands of duplicate rows before a unique index was added, which is
+    // exactly the state this check silently mishandled.
+    const { data: existing, error: existErr } = await db
+      .from('api_risk_blacklist')
+      .select('id')
+      .eq('type', type)
+      .eq('value', value)
+      .limit(1)
+    if (existErr) return c.json({ error: 'db_error', detail: existErr.message }, 500)
+    if (existing?.length) return c.json({ error: 'already_blacklisted', id: existing[0].id }, 409)
     const { data, error } = await db.from('api_risk_blacklist')
       .insert({ type, value, reason: reason ?? `Added from velocity view by ${actor.username}` })
       .select('id, type, value, reason, created_at').single()
@@ -576,7 +627,7 @@ extraRoutes.get(
 // ---- Audit log ----
 extraRoutes.get('/audit', requireAnyPerm(['audit_log', 'audit-logs'], 'can_view'), async (c) => {
   const q = c.req.query('q')?.trim()
-  const limit = Math.min(Number(c.req.query('limit')) || 25, 100)
+  const limit = Math.min(Number(c.req.query('limit')) || 25, MAX_PAGE)
   const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
   let query = db
     .from('audit_log')
@@ -1080,7 +1131,7 @@ extraRoutes.get('/system-health', async (c) => {
   const now = Date.now()
   const dayAgo = new Date(now - 86_400_000).toISOString()
 
-  const [txRows, smsRows, devices, tgAlerts, pendingPayouts, editRequests] = await Promise.all([
+  const [txRows, smsRows, devices, tgAlerts, pendingPayouts, editRequests, manualGap] = await Promise.all([
     db.from('maven_transactions')
       .select('status, gateway, first_seen_at, last_status_change')
       .gte('first_seen_at', dayAgo).limit(5000)
@@ -1113,6 +1164,21 @@ extraRoutes.get('/system-health', async (c) => {
     db.from('transaction_edit_requests')
       .select('status').gte('created_at', dayAgo)
       .then(({ data }) => data ?? []),
+    // Transactions approved by hand with NO SMS evidence (match_score = 0).
+    // This is the true size of the daily manual workload and the number that
+    // must fall if device coverage improves — an approval rate cannot show it,
+    // because these all end up approved either way.
+    //
+    // Read at the source: review_queue lives on the old project and is not
+    // part of the delta sync. Best-effort, so a failure here cannot take the
+    // health page down with it.
+    (async () => {
+      const old = oldDb()
+      if (!old) return null
+      const { data, error } = await old.rpc('manual_approval_gap_stats', { p_days: 14 })
+      if (error) { console.error('manual_approval_gap_stats failed:', error.message); return null }
+      return data
+    })(),
   ])
 
   // Hourly buckets, oldest first, so a flat line reads as "quiet" and a gap
@@ -1165,7 +1231,11 @@ extraRoutes.get('/system-health', async (c) => {
       // null means "nothing happened in the window", which the UI shows as no
       // data rather than as a confident 0% or 100%.
       smsMatchRate: { value: pct(matchedDeposits, deposits.length), of: deposits.length, unit: '%' },
-      devicesOnline: { value: pct(onlineDevices, devices.length), of: devices.length, unit: '%' },
+      // A COUNT, not a success rate. Operations often run a single device
+      // while the rest sit deliberately off, so "1 of 7" is normal — expressed
+      // as a percentage it read 14% and the tile banded itself permanently
+      // red. The UI renders this one neutral (see GaugeTile `neutral`).
+      devicesOnline: { value: onlineDevices, of: devices.length, unit: '' },
       telegramDelivery: { value: pct(tgOk, tgAlerts.length), of: tgAlerts.length, unit: '%' },
       approvalRate: {
         value: pct(
@@ -1186,6 +1256,9 @@ extraRoutes.get('/system-health', async (c) => {
       editRequestsPending: editRequests.filter((r) => r.status === 'pending').length,
     },
     series: { txByHour, smsByHour },
+    // Null when the source is unreachable, so the UI can say "no data"
+    // instead of rendering a confident zero for work that did happen.
+    manualGap,
     devices,
     telegram: Object.values(
       tgAlerts.reduce<Record<string, { alert_type: string; ok: number; failed: number; lastError: string | null }>>((acc, a) => {
@@ -1198,3 +1271,24 @@ extraRoutes.get('/system-health', async (c) => {
     ),
   })
 })
+
+// ---- Settlement batches: gross per sub-merchant, with the rate ambiguity ----
+//
+// Gross only, on purpose. maven_transactions.commission and .fees are NULL on
+// every paid row, and the configured rates cannot be applied unambiguously:
+// merchants_hierarchy.commission_rate disagrees with payin+payout on EVERY
+// row, and rate rows match sub-merchants by name rather than by key. A
+// settlement figure is a payable amount, so the endpoint reports what is
+// certain and flags what is not, instead of picking a rate and calling the
+// result a number.
+extraRoutes.get(
+  '/settlements/batches',
+  requireAnyPerm(['settlements', 'settlements_list', 'settlement_recon', 'fees', 'reports'], 'can_view'),
+  async (c) => {
+    const days = Math.min(Math.max(Number(c.req.query('days')) || 30, 1), 365)
+    const gateway = c.req.query('gateway') === 'ALL' ? 'ALL' : 'NagupayP2P'
+    const { data, error } = await db.rpc('settlement_batches', { p_days: days, p_gateway: gateway })
+    if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+    return c.json(data)
+  },
+)

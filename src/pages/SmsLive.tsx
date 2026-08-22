@@ -5,10 +5,11 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { usePageSize } from '../lib/pageSize'
+import PageSizeSelect from '../components/PageSizeSelect'
 
 // SMS Live — the inbound_sms queue with its Maven links, auto-refreshing.
 
-const PAGE_SIZE = 25
 const REFRESH_MS = 15_000
 
 const CATEGORY_META: Record<string, { ar: string; en: string; cls: string }> = {
@@ -107,6 +108,7 @@ function firstLine(r: SmsRow): string {
 }
 
 export default function SmsLive() {
+  const [pageSize, setPageSize] = usePageSize('sms')
   const { can } = useAuth()
   const { t } = useLocale()
   const [params, setParams] = useSearchParams()
@@ -132,8 +134,8 @@ export default function SmsLive() {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     const search = new URLSearchParams({
-      limit: String(PAGE_SIZE),
-      offset: String((page - 1) * PAGE_SIZE),
+      limit: String(pageSize),
+      offset: String((page - 1) * pageSize),
     })
     if (category) search.set('category', category)
     if (match) search.set('match', match)
@@ -152,7 +154,7 @@ export default function SmsLive() {
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [category, match, appliedQ, amount, page])
+  }, [category, match, appliedQ, amount, page, pageSize])
 
   useEffect(() => { void load() }, [load])
 
@@ -245,7 +247,7 @@ export default function SmsLive() {
     }
   }
 
-  const totalPages = data ? Math.max(Math.ceil(data.total / PAGE_SIZE), 1) : 1
+  const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1
 
   return (
     <PanelShell>
@@ -412,6 +414,7 @@ export default function SmsLive() {
             <button className="btn-ghost btn-sm" disabled={page <= 1} onClick={() => setFilter({ page: page - 1 })}>
               → {t('السابق', 'Prev')}
             </button>
+            <PageSizeSelect value={pageSize} onChange={(n) => { setPageSize(n); setFilter({ page: 1 }) }} />
             <span className="pager-info mono">{page} / {totalPages}</span>
             <button className="btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setFilter({ page: page + 1 })}>
               {t('التالي', 'Next')} ←

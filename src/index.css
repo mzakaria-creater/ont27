@@ -774,6 +774,8 @@ a.stat-card:hover { border-color: var(--accent); }
 
 .pager { display: flex; gap: 10px; align-items: center; justify-content: center; padding-block-start: 12px; }
 .pager-info { color: var(--text-dim); font-size: 13px; }
+.pager-size { display: flex; align-items: center; gap: 6px; }
+.pager-size .filter-select { min-height: 30px; padding-block: 2px; }
 
 .st-under { background: color-mix(in srgb, var(--status-pending) 20%, transparent); color: var(--status-pending); }
 
@@ -838,6 +840,9 @@ a.stat-card:hover { border-color: var(--accent); }
 .link-section { margin-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px; }
 .link-section h4 { margin: 0 0 10px; font-size: 14px; }
 .cand-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+/* Unadorned stack of lines inside a card — used where each entry is a full
+   sentence and a bullet would fight the surrounding prose. */
+.plain-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .cand-item {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   background: rgba(255,255,255,0.04);
@@ -1092,6 +1097,13 @@ a.stat-card:hover { border-color: var(--accent); }
     max-height: none; overflow-y: auto;
   }
   html[dir="ltr"] .sidebar { transform: translateX(-100%); }
+  /* The open state must out-rank the direction rule, not merely follow it.
+     `html[dir="ltr"] .sidebar` scores (0,2,1) against `.sidebar.open` at
+     (0,2,0), so in English the drawer stayed parked at -100% and the toggle
+     did nothing — while Arabic worked, because RTL never matches the [dir]
+     rule at all. Both selectors are listed so neither direction loses. */
+  html[dir="ltr"] .sidebar.open,
+  html[dir="rtl"] .sidebar.open,
   .sidebar.open { transform: translateX(0); }
 
   .sms-rail { display: none; }
@@ -1534,3 +1546,115 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .hchart-legend i.seg-1 { background: #c0453f; }
 .hchart-legend i.seg-2 { background: var(--accent); }
 .hchart-legend i.seg-3 { background: var(--text-dim); }
+
+/* ---- Checkout: glass surface + per-provider theme ----------------------
+   The customer does NOT pick a method here: allocateWallet() chooses the
+   channel server-side, so the theme keys off the provider that came back on
+   the session, not off a selector. data-pay-theme is set on <html> when the
+   session arrives and cleared when the page unmounts.
+   ---------------------------------------------------------------------- */
+.pay-wrap {
+  position: relative;
+  overflow: hidden;
+  /* Falls back to the panel accent until a provider is known, so the first
+     paint is never an unstyled flash. */
+  --pay-glow: var(--accent);
+  --pay-ink: var(--text);
+}
+
+html[data-pay-theme="vodafone-cash"] .pay-wrap { --pay-glow: #e60000; }
+html[data-pay-theme="orange-cash"]   .pay-wrap { --pay-glow: #ff7900; }
+html[data-pay-theme="instapay"]      .pay-wrap { --pay-glow: #2f6bff; }
+html[data-pay-theme="bank"]          .pay-wrap { --pay-glow: #10b981; }
+html[data-pay-theme="fawry"]         .pay-wrap { --pay-glow: #f5c518; }
+html[data-pay-theme="valu"]          .pay-wrap { --pay-glow: #8b5cf6; }
+html[data-pay-theme="bee"]           .pay-wrap { --pay-glow: #06b6d4; }
+html[data-pay-theme="masary"]        .pay-wrap { --pay-glow: #6366f1; }
+html[data-pay-theme="we-pay"]        .pay-wrap { --pay-glow: #7b2d8b; }
+html[data-pay-theme="etisalat"]      .pay-wrap { --pay-glow: #95c11f; }
+
+/* The wash behind the card. Sits under everything and never intercepts a
+   tap — a decorative layer that eats clicks on a payment page is a bug. */
+.pay-wrap::before {
+  content: '';
+  position: absolute;
+  inset: -30%;
+  pointer-events: none;
+  background:
+    radial-gradient(45% 45% at 30% 25%, color-mix(in srgb, var(--pay-glow) 28%, transparent), transparent 70%),
+    radial-gradient(40% 40% at 75% 70%, color-mix(in srgb, var(--pay-glow) 18%, transparent), transparent 70%);
+  filter: blur(40px);
+  opacity: 0.9;
+  transition: background 0.5s var(--ease);
+}
+
+.pay-card {
+  position: relative;
+  z-index: 1;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pay-glow) 35%, var(--border));
+  border-radius: 28px;
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.28),
+    0 0 30px color-mix(in srgb, var(--pay-glow) 22%, transparent);
+  transition: border-color 0.4s var(--ease), box-shadow 0.4s var(--ease);
+}
+
+.pay-card .btn-primary {
+  background: var(--pay-glow);
+  border-color: var(--pay-glow);
+}
+.pay-channel { color: var(--pay-glow); }
+.pay-wallet { border-color: color-mix(in srgb, var(--pay-glow) 45%, var(--border)); }
+
+/* Merchant attribution above the card. */
+.pay-brandbar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-block-end: 10px;
+}
+.pay-brandbar b { color: var(--text); font-weight: 600; }
+
+/* Drifting provider marks. Purely decorative, so they are hidden from
+   assistive tech and stopped entirely for anyone who asked for less motion. */
+.pay-orbit { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.pay-orbit i {
+  position: absolute;
+  inline-size: 40px; block-size: 40px;
+  border-radius: 14px;
+  display: grid; place-items: center;
+  font-size: 17px; font-style: normal;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+  opacity: 0.5;
+  animation: pay-drift 14s ease-in-out infinite;
+}
+@keyframes pay-drift {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(0, -16px, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pay-orbit i { animation: none; }
+  .pay-wrap::before { transition: none; }
+}
+@media (max-width: 640px) {
+  /* On a phone the card fills the screen; drifting marks behind it are
+     invisible clutter that still costs a repaint every frame. */
+  .pay-orbit { display: none; }
+}
+
+/* Numeric fields: tabular figures so a digit does not shift as it is typed. */
+.pay-card input[inputmode="numeric"],
+.pay-card input[inputmode="decimal"] {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}

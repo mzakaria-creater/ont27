@@ -147,7 +147,18 @@ function QuickControl() {
 
           {status.queue.length > 0 && (
             <>
-              <div className="section-label">🚀 {t('طابور غرفة التحكم', 'Control-room queue')} ({status.queue.length})</div>
+              {/* Plain heading, not .section-label: that class is uppercase,
+                  which does nothing to Arabic but shouts in English, so the
+                  same panel read calmly in one language and yelled in the
+                  other. The count already appears in the badge row above. */}
+              <div className="recent-head">
+                <h3>{t('طابور غرفة التحكم', 'Control-room queue')}</h3>
+                <span className="cell-sub">
+                  {status.queue.length > 10
+                    ? t(`أول 10 من ${status.queue.length}`, `first 10 of ${status.queue.length}`)
+                    : t(`${status.queue.length} عنصر`, `${status.queue.length} items`)}
+                </span>
+              </div>
               <div className="table-wrap">
                 <table className="data-table">
                   <thead><tr><th>tx</th><th>{t('المبلغ', 'Amount')}</th><th>{t('أفضل ترشيح SMS', 'Best SMS match')}</th><th>{t('إجراء', 'Action')}</th></tr></thead>

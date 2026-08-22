@@ -21,6 +21,14 @@ interface HealthData {
     txByHour: { hour: string; paid: number; declined: number; pending: number; other: number }[]
     smsByHour: { hour: string; total: number; matched: number }[]
   }
+  // Transactions approved by hand with NO SMS evidence. Null when the source
+  // is unreachable, and rendered as absent rather than as a confident zero —
+  // zero here would claim nobody did any manual work today.
+  manualGap: {
+    today: { manualTotal: number; noSmsEvidence: number; overrodeAMatch: number; volume: number }
+    daily: { date: string; manualTotal: number; noSmsEvidence: number; overrodeAMatch: number; volume: number }[]
+    byWallet: { wallet: string; count: number }[]
+  } | null
   devices: {
     device: string; sim_number: string | null; operator: string | null
     battery: number | null; charging: boolean | null; net_type: string | null
@@ -52,12 +60,19 @@ function Arc({ value }: { value: number | null }) {
   )
 }
 
-function GaugeTile({ title, gauge, sub }: { title: string; gauge: Gauge; sub: string }) {
+// `neutral` marks a tile whose value is a COUNT, not a success rate. Such a
+// tile is never banded: running a single device while the rest sit
+// deliberately off is normal operation, so "1 of 7" is not a 14% failure and
+// must not be painted red. The arc still fills by value/of to show proportion.
+function GaugeTile({ title, gauge, sub, neutral }: { title: string; gauge: Gauge; sub: string; neutral?: boolean }) {
+  const arc = neutral
+    ? (gauge.of > 0 && gauge.value != null ? (gauge.value / gauge.of) * 100 : null)
+    : gauge.value
   return (
-    <div className={`gauge-tile band-${band(gauge.value)}`}>
+    <div className={`gauge-tile band-${neutral ? 'none' : band(gauge.value)}`}>
       <div className="gauge-title">{title}</div>
       <div className="gauge-body">
-        <Arc value={gauge.value} />
+        <Arc value={arc} />
         <div className="gauge-value">
           {gauge.value == null ? '—' : <>{gauge.value}<span className="gauge-unit">{gauge.unit}</span></>}
         </div>
@@ -153,9 +168,13 @@ export default function SystemHealth() {
               sub={t(`من ${data.gauges.smsMatchRate.of} رسالة إيداع`, `of ${data.gauges.smsMatchRate.of} deposit SMS`)}
             />
             <GaugeTile
-              title={t('الأجهزة المتصلة', 'Devices online')}
+              title={t('الأجهزة النشطة', 'Devices active')}
               gauge={data.gauges.devicesOnline}
-              sub={t(`من ${data.gauges.devicesOnline.of} جهاز`, `of ${data.gauges.devicesOnline.of} devices`)}
+              sub={t(
+                `من ${data.gauges.devicesOnline.of} مسجّلة — التشغيل بجهاز واحد وضع طبيعي`,
+                `of ${data.gauges.devicesOnline.of} registered — running one device is normal`,
+              )}
+              neutral
             />
             <GaugeTile
               title={t('تسليم Telegram', 'Telegram delivery')}
@@ -212,6 +231,68 @@ export default function SystemHealth() {
               />
             </div>
           </div>
+
+          {data.manualGap && (
+            <>
+              <div className="section-label">
+                {t('اعتماد يدوي بلا دليل SMS', 'Approved by hand with no SMS evidence')}
+              </div>
+              <p className="cell-sub">
+                {t(
+                  'الحجم الحقيقي للعمل اليدوي اليومي: معاملات وافق عليها إنسان من شاشة المزوّد لأن المحرك لم يجد أي رسالة مطابقة. نسبة الاعتماد لا تُظهر هذا الرقم — فكلها تُعتمد في النهاية على أي حال. انخفاضه هو الدليل الوحيد على أن توسيع تغطية الأجهزة نجح.',
+                  'The real size of the daily manual workload: transactions a human approved from the provider\u2019s own screen because the engine found no matching SMS. An approval rate cannot show it, since these all end up approved anyway. This number falling is the only proof that wider device coverage worked.',
+                )}
+              </p>
+              <div className="kpi-grid">
+                <div className="kpi-card">
+                  <div className="kpi-value">{data.manualGap.today.noSmsEvidence}</div>
+                  <div className="kpi-label">{t('اليوم — بلا دليل', 'Today — no evidence')}</div>
+                  <div className="cell-sub">{t(`من ${data.manualGap.today.manualTotal} اعتماد يدوي`, `of ${data.manualGap.today.manualTotal} manual approvals`)}</div>
+                </div>
+                <div className="kpi-card">
+                  <div className="kpi-value">{data.manualGap.today.overrodeAMatch}</div>
+                  <div className="kpi-label">{t('تجاوز مطابقة قائمة', 'Overrode a match')}</div>
+                  <div className="cell-sub">{t('قرار بشري فوق دليل موجود — شيء مختلف', 'a human decision over existing evidence — a different thing')}</div>
+                </div>
+                <div className="kpi-card">
+                  <div className="kpi-value">
+                    {data.manualGap.daily.length > 1
+                      ? Math.round(data.manualGap.daily.slice(1, 8).reduce((a, b) => a + b.noSmsEvidence, 0) / Math.min(7, data.manualGap.daily.length - 1))
+                      : '—'}
+                  </div>
+                  <div className="kpi-label">{t('متوسط 7 أيام سابقة', 'Prior 7-day average')}</div>
+                  <div className="cell-sub">{t('للمقارنة مع اليوم', 'to compare against today')}</div>
+                </div>
+                <div className="kpi-card">
+                  <div className="kpi-value mono">{data.manualGap.byWallet[0]?.wallet ?? '—'}</div>
+                  <div className="kpi-label">{t('أكثر محفظة تسبّب عملاً يدوياً', 'Wallet causing most hand work')}</div>
+                  <div className="cell-sub">{data.manualGap.byWallet[0]?.count ?? 0} {t('معاملة', 'transactions')}</div>
+                </div>
+              </div>
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>{t('اليوم', 'Day')}</th>
+                      <th>{t('بلا دليل SMS', 'No SMS evidence')}</th>
+                      <th>{t('تجاوز مطابقة', 'Overrode a match')}</th>
+                      <th>{t('إجمالي يدوي', 'Manual total')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.manualGap.daily.slice(0, 14).map((d) => (
+                      <tr key={d.date}>
+                        <td className="mono">{d.date}</td>
+                        <td className="mono">{d.noSmsEvidence}</td>
+                        <td className="mono">{d.overrodeAMatch}</td>
+                        <td className="mono">{d.manualTotal}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
 
           <div className="section-label">{t('الأجهزة', 'Devices')}</div>
           <div className="table-wrap">

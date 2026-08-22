@@ -31,9 +31,65 @@ export interface PaySession {
   paid_at: string | null
 }
 
+// Provider string -> the theme key the stylesheet defines. Matching on
+// substrings rather than exact equality because the value arrives from the
+// channel configuration and is not a closed enum; an unrecognised provider
+// simply gets no key and the card keeps the neutral accent.
+export function providerTheme(provider: string | null, channel: string | null): string | null {
+  const v = `${provider ?? ''} ${channel ?? ''}`.toLowerCase()
+  if (!v.trim()) return null
+  if (v.includes('vodafone') || v.includes('vf')) return 'vodafone-cash'
+  if (v.includes('orange')) return 'orange-cash'
+  if (v.includes('instapay') || v.includes('ipn')) return 'instapay'
+  if (v.includes('fawry')) return 'fawry'
+  if (v.includes('valu')) return 'valu'
+  if (v.includes('masary')) return 'masary'
+  if (v.includes('bee')) return 'bee'
+  if (v.includes('etisalat') || v.includes('etissalat')) return 'etisalat'
+  if (v.includes('we pay') || v.includes('we-pay') || v.includes('wepay')) return 'we-pay'
+  if (v.includes('bank') || v.includes('transfer')) return 'bank'
+  return null
+}
+
+// Thousands separators for display only. The value kept in state stays a bare
+// numeric string, because the separator characters must never reach the API.
+// Decorative marks only — deliberately not the providers' real logos, which
+// would mean redistributing their trademarked artwork on a page that takes
+// money. aria-hidden because they carry no information the text does not.
+function PayOrbit() {
+  const marks = [
+    { at: { top: '12%', insetInlineStart: '10%' }, glyph: '💳', delay: '0s' },
+    { at: { top: '22%', insetInlineEnd: '12%' }, glyph: '🟠', delay: '2.4s' },
+    { at: { bottom: '26%', insetInlineStart: '14%' }, glyph: '🔴', delay: '4.8s' },
+    { at: { bottom: '16%', insetInlineEnd: '16%' }, glyph: '🔵', delay: '7.2s' },
+  ]
+  return (
+    <div className="pay-orbit" aria-hidden="true">
+      {marks.map((m, i) => (
+        <i key={i} style={{ ...m.at, animationDelay: m.delay }}>{m.glyph}</i>
+      ))}
+    </div>
+  )
+}
+
+function groupDigits(raw: string): string {
+  const [whole, ...rest] = raw.split('.')
+  if (!whole) return raw
+  return [whole.replace(/\B(?=(\d{3})+(?!\d))/g, ','), ...rest].join('.')
+}
+
 export function providerLabel(provider: string | null, fallback: string | null): string {
   if (!provider) return fallback ?? ''
   return provider.split(/[-_]/).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+}
+
+function BrandBar({ merchant, t }: { merchant: string | null; t: (a: string, e: string) => string }) {
+  return (
+    <div className="pay-brandbar">
+      {t('بدعم من', 'Powered by')} <b>OnTarget</b>
+      {merchant ? <>· {t('لصالح', 'for')} <b>{merchant}</b></> : null}
+    </div>
+  )
 }
 
 const payErrors: Record<string, [string, string]> = {
@@ -106,6 +162,17 @@ export default function PaymentCheckout() {
     }
   }
 
+  // Paint the page in the allocated provider's colour. Set on <html> so the
+  // backdrop behind the card can react too, and cleared on unmount so the
+  // theme never leaks into the panel if the customer navigates onward.
+  useEffect(() => {
+    const key = session ? providerTheme(session.provider, session.channel_name) : null
+    const root = document.documentElement
+    if (key) root.dataset.payTheme = key
+    else delete root.dataset.payTheme
+    return () => { delete root.dataset.payTheme }
+  }, [session])
+
   if (linkError) {
     return (
       <div className="pay-wrap"><div className="card pay-card"><h2>⚠️ {linkError}</h2></div></div>
@@ -116,6 +183,8 @@ export default function PaymentCheckout() {
     const pLabel = providerLabel(session.provider, session.channel_name)
     return (
       <div className="pay-wrap">
+        <PayOrbit />
+        <BrandBar merchant={link?.title ?? null} t={t} />
         <div className="card pay-card">
           <img src="/logo.svg" alt="OnTarget" className="login-logo" />
           <p className="login-sub">{t('حوّل المبلغ من محفظتك إلى الرقم التالي', 'Transfer the amount from your wallet to the number below')}</p>
@@ -154,14 +223,31 @@ export default function PaymentCheckout() {
 
   return (
     <div className="pay-wrap">
+      <PayOrbit />
+      <BrandBar merchant={link?.title ?? null} t={t} />
       <form className="card pay-card" onSubmit={onSubmit}>
         <img src="/logo.svg" alt="OnTarget" className="login-logo" />
         <h2>{link?.title ?? t('إيداع جديد', 'New deposit')}</h2>
         <p className="login-sub">{t('ادفع عبر المحفظة الإلكترونية', 'Pay via your mobile wallet')}</p>
         <label className="field">
           <span>{t('رقم الموبايل', 'Mobile number')}</span>
-          <input inputMode="numeric" dir="ltr" placeholder="01xxxxxxxxx" value={phone}
-            onChange={(e) => setPhone(e.target.value)} required autoFocus />
+          {/* type="tel" as well as inputMode: inputMode alone still asks some
+              Android keyboards for the full QWERTY layout, and the wallet
+              number is the very first thing a paying customer types. Digits
+              only, capped at the 11 an Egyptian mobile has. */}
+          <input
+            type="tel"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            autoComplete="tel"
+            maxLength={11}
+            dir="ltr"
+            placeholder="01012345678"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
+            required
+            autoFocus
+          />
         </label>
         <label className="field">
           <span>{t('الاسم (اختياري)', 'Name (optional)')}</span>
@@ -173,9 +259,18 @@ export default function PaymentCheckout() {
             {link?.amount_mode === 'open' && link.min_amount !== null && ` · ${t('من', 'from')} ${link.min_amount}`}
             {link?.amount_mode === 'open' && link.max_amount !== null && ` ${t('إلى', 'to')} ${link.max_amount}`}
           </span>
-          <input inputMode="decimal" dir="ltr" value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            readOnly={link?.amount_mode === 'fixed'} required />
+          {/* Grouped for reading, ungrouped in state. Stripping on the way in
+              means a pasted "5,000" is accepted rather than rejected as
+              non-numeric. */}
+          <input
+            type="tel"
+            inputMode="decimal"
+            dir="ltr"
+            value={groupDigits(amount)}
+            onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
+            readOnly={link?.amount_mode === 'fixed'}
+            required
+          />
         </label>
         {error && <div className="login-error" role="alert">{error}</div>}
         <button className="btn-primary" type="submit" disabled={busy}>
