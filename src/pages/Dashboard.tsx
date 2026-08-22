@@ -6,6 +6,7 @@ import { api } from '../lib/api'
 import { depositTime, money, statusMeta } from '../lib/deposits'
 import type { DepositStats } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import DepositKindBadge from '../components/DepositKindBadge'
 
 const CONTROL_ROLES = new Set(['owner', 'admin', 'super_admin'])
 const REFRESH_MS = 20_000
@@ -161,7 +162,7 @@ export default function Dashboard() {
 
     <section className="card command-activity">
       <header className="command-section-head"><div><span className="command-kicker">{t('آخر حركة', 'RECENT ACTIVITY')}</span><h3>{t('المعاملات الواردة', 'Incoming transactions')}</h3></div><Link to="/transactions" className="pay-status-link">{t('كل المعاملات', 'All transactions')} →</Link></header>
-      {!stats ? <p className="command-loading">{t('جارٍ تحميل المعاملات…', 'Loading transactions…')}</p> : <div className="table-wrap"><table className="data-table command-table"><thead><tr><th>{t('المرجع', 'Reference')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('المرسل', 'Sender')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('الحالة', 'Status')}</th><th>{t('وصلت', 'Received')}</th></tr></thead><tbody>{stats.recent.slice(0, 8).map((row) => { const status = statusMeta(row.status); return <tr key={row.tx_id}><td><Link to={`/transactions/${row.ontarget_ref ?? row.tx_id}`} className="mono command-ref">{row.ontarget_ref ?? row.tx_id}</Link></td><td className="mono command-money">{money(row.amount, row.currency)}</td><td>{row.sender_name ?? row.sender_number ?? '—'}</td><td>{row.merchant ?? '—'}</td><td><span className={`pay-status-badge ${status.cls}`}>{status.label}</span></td><td className="mono muted">{depositTime(row)}</td></tr>})}</tbody></table></div>}
+      {!stats ? <p className="command-loading">{t('جارٍ تحميل المعاملات…', 'Loading transactions…')}</p> : <div className="table-wrap"><table className="data-table command-table"><thead><tr><th>{t('المرجع', 'Reference')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('المرسل', 'Sender')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('الحالة', 'Status')}</th><th>{t('وصلت', 'Received')}</th></tr></thead><tbody>{stats.recent.slice(0, 8).map((row) => { const status = statusMeta(row.status); return <tr key={row.tx_id}><td><Link to={`/transactions/${row.ontarget_ref ?? row.tx_id}`} className="mono command-ref">{row.ontarget_ref ?? row.tx_id}</Link></td><td className="mono command-money">{money(row.amount, row.currency)}</td><td>{row.sender_name ?? row.sender_number ?? '—'}<DepositKindBadge row={row} /></td><td>{row.merchant ?? '—'}</td><td><span className={`pay-status-badge ${status.cls}`}>{status.label}</span>{row.ngpay_status && <div className={`provider-row-status ${status.cls}`}>NagoPay · {row.ngpay_status}</div>}</td><td className="mono muted">{depositTime(row)}</td></tr>})}</tbody></table></div>}
     </section>
   </PanelShell>
 }

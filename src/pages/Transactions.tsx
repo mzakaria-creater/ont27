@@ -186,7 +186,14 @@ export default function Transactions() {
                       <td className="mono">{money(r.amount, r.currency ?? 'EGP')}</td>
                       <td>{party ?? '—'}</td>
                       <td>{r.merchant ?? '—'}{r.master_merchant && <div className="cell-sub">{r.master_merchant}</div>}</td>
-                      <td><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></td>
+                      <td>
+                        <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
+                        {r.kind === 'deposit' && r.gateway === 'NagupayP2P' && (
+                          <div className={`provider-row-status ${st.cls}`} title={t('الحالة القادمة من NagoPay', 'Status received from NagoPay')}>
+                            NagoPay · {r.status}
+                          </div>
+                        )}
+                      </td>
                       <td>{r.status === 'PENDING' ? '—' : (!r.approved_by || r.approved_by === 'Manual' ? t('النظام (آلي)', 'System (auto)') : r.approved_by)}</td>
                       <td className="mono">{depositTime(r)}</td>
                       <td>

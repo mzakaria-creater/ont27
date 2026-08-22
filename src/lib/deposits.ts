@@ -21,6 +21,9 @@ export interface DepositRow {
   master_merchant: string | null
   manual_entry: boolean | null
   approved_by: string | null
+  approved_deposits_before?: number
+  deposit_kind?: 'first' | 'retention'
+  ngpay_status?: string | null
   to_account_number: string | null
   receiving_wallet: string | null
   proof_image_url: string | null

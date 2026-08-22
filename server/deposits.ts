@@ -5,6 +5,7 @@ import { oldDb } from './oldDb.js'
 import { requireAuth, requirePerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 import { MAX_PAGE } from './paging.js'
+import { learnTrustedSmsName } from './clientIdentity.js'
 
 // Deposits = maven_transactions (ground truth for the deposit flow).
 // Real statuses observed in panel-v2 data: PENDING | PAID | APPROVED |
@@ -21,6 +22,54 @@ depositRoutes.use('*', requireAuth)
 // than rendering a dash, so shipping them in the list payload is safe.
 const LIST_COLUMNS =
   'tx_id, guid, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, agent_name, email, payment_method, gateway, merchant, sub_merchant, master_merchant, manual_entry, approved_by, to_account_number, receiving_wallet, proof_image_url, first_seen_at, last_status_change, created_utc'
+
+const APPROVED_STATUSES = new Set(['PAID', 'APPROVED'])
+const phoneKey = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
+const txTime = (row: Record<string, unknown>) => {
+  const raw = String(row.created_utc ?? row.first_seen_at ?? '')
+  const parsed = Date.parse(raw.includes('T') ? raw : `${raw.replace(' ', 'T')}Z`)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+// Adds two operator-facing facts without persisting a mutable label on every
+// transaction. "Retention" means this exact client had an approved deposit
+// BEFORE this transaction; it is not inferred from name, amount, or merchant.
+// Provider status is labelled explicitly so operators do not confuse an
+// NGPay result with a local workflow/review decision.
+async function attachDepositContext(rows: Record<string, unknown>[]): Promise<void> {
+  const keys = new Set(rows.map((row) => phoneKey(row.sender_number)).filter(Boolean))
+  const variants = [...keys].flatMap((key) => [key, `0${key}`, `20${key}`])
+  const approvedByPhone = new Map<string, { tx_id: number; at: number }[]>()
+
+  if (variants.length) {
+    const { data, error } = await db
+      .from('maven_transactions')
+      .select('tx_id, sender_number, status, first_seen_at, created_utc')
+      .in('sender_number', variants)
+      .in('status', [...APPROVED_STATUSES])
+      .order('first_seen_at', { ascending: false, nullsFirst: false })
+      .limit(10_000)
+    if (error) throw new Error(`deposit history: ${error.message}`)
+    for (const history of data ?? []) {
+      const key = phoneKey(history.sender_number)
+      if (!key) continue
+      const list = approvedByPhone.get(key) ?? []
+      list.push({ tx_id: Number(history.tx_id), at: txTime(history as Record<string, unknown>) })
+      approvedByPhone.set(key, list)
+    }
+  }
+
+  for (const row of rows) {
+    const key = phoneKey(row.sender_number)
+    const at = txTime(row)
+    const prior = key
+      ? (approvedByPhone.get(key) ?? []).filter((approved) => approved.at < at || (approved.at === at && approved.tx_id < Number(row.tx_id))).length
+      : 0
+    row.approved_deposits_before = prior
+    row.deposit_kind = prior > 0 ? 'retention' : 'first'
+    row.ngpay_status = row.gateway === 'NagupayP2P' ? row.status : null
+  }
+}
 
 // Attach the matched SMS (id, name, balance) to each visible row.
 async function attachSms(rows: Record<string, unknown>[]): Promise<void> {
@@ -104,6 +153,8 @@ depositRoutes.get('/stats', requirePerm('dashboard', 'can_view'), async (c) => {
       }),
   ])
 
+  await attachDepositContext(recent as Record<string, unknown>[])
+
   return c.json({
     total,
     pending,
@@ -147,7 +198,7 @@ depositRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
   const { data, count, error } = await query
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   const rows = (data ?? []) as unknown as Record<string, unknown>[]
-  await attachSms(rows)
+  await Promise.all([attachSms(rows), attachDepositContext(rows)])
   return c.json({ rows, total: count ?? 0, limit, offset })
 })
 
@@ -184,6 +235,7 @@ async function depositDetail(c: Context<AuthEnv>, txId: string) {
     .maybeSingle()
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   if (!data) return c.json({ error: 'not_found' }, 404)
+  await attachDepositContext([data as Record<string, unknown>])
 
   // Matched SMS (if the matcher or an operator linked one) + client history.
   const [smsMatch, clientRows] = await Promise.all([
@@ -274,7 +326,15 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
     if (!workerResponse.ok) {
       return c.json({ error: 'worker_failed', worker: workerResult }, workerResponse.status as 400 | 401 | 404 | 409 | 500)
     }
-    return c.json({ ok: true, status: target, executed_on_provider: executed, audit_error: auditErr2?.message })
+    const learnedIdentity = action === 'approve' && executed
+      ? await learnTrustedSmsName(Number(txId))
+      : { learned: false, reason: 'not_an_executed_approval' }
+    if (learnedIdentity.learned) await db.from('audit_log').insert({
+      actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
+      action: 'crm.sms_name_learned', entity: 'maven_transactions', entity_id: txId,
+      after: { purpose: 'retention_matching' },
+    })
+    return c.json({ ok: true, status: target, executed_on_provider: executed, learned_sms_name: learnedIdentity, audit_error: auditErr2?.message })
   }
   const nowIso = new Date().toISOString()
   // .eq('status','PENDING') keeps the transition atomic against races.
@@ -334,5 +394,13 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
     return c.json({ ok: true, status: target, old_sync: oldSync, audit_error: auditErr.message })
   }
 
-  return c.json({ ok: true, status: target, old_sync: oldSync })
+  const learnedIdentity = action === 'approve'
+    ? await learnTrustedSmsName(Number(txId))
+    : { learned: false, reason: 'not_an_approval' }
+  if (learnedIdentity.learned) await db.from('audit_log').insert({
+    actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
+    action: 'crm.sms_name_learned', entity: 'maven_transactions', entity_id: txId,
+    after: { purpose: 'retention_matching' },
+  })
+  return c.json({ ok: true, status: target, old_sync: oldSync, learned_sms_name: learnedIdentity })
 })

@@ -2,6 +2,7 @@ import { useLocale } from '../lib/locale'
 import MethodLogo from './MethodLogo'
 import { depositTime, gatewayChipCls, methodIcon, money, statusMeta } from '../lib/deposits'
 import type { DepositRow } from '../lib/deposits'
+import DepositKindBadge from './DepositKindBadge'
 
 // Card layout for the deposit review queue — an alternative to the row table
 // for fast visual scanning of several pending transactions at once.
@@ -42,7 +43,14 @@ export default function DepositCard({
         <button className="dep-ref mono" onClick={onOpen} title={t('فتح التفاصيل', 'Open details')}>
           {row.ontarget_ref ?? row.tx_id}
         </button>
-        <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
+        <div className="dep-status-stack">
+          <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
+          {row.ngpay_status && (
+            <span className={`provider-row-status ${st.cls}`} title={t('الحالة القادمة من NagoPay', 'Status received from NagoPay')}>
+              NagoPay · {row.ngpay_status}
+            </span>
+          )}
+        </div>
       </header>
 
       <div className="dep-amount">
@@ -51,6 +59,7 @@ export default function DepositCard({
       </div>
 
       <div className="dep-chips">
+        <DepositKindBadge row={row} />
         <span className="dep-chip">
           {row.payment_method
             ? <MethodLogo method={row.payment_method} />

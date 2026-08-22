@@ -13,6 +13,7 @@ import { depositTime, merchantChipCls, money, statusMeta } from '../lib/deposits
 import type { DepositDetail, DepositRow, DepositStats } from '../lib/deposits'
 import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
+import DepositKindBadge from '../components/DepositKindBadge'
 import { syncProviders } from '../lib/providerSync'
 
 const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
@@ -472,6 +473,7 @@ export default function Deposits() {
                       <td>
                         {r.sender_name ?? '—'}
                         {r.sender_number && <div className="cell-sub mono">{r.sender_number}</div>}
+                        <DepositKindBadge row={r} />
                       </td>
                       <td className="mono">
                         {r.receiving_wallet ?? r.to_account_number ?? '—'}
@@ -499,7 +501,14 @@ export default function Deposits() {
                           : (r.merchant ?? '—')}
                         {r.master_merchant && r.merchant && <div className="cell-sub">{r.merchant}</div>}
                       </td>
-                      <td><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></td>
+                      <td>
+                        <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
+                        {r.ngpay_status && (
+                          <div className={`provider-row-status ${st.cls}`} title={t('الحالة القادمة من NagoPay', 'Status received from NagoPay')}>
+                            NagoPay · {r.ngpay_status}
+                          </div>
+                        )}
+                      </td>
                       <td>{r.status === 'PENDING' ? '—' : (!r.approved_by || r.approved_by === 'Manual' ? 'النظام (آلي)' : r.approved_by)}</td>
                       <td className="mono">{depositTime(r)}</td>
                       <td onClick={(e) => e.stopPropagation()}>
@@ -601,6 +610,8 @@ export default function Deposits() {
                     {statusMeta(selected.status).label}
                   </span>
                 </div>
+
+                <DepositKindBadge row={selected} />
 
                 <dl className="detail-grid">
                   <dt>tx_id</dt><dd className="mono">{selected.tx_id}</dd>

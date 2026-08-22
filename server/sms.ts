@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { db } from './db.js'
 import { requireAuth, requirePerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
+import { learnTrustedSmsName } from './clientIdentity.js'
 
 // SMS Live = inbound_sms (device-forwarded wallet SMS). The panel surfaces the
 // live queue + its Maven transaction links, mirroring the old "SMS operations
@@ -215,8 +216,8 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
   if (!Number.isInteger(txId) || txId <= 0) return c.json({ error: 'bad_tx_id' }, 400)
 
   const [{ data: sms, error: smsErr }, { data: tx, error: txErr }] = await Promise.all([
-    db.from('inbound_sms').select('id, matched, match_status, amount, received_at, receiver_number, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').eq('id', id).maybeSingle(),
-    db.from('maven_transactions').select('tx_id, amount, first_seen_at, ontarget_ref').eq('tx_id', txId).maybeSingle(),
+    db.from('inbound_sms').select('id, matched, match_status, amount, received_at, receiver_number, sender_name, sender_number, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').eq('id', id).maybeSingle(),
+    db.from('maven_transactions').select('tx_id, amount, status, sender_number, first_seen_at, ontarget_ref').eq('tx_id', txId).maybeSingle(),
   ])
   if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
   if (txErr) return c.json({ error: 'db_error', detail: txErr.message }, 500)
@@ -285,7 +286,20 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
     after: { match_status: 'manual', tx_id: txId, ontarget_ref: tx.ontarget_ref },
   })
 
-  return c.json({ ok: true })
+  // Linking an already-approved first deposit is enough evidence to remember
+  // a name-only SMS identity. Pending deposits learn only after approval.
+  const learnedIdentity = tx.status === 'PAID' || tx.status === 'APPROVED'
+    ? await learnTrustedSmsName(txId, Number(id))
+    : { learned: false, reason: 'awaiting_approved_deposit' }
+  if (learnedIdentity.learned) {
+    await db.from('audit_log').insert({
+      actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
+      action: 'crm.sms_name_learned', entity: 'maven_transactions', entity_id: String(txId),
+      after: { sms_id: Number(id), purpose: 'retention_matching' },
+    })
+  }
+
+  return c.json({ ok: true, learned_sms_name: learnedIdentity })
 })
 
 smsRoutes.post('/:id/unlink', requirePerm('sms_live', 'can_edit'), async (c) => {
