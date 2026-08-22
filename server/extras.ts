@@ -309,7 +309,29 @@ extraRoutes.get(
     if (blacklist.error) return c.json({ error: 'db_error', detail: blacklist.error.message }, 500)
     if (sms.error) return c.json({ error: 'db_error', detail: sms.error.message }, 500)
     if (clients.error) return c.json({ error: 'db_error', detail: clients.error.message }, 500)
-    return c.json({ blacklist: blacklist.data ?? [], sms: sms.data ?? [], clients: clients.data ?? [] })
+
+    // What being on the list actually DOES. The page could already show 80
+    // blocked numbers while nothing on it said whether that changed any
+    // outcome — and until the gate went in, it did not: no function in the
+    // decision path read the table. Served from the old project because
+    // review_queue lives there and is not part of the delta sync.
+    //
+    // Best-effort: the list itself is the point of the page, so a failure to
+    // compute enforcement must not take the whole page down with it.
+    let enforcement: unknown = null
+    const old = oldDb()
+    if (old) {
+      const { data, error: encErr } = await old.rpc('risk_enforcement_stats', { p_days: 7 })
+      if (encErr) console.error('risk_enforcement_stats failed:', encErr.message)
+      else enforcement = data
+    }
+
+    return c.json({
+      blacklist: blacklist.data ?? [],
+      sms: sms.data ?? [],
+      clients: clients.data ?? [],
+      enforcement,
+    })
   },
 )
 
