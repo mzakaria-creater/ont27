@@ -8,6 +8,8 @@ import { api, ApiError } from '../lib/api'
 import { depositTime, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import type { DepositDetail } from '../lib/deposits'
+import { Activity, Bot, CheckCircle2, CircleDollarSign, Clock3, Database, FileJson, History, MessageSquareText, Pencil, UserRound, Workflow } from 'lucide-react'
+import DepositKindBadge from '../components/DepositKindBadge'
 
 // تفاصيل المعاملة — full-page detail view keyed by OUR ontarget_ref.
 // Handles all 7 real statuses and all 3 gateways (NagupayP2P live,
@@ -19,24 +21,56 @@ interface MatchedSms {
   device_name: string | null
   sim_slot: number | null
   sender_name: string | null
+  sender_number: string | null
+  receiver_number: string | null
   amount: number | null
   balance_after: number | null
   sms_first_line: string | null
   sec_diff: number | null
+  matched_at: string | null
+  match_status: string | null
+  sms_category: string | null
+  trx_id: string | null
+  provider: string | null
+  webhook_name: string | null
+  raw_sms: string | null
+  risk_score: number | null
+  risk_reason: string | null
+  suspicious: boolean | null
+  is_duplicate: boolean | null
 }
 
-interface ClientHistory { total: number; paid: number; declined: number }
+interface ClientHistory { total: number; paid: number; declined: number; pending: number; approved_total: number; first_seen_at: string | null; last_seen_at: string | null }
+
+interface HistoryEvent {
+  id: string
+  type: 'audit' | 'decision' | 'edit_request' | 'edit_decision' | 'automation' | 'provider_job' | 'provider'
+  title: string
+  detail?: string | null
+  actor?: string | null
+  at?: string | null
+  before?: Record<string, unknown> | null
+  after?: Record<string, unknown> | null
+}
+
+interface ProviderDiagnostics {
+  review: Record<string, unknown> | null
+  jobs: Record<string, unknown>[]
+  events: Record<string, unknown>[]
+}
 
 interface DetailResponse {
   deposit: DepositDetail & { raw?: Record<string, unknown> | null; email?: string | null }
   sms: MatchedSms | null
   client: ClientHistory | null
+  history: HistoryEvent[]
+  provider: ProviderDiagnostics
 }
 
 function DecisionBy({ name }: { name: string | null | undefined }) {
   const { t } = useLocale()
   if (!name || name === 'Manual' || name === 'auto_trigger') {
-    return <span title={t('قرار آلي', 'Automatic decision')}>🤖 {t('النظام (آلي)', 'System (auto)')}</span>
+    return <span className="decision-by" title={t('قرار آلي', 'Automatic decision')}><Bot size={15} aria-hidden="true" /> {t('النظام (آلي)', 'System (auto)')}</span>
   }
   return (
     <span className="decision-by">
@@ -57,9 +91,40 @@ function masterChip(master: string | null | undefined) {
   return <span className={`merchant-chip ${cls}`}>{master}</span>
 }
 
+const actionLabels: Record<string, [string, string]> = {
+  'transaction.edit': ['تعديل المعاملة', 'Transaction edited'],
+  'transaction.edit_requested': ['طلب تعديل', 'Edit requested'],
+  'transaction.edit_applied': ['تطبيق طلب التعديل', 'Edit request applied'],
+  'transaction.edit_rejected': ['رفض طلب التعديل', 'Edit request rejected'],
+  'deposit.approve': ['اعتماد الإيداع', 'Deposit approved'],
+  'deposit.decline': ['رفض الإيداع', 'Deposit declined'],
+  'crm.sms_name_learned': ['حفظ اسم SMS للعميل', 'SMS name saved to client'],
+}
+
+function historyTitle(event: HistoryEvent, t: (ar: string, en: string) => string) {
+  const known = actionLabels[event.title]
+  if (known) return t(known[0], known[1])
+  if (event.title.startsWith('provider_job.')) return `${t('مهمة المزوّد', 'Provider job')}: ${event.title.split('.').at(-1)}`
+  if (event.title.startsWith('ngpay.')) return `NagoPay: ${event.title.split('.').at(-1)}`
+  return event.title.replaceAll('_', ' ')
+}
+
+function eventIcon(type: HistoryEvent['type']) {
+  if (type === 'provider' || type === 'provider_job') return Workflow
+  if (type === 'edit_request' || type === 'edit_decision') return Pencil
+  if (type === 'decision') return CheckCircle2
+  if (type === 'automation') return Activity
+  return History
+}
+
+function jsonSummary(value: Record<string, unknown> | null | undefined): string | null {
+  if (!value || Object.keys(value).length === 0) return null
+  return Object.entries(value).map(([key, item]) => `${key}: ${Array.isArray(item) ? item.join(', ') : String(item ?? '—')}`).join(' · ')
+}
+
 export default function TransactionDetail() {
   const { ref } = useParams<{ ref: string }>()
-  const { can } = useAuth()
+  const { can, user } = useAuth()
   const { t } = useLocale()
   const [data, setData] = useState<DetailResponse | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -83,6 +148,9 @@ export default function TransactionDetail() {
 
   const d = data?.deposit
   const st = d ? statusMeta(d.status) : null
+  const canDirectEdit = ['super_admin', 'owner', 'admin', 'operations_admin'].includes(user?.role ?? '')
+  const raw = d?.raw ?? {}
+  const rawValue = (...keys: string[]) => keys.map((key) => raw[key]).find((value) => value != null && value !== '')
 
   const decide = async (action: 'approve' | 'decline') => {
     if (!d) return
@@ -126,6 +194,11 @@ export default function TransactionDetail() {
                   </p>
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {canDirectEdit && (
+                    <a className="btn-primary btn-sm" href="#transaction-edit-panel">
+                      <Pencil size={15} aria-hidden="true" /> {t('تعديل', 'Edit')}
+                    </a>
+                  )}
                   {masterChip(d.master_merchant)}
                   <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
                 </div>
@@ -139,18 +212,65 @@ export default function TransactionDetail() {
                 )}
               </div>
 
-              <dl className="detail-grid">
-                <dt>{t('المُرسِل', 'Sender')}</dt><dd>{d.sender_name ?? '—'} {d.sender_number && <span className="mono">({d.sender_number})</span>}</dd>
-                <dt>{t('البريد', 'Email')}</dt><dd className="mono small">{d.email ?? '—'}</dd>
-                <dt>{t('إلى حساب', 'To account')}</dt><dd>{d.to_account_name ?? '—'} <span className="mono">{d.to_account_number ?? ''}</span></dd>
-                <dt>{t('البنك / الطريقة', 'Bank / method')}</dt><dd>{d.to_bank ?? '—'} · {d.payment_method ?? d.gateway ?? '—'}</dd>
-                <dt>{t('التاجر', 'Merchant')}</dt><dd>{d.merchant ?? '—'}{d.sub_merchant && <> · {t('فرعي', 'sub')}: {d.sub_merchant}</>}</dd>
-                <dt>{t('الرسوم / العمولة', 'Fees / commission')}</dt><dd className="mono">{money(d.fees, d.currency)} / {money(d.commission, d.currency)}</dd>
-                <dt>GUID</dt><dd className="mono small">{d.guid ?? '—'}</dd>
-                <dt>{t('أُنشئت', 'Created')}</dt><dd className="mono">{depositTime({ created_utc: d.created_utc })}</dd>
-                <dt>{t('آخر تعديل', 'Last modified')}</dt><dd className="mono">{depositTime({ created_utc: d.modified_utc, first_seen_at: d.last_status_change })}</dd>
-                {d.manual_entry && <><dt>{t('إدخال يدوي', 'Manual entry')}</dt><dd>{t('بواسطة', 'by')} {d.manual_entry_by ?? '—'}{d.manual_entry_note && <> — {d.manual_entry_note}</>}</dd></>}
-              </dl>
+              <div className="txd-context-row">
+                <DepositKindBadge row={d} />
+                {d.ngpay_status && <span className={`provider-row-status ${st.cls}`}>NagoPay · {d.ngpay_status}</span>}
+                <span className="txd-id-chip mono">tx_id · {d.tx_id}</span>
+              </div>
+
+              <div className="txd-detail-sections">
+                <section className="txd-detail-block">
+                  <h3><UserRound size={17} aria-hidden="true" />{t('العميل والمرسل', 'Client & sender')}</h3>
+                  <dl className="detail-grid">
+                    <dt>{t('اسم المرسل', 'Sender name')}</dt><dd>{d.sender_name ?? rawValue('FirstName', 'RandomName') as string ?? '—'}</dd>
+                    <dt>{t('رقم العميل', 'Client number')}</dt><dd className="mono">{d.sender_number ?? rawValue('PhoneNo', 'RandomPhone') as string ?? '—'}</dd>
+                    <dt>{t('البريد', 'Email')}</dt><dd className="mono small">{d.email ?? rawValue('EmailAddress', 'RandomEmail') as string ?? '—'}</dd>
+                    <dt>{t('الوكيل', 'Agent')}</dt><dd>{d.agent_name ?? rawValue('AgentName') as string ?? '—'}</dd>
+                    <dt>{t('الدولة / المدينة', 'Country / city')}</dt><dd>{d.country ?? rawValue('Country') as string ?? '—'} · {rawValue('City', 'State') as string ?? '—'}</dd>
+                  </dl>
+                </section>
+
+                <section className="txd-detail-block">
+                  <h3><CircleDollarSign size={17} aria-hidden="true" />{t('الدفع والحساب', 'Payment & account')}</h3>
+                  <dl className="detail-grid">
+                    <dt>{t('الحساب المخصص', 'Allocated account')}</dt><dd>{d.to_account_name ?? rawValue('ToBankAccountName', 'AccountName') as string ?? '—'} <span className="mono">{d.to_account_number ?? rawValue('ToBankAccountNumber', 'AccountNumber') as string ?? ''}</span></dd>
+                    <dt>{t('محفظة الاستلام الفعلية', 'Actual receiving wallet')}</dt><dd className="mono">{d.receiving_wallet ?? '—'}</dd>
+                    <dt>{t('البنك / الطريقة', 'Bank / method')}</dt><dd>{d.to_bank ?? rawValue('BankName', 'ToBankName') as string ?? '—'} · {d.payment_method ?? rawValue('iPayinfo', 'PayBy') as string ?? d.gateway ?? '—'}</dd>
+                    <dt>{t('المبلغ', 'Amount')}</dt><dd className="mono">{money(d.amount, d.currency)}</dd>
+                    <dt>{t('الرسوم / العمولة', 'Fees / commission')}</dt><dd className="mono">{money(d.fees, d.currency)} / {money(d.commission, d.currency)}</dd>
+                    <dt>UTR</dt><dd className="mono">{rawValue('UTRNumber', 'Reference1') as string ?? '—'}</dd>
+                    <dt>{t('الوصف', 'Descriptor')}</dt><dd className="mono small">{rawValue('Descriptor') as string ?? '—'}</dd>
+                  </dl>
+                </section>
+
+                <section className="txd-detail-block">
+                  <h3><Database size={17} aria-hidden="true" />{t('التاجر والمزوّد', 'Merchant & provider')}</h3>
+                  <dl className="detail-grid">
+                    <dt>{t('التاجر', 'Merchant')}</dt><dd>{d.merchant ?? rawValue('MerchantName') as string ?? '—'}</dd>
+                    <dt>{t('التاجر الفرعي', 'Sub-merchant')}</dt><dd>{d.sub_merchant ?? rawValue('SiteName', 'RetailerName') as string ?? '—'}</dd>
+                    <dt>{t('التاجر الرئيسي', 'Master merchant')}</dt><dd>{d.master_merchant ?? '—'}</dd>
+                    <dt>{t('البوابة', 'Gateway')}</dt><dd className="mono">{d.gateway ?? rawValue('Gateway') as string ?? '—'}</dd>
+                    <dt>{t('حالة NagoPay الخام', 'Raw NagoPay status')}</dt><dd className="mono">{rawValue('Status') as string ?? d.ngpay_status ?? '—'}</dd>
+                    <dt>{t('استجابة المزوّد', 'Provider response')}</dt><dd>{d.response_message ?? rawValue('Response', 'GatewayResponseText', 'Description') as string ?? '—'}</dd>
+                    <dt>{t('نوع الطلب', 'Request type')}</dt><dd>{d.request_type ?? rawValue('RequestType', 'Type') as string ?? '—'}</dd>
+                  </dl>
+                </section>
+
+                <section className="txd-detail-block">
+                  <h3><Clock3 size={17} aria-hidden="true" />{t('المراجع والتوقيت', 'References & timing')}</h3>
+                  <dl className="detail-grid">
+                    <dt>OnTarget ref</dt><dd className="mono">{d.ontarget_ref ?? '—'}</dd>
+                    <dt>{t('مرجع التاجر', 'Merchant ref')}</dt><dd className="mono">{d.merchant_tx_reference ?? '—'}</dd>
+                    <dt>GUID</dt><dd className="mono small">{d.guid ?? '—'}</dd>
+                    <dt>{t('أُنشئت لدى المزوّد', 'Provider created')}</dt><dd className="mono">{depositTime({ created_utc: d.created_utc })}</dd>
+                    <dt>{t('أول مزامنة', 'First sync')}</dt><dd className="mono">{depositTime({ first_seen_at: d.first_seen_at })}</dd>
+                    <dt>{t('آخر تغيير حالة', 'Last status change')}</dt><dd className="mono">{depositTime({ first_seen_at: d.last_status_change })}</dd>
+                    <dt>{t('آخر تعديل لدى المزوّد', 'Provider modified')}</dt><dd className="mono">{depositTime({ created_utc: d.modified_utc })}</dd>
+                    <dt>{t('اعتمد بواسطة', 'Approved by')}</dt><dd><DecisionBy name={d.approved_by} /></dd>
+                    {d.manual_entry && <><dt>{t('إدخال يدوي', 'Manual entry')}</dt><dd>{t('بواسطة', 'by')} {d.manual_entry_by ?? '—'}{d.manual_entry_note && <> — {d.manual_entry_note}</>}</dd></>}
+                  </dl>
+                </section>
+              </div>
 
               {d.proof_image_url && (
                 <button type="button" className="btn-ghost btn-sm" onClick={() => setProofOpen(true)} aria-label={t('عرض إثبات الدفع', 'View payment proof')}>🧾 {t('عرض إثبات الدفع', 'View payment proof')}</button>
@@ -160,22 +280,29 @@ export default function TransactionDetail() {
             {data?.sms && (
               <section className="sms-match-card card">
                 <div className="sms-match-head">
-                  <span className="sms-match-title">✅ {t('رسالة SMS مطابقة', 'Matched SMS')}</span>
+                  <span className="sms-match-title"><MessageSquareText size={17} aria-hidden="true" /> {t('رسالة SMS مطابقة', 'Matched SMS')}</span>
                   {data.sms.sec_diff != null && <span className="match-pct mono">{t('فارق', 'diff')} {data.sms.sec_diff}{t('ث', 's')}</span>}
                 </div>
                 <div className="sms-match-text">{smsFirstLine(data.sms)}</div>
-                <div className="sms-match-meta">
-                  <span className="mono">{data.sms.device_name ?? '—'}{data.sms.sim_slot != null && <> · SIM {data.sms.sim_slot}</>}</span>
-                  <span className="mono">{t('استُلمت', 'received')} {depositTime({ first_seen_at: data.sms.received_at })}</span>
-                  {data.sms.balance_after != null && <span className="mono">{t('الرصيد بعدها', 'balance after')} {money(data.sms.balance_after, 'EGP')}</span>}
-                </div>
+                <dl className="detail-grid sms-detail-grid">
+                  <dt>SMS ID / TRX</dt><dd className="mono">#{data.sms.id} · {data.sms.trx_id ?? '—'}</dd>
+                  <dt>{t('المرسل', 'Sender')}</dt><dd>{data.sms.sender_name ?? '—'} {data.sms.sender_number && <span className="mono">({data.sms.sender_number})</span>}</dd>
+                  <dt>{t('محفظة الاستلام', 'Receiving wallet')}</dt><dd className="mono">{data.sms.receiver_number ?? '—'}</dd>
+                  <dt>{t('المبلغ / الرصيد بعده', 'Amount / balance after')}</dt><dd className="mono">{money(data.sms.amount, 'EGP')} / {money(data.sms.balance_after, 'EGP')}</dd>
+                  <dt>{t('الجهاز', 'Device')}</dt><dd className="mono">{data.sms.device_name ?? data.sms.webhook_name ?? '—'}{data.sms.sim_slot != null && <> · SIM {data.sms.sim_slot}</>}</dd>
+                  <dt>{t('المصدر / التصنيف', 'Provider / category')}</dt><dd>{data.sms.provider ?? '—'} · {data.sms.sms_category ?? '—'}</dd>
+                  <dt>{t('نوع المطابقة', 'Match type')}</dt><dd>{data.sms.match_status ?? '—'} · {data.sms.matched_at ? depositTime({ first_seen_at: data.sms.matched_at }) : '—'}</dd>
+                  <dt>{t('استُلمت', 'Received')}</dt><dd className="mono">{depositTime({ first_seen_at: data.sms.received_at })}</dd>
+                  <dt>{t('المخاطر', 'Risk')}</dt><dd>{data.sms.risk_score ?? 0} · {data.sms.risk_reason ?? t('لا توجد إشارة', 'No flag')}{data.sms.suspicious && <> · {t('مشبوهة', 'Suspicious')}</>}{data.sms.is_duplicate && <> · {t('مكررة', 'Duplicate')}</>}</dd>
+                </dl>
+                {data.sms.raw_sms && <details className="sms-raw"><summary>{t('نص الرسالة الكامل', 'Full SMS text')}</summary><pre className="raw-json mono">{data.sms.raw_sms}</pre></details>}
               </section>
             )}
 
             {d.raw != null && (
               <section className="card recent-card">
                 <details>
-                  <summary className="raw-summary">🧬 {t('البيانات الخام من', 'Raw data from')} {d.gateway ?? t('المزود', 'provider')} (raw)</summary>
+                  <summary className="raw-summary"><FileJson size={16} aria-hidden="true" /> {t('البيانات الخام من', 'Raw data from')} {d.gateway ?? t('المزود', 'provider')} (raw)</summary>
                   <pre className="raw-json mono">{JSON.stringify(d.raw, null, 2)}</pre>
                 </details>
               </section>
@@ -195,11 +322,6 @@ export default function TransactionDetail() {
                 ) : (
                   <p className="drawer-note">{t('المعاملة ليست معلّقة — القرار متاح للحالة PENDING فقط.', 'Transaction is not pending — decisions are only available for PENDING.')}</p>
                 )}
-                {can('deposits', 'can_edit') && (
-                  <button className="btn-ghost btn-sm" disabled title={t('تعديل الحالة يدوياً — لم يُبنَ بعد في هذا البانل؛ متاح من غرفة التحكم', 'Manual status edit — not built in this panel yet; available from the control room')}>
-                    ✏️ {t('تعديل', 'Edit')}
-                  </button>
-                )}
                 {decisionMsg && <p className="cell-sub" style={{ marginTop: 8 }}>{decisionMsg}</p>}
                 <p className="drawer-note">
                   {t('القبول/الرفض يُنشئ مهمة تنفيذ حقيقية في طابور', 'Approve/decline creates a real execution job in the')} <span className="mono">browser_jobs</span> {t('بنظام الأتمتة (المصدر:', 'automation queue (source:')} <span className="mono">manual_panel</span>{t(') — لا يُعدَّل المزود مباشرة من هنا.', ') — the provider is not modified directly from here.')}
@@ -208,38 +330,50 @@ export default function TransactionDetail() {
             )}
 
             <section className="card recent-card">
-              <div className="section-label" style={{ marginTop: 0 }}>{t('سجل النشاط', 'Activity log')}</div>
-              <div className="timeline" style={{ marginTop: 0 }}>
-                {d.status !== 'PENDING' && (
-                  <div className="timeline-item">
-                    <div className={`timeline-dot ${d.status === 'PAID' || d.status === 'APPROVED' ? 'done' : 'neutral'}`} />
-                    <div>
-                      <div className="timeline-title">{t('القرار', 'Decision')}: {st.label}</div>
-                      <div className="timeline-meta">
-                        <DecisionBy name={d.approved_by} />
-                        <span className="mono"> · {depositTime({ first_seen_at: d.last_status_change })}</span>
-                      </div>
+              <div className="section-label txd-section-title" style={{ marginTop: 0 }}><History size={16} aria-hidden="true" />{t('سجل الإجراءات الكامل', 'Complete action history')}</div>
+              <div className="timeline txd-history" style={{ marginTop: 0 }}>
+                {data.history.map((event) => {
+                  const Icon = eventIcon(event.type)
+                  const before = jsonSummary(event.before)
+                  const after = jsonSummary(event.after)
+                  return <div className="timeline-item" key={event.id}>
+                    <div className={`timeline-icon ${event.type === 'provider' || event.type === 'provider_job' ? 'provider' : event.type === 'decision' ? 'done' : ''}`}><Icon size={14} aria-hidden="true" /></div>
+                    <div className="timeline-body">
+                      <div className="timeline-title">{historyTitle(event, t)}</div>
+                      {event.detail && <div className="timeline-detail">{event.detail}</div>}
+                      {before && <div className="timeline-change"><b>{t('قبل', 'Before')}:</b> {before}</div>}
+                      {after && <div className="timeline-change"><b>{t('بعد', 'After')}:</b> {after}</div>}
+                      <div className="timeline-meta">{event.actor ?? t('النظام', 'System')} · <span className="mono">{depositTime({ first_seen_at: event.at })}</span></div>
                     </div>
                   </div>
-                )}
+                })}
+                {data.history.length === 0 && <p className="cell-sub">{t('لا توجد إجراءات مسجلة بعد.', 'No recorded actions yet.')}</p>}
                 {data?.sms && (
                   <div className="timeline-item">
-                    <div className="timeline-dot done" />
-                    <div>
-                      <div className="timeline-title">{t('استُقبلت رسالة SMS مطابقة', 'Matched SMS received')}</div>
-                      <div className="timeline-meta mono">{depositTime({ first_seen_at: data.sms.received_at })} · {data.sms.device_name ?? '—'}</div>
-                    </div>
+                    <div className="timeline-icon done"><MessageSquareText size={14} aria-hidden="true" /></div>
+                    <div><div className="timeline-title">{t('استُقبلت رسالة SMS مطابقة', 'Matched SMS received')}</div><div className="timeline-meta mono">{depositTime({ first_seen_at: data.sms.received_at })} · {data.sms.device_name ?? '—'}</div></div>
                   </div>
                 )}
                 <div className="timeline-item">
-                  <div className="timeline-dot neutral" />
-                  <div>
-                    <div className="timeline-title">{t('تم إنشاء المعاملة', 'Transaction created')}</div>
-                    <div className="timeline-meta mono">{depositTime({ created_utc: d.created_utc, first_seen_at: d.first_seen_at })} · {d.gateway ?? '—'}</div>
-                  </div>
+                  <div className="timeline-icon"><Clock3 size={14} aria-hidden="true" /></div>
+                  <div><div className="timeline-title">{t('تم إنشاء المعاملة', 'Transaction created')}</div><div className="timeline-meta mono">{depositTime({ created_utc: d.created_utc, first_seen_at: d.first_seen_at })} · {d.gateway ?? '—'}</div></div>
                 </div>
               </div>
             </section>
+
+            {(data.provider.review || data.provider.jobs.length > 0 || data.provider.events.length > 0) && (
+              <section className="card recent-card">
+                <div className="section-label txd-section-title" style={{ marginTop: 0 }}><Workflow size={16} aria-hidden="true" />{t('تشخيص NagoPay والتنفيذ', 'NagoPay & execution diagnostics')}</div>
+                <div className="txd-provider-stats">
+                  <div><span>{t('قرار المحرك', 'Engine decision')}</span><strong>{String(data.provider.review?.decision ?? '—')}</strong></div>
+                  <div><span>{t('درجة المطابقة', 'Match score')}</span><strong className="mono">{String(data.provider.review?.match_score ?? '—')}</strong></div>
+                  <div><span>{t('مهام التنفيذ', 'Execution jobs')}</span><strong className="mono">{data.provider.jobs.length}</strong></div>
+                  <div><span>{t('أحداث NagoPay', 'NagoPay events')}</span><strong className="mono">{data.provider.events.length}</strong></div>
+                </div>
+                {data.provider.review?.decision_reason != null && <p className="drawer-note">{String(data.provider.review.decision_reason)}</p>}
+                {data.provider.jobs.map((job) => <details key={String(job.id)} className="txd-diagnostic"><summary>{t('مهمة', 'Job')} · {String(job.state ?? '—')} · {String(job.target_status ?? '—')}</summary><pre className="raw-json mono">{JSON.stringify(job, null, 2)}</pre></details>)}
+              </section>
+            )}
 
             {data?.client && data.client.total > 1 && (
               <section className="card recent-card">
@@ -248,7 +382,9 @@ export default function TransactionDetail() {
                   <div className="ch-tile"><div className="ch-value">{data.client.total}</div><div className="ch-label">{t('إجمالي', 'Total')}</div></div>
                   <div className="ch-tile"><div className="ch-value" style={{ color: 'var(--status-paid)' }}>{data.client.paid}</div><div className="ch-label">{t('مقبولة', 'Approved')}</div></div>
                   <div className="ch-tile"><div className="ch-value" style={{ color: 'var(--status-declined)' }}>{data.client.declined}</div><div className="ch-label">{t('مرفوضة', 'Declined')}</div></div>
+                  <div className="ch-tile"><div className="ch-value">{data.client.pending}</div><div className="ch-label">{t('معلقة', 'Pending')}</div></div>
                 </div>
+                <p className="drawer-note">{t('إجمالي الإيداعات المعتمدة', 'Approved deposit total')}: <span className="mono">{money(data.client.approved_total, d.currency)}</span></p>
               </section>
             )}
 

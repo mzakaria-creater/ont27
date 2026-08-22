@@ -988,7 +988,7 @@ a.stat-card:hover { border-color: var(--accent); }
 /* Drawer extras: matched SMS + client history + timeline */
 .sms-match-card { border: 1px solid var(--green-border); border-radius: 14px; padding: 14px; margin-top: 14px; }
 .sms-match-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.sms-match-title { font-size: 12.5px; font-weight: 600; }
+.sms-match-title { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; }
 .match-pct { font-size: 10px; padding: 3px 9px; border-radius: 7px; background: var(--green-bg); color: var(--status-paid); font-weight: 600; }
 .sms-match-text { background: var(--hover); border-radius: 12px; padding: 12px 14px; font-size: 12px; color: var(--text-dim); line-height: 1.7; }
 .sms-match-meta { display: flex; gap: 16px; margin-top: 8px; font-size: 10.5px; color: var(--text-muted); }
@@ -1004,6 +1004,18 @@ a.stat-card:hover { border-color: var(--accent); }
 .timeline-dot.neutral { background: var(--text-muted); }
 .timeline-title { font-size: 11.5px; font-weight: 600; }
 .timeline-meta { font-size: 10px; color: var(--text-muted); }
+.timeline-icon {
+  width: 24px; height: 24px; border-radius: 50%; flex: 0 0 24px; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-dim); background: var(--surface); border: 1px solid var(--border-soft);
+}
+.timeline-icon.done { color: var(--status-paid); border-color: var(--green-border); background: var(--green-bg); }
+.timeline-icon.provider { color: var(--brand-blue); border-color: color-mix(in srgb, var(--brand-blue) 30%, var(--border)); }
+.timeline-body { min-width: 0; }
+.timeline-detail, .timeline-change { margin-top: 3px; color: var(--text-dim); font-size: 10px; overflow-wrap: anywhere; }
+.timeline-change b { color: var(--text); }
+.txd-history { max-height: 660px; overflow-y: auto; padding-inline-end: 5px; }
+.txd-history::before { inset-inline-start: 11px; right: auto; }
 .section-label { font-size: 11px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.4px; margin: 16px 0 10px; text-transform: uppercase; }
 
 /* ===== Bulk actions ===== */
@@ -1428,6 +1440,25 @@ a.command-metric:hover { border-color: var(--accent); transform: translateY(-1px
 .txd-amount { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 14px 0; }
 .txd-amount-value { font-size: 44px; font-weight: 800; line-height: 1; }
 .txd-amount-currency { font-size: 15px; color: var(--text-dim); }
+.txd-context-row { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin: -2px 0 16px; }
+.txd-context-row .deposit-kind, .txd-context-row .provider-row-status { margin: 0; }
+.txd-id-chip { padding: 3px 8px; border-radius: 999px; background: var(--hover); color: var(--text-dim); font-size: 10.5px; }
+.txd-detail-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.txd-detail-block { min-width: 0; padding: 13px; border: 1px solid var(--border); border-radius: 13px; background: var(--hover); }
+.txd-detail-block h3, .txd-section-title { display: flex; align-items: center; gap: 7px; }
+.txd-detail-block h3 { margin: 0 0 12px; font-size: 12px; color: var(--text); }
+.txd-detail-block .detail-grid { grid-template-columns: minmax(105px, auto) minmax(0, 1fr); font-size: 11.5px; gap: 7px 10px; }
+.sms-detail-grid { margin-top: 12px; grid-template-columns: minmax(120px, auto) minmax(0, 1fr); }
+.sms-raw { margin-top: 10px; font-size: 11px; }
+.txd-provider-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-bottom: 10px; }
+.txd-provider-stats > div { padding: 9px; border-radius: 9px; background: var(--hover); }
+.txd-provider-stats span { display: block; color: var(--text-muted); font-size: 9.5px; }
+.txd-provider-stats strong { display: block; margin-top: 3px; font-size: 12px; overflow-wrap: anywhere; }
+.txd-diagnostic { margin-top: 7px; font-size: 10.5px; }
+.txd-diagnostic summary { cursor: pointer; }
+.txd-side .client-history { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#transaction-edit-panel { scroll-margin-top: 18px; }
+#transaction-edit-panel .btn-primary, #transaction-edit-panel .btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .raw-summary { cursor: pointer; font-size: 13px; font-weight: 600; }
 .raw-json {
   direction: ltr; text-align: left; background: var(--hover);
@@ -1442,6 +1473,12 @@ a.command-metric:hover { border-color: var(--accent); transform: translateY(-1px
 }
 .decision-by { display: inline-flex; align-items: center; gap: 5px; }
 @media (max-width: 1000px) { .txd-grid { grid-template-columns: 1fr; } }
+@media (max-width: 700px) {
+  .txd-detail-sections { grid-template-columns: 1fr; }
+  .txd-amount-value { font-size: 34px; }
+  .txd-detail-block .detail-grid, .sms-detail-grid { grid-template-columns: 1fr; gap: 3px; }
+  .txd-detail-block .detail-grid dd, .sms-detail-grid dd { margin-bottom: 7px; }
+}
 
 /* --- Accessibility baseline (panel-wide; added 2026-08-08 per UI/UX review) --- */
 /* Visible keyboard focus ring — the panel previously only restyled input

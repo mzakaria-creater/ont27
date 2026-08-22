@@ -237,8 +237,10 @@ async function depositDetail(c: Context<AuthEnv>, txId: string) {
   if (!data) return c.json({ error: 'not_found' }, 404)
   await attachDepositContext([data as Record<string, unknown>])
 
-  // Matched SMS (if the matcher or an operator linked one) + client history.
-  const [smsMatch, clientRows] = await Promise.all([
+  // Matched SMS + client history + every local action that can explain how
+  // this row reached its current state. All sources are read server-side so
+  // audit payloads and provider diagnostics never require a browser DB key.
+  const [smsMatch, clientRows, auditRows, decisionRows, editRows] = await Promise.all([
     db
       .from('sms_maven_matches')
       .select('sms_id, sec_diff, matched_at')
@@ -248,30 +250,82 @@ async function depositDetail(c: Context<AuthEnv>, txId: string) {
         if (!m) return null
         const { data: sms } = await db
           .from('inbound_sms')
-          .select('id, received_at, device_name, sim_slot, sender_name, sender_number, amount, balance_after, sms_first_line, match_status')
+          .select('id, received_at, device_name, sim_slot, sender_name, sender_number, receiver_number, amount, balance_after, sms_category, trx_id, provider, webhook_name, sms_first_line, raw_sms, match_status, matched, risk_score, risk_reason, suspicious, is_duplicate')
           .eq('id', m.sms_id)
           .maybeSingle()
-        return sms ? { ...sms, sec_diff: m.sec_diff } : null
+        return sms ? { ...sms, sec_diff: m.sec_diff, matched_at: m.matched_at } : null
       }),
     data.sender_number
       ? db
           .from('maven_transactions')
-          .select('status')
+          .select('tx_id, status, amount, first_seen_at, created_utc')
           .eq('sender_number', data.sender_number)
           .limit(1_000)
           .then(({ data: rows }) => rows ?? [])
       : Promise.resolve([]),
+    db.from('audit_log')
+      .select('id, actor_type, actor_name, action, before, after, created_at')
+      .eq('entity', 'maven_transactions').eq('entity_id', txId)
+      .order('created_at', { ascending: false }).limit(100)
+      .then(({ data: rows }) => rows ?? []),
+    db.from('deposit_decision_log')
+      .select('id, decision, actor_name, reason, db_status_before, provider_raw_status_at_decision, executed_on_provider, created_at')
+      .eq('tx_id', txId).order('created_at', { ascending: false }).limit(100)
+      .then(({ data: rows }) => rows ?? []),
+    db.from('transaction_edit_requests')
+      .select('id, requested_status, requested_amount, current_status, current_amount, reason, requested_by, requested_by_role, status, decided_by, decided_at, decision_note, apply_error, created_at')
+      .eq('tx_id', txId).order('created_at', { ascending: false }).limit(100)
+      .then(({ data: rows }) => rows ?? []),
   ])
+
+  // The execution engine and provider event stream still live on the source
+  // project. These are diagnostics only; a source outage must not make the
+  // transaction detail page unavailable.
+  const source = oldDb()
+  const [reviewRows, jobRows, providerRows] = source ? await Promise.all([
+    source.from('review_queue')
+      .select('id, decision, decision_reason, target_status, matched_sms_id, match_score, match_reasons, assigned_tier, assigned_reviewer, decided_by, decided_at, action_source, created_at, updated_at')
+      .eq('tx_id', txId).order('updated_at', { ascending: false }).limit(20)
+      .then(({ data: rows }) => rows ?? []),
+    source.from('browser_jobs')
+      .select('id, target_status, source, state, last_error, attempts, max_attempts, maven_before_status, maven_after_status, dispatch_mode, operator_username, created_at, updated_at, completed_at, failed_at')
+      .eq('tx_id', txId).order('created_at', { ascending: false }).limit(20)
+      .then(({ data: rows }) => rows ?? []),
+    source.from('ngpay_approval_events')
+      .select('id, status, approved_by, assigned_to_name, note, source, maven_target, maven_synced, created_at, updated_at')
+      .eq('tx_id', txId).order('created_at', { ascending: false }).limit(20)
+      .then(({ data: rows }) => rows ?? []),
+  ]) : [[], [], []]
 
   const client = data.sender_number
     ? {
         total: clientRows.length,
         paid: clientRows.filter((r) => r.status === 'PAID' || r.status === 'APPROVED').length,
         declined: clientRows.filter((r) => r.status === 'DECLINED').length,
+        pending: clientRows.filter((r) => r.status === 'PENDING').length,
+        approved_total: clientRows.filter((r) => r.status === 'PAID' || r.status === 'APPROVED').reduce((sum, r) => sum + Number(r.amount ?? 0), 0),
+        first_seen_at: clientRows.map((r) => r.first_seen_at).filter(Boolean).sort()[0] ?? null,
+        last_seen_at: clientRows.map((r) => r.first_seen_at).filter(Boolean).sort().at(-1) ?? null,
       }
     : null
 
-  return c.json({ deposit: data, sms: smsMatch, client })
+  const history = [
+    ...auditRows.map((row) => ({ id: `audit:${row.id}`, type: 'audit', title: row.action, actor: row.actor_name ?? row.actor_type, at: row.created_at, before: row.before, after: row.after })),
+    ...decisionRows.map((row) => ({ id: `decision:${row.id}`, type: 'decision', title: row.decision, detail: row.reason, actor: row.actor_name, at: row.created_at, before: { status: row.db_status_before, provider_status: row.provider_raw_status_at_decision }, after: { executed_on_provider: row.executed_on_provider } })),
+    ...editRows.flatMap((row) => [
+      { id: `edit-request:${row.id}`, type: 'edit_request', title: 'transaction.edit_requested', detail: row.reason, actor: row.requested_by, at: row.created_at, before: { status: row.current_status, amount: row.current_amount }, after: { status: row.requested_status, amount: row.requested_amount, request_status: row.status } },
+      ...(row.decided_at ? [{ id: `edit-decision:${row.id}`, type: 'edit_decision', title: `transaction.edit_${row.status}`, detail: row.decision_note ?? row.apply_error, actor: row.decided_by, at: row.decided_at, after: { request_status: row.status } }] : []),
+    ]),
+    ...reviewRows.map((row) => ({ id: `review:${row.id}`, type: 'automation', title: row.decision, detail: row.decision_reason, actor: row.decided_by ?? 'automation', at: row.updated_at ?? row.created_at, after: { target_status: row.target_status, match_score: row.match_score, matched_sms_id: row.matched_sms_id, match_reasons: row.match_reasons } })),
+    ...jobRows.map((row) => ({ id: `job:${row.id}`, type: 'provider_job', title: `provider_job.${row.state}`, detail: row.last_error, actor: row.operator_username ?? row.source, at: row.completed_at ?? row.failed_at ?? row.updated_at ?? row.created_at, before: { status: row.maven_before_status }, after: { status: row.maven_after_status, target_status: row.target_status, attempts: row.attempts, dispatch_mode: row.dispatch_mode } })),
+    ...providerRows.map((row) => ({ id: `provider:${row.id}`, type: 'provider', title: `ngpay.${row.status}`, detail: row.note, actor: row.approved_by ?? row.assigned_to_name ?? row.source, at: row.updated_at ?? row.created_at, after: { maven_target: row.maven_target, maven_synced: row.maven_synced } })),
+  ].sort((a, b) => Date.parse(String(b.at ?? '')) - Date.parse(String(a.at ?? '')))
+
+  const raw = data.maven_raw_row && typeof data.maven_raw_row === 'object' ? data.maven_raw_row : null
+  return c.json({
+    deposit: { ...data, raw }, sms: smsMatch, client, history,
+    provider: { review: reviewRows[0] ?? null, jobs: jobRows, events: providerRows },
+  })
 }
 
 depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), async (c) => {

@@ -3,10 +3,11 @@ import { useAuth } from '../auth/AuthContext'
 import { api, ApiError } from '../lib/api'
 import { STATUS_META, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { Pencil, Save, Send, X } from 'lucide-react'
 
 // Edit a transaction's status or amount.
 //
-// Stewards (super_admin / owner / admin) apply the change directly. Everyone
+// Stewards (super_admin / owner / admin / operations_admin) apply directly. Everyone
 // else raises a request that goes to Mina and Eslam on Telegram and is applied
 // only once one of them approves it in the panel.
 //
@@ -16,7 +17,7 @@ import { useLocale } from '../lib/locale'
 //   · NGPay + still PENDING + target PAID/DECLINED → real execution on Maven.
 //   · anything else, and every amount change → local correction only.
 
-const STEWARD_ROLES = new Set(['super_admin', 'owner', 'admin'])
+const STEWARD_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin'])
 
 interface Props {
   txId: number
@@ -97,9 +98,9 @@ export default function TransactionEditPanel({
   }
 
   return (
-    <section className="card recent-card">
+    <section className="card recent-card" id="transaction-edit-panel">
       <div className="recent-head">
-        <h3>✏️ {t('تعديل المعاملة', 'Edit transaction')}</h3>
+        <h3 className="txd-section-title"><Pencil size={17} aria-hidden="true" /> {t('تعديل المعاملة', 'Edit transaction')}</h3>
         <button className="btn-ghost btn-sm" onClick={() => setOpen((v) => !v)}>
           {open ? t('إغلاق', 'Close') : isSteward ? t('تعديل', 'Edit') : t('طلب تعديل', 'Request edit')}
         </button>
@@ -162,11 +163,12 @@ export default function TransactionEditPanel({
 
           <div className="drawer-actions" style={{ marginTop: 12 }}>
             <button className="btn-primary" disabled={!canSubmit} onClick={() => void submit()}>
+              {isSteward ? <Save size={15} aria-hidden="true" /> : <Send size={15} aria-hidden="true" />}
               {busy
                 ? t('جارٍ التنفيذ…', 'Working…')
                 : isSteward ? t('طبّق التعديل', 'Apply edit') : t('أرسل الطلب', 'Send request')}
             </button>
-            <button className="btn-ghost" disabled={busy} onClick={() => setOpen(false)}>{t('إلغاء', 'Cancel')}</button>
+            <button className="btn-ghost" disabled={busy} onClick={() => setOpen(false)}><X size={15} aria-hidden="true" /> {t('إلغاء', 'Cancel')}</button>
           </div>
           <p className="cell-sub" style={{ marginTop: 8 }}>
             {t('المرجع', 'Ref')}: <span className="mono">{ontargetRef ?? txId}</span>

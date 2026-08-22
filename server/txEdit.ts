@@ -5,7 +5,7 @@ import type { AuthEnv } from './rbac.js'
 
 // Transaction edits: status and amount.
 //
-// Stewards (super_admin / owner / admin) edit directly. Everyone else — an
+// Stewards (super_admin / owner / admin / operations_admin) edit directly. Everyone else — an
 // operator — can only raise a request, which goes to Mina and Eslam on
 // Telegram and is applied to the transaction only when one of them approves.
 //
@@ -29,7 +29,8 @@ export const txEditRoutes = new Hono<AuthEnv>()
 
 txEditRoutes.use('*', requireAuth)
 
-const STEWARD_ROLES = new Set(['super_admin', 'owner', 'admin'])
+// "Operator admin" is stored as operations_admin in panel_users.
+const STEWARD_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin'])
 const EDITABLE_STATUSES = ['PENDING', 'PAID', 'DECLINED', 'EXPIRED', 'EXPIRED_LOCAL', 'UNDERPAID', 'APPROVED']
 
 // Mina and Eslam, by label in telegram_chats. Resolved at send time rather
