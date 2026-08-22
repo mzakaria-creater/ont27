@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { db } from './db.js'
 import { oldDb } from './oldDb.js'
-import { requireAuth, requirePerm } from './rbac.js'
+import { requireAuth, requirePerm, requireAnyPerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 
 // Wallet pool = wallet_device_map (receiving wallets → device/sim), enriched
@@ -110,3 +110,25 @@ walletRoutes.post('/:walletNumber/assignment', requirePerm('wallets', 'can_edit'
 
   return c.json({ ok: true, wallet: walletNumber, device, sim_slot: simSlot })
 })
+// ---- Wallet movements: money in and out per wallet, both directions ----
+//
+// Served from the old project: inbound_sms lives there and is not part of the
+// delta sync, so reading a copy here would report on a fraction of the traffic.
+//
+// The report groups on inbound_sms.wallet_number, not receiver_number. Those
+// agree on deposits but not on withdrawals, where receiver_number holds the
+// customer being paid rather than the wallet paying them — 121 of 150
+// withdrawals in a 7-day sample. Grouped the old way, money leaving a wallet
+// was filed under a stranger's phone number.
+walletRoutes.get(
+  '/movements',
+  requireAnyPerm(['wallets', 'treasury', 'reports', 'sms_live'], 'can_view'),
+  async (c) => {
+    const days = Math.min(Math.max(Number(c.req.query('days')) || 7, 0.5), 90)
+    const old = oldDb()
+    if (!old) return c.json({ error: 'old_db_not_configured' }, 503)
+    const { data, error } = await old.rpc('wallet_movements', { p_days: days })
+    if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+    return c.json(data)
+  },
+)
