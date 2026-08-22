@@ -67,13 +67,57 @@ async function credentials(): Promise<{ api_key: string; api_secret: string } | 
   return data[0] as { api_key: string; api_secret: string }
 }
 
+async function binanceTime(): Promise<number> {
+  const response = await fetch('https://api.binance.com/api/v3/time', { signal: AbortSignal.timeout(8_000) })
+  if (!response.ok) throw new Error(`time_http_${response.status}`)
+  const body = await response.json() as { serverTime?: number }
+  if (!Number.isFinite(body.serverTime)) throw new Error('invalid_server_time')
+  return Number(body.serverTime)
+}
+
+async function signedC2cHistory(creds: { api_key: string; api_secret: string }, side: 'BUY' | 'SELL', page = 1, rows = 50) {
+  const timestamp = await binanceTime()
+  const params = new URLSearchParams({ tradeType: side, page: String(page), rows: String(rows), recvWindow: '5000', timestamp: String(timestamp) })
+  params.set('signature', createHmac('sha256', creds.api_secret).update(params.toString()).digest('hex'))
+  return fetch(`https://api.binance.com/sapi/v1/c2c/orderMatch/listUserOrderHistory?${params}`, {
+    headers: { 'X-MBX-APIKEY': creds.api_key }, signal: AbortSignal.timeout(10_000),
+  })
+}
+
+binanceRoutes.get('/market', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) => {
+  const requested = (c.req.query('symbols') ?? 'BTCUSDT,ETHUSDT,BNBUSDT')
+    .split(',').map((symbol) => symbol.trim().toUpperCase()).filter((symbol) => /^[A-Z0-9]{5,20}$/.test(symbol)).slice(0, 10)
+  if (!requested.length) return c.json({ error: 'invalid_symbols' }, 400)
+  const query = new URLSearchParams({ symbols: JSON.stringify(requested) })
+  const response = await fetch(`https://data-api.binance.vision/api/v3/ticker/price?${query}`, { signal: AbortSignal.timeout(8_000) }).catch(() => null)
+  if (!response) return c.json({ error: 'binance_unreachable' }, 502)
+  const result = await response.json().catch(() => ({ msg: 'invalid_response' }))
+  if (!response.ok) return c.json({ error: 'binance_error', provider_status: response.status, provider: result }, 502)
+  return c.json({ prices: result, source: 'Binance Spot public market data', at: new Date().toISOString() })
+})
+
+binanceRoutes.get('/connection', requireSuperAdmin, async (c) => {
+  const creds = await credentials()
+  if (!creds) return c.json({ error: 'credentials_required' }, 409)
+  try {
+    const response = await signedC2cHistory(creds, 'BUY', 1, 1)
+    const result = await response.json().catch(() => ({ msg: 'invalid_response' })) as Record<string, unknown>
+    const actor = c.get('actor')
+    await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: response.ok ? 'binance.api_connection_succeeded' : 'binance.api_connection_failed', entity: 'binance_api', entity_id: 'c2c', after: { provider_status: response.status, code: result.code ?? null } })
+    if (!response.ok) return c.json({ error: 'binance_error', provider_status: response.status, code: result.code ?? null, message: result.msg ?? null }, 502)
+    return c.json({ ok: true, permission: 'C2C_USER_DATA', checked_at: new Date().toISOString() })
+  } catch (error) {
+    return c.json({ error: 'binance_unreachable', detail: error instanceof Error ? error.message : 'request_failed' }, 502)
+  }
+})
+
 binanceRoutes.get('/history', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) => {
   const creds = await credentials()
   if (!creds) return c.json({ error: 'credentials_required' }, 409)
   const side = c.req.query('side') === 'SELL' ? 'SELL' : 'BUY'
-  const params = new URLSearchParams({ tradeType: side, page: '1', rows: '50', recvWindow: '5000', timestamp: String(Date.now()) })
-  params.set('signature', createHmac('sha256', creds.api_secret).update(params.toString()).digest('hex'))
-  const response = await fetch(`https://api.binance.com/sapi/v1/c2c/orderMatch/listUserOrderHistory?${params}`, { headers: { 'X-MBX-APIKEY': creds.api_key }, signal: AbortSignal.timeout(10_000) }).catch(() => null)
+  const page = Math.min(Math.max(Number(c.req.query('page')) || 1, 1), 1000)
+  const rows = Math.min(Math.max(Number(c.req.query('rows')) || 50, 1), 100)
+  const response = await signedC2cHistory(creds, side, page, rows).catch(() => null)
   if (!response) return c.json({ error: 'binance_unreachable' }, 502)
   const result = await response.json().catch(() => ({ message: 'invalid_response' }))
   if (!response.ok) return c.json({ error: 'binance_error', provider_status: response.status, provider: result }, 502)
