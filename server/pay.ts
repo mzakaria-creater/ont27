@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { db } from './db.js'
 import { allocateWallet } from './allocate.js'
 import { notifyTelegram } from './notify.js'
@@ -27,6 +27,45 @@ function linkUsable(link: LinkRow): string | null {
   if (link.expires_at && new Date(link.expires_at).getTime() < Date.now()) return 'link_expired'
   if (link.max_uses !== null && link.use_count >= link.max_uses) return 'link_exhausted'
   return null
+}
+
+// Salted daily digest of IP + user agent. Enough to tell one visitor from
+// another within a day; not reversible into an address, and it rolls over
+// nightly so it cannot be joined across days into a browsing history. The
+// salt is the JWT secret, which is already required to be set — with no
+// secret the digest is skipped entirely rather than falling back to something
+// predictable that would let anyone reconstruct the input.
+function visitorDigest(c: { req: { header: (k: string) => string | undefined } }): string | null {
+  const salt = process.env.PANEL_JWT_SECRET
+  if (!salt) return null
+  const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
+    ?? c.req.header('x-real-ip') ?? ''
+  const ua = c.req.header('user-agent') ?? ''
+  if (!ip && !ua) return null
+  const day = new Date().toISOString().slice(0, 10)
+  return createHash('sha256').update(`${salt}|${day}|${ip}|${ua}`).digest('hex').slice(0, 32)
+}
+
+// Recorded for EVERY view, refused ones included: a link nobody can use any
+// more but that people keep opening is the single most useful thing this
+// table can show, and it is invisible if only successful views are kept.
+// Never allowed to fail the request — an analytics write must not stop a
+// customer reaching a payment page.
+async function recordOpen(
+  link: { id: string; short_code: string },
+  blockedReason: string | null,
+  c: { req: { header: (k: string) => string | undefined } },
+): Promise<void> {
+  try {
+    await db.from('payment_link_opens').insert({
+      link_id: link.id,
+      short_code: link.short_code,
+      visitor_hash: visitorDigest(c),
+      blocked_reason: blockedReason,
+    })
+  } catch (e) {
+    console.error('payment_link_opens insert failed:', e)
+  }
 }
 
 function publicSession(s: Record<string, unknown>) {
@@ -60,6 +99,7 @@ payRoutes.get('/link/:code', async (c) => {
     .maybeSingle<LinkRow>()
   if (!link) return c.json({ error: 'link_not_found' }, 404)
   const unusable = linkUsable(link)
+  await recordOpen(link, unusable, c)
   if (unusable) return c.json({ error: unusable }, 410)
   return c.json({
     link: {
