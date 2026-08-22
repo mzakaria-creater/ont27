@@ -17,9 +17,30 @@ interface SettleRow {
   payVolume: number
 }
 
+// Gross settlement batches per sub-merchant. Net is deliberately absent: the
+// per-transaction fee columns are NULL on every paid row, and the configured
+// rates cannot be applied unambiguously — so the page shows what is certain
+// and names what is not, rather than publishing a payable amount derived from
+// a guessed rate.
+interface Batch {
+  subMerchant: string; merchant: string
+  paidCount: number; declinedCount: number; totalCount: number
+  grossVolume: number; avgTicket: number | null
+  firstDay: string | null; lastDay: string | null
+  rateRow: string | null; commissionRate: number | null
+  payinPct: number | null; payoutPct: number | null
+  rateMissing: boolean; rateConflict: boolean; rateCandidates: number
+}
+interface Batches {
+  days: number; gateway: string; generatedAt: string
+  netComputable: boolean; netBlockedBecause: string[]
+  grossTotal: number; paidTotal: number; batches: Batch[]
+}
+
 export default function Settlements() {
   const { t } = useLocale()
   const [days, setDays] = useState(7)
+  const [batches, setBatches] = useState<Batches | null>(null)
   const [rows, setRows] = useState<SettleRow[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
@@ -28,6 +49,11 @@ export default function Settlements() {
     api<{ rows: SettleRow[] }>(`/api/settlements?days=${days}`)
       .then((r) => setRows(r.rows))
       .catch((e) => setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض التسويات.', 'You do not have permission to view settlements.') : t('تعذّر تحميل التسويات.', 'Failed to load settlements.')))
+  }, [days])
+
+  useEffect(() => {
+    setBatches(null)
+    api<Batches>(`/api/settlements/batches?days=${days}`).then(setBatches).catch(() => setBatches(null))
   }, [days])
 
   const totals = (rows ?? []).reduce(
@@ -120,6 +146,86 @@ export default function Settlements() {
           </div>
         )}
       </section>
+
+      {batches && (
+        <section className="card">
+          <div className="section-label">{t('دفعات التسوية لكل تاجر فرعي', 'Settlement batches per sub-merchant')}</div>
+          <div className="kpi-grid">
+            <div className="kpi-card">
+              <div className="kpi-value">{money(batches.grossTotal, 'EGP')}</div>
+              <div className="kpi-label">{t('إجمالي إجمالي (Gross)', 'Gross total')}</div>
+              <div className="cell-sub">{batches.paidTotal} {t('معاملة معتمدة', 'paid transactions')}</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-value">{batches.batches.filter((b) => b.rateConflict).length}</div>
+              <div className="kpi-label">{t('تعارض في نسبة العمولة', 'Rate conflicts')}</div>
+              <div className="cell-sub">{t('من', 'of')} {batches.batches.length}</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-value">{batches.batches.filter((b) => b.rateMissing).length}</div>
+              <div className="kpi-label">{t('بلا نسبة مُعرَّفة', 'No rate defined')}</div>
+              <div className="cell-sub">{t('لا يمكن تسويتها', 'cannot be settled')}</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-value">—</div>
+              <div className="kpi-label">{t('الصافي', 'Net')}</div>
+              <div className="cell-sub">{t('غير قابل للحساب', 'not computable')}</div>
+            </div>
+          </div>
+
+          <div className="card warn">
+            <strong>{t('الصافي غير محسوب عمداً.', 'Net is deliberately not computed.')}</strong>
+            <ul className="plain-list">
+              {batches.netBlockedBecause.map((r) => <li key={r}>• {r}</li>)}
+            </ul>
+            <p className="cell-sub">
+              {t(
+                'مبلغ التسوية مبلغ مستحق الدفع. نشره بنسبة مُخمَّنة أسوأ من عدم نشره — الفارق على EZInvest وحدها بين قراءتَي النسبة 61,670 ج.',
+                'A settlement figure is a payable amount. Publishing one from a guessed rate is worse than publishing none — on EZInvest alone the two readings differ by 61,670 EGP.',
+              )}
+            </p>
+          </div>
+
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>{t('التاجر الفرعي', 'Sub-merchant')}</th>
+                  <th>{t('إجمالي (Gross)', 'Gross')}</th>
+                  <th>{t('معتمدة', 'Paid')}</th>
+                  <th>{t('متوسط العملية', 'Avg ticket')}</th>
+                  <th>{t('صف النسبة', 'Rate row')}</th>
+                  <th>{t('commission_rate', 'commission_rate')}</th>
+                  <th>{t('payin + payout', 'payin + payout')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {batches.batches.map((b) => (
+                  <tr key={b.subMerchant} className={b.rateMissing ? 'row-pending' : undefined}>
+                    <td>{b.subMerchant}</td>
+                    <td className="mono">{money(b.grossVolume, 'EGP')}</td>
+                    <td className="mono">{b.paidCount}</td>
+                    <td className="mono">{b.avgTicket == null ? '—' : money(b.avgTicket, 'EGP')}</td>
+                    <td>
+                      {b.rateRow ?? <span className="pay-status-badge st-declined">{t('غير موجود', 'missing')}</span>}
+                      {b.rateCandidates > 1 && (
+                        <div className="cell-sub">{t(`${b.rateCandidates} صفوف مطابقة`, `${b.rateCandidates} rows match`)}</div>
+                      )}
+                    </td>
+                    <td className="mono">{b.commissionRate == null ? '—' : `${b.commissionRate}%`}</td>
+                    <td className="mono">
+                      {b.payinPct == null ? '—' : `${b.payinPct}% + ${b.payoutPct ?? 0}%`}
+                      {b.rateConflict && !b.rateMissing && (
+                        <div className="cell-sub">{t('يخالف العمود المجاور', 'disagrees with the column beside it')}</div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </PanelShell>
   )
 }

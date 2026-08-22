@@ -1253,3 +1253,24 @@ extraRoutes.get('/system-health', async (c) => {
     ),
   })
 })
+
+// ---- Settlement batches: gross per sub-merchant, with the rate ambiguity ----
+//
+// Gross only, on purpose. maven_transactions.commission and .fees are NULL on
+// every paid row, and the configured rates cannot be applied unambiguously:
+// merchants_hierarchy.commission_rate disagrees with payin+payout on EVERY
+// row, and rate rows match sub-merchants by name rather than by key. A
+// settlement figure is a payable amount, so the endpoint reports what is
+// certain and flags what is not, instead of picking a rate and calling the
+// result a number.
+extraRoutes.get(
+  '/settlements/batches',
+  requireAnyPerm(['settlements', 'settlements_list', 'settlement_recon', 'fees', 'reports'], 'can_view'),
+  async (c) => {
+    const days = Math.min(Math.max(Number(c.req.query('days')) || 30, 1), 365)
+    const gateway = c.req.query('gateway') === 'ALL' ? 'ALL' : 'NagupayP2P'
+    const { data, error } = await db.rpc('settlement_batches', { p_days: days, p_gateway: gateway })
+    if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+    return c.json(data)
+  },
+)
