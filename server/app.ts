@@ -20,6 +20,7 @@ import { publicApiRoutes } from './publicApi.js'
 import { binanceRoutes } from './binance.js'
 import { txEditRoutes } from './txEdit.js'
 import { performanceRoutes } from './performance.js'
+import { monitoringRoutes } from './monitoring.js'
 
 export const app = new Hono().basePath('/api')
 
@@ -42,6 +43,7 @@ app.route('/payment-methods', paymentMethodRoutes)
 app.route('/admin', adminRoutes)
 app.route('/reports', reportsRoutes)
 app.route('/performance', performanceRoutes)
+app.route('/monitoring', monitoringRoutes)
 app.route('/review', reviewRoutes)
 app.route('/telegram', telegramRoutes)
 app.route('/binance', binanceRoutes)

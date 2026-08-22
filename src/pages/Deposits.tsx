@@ -13,6 +13,7 @@ import { depositTime, merchantChipCls, money, statusMeta } from '../lib/deposits
 import type { DepositDetail, DepositRow, DepositStats } from '../lib/deposits'
 import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
+import { syncProviders } from '../lib/providerSync'
 
 const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
 const MASTER_PILLS = [
@@ -75,8 +76,8 @@ export default function Deposits() {
 
   const appliedQ = params.get('q') ?? ''
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     setErr(null)
     const search = new URLSearchParams({
       limit: String(pageSize),
@@ -90,15 +91,24 @@ export default function Deposits() {
     } catch (e) {
       setErr(e instanceof ApiError && e.status === 403 ? 'لا تملك صلاحية عرض الإيداعات.' : 'تعذّر تحميل الإيداعات.')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [status, master, appliedQ, page, pageSize])
 
   useEffect(() => {
-    api<DepositStats>('/api/deposits/stats').then(setStats).catch(() => setStats(null))
-  }, [])
-
-  useEffect(() => { void load() }, [load])
+    let alive = true
+    const refresh = async (silent = false) => {
+      await syncProviders()
+      if (!alive) return
+      await Promise.all([
+        load(silent),
+        api<DepositStats>('/api/deposits/stats').then((value) => { if (alive) setStats(value) }).catch(() => { if (alive) setStats(null) }),
+      ])
+    }
+    void refresh(false)
+    const interval = setInterval(() => void refresh(true), 15_000)
+    return () => { alive = false; clearInterval(interval) }
+  }, [load])
 
   const setFilter = (next: { status?: string; master?: string; q?: string; page?: number; view?: string }) => {
     const p = new URLSearchParams(params)

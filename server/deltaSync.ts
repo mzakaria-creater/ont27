@@ -3,6 +3,7 @@ import { getCookie } from 'hono/cookie'
 import { createClient } from '@supabase/supabase-js'
 import { db } from './db.js'
 import { ACCESS_COOKIE, verifyAccessToken } from './tokens.js'
+import { repairPaidSmsMatches } from './smsMatcher.js'
 
 // Pulls new rows from the OLD prod Supabase (where the Maven workers still
 // write) into the panel-v2 DB. Same overlap-window upsert idea as
@@ -70,9 +71,12 @@ const PAGE = 1000
 // at the fast cadence would multiply load for no gain in how fast new rows
 // appear.
 const FAST_THROTTLE_MS = 15_000
-const FULL_THROTTLE_MS = 120_000
+// Provider collectors update an existing row when NagoPay/PayFuture changes
+// its status. Re-read a bounded recent window on every fast pass so those
+// changes are live too; the wider full pass remains the repair safety net.
+const FAST_UPDATED_LOOKBACK_MS = 10 * 60_000
 let lastFastRunAt = 0
-let lastFullRunAt = 0
+let activeSync: Promise<Record<string, number | string>> | null = null
 
 async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, number | string>> {
   const oldUrl = process.env.OLD_SUPABASE_URL
@@ -210,9 +214,14 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
       console.error(`deltaSync ${table} (new rows) failed:`, e)
     }
 
-    if (!updatedTs || mode === 'fast') continue
+    if (!updatedTs) continue
+    // Only transaction tables need live update polling. Configuration/CRM
+    // updates stay on the full cadence to keep the fast path cheap.
+    if (mode === 'fast' && !['maven_transactions', 'maven_payout_transactions'].includes(table)) continue
     try {
-      const since = await watermark(table, updatedTs, UPDATED_OVERLAP_MS)
+      const since = mode === 'fast'
+        ? new Date(Date.now() - FAST_UPDATED_LOOKBACK_MS).toISOString()
+        : await watermark(table, updatedTs, UPDATED_OVERLAP_MS)
       results[`${table}:updated`] = await pullSince(table, pk, updatedTs, since)
     } catch (e) {
       results[`${table}:updated`] = `error: ${(e as Error).message}`
@@ -220,7 +229,41 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
     }
   }
 
+  // Run a bounded exact-reference matcher after every provider pull. This only
+  // links evidence; it never approves/declines or calls a provider. The full
+  // pass scans farther back as a repair net.
+  {
+    try {
+      const repair = await repairPaidSmsMatches(true, mode === 'full' ? 1000 : 300)
+      results['sms_exact_matches'] = repair.linked
+      console.info('exact SMS matcher completed', {
+        scannedSms: repair.scannedSms,
+        scannedTransactions: repair.scannedTransactions,
+        eligible: repair.eligible,
+        linked: repair.linked,
+        skippedAmbiguous: repair.skippedAmbiguous,
+        skippedAlreadyAssigned: repair.skippedAlreadyAssigned,
+        diagnosticCounts: Object.entries(repair.diagnostics).map(([key, value]) => `${key}=${value}`).join(','),
+        errors: repair.errors.length,
+      })
+      if (repair.errors.length) console.error('paid SMS repair partial errors:', repair.errors)
+    } catch (e) {
+      results['sms_exact_matches'] = `error: ${(e as Error).message}`
+      console.error('exact SMS matcher failed:', e)
+    }
+  }
+
   return results
+}
+
+function syncOnce(mode: 'fast' | 'full'): Promise<Record<string, number | string>> {
+  if (activeSync) return activeSync
+  activeSync = runSync(mode).finally(() => { activeSync = null })
+  return activeSync
+}
+
+function resultOk(results: Record<string, number | string>): boolean {
+  return !Object.values(results).some((value) => typeof value === 'string' && value.startsWith('error:'))
 }
 
 // Daily Vercel Cron.
@@ -230,15 +273,19 @@ deltaSyncRoutes.get('/delta-sync', async (c) => {
   if (!secret || auth !== `Bearer ${secret}`) {
     return c.json({ error: 'unauthorized' }, 401)
   }
-  const results = await runSync().catch((e) => ({ error: (e as Error).message }))
-  return c.json({ ok: true, results, at: new Date().toISOString() })
+  const results = await syncOnce('full').catch((e) => ({ error: `error: ${(e as Error).message}` }))
+  return c.json({ ok: resultOk(results), mode: 'full', results, at: new Date().toISOString() }, resultOk(results) ? 200 : 502)
 })
 
 // Piggyback trigger from the authed panel. Throttled per warm lambda; the
 // overlap-window upsert keeps concurrent runs idempotent.
 //
-// Every caller runs the fast pass when its 15s window has elapsed, and
-// additionally the full pass when its 2-minute window has. Measured before
+// Every authenticated caller runs ONLY the bounded fast pass. A previous
+// version occasionally promoted this request to a full pass using in-memory
+// timestamps, but Vercel instances do not share memory: several open panels
+// therefore launched overlapping 24-hour pulls and SMS repair jobs. The cron
+// endpoint above is the sole owner of full repair work.
+// Measured before
 // this split: a transaction reached the old project in ~75s (median) but took
 // ~53 minutes (median) to reach ont27, because the only unattended sync was a
 // daily cron and the in-panel pump was throttled to 60s.
@@ -248,13 +295,12 @@ deltaSyncRoutes.post('/delta-sync', async (c) => {
   if (!claims) return c.json({ error: 'unauthenticated' }, 401)
 
   const now = Date.now()
-  const wantFull = now - lastFullRunAt >= FULL_THROTTLE_MS
   const wantFast = now - lastFastRunAt >= FAST_THROTTLE_MS
-  if (!wantFull && !wantFast) return c.json({ ok: true, skipped: 'throttled' })
+  if (!wantFast) return c.json({ ok: true, skipped: 'throttled' })
 
-  const mode = wantFull ? 'full' : 'fast'
+  const mode = 'fast'
   lastFastRunAt = now
-  if (wantFull) lastFullRunAt = now
-  const results = await runSync(mode).catch((e) => ({ error: (e as Error).message }))
-  return c.json({ ok: true, mode, results, at: new Date().toISOString() })
+  const results = await syncOnce(mode).catch((e) => ({ error: `error: ${(e as Error).message}` }))
+  const ok = resultOk(results)
+  return c.json({ ok, mode, results, at: new Date().toISOString() }, ok ? 200 : 502)
 })

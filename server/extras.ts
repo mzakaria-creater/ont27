@@ -25,6 +25,13 @@ extraRoutes.get(
     const type = c.req.query('type') // deposit | payout | ''
     const status = c.req.query('status')?.toUpperCase()
     const q = c.req.query('q')?.trim()
+    const from = c.req.query('from')?.trim()
+    const to = c.req.query('to')?.trim()
+    const merchant = c.req.query('merchant')?.trim()
+    const method = c.req.query('method')?.trim()
+    const currency = c.req.query('currency')?.trim().toUpperCase()
+    const minAmount = Number(c.req.query('min_amount'))
+    const maxAmount = Number(c.req.query('max_amount'))
     const limit = Math.min(Number(c.req.query('limit')) || 25, MAX_PAGE)
     const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
     const fetchTo = offset + limit
@@ -36,6 +43,13 @@ extraRoutes.get(
         .order('ontarget_ref', { ascending: false, nullsFirst: false })
         .range(0, fetchTo - 1)
       if (status) query = query.eq('status', status)
+      if (from) query = query.gte('first_seen_at', `${from}T00:00:00Z`)
+      if (to) query = query.lte('first_seen_at', `${to}T23:59:59.999Z`)
+      if (merchant) query = query.ilike('merchant', `%${merchant.replaceAll(',', ' ')}%`)
+      if (method) query = query.ilike('payment_method', `%${method.replaceAll(',', ' ')}%`)
+      if (currency) query = query.eq('currency', currency)
+      if (Number.isFinite(minAmount)) query = query.gte('amount', minAmount)
+      if (Number.isFinite(maxAmount)) query = query.lte('amount', maxAmount)
       if (q) {
         const like = `%${q.replaceAll(',', ' ')}%`
         const ors = [`ontarget_ref.ilike.${like}`, `sender_number.ilike.${like}`, `sender_name.ilike.${like}`, `merchant.ilike.${like}`]
@@ -51,6 +65,13 @@ extraRoutes.get(
         .order('ontarget_ref', { ascending: false, nullsFirst: false })
         .range(0, fetchTo - 1)
       if (status) query = query.eq('status', status)
+      if (from) query = query.gte('first_seen_at', `${from}T00:00:00Z`)
+      if (to) query = query.lte('first_seen_at', `${to}T23:59:59.999Z`)
+      if (merchant) query = query.ilike('merchant', `%${merchant.replaceAll(',', ' ')}%`)
+      if (method) query = query.ilike('pay_by', `%${method.replaceAll(',', ' ')}%`)
+      if (currency && currency !== 'EGP') query = query.eq('maven_id', -1)
+      if (Number.isFinite(minAmount)) query = query.gte('amount', minAmount)
+      if (Number.isFinite(maxAmount)) query = query.lte('amount', maxAmount)
       if (q) {
         const like = `%${q.replaceAll(',', ' ')}%`
         const ors = [`ontarget_ref.ilike.${like}`, `mobile_no.ilike.${like}`, `account_name.ilike.${like}`, `merchant.ilike.${like}`]
@@ -225,6 +246,8 @@ extraRoutes.get('/wallet-report/:wallet', requireAnyPerm(['sms_live', 'wallets']
 // ---- CRM clients ----
 extraRoutes.get('/crm', requirePerm('client_crm', 'can_view'), async (c) => {
   const q = c.req.query('q')?.trim()
+  const segment = c.req.query('segment')?.trim()
+  const sort = c.req.query('sort')?.trim()
   const limit = Math.min(Number(c.req.query('limit')) || 25, MAX_PAGE)
   const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
   let query = db
@@ -233,15 +256,34 @@ extraRoutes.get('/crm', requirePerm('client_crm', 'can_view'), async (c) => {
       'id, client_name, phone_no, normalized_phone, merchant_name, first_transaction_at, last_transaction_at, total_deposit, approved_deposit, total_transactions, approved_transactions, declined_transactions, approval_rate, risk_score, is_vip, is_repeat_client, needs_review',
       { count: 'exact' },
     )
-    .order('last_transaction_at', { ascending: false, nullsFirst: false })
     .range(offset, offset + limit - 1)
+  if (segment === 'vip') query = query.eq('is_vip', true)
+  else if (segment === 'repeat') query = query.eq('is_repeat_client', true)
+  else if (segment === 'review') query = query.eq('needs_review', true)
+  else if (segment === 'risk') query = query.gt('risk_score', 0)
   if (q) {
-    const like = `%${q}%`
+    const like = `%${q.replaceAll(',', ' ')}%`
     query = query.or([`client_name.ilike.${like}`, `phone_no.ilike.${like}`, `normalized_phone.ilike.${like}`, `merchant_name.ilike.${like}`].join(','))
   }
-  const { data, count, error } = await query
+  if (sort === 'volume') query = query.order('approved_deposit', { ascending: false, nullsFirst: false })
+  else if (sort === 'risk') query = query.order('risk_score', { ascending: false, nullsFirst: false })
+  else query = query.order('last_transaction_at', { ascending: false, nullsFirst: false })
+  const [{ data, count, error }, summaryRows] = await Promise.all([
+    query,
+    db.from('crm_clients').select('approved_deposit, total_transactions, is_vip, is_repeat_client, needs_review, risk_score').limit(5000),
+  ])
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  return c.json({ rows: data ?? [], total: count ?? 0, limit, offset })
+  if (summaryRows.error) return c.json({ error: 'db_error', detail: summaryRows.error.message }, 500)
+  const all = summaryRows.data ?? []
+  return c.json({ rows: data ?? [], total: count ?? 0, limit, offset, summary: {
+    clients: all.length,
+    approvedVolume: all.reduce((sum, row) => sum + Number(row.approved_deposit ?? 0), 0),
+    transactions: all.reduce((sum, row) => sum + Number(row.total_transactions ?? 0), 0),
+    vip: all.filter((row) => row.is_vip).length,
+    repeat: all.filter((row) => row.is_repeat_client).length,
+    review: all.filter((row) => row.needs_review).length,
+    risk: all.filter((row) => Number(row.risk_score ?? 0) > 0).length,
+  } })
 })
 
 // Full client profile + their transactions (matched by sender_number against
@@ -785,8 +827,9 @@ extraRoutes.get('/notifications', async (c) => {
     const { count } = await apply(db.from('maven_transactions').select('tx_id', { count: 'exact', head: true }))
     return count ?? 0
   }
-  const [pendingDeposits, pendingPayouts, smsReview, devices, latestPending, latestPayouts, recentMatches] = await Promise.all([
-    countOf((q: any) => q.eq('status', 'PENDING')),
+  const [pendingDeposits, pendingDepositsStale, pendingPayouts, smsReview, devices, latestPending, latestPayouts, recentMatches] = await Promise.all([
+    countOf((q: any) => q.eq('status', 'PENDING').gte('first_seen_at', twoDays)),
+    countOf((q: any) => q.eq('status', 'PENDING').lt('first_seen_at', twoDays)),
     db
       .from('maven_payout_transactions')
       .select('maven_id', { count: 'exact', head: true })
@@ -807,6 +850,7 @@ extraRoutes.get('/notifications', async (c) => {
       .from('maven_transactions')
       .select('tx_id, ontarget_ref, amount, currency, sender_name, merchant, master_merchant')
       .eq('status', 'PENDING')
+      .gte('first_seen_at', twoDays)
       .order('ontarget_ref', { ascending: false, nullsFirst: false })
       .limit(5)
       .then(({ data }) => data ?? []),
@@ -843,6 +887,7 @@ extraRoutes.get('/notifications', async (c) => {
 
   return c.json({
     pendingDeposits,
+    pendingDepositsStale,
     pendingPayouts,
     smsReview,
     offlineDevices,

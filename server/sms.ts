@@ -51,6 +51,10 @@ async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> 
   for (const r of rows) {
     const txId = resolveTx(r)
     if (txId == null) continue
+    // Normalize legacy rows for every API consumer. The live matcher writes
+    // consumed_by_tx_id but does not consistently maintain matched/status.
+    r.matched = true
+    if (!r.match_status || r.match_status === 'unmatched') r.match_status = 'auto'
     r.matched_tx_id = txId
     r.matched_ontarget_ref = refByTx.get(txId) ?? null
   }
@@ -211,14 +215,16 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
   if (!Number.isInteger(txId) || txId <= 0) return c.json({ error: 'bad_tx_id' }, 400)
 
   const [{ data: sms, error: smsErr }, { data: tx, error: txErr }] = await Promise.all([
-    db.from('inbound_sms').select('id, matched, match_status, amount, received_at, receiver_number').eq('id', id).maybeSingle(),
+    db.from('inbound_sms').select('id, matched, match_status, amount, received_at, receiver_number, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').eq('id', id).maybeSingle(),
     db.from('maven_transactions').select('tx_id, amount, first_seen_at, ontarget_ref').eq('tx_id', txId).maybeSingle(),
   ])
   if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
   if (txErr) return c.json({ error: 'db_error', detail: txErr.message }, 500)
   if (!sms) return c.json({ error: 'not_found' }, 404)
   if (!tx) return c.json({ error: 'tx_not_found' }, 404)
-  if (sms.matched) return c.json({ error: 'already_linked' }, 409)
+  if (sms.matched || sms.consumed_by_tx_id != null || sms.matched_transaction_id != null || sms.maven_transaction_id != null) {
+    return c.json({ error: 'already_linked' }, 409)
+  }
 
   const { error: updErr } = await db
     .from('inbound_sms')
@@ -288,12 +294,13 @@ smsRoutes.post('/:id/unlink', requirePerm('sms_live', 'can_edit'), async (c) => 
 
   const { data: sms, error: smsErr } = await db
     .from('inbound_sms')
-    .select('id, matched, match_status, matched_transaction_id')
+    .select('id, matched, match_status, matched_transaction_id, maven_transaction_id, consumed_by_tx_id')
     .eq('id', id)
     .maybeSingle()
   if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
   if (!sms) return c.json({ error: 'not_found' }, 404)
-  if (!sms.matched) return c.json({ error: 'not_linked' }, 409)
+  const linkedTxId = sms.consumed_by_tx_id ?? sms.matched_transaction_id ?? sms.maven_transaction_id
+  if (!sms.matched && linkedTxId == null) return c.json({ error: 'not_linked' }, 409)
 
   const { error: updErr } = await db
     .from('inbound_sms')
@@ -318,7 +325,7 @@ smsRoutes.post('/:id/unlink', requirePerm('sms_live', 'can_edit'), async (c) => 
     action: 'sms.unlink',
     entity: 'inbound_sms',
     entity_id: id,
-    before: { match_status: sms.match_status, tx_id: sms.matched_transaction_id },
+    before: { match_status: sms.match_status, tx_id: linkedTxId },
     after: { match_status: 'unmatched' },
   })
 
@@ -337,5 +344,7 @@ smsRoutes.get('/:id', requirePerm('sms_live', 'can_view'), async (c) => {
     .maybeSingle()
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   if (!data) return c.json({ error: 'not_found' }, 404)
-  return c.json({ sms: data })
+  const rows = [data as unknown as Record<string, unknown>]
+  await attachMatchedRef(rows)
+  return c.json({ sms: rows[0] })
 })

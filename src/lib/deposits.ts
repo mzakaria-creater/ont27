@@ -52,6 +52,8 @@ export interface DepositDetail extends DepositRow {
 export interface DepositStats {
   total: number
   pending: number
+  pendingAll?: number
+  pendingStale?: number
   day: { paid: { count: number; volume: number }; declined: number }
   week: { paid: { count: number; volume: number } }
   recent: DepositRow[]

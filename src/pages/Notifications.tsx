@@ -9,6 +9,7 @@ import { useLocale } from '../lib/locale'
 
 export interface NotifData {
   pendingDeposits: number
+  pendingDepositsStale?: number
   pendingPayouts: number
   smsReview: number
   offlineDevices: string[]

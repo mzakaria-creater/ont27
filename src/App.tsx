@@ -99,6 +99,7 @@ function Bell() {
               <span>💰 {t('طابور الإيداعات', 'Deposits queue')}</span>
               <span className="bell-count">{data.pendingDeposits}</span>
             </Link>
+            {(data.pendingDepositsStale ?? 0) > 0 && <div className="alert-empty">{t(`${data.pendingDepositsStale} معاملات Pending قديمة خارج التنبيه الحي`, `${data.pendingDepositsStale} old pending records excluded from the live alert`)}</div>}
             {(data.latestPending ?? []).length === 0 && <div className="alert-empty">{t('لا شيء معلّق', 'Nothing pending')}</div>}
             {(data.latestPending ?? []).map((r) => (
               <Link key={r.tx_id} to={r.ontarget_ref ? `/transactions/${r.ontarget_ref}` : '/deposits?status=PENDING'} className="alert-row" onClick={() => setOpen(false)}>
@@ -254,7 +255,8 @@ export default function App() {
           <Route path="/payment-checkout" element={<PaymentCheckout />} />
           <Route path="/payment-status" element={<PaymentStatus />} />
           <Route element={<ProtectedRoute />}>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<AnalyticsDashboard />} />
+            <Route path="/control-room" element={<Dashboard />} />
             <Route path="/monitor" element={<Monitor />} />
             <Route path="/executive-dashboard" element={<ExecutiveDashboard />} />
             <Route path="/analytics-dashboard" element={<AnalyticsDashboard />} />

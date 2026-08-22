@@ -1,327 +1,167 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import PanelShell, { usePermittedModules } from '../components/PanelShell'
+import PanelShell from '../components/PanelShell'
 import { api } from '../lib/api'
-import { useLocale } from '../lib/locale'
-import { labelFor } from '../nav/pageCatalog'
 import { depositTime, money, statusMeta } from '../lib/deposits'
 import type { DepositStats } from '../lib/deposits'
-
-const ROLE_LABELS: Record<string, string> = {
-  owner: 'صاحب المنصة',
-  super_admin: 'مدير عام',
-  admin: 'مدير',
-  operations_admin: 'مدير عمليات',
-  operator: 'مشغّل',
-}
+import { useLocale } from '../lib/locale'
 
 const CONTROL_ROLES = new Set(['owner', 'admin', 'super_admin'])
+const REFRESH_MS = 20_000
 
-const STAT_LABELS: Record<string, string> = {
-  approval_rate: '٪ نسبة القبول',
-  today_approved: 'مقبول اليوم',
-  today_declined: 'مرفوض اليوم',
-  today_pending: 'انتظار',
-  jobs_pending: 'طابور',
-  jobs_running: 'قيد التنفيذ',
-  jobs_completed_today: 'نُفّذ اليوم',
-  jobs_failed_today: 'فشل اليوم',
-  global_limit: 'الحد العام',
-}
-
-interface QueueGuess {
-  score: number | null
-  amount: number | null
-  sms_id: number | null
-  reasons: string[] | null
-  received_at: string | null
-}
-
-interface QueueItem {
-  tx_id: number
-  amount: number | null
-  sms_id: number | null
-  best_guess: QueueGuess | null
-}
-
+interface QueueGuess { score: number | null; sms_id: number | null; reasons: string[] | null }
+interface QueueItem { tx_id: number; amount: number | null; sms_id: number | null; best_guess: QueueGuess | null }
 interface ControlStatus {
   settings: { automation_enabled: boolean | null; max_auto_amount: number | null; turbo_mode?: boolean | null } | null
   stats: Record<string, unknown> | null
   queue: QueueItem[]
 }
+interface MonitorData {
+  generatedAt: string
+  lastSync: string | null
+  sources: Record<string, { ok: boolean }>
+  sms: { id: number; sms_category: string | null; assigned_tx_id: number | string | null }[]
+  devices: { device: string; online: boolean | null; battery: number | null; last_seen_at: string | null }[]
+  telegram: { id: number; ok: boolean; created_at: string | null }[]
+}
 
-function QuickControl() {
-  const { t } = useLocale()
-  const [status, setStatus] = useState<ControlStatus | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState<string | null>(null)
-  const [limit, setLimit] = useState('')
-
-  const load = useCallback(async () => {
-    try {
-      const s = await api<ControlStatus>('/api/control/status')
-      setStatus(s)
-      if (s.settings?.max_auto_amount != null) setLimit(String(s.settings.max_auto_amount))
-    } catch {
-      setMsg('تعذّر الوصول لغرفة التحكم.')
-    }
-  }, [])
-
-  useEffect(() => {
-    void load()
-    const iv = setInterval(() => void load(), 30_000)
-    return () => clearInterval(iv)
-  }, [load])
-
-  const act = async (path: string, body: Record<string, unknown>, okMsg: string) => {
-    setBusy(true)
-    setMsg(null)
-    try {
-      await api(`/api/control/${path}`, { method: 'POST', body: JSON.stringify(body) })
-      setMsg(okMsg)
-      void load()
-    } catch {
-      setMsg('فشل التنفيذ — أعد المحاولة.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const on = status?.settings?.automation_enabled === true
-  const statEntries = Object.entries(status?.stats ?? {}).filter(([k]) => STAT_LABELS[k] !== undefined)
-
-  const linkAndApprove = async (item: QueueItem) => {
-    const smsId = item.sms_id ?? item.best_guess?.sms_id
-    if (!smsId) return
-    await act('queue/approve', { tx_id: item.tx_id, sms_id: smsId }, `تم ربط وقبول ${item.tx_id} ✅`)
-  }
-
-  return (
-    <section className="card recent-card">
-      <div className="recent-head">
-        <h3>⚡ {t('التحكم السريع', 'Quick control')}</h3>
-        {status?.settings && (
-          <span className={`pay-status-badge ${on ? 'st-paid' : 'st-declined'}`}>
-            {t('الأتمتة', 'Automation')} {on ? t('تعمل', 'on') : t('متوقفة', 'off')}
-          </span>
-        )}
-      </div>
-      {!status && <p className="sidebar-hint">{t('جارٍ الاتصال بغرفة التحكم…', 'Connecting to the control room…')}</p>}
-      {status && (
-        <>
-          {statEntries.length > 0 && (
-            <div className="flag-grid" style={{ marginBottom: 12 }}>
-              {statEntries.map(([k, v]) => (
-                <span key={k} className="pay-status-badge st-dim">
-                  {STAT_LABELS[k] ?? k}: <b className="mono">{String(v)}</b>
-                </span>
-              ))}
-              <span className="pay-status-badge st-dim">{t('طابور غرفة التحكم', 'Control-room queue')}: <b className="mono">{status.queue.length}</b></span>
-            </div>
-          )}
-          <div className="control-row">
-            <button className="btn-primary btn-sm" disabled={busy || on} onClick={() => void act('automation', { on: true }, t('تم تشغيل الأتمتة ✅', 'Automation turned on ✅'))}>
-              ▶️ {t('تشغيل', 'On')}
-            </button>
-            <button className="btn-ghost danger btn-sm" disabled={busy || !on} onClick={() => void act('automation', { on: false }, t('تم إيقاف الأتمتة ⏸️', 'Automation turned off ⏸️'))}>
-              ⏸️ {t('إيقاف', 'Off')}
-            </button>
-            <span className="control-sep" />
-            <input
-              className="login-input control-input mono"
-              type="number"
-              value={limit}
-              onChange={(e) => setLimit(e.target.value)}
-              placeholder={t('الحد الأقصى ج.م', 'Max amount EGP')}
-            />
-            <button
-              className="btn-ghost btn-sm"
-              disabled={busy || !limit}
-              onClick={() => void act('limit', { limit: Number(limit) }, t('تم تحديث الحد 💰', 'Limit updated 💰'))}
-            >
-              💰 {t('تعديل الحد', 'Edit limit')}
-            </button>
-          </div>
-          {msg && <p className="cell-sub" style={{ marginTop: 8 }}>{msg}</p>}
-
-          {status.queue.length > 0 && (
-            <>
-              {/* Plain heading, not .section-label: that class is uppercase,
-                  which does nothing to Arabic but shouts in English, so the
-                  same panel read calmly in one language and yelled in the
-                  other. The count already appears in the badge row above. */}
-              <div className="recent-head">
-                <h3>{t('طابور غرفة التحكم', 'Control-room queue')}</h3>
-                <span className="cell-sub">
-                  {status.queue.length > 10
-                    ? t(`أول 10 من ${status.queue.length}`, `first 10 of ${status.queue.length}`)
-                    : t(`${status.queue.length} عنصر`, `${status.queue.length} items`)}
-                </span>
-              </div>
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead><tr><th>tx</th><th>{t('المبلغ', 'Amount')}</th><th>{t('أفضل ترشيح SMS', 'Best SMS match')}</th><th>{t('إجراء', 'Action')}</th></tr></thead>
-                  <tbody>
-                    {status.queue.slice(0, 10).map((item) => (
-                      <tr key={item.tx_id}>
-                        <td className="mono">{item.tx_id}</td>
-                        <td className="mono">{money(item.amount, 'EGP')}</td>
-                        <td>
-                          {item.best_guess?.sms_id ? (
-                            <>
-                              <span className="mono">#{item.best_guess.sms_id}</span>
-                              {' '}<span className="pay-status-badge st-pending">score {item.best_guess.score ?? '—'}</span>
-                              {item.best_guess.reasons && <div className="cell-sub">{item.best_guess.reasons.join(' · ')}</div>}
-                            </>
-                          ) : (
-                            <span className="cell-sub">{t('لا يوجد ترشيح', 'No candidate')}</span>
-                          )}
-                        </td>
-                        <td>
-                          <button
-                            className="btn-primary btn-sm"
-                            disabled={busy || (!item.sms_id && !item.best_guess?.sms_id)}
-                            onClick={() => void linkAndApprove(item)}
-                          >
-                            🚀 {t('اربط واقبل', 'Link & approve')}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </>
-      )}
-    </section>
-  )
+const age = (iso: string | null, t: (ar: string, en: string) => string) => {
+  if (!iso) return '—'
+  const seconds = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000))
+  if (seconds < 60) return t(`منذ ${seconds} ث`, `${seconds}s ago`)
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return t(`منذ ${minutes} د`, `${minutes}m ago`)
+  return t(`منذ ${Math.round(minutes / 60)} س`, `${Math.round(minutes / 60)}h ago`)
 }
 
 export default function Dashboard() {
-  const { user, permissions } = useAuth()
+  const { user } = useAuth()
   const { t } = useLocale()
-  const modules = usePermittedModules()
+  const canControl = Boolean(user && CONTROL_ROLES.has(user.role))
   const [stats, setStats] = useState<DepositStats | null>(null)
-  const [statsErr, setStatsErr] = useState(false)
+  const [monitor, setMonitor] = useState<MonitorData | null>(null)
+  const [control, setControl] = useState<ControlStatus | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [limit, setLimit] = useState('')
 
-  const loadStats = useCallback(async () => {
-    try {
-      setStats(await api<DepositStats>('/api/deposits/stats'))
-      setStatsErr(false)
-    } catch {
-      setStatsErr(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    const [statsResult, monitorResult, controlResult] = await Promise.allSettled([
+      api<DepositStats>('/api/deposits/stats'),
+      api<MonitorData>('/api/monitoring'),
+      canControl ? api<ControlStatus>('/api/control/status') : Promise.resolve(null),
+    ])
+    if (statsResult.status === 'fulfilled') setStats(statsResult.value)
+    if (monitorResult.status === 'fulfilled') setMonitor(monitorResult.value)
+    if (controlResult.status === 'fulfilled' && controlResult.value) {
+      setControl(controlResult.value)
+      if (controlResult.value.settings?.max_auto_amount != null) setLimit(String(controlResult.value.settings.max_auto_amount))
     }
-  }, [])
+    setError(statsResult.status === 'rejected' && monitorResult.status === 'rejected')
+    setLoading(false)
+  }, [canControl])
 
   useEffect(() => {
-    void loadStats()
-    const iv = setInterval(() => void loadStats(), 30_000)
-    return () => clearInterval(iv)
-  }, [loadStats])
+    void load()
+    const interval = setInterval(() => void load(true), REFRESH_MS)
+    return () => clearInterval(interval)
+  }, [load])
 
-  const roleLabel = user ? (ROLE_LABELS[user.role] ?? user.role) : ''
+  const action = async (key: string, path: string, body: Record<string, unknown>, message: string) => {
+    setBusy(key); setNotice(null)
+    try {
+      await api(`/api/control/${path}`, { method: 'POST', body: JSON.stringify(body) })
+      setNotice(message)
+      await load(true)
+    } catch { setNotice(t('تعذّر تنفيذ الإجراء. حاول مرة أخرى.', 'Action failed. Please try again.')) }
+    finally { setBusy(null) }
+  }
 
-  return (
-    <PanelShell>
-      <section className="welcome-banner">
-        <div>
-          <h2>{t('مرحباً', 'Welcome')} {user?.display_name ?? user?.username} 👋</h2>
-          <p>
-            {roleLabel && <>{t('الدور', 'Role')}: <span className="mono">{roleLabel}</span> · </>}
-            {t('صلاحيات عرض فعلية على', 'View access on')} {permissions.filter((p) => p.can_view).length} {t('صفحة عبر', 'pages across')} {modules.length} {t('قسم.', 'sections.')}
-          </p>
-        </div>
+  const queue = control?.queue ?? []
+  const engineOn = control?.settings?.automation_enabled === true
+  const unassignedSms = monitor?.sms.filter((row) => !row.assigned_tx_id && ['deposit', 'withdrawal'].includes(row.sms_category ?? '')).length ?? 0
+  const onlineDevices = monitor?.devices.filter((row) => row.online).length ?? 0
+  const healthySources = monitor ? Object.values(monitor.sources).filter((source) => source.ok).length : 0
+  const totalSources = monitor ? Object.keys(monitor.sources).length : 0
+  const firstName = user?.display_name?.split(' ')[0] ?? user?.username ?? ''
+  const paidRate = stats && stats.day.paid.count + stats.day.declined > 0
+    ? Math.round((stats.day.paid.count / (stats.day.paid.count + stats.day.declined)) * 100)
+    : 0
+
+  const healthTone = useMemo(() => {
+    if (!monitor) return 'unknown'
+    if (healthySources === totalSources && onlineDevices > 0) return 'healthy'
+    return 'attention'
+  }, [monitor, healthySources, totalSources, onlineDevices])
+
+  return <PanelShell>
+    <section className="command-hero">
+      <div>
+        <span className="command-kicker">{t('مركز العمليات', 'OPERATIONS COMMAND')}</span>
+        <h2>{t(`صباح الخير، ${firstName}`, `Good day, ${firstName}`)}</h2>
+        <p>{t('صورة واحدة لما يتحرك الآن، وما يحتاج قرارك تالياً.', 'One view of what is moving now and what needs your decision next.')}</p>
+      </div>
+      <div className="command-hero-status">
+        <span className={`command-health ${healthTone}`}><i />{healthTone === 'healthy' ? t('الأنظمة مستقرة', 'Systems healthy') : healthTone === 'attention' ? t('تحتاج انتباه', 'Needs attention') : t('جارٍ الاتصال', 'Connecting')}</span>
+        <button className="btn-ghost btn-sm" disabled={loading} onClick={() => void load()}>{loading ? t('جارٍ التحديث…', 'Refreshing…') : t('تحديث الآن', 'Refresh now')}</button>
+        <small>{t('آخر مزامنة', 'Last sync')} {age(monitor?.lastSync ?? null, t)}</small>
+      </div>
+    </section>
+
+    {error && <div className="card warn">{t('تعذّر الوصول إلى مصادر البيانات الحية.', 'Live data sources are currently unavailable.')}</div>}
+
+    <section className="command-metrics" aria-label={t('ملخص العمليات', 'Operations summary')}>
+      <Link to="/approvals" className="command-metric attention"><span>{t('بانتظار قرار — 24 ساعة', 'Awaiting decision — 24h')}</span><strong>{stats?.pending ?? '…'}</strong><small>{stats ? t(`${stats.pendingStale ?? 0} قديمة خارج العداد`, `${stats.pendingStale ?? 0} older outside this count`) : t('إيداعات معلّقة', 'pending deposits')}</small><b>→</b></Link>
+      <Link to="/sms?match=unmatched" className={`command-metric${unassignedSms ? ' attention' : ''}`}><span>{t('SMS غير مرتبطة', 'Unmatched SMS')}</span><strong>{monitor ? unassignedSms : '…'}</strong><small>{t('تحتاج مطابقة معاملة', 'need transaction matching')}</small><b>→</b></Link>
+      <div className="command-metric"><span>{t('مدفوع اليوم', 'Paid today')}</span><strong>{stats ? money(stats.day.paid.volume, 'EGP') : '…'}</strong><small>{stats ? `${stats.day.paid.count} ${t('معاملة', 'transactions')} · ${paidRate}%` : ''}</small></div>
+      <Link to="/wallets" className={`command-metric${monitor && onlineDevices < monitor.devices.length ? ' attention' : ''}`}><span>{t('الأجهزة المتصلة', 'Devices online')}</span><strong>{monitor ? `${onlineDevices}/${monitor.devices.length}` : '…'}</strong><small>{t('نبض مباشر', 'live heartbeat')}</small><b>→</b></Link>
+    </section>
+
+    <div className="command-grid">
+      <section className="card command-queue">
+        <header className="command-section-head">
+          <div><span className="command-kicker">{t('الأولوية الآن', 'NEXT PRIORITY')}</span><h3>{t('طابور غرفة التحكم', 'Control-room queue')}</h3></div>
+          <span className={`command-count${queue.length ? ' active' : ''}`}>{queue.length}</span>
+        </header>
+        {!canControl ? <div className="command-empty"><span>🔒</span><strong>{t('عرض الإدارة فقط', 'Management view')}</strong><p>{t('تظهر قرارات المطابقة والأتمتة لأدوار الإدارة.', 'Matching and automation decisions are available to management roles.')}</p></div>
+          : !control ? <div className="command-loading">{t('جارٍ تحميل الطابور…', 'Loading queue…')}</div>
+          : queue.length === 0 ? <div className="command-empty"><span>✓</span><strong>{t('لا توجد قرارات معلّقة', 'No pending decisions')}</strong><p>{t('كل المعاملات الحالية تمت معالجتها.', 'All current transactions have been handled.')}</p></div>
+          : <div className="command-queue-list">{queue.slice(0, 8).map((item, index) => {
+              const smsId = item.sms_id ?? item.best_guess?.sms_id
+              const score = item.best_guess?.score
+              const confidence = score != null && score >= 85 ? 'high' : score != null && score >= 65 ? 'medium' : 'low'
+              return <article className="command-queue-row" key={item.tx_id}>
+                <span className="queue-index mono">{String(index + 1).padStart(2, '0')}</span>
+                <div className="queue-identity"><Link to={`/transactions/${item.tx_id}`} className="mono">TX {item.tx_id}</Link><strong className="mono">{money(item.amount, 'EGP')}</strong></div>
+                <div className="queue-evidence">{smsId ? <><span className="mono">SMS #{smsId}</span><em className={`confidence ${confidence}`}>{score ?? '—'}%</em></> : <span className="muted">{t('بدون دليل SMS', 'No SMS evidence')}</span>}<small>{item.best_guess?.reasons?.slice(0, 2).join(' · ') ?? t('يتطلب مراجعة يدوية', 'Manual review required')}</small></div>
+                <button className="btn-primary btn-sm" disabled={!smsId || busy === `queue-${item.tx_id}`} onClick={() => smsId && void action(`queue-${item.tx_id}`, 'queue/approve', { tx_id: item.tx_id, sms_id: smsId }, t(`تم اعتماد ${item.tx_id}`, `Transaction ${item.tx_id} approved`))}>{busy === `queue-${item.tx_id}` ? '…' : t('ربط واعتماد', 'Link & approve')}</button>
+              </article>
+            })}</div>}
       </section>
 
-      {statsErr && (
-        <div className="card warn">{t('تعذّر تحميل الإحصائيات — أعد المحاولة أو راجع اتصال الخادم.', 'Failed to load stats — retry or check the server connection.')}</div>
-      )}
+      <aside className="command-side">
+        {canControl && <section className="card command-engine">
+          <header className="command-section-head"><div><span className="command-kicker">{t('الأتمتة', 'AUTOMATION')}</span><h3>{t('محرك الموافقات', 'Approval engine')}</h3></div><span className={`engine-pill ${engineOn ? 'on' : 'off'}`}><i />{engineOn ? t('يعمل', 'Running') : t('متوقف', 'Paused')}</span></header>
+          <div className="engine-main-number"><span>{t('الحد التلقائي الحالي', 'Current auto limit')}</span><strong className="mono">{money(control?.settings?.max_auto_amount ?? null, 'EGP')}</strong></div>
+          <div className="engine-buttons"><button className="btn-primary" disabled={!control || engineOn || busy === 'engine'} onClick={() => void action('engine', 'automation', { on: true }, t('تم تشغيل المحرك', 'Engine started'))}>▶ {t('تشغيل', 'Start')}</button><button className="btn-ghost danger" disabled={!control || !engineOn || busy === 'engine'} onClick={() => void action('engine', 'automation', { on: false }, t('تم إيقاف المحرك', 'Engine paused'))}>Ⅱ {t('إيقاف', 'Pause')}</button></div>
+          <label className="engine-limit"><span>{t('تعديل الحد', 'Change limit')}</span><div><input className="login-input mono" type="number" value={limit} onChange={(e) => setLimit(e.target.value)} /><button className="btn-ghost btn-sm" disabled={!limit || busy === 'limit'} onClick={() => void action('limit', 'limit', { limit: Number(limit) }, t('تم حفظ الحد', 'Limit saved'))}>{t('حفظ', 'Save')}</button></div></label>
+          {notice && <p className="command-notice">{notice}</p>}
+        </section>}
 
-      {user && CONTROL_ROLES.has(user.role) && <QuickControl />}
+        <section className="card command-health-card">
+          <header className="command-section-head"><div><span className="command-kicker">{t('البنية الحية', 'LIVE INFRASTRUCTURE')}</span><h3>{t('حالة التدفقات', 'Flow health')}</h3></div><Link to="/monitor" className="pay-status-link">{t('تفاصيل', 'Details')} →</Link></header>
+          <div className="source-list">{monitor ? Object.entries(monitor.sources).map(([name, source]) => <div key={name}><span><i className={source.ok ? 'ok' : 'bad'} />{name}</span><b>{source.ok ? t('متصل', 'Online') : t('خطأ', 'Issue')}</b></div>) : <span className="muted">{t('جارٍ فحص المصادر…', 'Checking sources…')}</span>}</div>
+        </section>
+      </aside>
+    </div>
 
-      <div className="stat-grid">
-        <Link to="/deposits?status=PENDING" className="stat-card stat-pending">
-          <span className="stat-label">{t('إيداعات معلّقة', 'Pending deposits')}</span>
-          <span className="stat-value">{stats ? stats.pending : '…'}</span>
-          <span className="stat-sub">{t('تحتاج مراجعة الآن', 'Need review now')}</span>
-        </Link>
-        <div className="stat-card">
-          <span className="stat-label">{t('مدفوع · آخر 24 ساعة', 'Paid · last 24h')}</span>
-          <span className="stat-value">{stats ? money(stats.day.paid.volume, 'EGP') : '…'}</span>
-          <span className="stat-sub">{stats ? `${stats.day.paid.count} ${t('عملية', 'txns')}` : ''}</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-label">{t('مدفوع · آخر 7 أيام', 'Paid · last 7 days')}</span>
-          <span className="stat-value">{stats ? money(stats.week.paid.volume, 'EGP') : '…'}</span>
-          <span className="stat-sub">{stats ? `${stats.week.paid.count} ${t('عملية', 'txns')}` : ''}</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-label">{t('مرفوض · آخر 24 ساعة', 'Declined · last 24h')}</span>
-          <span className="stat-value">{stats ? stats.day.declined : '…'}</span>
-          <span className="stat-sub">{stats ? `${t('من إجمالي', 'of')} ${stats.total.toLocaleString('en-US')} ${t('إيداع', 'deposits')}` : ''}</span>
-        </div>
-      </div>
-
-      <section className="card recent-card">
-        <div className="recent-head">
-          <h3>{t('أحدث الإيداعات', 'Latest deposits')}</h3>
-          <Link to="/deposits" className="pay-status-link">{t('عرض الكل ←', 'View all →')}</Link>
-        </div>
-        {!stats && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
-        {stats && stats.recent.length === 0 && <p>{t('لا توجد إيداعات بعد.', 'No deposits yet.')}</p>}
-        {stats && stats.recent.length > 0 && (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>{t('المرجع', 'Ref')}</th>
-                  <th>{t('المبلغ', 'Amount')}</th>
-                  <th>{t('المُرسِل', 'Sender')}</th>
-                  <th>{t('التاجر', 'Merchant')}</th>
-                  <th>{t('الحالة', 'Status')}</th>
-                  <th>{t('الوقت', 'Time')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.recent.map((r) => {
-                  const st = statusMeta(r.status)
-                  return (
-                    <tr key={r.tx_id}>
-                      <td className="mono">{r.ontarget_ref ?? r.tx_id}</td>
-                      <td className="mono">{money(r.amount, r.currency)}</td>
-                      <td>{r.sender_name ?? r.sender_number ?? '—'}</td>
-                      <td>{r.merchant ?? '—'}</td>
-                      <td><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></td>
-                      <td className="mono">{depositTime(r)}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <div className="module-grid">
-        {modules.map((m) => (
-          <div key={m.id} className={`module-card${m.priority ? ' priority' : ''}`}>
-            <div className="module-card-head">
-              <span className="module-icon">{m.icon}</span>
-              <span className="module-badge">{t('قريباً', 'Soon')}</span>
-            </div>
-            <h3>{m.label}</h3>
-            <ul className="module-pages">
-              {m.pages.slice(0, 4).map((p) => (
-                <li key={p.page_key}>{labelFor(p.page_key)}</li>
-              ))}
-              {m.pages.length > 4 && <li>+{m.pages.length - 4} {t('أخرى', 'more')}</li>}
-            </ul>
-          </div>
-        ))}
-      </div>
-    </PanelShell>
-  )
+    <section className="card command-activity">
+      <header className="command-section-head"><div><span className="command-kicker">{t('آخر حركة', 'RECENT ACTIVITY')}</span><h3>{t('المعاملات الواردة', 'Incoming transactions')}</h3></div><Link to="/transactions" className="pay-status-link">{t('كل المعاملات', 'All transactions')} →</Link></header>
+      {!stats ? <p className="command-loading">{t('جارٍ تحميل المعاملات…', 'Loading transactions…')}</p> : <div className="table-wrap"><table className="data-table command-table"><thead><tr><th>{t('المرجع', 'Reference')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('المرسل', 'Sender')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('الحالة', 'Status')}</th><th>{t('وصلت', 'Received')}</th></tr></thead><tbody>{stats.recent.slice(0, 8).map((row) => { const status = statusMeta(row.status); return <tr key={row.tx_id}><td><Link to={`/transactions/${row.ontarget_ref ?? row.tx_id}`} className="mono command-ref">{row.ontarget_ref ?? row.tx_id}</Link></td><td className="mono command-money">{money(row.amount, row.currency)}</td><td>{row.sender_name ?? row.sender_number ?? '—'}</td><td>{row.merchant ?? '—'}</td><td><span className={`pay-status-badge ${status.cls}`}>{status.label}</span></td><td className="mono muted">{depositTime(row)}</td></tr>})}</tbody></table></div>}
+    </section>
+  </PanelShell>
 }

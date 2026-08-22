@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { depositTime, money, statusMeta } from '../lib/deposits'
 import type { DepositRow, DepositStats } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { syncProviders } from '../lib/providerSync'
 
 // 🖥️ شاشة TV — full-screen live operations wall (from the control room's
 // tvscreen view), driven by the panel's own APIs. Auto-refreshes every 10s.
@@ -57,7 +58,7 @@ export default function TvScreen() {
     // rail inside PanelShell — but this wall renders outside PanelShell, so a
     // TV left on its own would read a table nothing is refreshing until the
     // daily cron. Pump it here too; the server throttles to one run per 60s.
-    void fetch('/api/cron/delta-sync', { method: 'POST', credentials: 'same-origin' }).catch(() => {})
+    await syncProviders()
     const results = await Promise.allSettled([
       api<DepositStats>('/api/deposits/stats'),
       api<{ rows: TvSms[] }>('/api/sms?limit=9'),

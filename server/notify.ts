@@ -33,8 +33,9 @@ export async function notifyMerchantWebhook(
   const signature = merchant.callback_secret
     ? createHmac('sha256', merchant.callback_secret).update(body).digest('hex')
     : undefined
+  const started = Date.now()
   try {
-    await fetch(merchant.callback_url, {
+    const response = await fetch(merchant.callback_url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -42,7 +43,19 @@ export async function notifyMerchantWebhook(
       },
       body,
     })
+    await db.from('audit_log').insert({
+      actor_type: 'system', actor_name: 'webhook-dispatcher',
+      action: response.ok ? 'webhook.delivered' : 'webhook.failed',
+      entity: 'merchant_callback', entity_id: merchantId,
+      after: { status: response.status, latency_ms: Date.now() - started, destination_host: new URL(merchant.callback_url).host },
+    })
   } catch (err) {
     console.error('merchant webhook failed:', err)
+    await db.from('audit_log').insert({
+      actor_type: 'system', actor_name: 'webhook-dispatcher', action: 'webhook.failed',
+      entity: 'merchant_callback', entity_id: merchantId,
+      after: { status: null, latency_ms: Date.now() - started, destination_host: new URL(merchant.callback_url).host,
+        error: err instanceof Error ? err.message.slice(0, 300) : 'network_error' },
+    })
   }
 }

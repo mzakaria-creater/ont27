@@ -45,6 +45,13 @@ export default function Transactions() {
   const [params, setParams] = useSearchParams()
   const type = params.get('type') ?? ''
   const status = params.get('status') ?? ''
+  const from = params.get('from') ?? ''
+  const to = params.get('to') ?? ''
+  const merchant = params.get('merchant') ?? ''
+  const method = params.get('method') ?? ''
+  const currency = params.get('currency') ?? ''
+  const minAmount = params.get('min_amount') ?? ''
+  const maxAmount = params.get('max_amount') ?? ''
   const page = Math.max(Number(params.get('page')) || 1, 1)
   const [q, setQ] = useState(params.get('q') ?? '')
   const appliedQ = params.get('q') ?? ''
@@ -60,6 +67,7 @@ export default function Transactions() {
     if (type) search.set('type', type)
     if (status) search.set('status', status)
     if (appliedQ) search.set('q', appliedQ)
+    for (const [key, value] of Object.entries({ from, to, merchant, method, currency, min_amount: minAmount, max_amount: maxAmount })) if (value) search.set(key, value)
     try {
       setData(await api<ListResponse>(`/api/transactions?${search}`))
     } catch (e) {
@@ -67,7 +75,7 @@ export default function Transactions() {
     } finally {
       setLoading(false)
     }
-  }, [type, status, appliedQ, page, pageSize])
+  }, [type, status, appliedQ, page, pageSize, from, to, merchant, method, currency, minAmount, maxAmount])
 
   useEffect(() => { void load() }, [load])
 
@@ -79,7 +87,7 @@ export default function Transactions() {
       .catch(() => setCounts({}))
   }, [type])
 
-  const setFilter = (next: { type?: string; status?: string; q?: string; page?: number }) => {
+  const setFilter = (next: { type?: string; status?: string; q?: string; page?: number; from?: string; to?: string; merchant?: string; method?: string; currency?: string; min_amount?: string; max_amount?: string }) => {
     const p = new URLSearchParams(params)
     const put = (k: string, v: string | undefined) => {
       if (v === undefined) return
@@ -89,6 +97,7 @@ export default function Transactions() {
     put('type', next.type)
     put('status', next.status)
     put('q', next.q)
+    put('from', next.from); put('to', next.to); put('merchant', next.merchant); put('method', next.method); put('currency', next.currency); put('min_amount', next.min_amount); put('max_amount', next.max_amount)
     if (next.page !== undefined) {
       if (next.page > 1) p.set('page', String(next.page)); else p.delete('page')
     }
@@ -125,6 +134,16 @@ export default function Transactions() {
           <input className="login-input search-input" placeholder={t('بحث: مرجع / اسم / موبايل / تاجر…', 'Search: ref / name / phone / merchant…')} value={q} onChange={(e) => setQ(e.target.value)} />
           <button type="submit" className="btn-primary btn-sm">{t('بحث', 'Search')}</button>
         </form>
+        <div className="binance-grid">
+          <label className="filter-field">{t('من', 'From')}<input className="login-input" type="date" value={from} onChange={(e) => setFilter({ from: e.target.value })} /></label>
+          <label className="filter-field">{t('إلى', 'To')}<input className="login-input" type="date" value={to} onChange={(e) => setFilter({ to: e.target.value })} /></label>
+          <label className="filter-field">{t('التاجر', 'Merchant')}<input className="login-input" value={merchant} onChange={(e) => setFilter({ merchant: e.target.value })} /></label>
+          <label className="filter-field">{t('الطريقة', 'Method')}<input className="login-input" value={method} onChange={(e) => setFilter({ method: e.target.value })} /></label>
+          <label className="filter-field">{t('العملة', 'Currency')}<select className="login-input" value={currency} onChange={(e) => setFilter({ currency: e.target.value })}><option value="">{t('الكل', 'All')}</option><option value="EGP">EGP</option><option value="USD">USD</option><option value="USDT">USDT</option></select></label>
+          <label className="filter-field">{t('أدنى مبلغ', 'Min amount')}<input className="login-input" type="number" min="0" value={minAmount} onChange={(e) => setFilter({ min_amount: e.target.value })} /></label>
+          <label className="filter-field">{t('أقصى مبلغ', 'Max amount')}<input className="login-input" type="number" min="0" value={maxAmount} onChange={(e) => setFilter({ max_amount: e.target.value })} /></label>
+          <button className="btn-ghost btn-sm" onClick={() => setFilter({ from: '', to: '', merchant: '', method: '', currency: '', min_amount: '', max_amount: '', status: '', type: '', q: '' })}>{t('مسح الفلاتر', 'Clear filters')}</button>
+        </div>
       </div>
 
       {err && <div className="card warn">{err}</div>}

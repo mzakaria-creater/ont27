@@ -49,8 +49,11 @@ interface SmsRow {
   matched: boolean | null
   review_required: boolean | null
   trx_id: string | null
-  matched_transaction_id: string | null
-  maven_transaction_id: number | null
+  matched_transaction_id: number | null
+  maven_transaction_id: string | null
+  consumed_by_tx_id: number | null
+  matched_tx_id?: number | null
+  matched_ontarget_ref?: string | null
   provider: string | null
   sms_first_line: string | null
 }
@@ -200,7 +203,7 @@ export default function SmsLive() {
     try {
       const res = await api<{ sms: SmsDetail }>(`/api/sms/${id}`)
       setSelected(res.sms)
-      if (!res.sms.matched && can('sms_live', 'can_edit')) void loadCandidates(id)
+      if (!res.sms.matched_tx_id && can('sms_live', 'can_edit')) void loadCandidates(id)
     } catch {
       setErr(t('تعذّر تحميل تفاصيل الرسالة.', 'Failed to load message details.'))
     } finally {
@@ -367,7 +370,8 @@ export default function SmsLive() {
               <tbody>
                 {data.rows.map((r) => {
                   const cat = r.sms_category ? CATEGORY_META[r.sms_category] : null
-                  const mt = r.match_status ? MATCH_META[r.match_status] : null
+                  const linked = r.matched_tx_id != null
+                  const mt = linked ? MATCH_META.auto : r.match_status ? MATCH_META[r.match_status] : null
                   return (
                     <tr key={r.id} onClick={() => void openDetail(r.id)}>
                       <td className="sms-cell">
@@ -393,13 +397,13 @@ export default function SmsLive() {
                       </td>
                       <td className="mono">
                         {r.trx_id ?? '—'}
-                        {r.maven_transaction_id && <div className="cell-sub mono">OnTarget {r.maven_transaction_id}</div>}
+                        {linked && <div className="cell-sub mono">OnTarget {r.matched_ontarget_ref ?? r.matched_tx_id}</div>}
                       </td>
                       <td>
                         {mt
                           ? <span className={`pay-status-badge ${mt.cls}`}>{t(mt.ar, mt.en)}</span>
                           : <span className="mono">{r.match_status ?? '—'}</span>}
-                        {r.review_required && !r.matched && <div className="cell-sub">⚠ {t('مراجعة', 'review')}</div>}
+                        {r.review_required && !linked && <div className="cell-sub">⚠ {t('مراجعة', 'review')}</div>}
                       </td>
                       <td className="mono">{depositTime({ first_seen_at: r.received_at })}</td>
                     </tr>
@@ -453,7 +457,7 @@ export default function SmsLive() {
                   <dt>{t('المزوّد', 'Provider')}</dt><dd>{selected.provider ?? '—'} · <span className="mono">{selected.sms_sender ?? '—'}</span></dd>
                   <dt>{t('الجهاز', 'Device')}</dt><dd className="mono">{selected.device_name ?? '—'}{selected.sim_slot != null && <> · SIM {selected.sim_slot}</>}</dd>
                   <dt>{t('رقم العملية (SMS)', 'Tx id (SMS)')}</dt><dd className="mono">{selected.trx_id ?? '—'}</dd>
-                  <dt>{t('معاملة OnTarget', 'OnTarget tx')}</dt><dd className="mono">{selected.maven_transaction_id ?? selected.matched_transaction_id ?? '—'}</dd>
+                  <dt>{t('معاملة OnTarget', 'OnTarget tx')}</dt><dd className="mono">{selected.matched_ontarget_ref ?? selected.matched_tx_id ?? '—'}</dd>
                   <dt>{t('حالة الربط', 'Link status')}</dt><dd className="mono">{selected.match_status ?? '—'}{selected.review_required && !selected.matched && <> · ⚠ {t('تحتاج مراجعة', 'needs review')}</>}</dd>
                   <dt>{t('الرصيد بعد العملية', 'Balance after')}</dt><dd className="mono">{money(selected.balance_after, 'EGP')}</dd>
                   {selected.risk_score != null && selected.risk_score > 0 && (
@@ -467,7 +471,7 @@ export default function SmsLive() {
 
                 {linkErr && <div className="card warn">{linkErr}</div>}
 
-                {selected.matched && can('sms_live', 'can_edit') && (
+                {selected.matched_tx_id != null && can('sms_live', 'can_edit') && (
                   <div className="drawer-actions">
                     <button className="btn-ghost danger" disabled={linkBusy} onClick={() => void unlink()}>
                       🔗 {t('فك الربط عن المعاملة', 'Unlink from transaction')}
@@ -475,7 +479,7 @@ export default function SmsLive() {
                   </div>
                 )}
 
-                {!selected.matched && can('sms_live', 'can_edit') && (
+                {selected.matched_tx_id == null && can('sms_live', 'can_edit') && (
                   <div className="link-section">
                     <h4>🔗 {t('ربط بمعاملة', 'Link to a transaction')}</h4>
                     <form

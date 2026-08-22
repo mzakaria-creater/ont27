@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { CATEGORIES, categoryFor } from '../nav/pageCatalog'
 import { api } from '../lib/api'
+import { syncProviders } from '../lib/providerSync'
 import { depositTime, money } from '../lib/deposits'
 import type { PagePermission } from '../lib/api'
 import { useLocale } from '../lib/locale'
@@ -52,6 +53,7 @@ const NAV_GROUPS: { id: NavGroupId; ar: string; en: string }[] = [
 const BUILT_LINKS: NavLinkDef[] = [
   // Main — dashboards & live monitoring
   { to: '/', icon: '🏠', labelAr: 'لوحة التحكم', labelEn: 'Dashboard', keys: ['dashboard'], group: 'main' },
+  { to: '/control-room', icon: '🎛️', labelAr: 'غرفة التحكم', labelEn: 'Control room', keys: ['dashboard'], group: 'main' },
   { to: '/monitor', icon: '📡', labelAr: 'المراقبة المباشرة', labelEn: 'Live Monitor', keys: ['dashboard'], group: 'main' },
   { to: '/executive-dashboard', icon: '▦', labelAr: 'لوحة الإدارة التنفيذية', labelEn: 'Executive Dashboard', keys: ['dashboard', 'reports', 'advanced_analysis', 'treasury', 'wallets'], group: 'main' },
   { to: '/analytics-dashboard', icon: '◫', labelAr: 'لوحة التحليلات', labelEn: 'Analytics Dashboard', keys: ['dashboard', 'reports', 'advanced_analysis', 'wallets'], group: 'main' },
@@ -153,6 +155,8 @@ interface RailSms {
   matched: boolean | null
   match_status: string | null
   trx_id: string | null
+  matched_tx_id?: number | null
+  matched_ontarget_ref?: string | null
 }
 
 interface RailDevice {
@@ -171,7 +175,7 @@ function SmsRail() {
     let alive = true
     const load = async () => {
       try {
-        void fetch('/api/cron/delta-sync', { method: 'POST', credentials: 'same-origin' }).catch(() => {})
+        await syncProviders()
         const [list, dev] = await Promise.all([
           api<{ rows: RailSms[] }>('/api/sms?limit=8'),
           api<{ devices: RailDevice[] }>('/api/sms/devices'),
@@ -206,7 +210,7 @@ function SmsRail() {
       <div className="sms-feed">
         {rows.length === 0 && <span className="sidebar-hint">لا توجد رسائل بعد.</span>}
         {rows.map((r) => {
-          const linked = r.matched || (r.match_status && r.match_status !== 'unmatched')
+          const linked = r.matched_tx_id != null
           return (
             <Link key={r.id} to="/sms" className={`sms-feed-item${linked ? ' matched' : ''}`}>
               <div className="sms-feed-head">
@@ -215,7 +219,7 @@ function SmsRail() {
               </div>
               <div className="sms-feed-body">{r.sms_category === 'withdrawal' ? 'تحويل' : 'استلام'} {money(r.amount, 'EGP')}{' '}{r.sender_name ?? r.sender_number ? `— ${r.sender_name ?? r.sender_number}` : ''}</div>
               <div className={`sms-feed-status ${linked ? 'link' : r.sms_category === 'deposit' || r.sms_category === 'withdrawal' ? 'wait' : 'info'}`}>
-                {linked ? <>🔗 مرتبطة{r.trx_id && <span className="mono"> {r.trx_id}</span>}</> : r.sms_category === 'deposit' || r.sms_category === 'withdrawal' ? '⏳ بانتظار مطابقة' : 'غير مالية'}
+                {linked ? <>🔗 مرتبطة <span className="mono">{r.matched_ontarget_ref ?? r.matched_tx_id}</span></> : r.sms_category === 'deposit' || r.sms_category === 'withdrawal' ? '⏳ بانتظار مطابقة' : 'غير مالية'}
               </div>
             </Link>
           )
@@ -233,6 +237,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   const permsLoaded = permissions.length > 0
   const [navOpen, setNavOpen] = useState(false)
   const [smsOpen, setSmsOpen] = useState(true)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<NavGroupId>>(() => new Set())
 
   // Refresh the role permission matrix from role_page_permissions on each
   // page visit so button visibility follows the current authenticated role.
@@ -246,10 +251,15 @@ export default function PanelShell({ children }: { children: ReactNode }) {
     (l.keys.length === 0 || l.keys.some((k) => can(k))) &&
     (!l.roles || l.roles.includes(user?.role ?? ''))
   const renderLinks = (group: NavGroupId) => BUILT_LINKS.filter((l) => l.group === group && visible(l)).map((l) => (
-    <Link key={l.to} to={l.to} onClick={() => setNavOpen(false)} className={`sidebar-item sidebar-link${pathname === l.to ? ' active' : ''}`}>
+    <Link key={l.to} to={l.to} title={locale === 'en' ? l.labelEn : l.labelAr} onClick={() => setNavOpen(false)} className={`sidebar-item sidebar-link${pathname === l.to ? ' active' : ''}`}>
       <span className="sidebar-icon">{l.icon}</span><span>{locale === 'en' ? l.labelEn : l.labelAr}</span>
     </Link>
   ))
+  const toggleGroup = (group: NavGroupId) => setCollapsedGroups((current) => {
+    const next = new Set(current)
+    if (next.has(group)) next.delete(group); else next.add(group)
+    return next
+  })
 
   return (
     <div className="dash-body">
@@ -259,10 +269,13 @@ export default function PanelShell({ children }: { children: ReactNode }) {
         {NAV_GROUPS.map((g) => {
           const links = renderLinks(g.id)
           if (links.length === 0) return null
+          const collapsed = collapsedGroups.has(g.id)
           return (
-            <div className="nav-group" key={g.id}>
-              <div className="nav-group-label">{locale === 'en' ? g.en : g.ar}</div>
-              {links}
+            <div className={`nav-group${collapsed ? ' collapsed' : ''}`} key={g.id}>
+              <button type="button" className="nav-group-label" onClick={() => toggleGroup(g.id)} aria-expanded={!collapsed} title={locale === 'en' ? g.en : g.ar}>
+                <span>{locale === 'en' ? g.en : g.ar}</span><span className="nav-group-chevron" aria-hidden="true">⌄</span>
+              </button>
+              <div className="nav-group-links">{links}</div>
             </div>
           )
         })}

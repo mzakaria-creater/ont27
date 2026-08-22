@@ -1,0 +1,97 @@
+import { Hono } from 'hono'
+import { db } from './db.js'
+import { oldDb } from './oldDb.js'
+import { requireAuth } from './rbac.js'
+import type { AuthEnv } from './rbac.js'
+
+export const monitoringRoutes = new Hono<AuthEnv>()
+monitoringRoutes.use('*', requireAuth)
+
+const latest = (values: Array<string | null | undefined>) =>
+  values.filter((v): v is string => Boolean(v)).sort().at(-1) ?? null
+
+monitoringRoutes.get('/', async (c) => {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const deviceDb = oldDb() ?? db
+  const started = Date.now()
+
+  const [sms, transactions, telegram, devices, integrations, pendingDeposits, pendingPayouts, editRequests] = await Promise.all([
+    db.from('inbound_sms')
+      .select('id, received_at, device_name, sender_name, sender_number, receiver_number, amount, sms_category, trx_id, consumed_by_tx_id, matched_transaction_id, maven_transaction_id')
+      .gte('received_at', since).order('received_at', { ascending: false }).limit(30),
+    db.from('maven_transactions')
+      .select('tx_id, ontarget_ref, status, amount, currency, sender_name, merchant, master_merchant, gateway, first_seen_at, last_status_change')
+      .gte('first_seen_at', since).order('first_seen_at', { ascending: false }).limit(30),
+    db.from('telegram_alerts')
+      .select('id, alert_type, chat_id, ok, error, created_at')
+      .gte('created_at', since).order('created_at', { ascending: false }).limit(30),
+    deviceDb.from('device_status')
+      .select('device, sim_slot, online, battery, charging, net_type, last_seen_at')
+      .order('device'),
+    db.from('audit_log')
+      .select('id, action, entity, entity_id, actor_name, after, created_at')
+      .or('action.ilike.%gmail%,action.ilike.%email%,action.ilike.%webhook%,entity.ilike.%webhook%')
+      .gte('created_at', since).order('created_at', { ascending: false }).limit(30),
+    db.from('maven_transactions').select('tx_id', { count: 'exact', head: true }).eq('status', 'PENDING'),
+    db.from('maven_payout_transactions').select('maven_id', { count: 'exact', head: true }).eq('status', 'PENDING'),
+    db.from('transaction_edit_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+  ])
+
+  const sources = {
+    sms: { ok: !sms.error, error: sms.error?.message ?? null },
+    transactions: { ok: !transactions.error, error: transactions.error?.message ?? null },
+    telegram: { ok: !telegram.error, error: telegram.error?.message ?? null },
+    devices: { ok: !devices.error, error: devices.error?.message ?? null },
+    integrations: { ok: !integrations.error, error: integrations.error?.message ?? null },
+    queues: { ok: !pendingDeposits.error && !pendingPayouts.error && !editRequests.error,
+      error: pendingDeposits.error?.message ?? pendingPayouts.error?.message ?? editRequests.error?.message ?? null },
+  }
+  const smsRows = sms.data ?? []
+  const txRows = transactions.data ?? []
+  const telegramRows = telegram.data ?? []
+  const deviceRows = devices.data ?? []
+  const integrationRows = integrations.data ?? []
+  const providerSummary = (name: 'nagopay' | 'payfuture') => {
+    const rows = txRows.filter((row) => {
+      const identity = `${row.gateway ?? ''} ${row.master_merchant ?? ''}`.toLowerCase()
+      return name === 'nagopay'
+        ? identity.includes('nagupay') || identity.includes('ngpay')
+        : identity.includes('payfuture') || identity.includes('avadapay') || /(^|\s)rsc($|\s)/.test(identity)
+    })
+    return { count24h: rows.length, pending: rows.filter((row) => row.status === 'PENDING').length,
+      lastChange: latest(rows.map((row) => row.last_status_change ?? row.first_seen_at)) }
+  }
+
+  return c.json({
+    generatedAt: new Date().toISOString(),
+    api: { ok: true, latencyMs: Date.now() - started },
+    supabase: {
+      ok: Object.entries(sources).filter(([name]) => name !== 'devices').every(([, source]) => source.ok),
+      latencyMs: Date.now() - started,
+      failedSources: Object.entries(sources).filter(([, source]) => !source.ok).map(([name]) => name),
+    },
+    queues: {
+      pendingDeposits: pendingDeposits.count ?? null,
+      pendingPayouts: pendingPayouts.count ?? null,
+      editRequests: editRequests.count ?? null,
+    },
+    providers: { nagopay: providerSummary('nagopay'), payfuture: providerSummary('payfuture') },
+    lastSync: latest([
+      ...smsRows.map((r) => r.received_at),
+      ...txRows.map((r) => r.last_status_change ?? r.first_seen_at),
+      ...telegramRows.map((r) => r.created_at),
+      ...deviceRows.map((r) => r.last_seen_at),
+      ...integrationRows.map((r) => r.created_at),
+    ]),
+    sources,
+    sms: smsRows.map((r) => ({
+      ...r,
+      assigned_tx_id: r.consumed_by_tx_id ?? r.matched_transaction_id ?? r.maven_transaction_id ?? null,
+    })),
+    transactions: txRows,
+    telegram: telegramRows,
+    email: integrationRows.filter((r) => /gmail|email/i.test(`${r.action} ${r.entity}`)),
+    webhooks: integrationRows.filter((r) => /webhook/i.test(`${r.action} ${r.entity}`)),
+    devices: deviceRows,
+  })
+})

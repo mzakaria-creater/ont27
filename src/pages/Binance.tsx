@@ -1,104 +1,31 @@
 import { useCallback, useEffect, useState } from 'react'
 import PanelShell from '../components/PanelShell'
-import { api, ApiError } from '../lib/api'
-import { depositTime, money } from '../lib/deposits'
 import { useAuth } from '../auth/AuthContext'
+import { api, ApiError } from '../lib/api'
 import { useLocale } from '../lib/locale'
 
-interface Config {
-  id: boolean; enabled: boolean; asset: string; network: string
-  min_sweep_amount: number; max_daily_sweep_amount: number
-  treasury_wallet_address: string | null; config_key: string; updated_at: string | null
-}
-interface Balance {
-  account_id: string; total_balance: number | null; available_balance: number | null
-  usdt_value: number | null; btc_value: number | null; top_assets: unknown; measured_at: string | null
-}
-interface Data { config: Config | null; configured: boolean; balances: Balance[] }
+interface Config { p2p_enabled: boolean; p2p_asset: string; p2p_fiat: string; max_p2p_order_amount: number | null; max_p2p_24h_amount: number | null; has_credentials: boolean; updated_at: string | null }
+interface Data { config: Config | null; execution_capability: 'unavailable'; execution_reason: string }
 
 export default function Binance() {
-  const { t } = useLocale(); const { can } = useAuth()
-  const [data, setData] = useState<Data | null>(null)
-  const [err, setErr] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null)
-  const [form, setForm] = useState({ treasury_wallet_address: '', asset: 'USDT', network: 'TRX', min_sweep_amount: '', max_daily_sweep_amount: '' })
-  const canEdit = can('binance_p2p', 'can_edit') || can('treasury', 'can_edit')
-
-  const load = useCallback(async () => {
-    try {
-      const d = await api<Data>('/api/binance'); setData(d); setErr(null)
-      if (d.config) setForm({
-        treasury_wallet_address: d.config.treasury_wallet_address ?? '',
-        asset: d.config.asset, network: d.config.network,
-        min_sweep_amount: String(d.config.min_sweep_amount ?? ''),
-        max_daily_sweep_amount: String(d.config.max_daily_sweep_amount ?? ''),
-      })
-    } catch (e) { setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية الخزينة.', 'No treasury permission.') : t('تعذر التحميل.', 'Unable to load.')) }
-  }, [t])
+  const { t } = useLocale(); const { user } = useAuth(); const isSuperAdmin = user?.role === 'super_admin'
+  const [data, setData] = useState<Data | null>(null); const [err, setErr] = useState(''); const [msg, setMsg] = useState('')
+  const [limits, setLimits] = useState({ perOrder: '', daily: '' }); const [keys, setKeys] = useState({ api_key: '', api_secret: '' })
+  const load = useCallback(async () => { try { const d = await api<Data>('/api/binance'); setData(d); setLimits({ perOrder: d.config?.max_p2p_order_amount ? String(d.config.max_p2p_order_amount) : '', daily: d.config?.max_p2p_24h_amount ? String(d.config.max_p2p_24h_amount) : '' }); setErr('') } catch (e) { setErr(e instanceof ApiError && e.code === 'migration_required' ? t('يلزم تطبيق ترحيل قاعدة بيانات Binance أولاً.', 'The Binance database migration must be applied first.') : t('تعذر تحميل إعداد Binance.', 'Unable to load Binance configuration.')) } }, [t])
   useEffect(() => { void load() }, [load])
-
-  const save = async (e: React.FormEvent, enabled?: boolean) => {
-    e.preventDefault(); setMsg(null)
-    try {
-      const body: Record<string, unknown> = {
-        treasury_wallet_address: form.treasury_wallet_address.trim() || null,
-        asset: form.asset, network: form.network,
-        min_sweep_amount: Number(form.min_sweep_amount) || 0,
-        max_daily_sweep_amount: Number(form.max_daily_sweep_amount) || 0,
-      }
-      if (enabled !== undefined) body.enabled = enabled
-      await api('/api/binance/config', { method: 'PUT', body: JSON.stringify(body) })
-      setMsg(t('تم الحفظ.', 'Saved.')); await load()
-    } catch (e) {
-      setErr(e instanceof ApiError && e.status === 400 ? t('تحقق من البيانات — لا يمكن التفعيل بدون عنوان محفظة.', 'Check inputs — cannot enable without a wallet address.') : t('تعذر الحفظ.', 'Unable to save.'))
-    }
-  }
-
+  const saveLimits = async (enabled?: boolean) => { setErr(''); setMsg(''); try { if (!limits.perOrder || !limits.daily) throw new Error('limits'); await api('/api/binance/config', { method: 'PUT', body: JSON.stringify({ max_p2p_order_amount: Number(limits.perOrder), max_p2p_24h_amount: Number(limits.daily), ...(enabled === undefined ? {} : { p2p_enabled: enabled }) }) }); setMsg(t('تم حفظ الحدود.', 'Limits saved.')); await load() } catch (e) { setErr(e instanceof ApiError && e.code === 'super_admin_required' ? t('هذه العملية متاحة لـ super_admin فقط.', 'Only super_admin can perform this action.') : t('أدخل حدَّين موجبين، ولا يمكن التفعيل قبل حفظ المفتاح.', 'Enter two positive limits; credentials are required before enabling.')) } }
+  const saveKeys = async () => { setErr(''); setMsg(''); try { await api('/api/binance/credentials', { method: 'PUT', body: JSON.stringify(keys) }); setKeys({ api_key: '', api_secret: '' }); setMsg(t('حُفظ المفتاح داخل Supabase Vault وأُبقي التكامل موقوفاً.', 'Credentials saved in Supabase Vault; the integration remains disabled.')); await load() } catch { setErr(t('تعذر حفظ المفتاح بأمان.', 'Unable to store credentials securely.')) } }
   const cfg = data?.config
   return <PanelShell>
-    <section className="page-head"><h2>🪙 {t('خزينة USDT (Binance)', 'USDT Treasury (Binance)')}</h2><p className="page-sub">{t('إعداد محفظة الخزينة وحدود التجميع. لا تُعرض أرصدة إلا بعد المزامنة الفعلية.', 'Configure the treasury wallet and sweep limits. Balances appear only after a real sync.')}</p></section>
-    {err && <div className="card warn">{err}</div>}
-    {msg && <div className="card">{msg}</div>}
-    {!data && !err && <p className="sidebar-hint">{t('جار التحميل…', 'Loading…')}</p>}
-
-    {data && (<>
-      {!data.configured && <div className="card warn">⚙️ {t('لم تُهيَّأ الخزينة بعد — أدخل عنوان محفظة الخزينة أدناه للبدء.', 'Treasury not configured yet — enter a treasury wallet address below to start.')}</div>}
-
-      <section className="card recent-card">
-        <div className="recent-head"><h3>{t('الإعداد', 'Configuration')}</h3>
-          <span className={`pay-status-badge ${cfg?.enabled ? 'st-paid' : 'st-dim'}`}>{cfg?.enabled ? t('مفعّلة', 'Enabled') : t('موقوفة', 'Disabled')}</span>
-        </div>
-        <form onSubmit={(e) => save(e)}>
-          <div className="binance-grid">
-            <label className="filter-field" style={{ flexDirection: 'column', alignItems: 'stretch' }}>{t('عنوان محفظة الخزينة', 'Treasury wallet address')}
-              <input className="login-input" value={form.treasury_wallet_address} disabled={!canEdit} onChange={(e) => setForm({ ...form, treasury_wallet_address: e.target.value })} placeholder="TRX / EVM address" aria-label={t('عنوان محفظة الخزينة', 'Treasury wallet address')} /></label>
-            <label className="filter-field" style={{ flexDirection: 'column', alignItems: 'stretch' }}>{t('العملة', 'Asset')}
-              <input className="login-input" value={form.asset} disabled={!canEdit} onChange={(e) => setForm({ ...form, asset: e.target.value })} aria-label={t('العملة', 'Asset')} /></label>
-            <label className="filter-field" style={{ flexDirection: 'column', alignItems: 'stretch' }}>{t('الشبكة', 'Network')}
-              <input className="login-input" value={form.network} disabled={!canEdit} onChange={(e) => setForm({ ...form, network: e.target.value })} aria-label={t('الشبكة', 'Network')} /></label>
-            <label className="filter-field" style={{ flexDirection: 'column', alignItems: 'stretch' }}>{t('أدنى مبلغ تجميع', 'Min sweep amount')}
-              <input className="login-input" type="number" min={0} step="any" value={form.min_sweep_amount} disabled={!canEdit} onChange={(e) => setForm({ ...form, min_sweep_amount: e.target.value })} aria-label={t('أدنى مبلغ تجميع', 'Min sweep amount')} /></label>
-            <label className="filter-field" style={{ flexDirection: 'column', alignItems: 'stretch' }}>{t('أقصى تجميع يومي', 'Max daily sweep')}
-              <input className="login-input" type="number" min={0} step="any" value={form.max_daily_sweep_amount} disabled={!canEdit} onChange={(e) => setForm({ ...form, max_daily_sweep_amount: e.target.value })} aria-label={t('أقصى تجميع يومي', 'Max daily sweep')} /></label>
-          </div>
-          {canEdit && <div className="control-row" style={{ marginTop: 12 }}>
-            <button className="btn-primary btn-sm" type="submit">{t('حفظ', 'Save')}</button>
-            {cfg?.enabled
-              ? <button className="btn-ghost btn-sm" type="button" onClick={(e) => save(e, false)}>{t('إيقاف التجميع', 'Disable sweeping')}</button>
-              : <button className="btn-ghost btn-sm" type="button" onClick={(e) => save(e, true)} disabled={!form.treasury_wallet_address.trim()}>{t('تفعيل التجميع', 'Enable sweeping')}</button>}
-          </div>}
-          {cfg?.updated_at && <p className="page-sub">{t('آخر تحديث', 'Last updated')}: <span className="mono">{depositTime({ first_seen_at: cfg.updated_at })}</span></p>}
-        </form>
-      </section>
-
-      <section className="card recent-card">
-        <div className="recent-head"><h3>{t('الأرصدة', 'Balances')}</h3></div>
-        {data.balances.length === 0
-          ? <p className="sidebar-hint">{t('لا توجد أرصدة مُزامَنة بعد. تظهر هنا بمجرد أول مزامنة فعلية من Binance.', 'No balances synced yet. They appear here after the first real Binance sync.')}</p>
-          : <div className="table-wrap"><table className="data-table">
-              <thead><tr><th>{t('الحساب', 'Account')}</th><th>{t('الإجمالي', 'Total')}</th><th>{t('المتاح', 'Available')}</th><th>USDT</th><th>{t('آخر قياس', 'Measured')}</th></tr></thead>
-              <tbody>{data.balances.map((b) => <tr key={b.account_id}><td className="mono">{b.account_id.slice(0, 8)}</td><td className="mono">{money(b.total_balance, 'USDT')}</td><td className="mono">{money(b.available_balance, 'USDT')}</td><td className="mono">{money(b.usdt_value, 'USDT')}</td><td className="mono">{b.measured_at ? depositTime({ first_seen_at: b.measured_at }) : '—'}</td></tr>)}</tbody>
-            </table></div>}
-      </section>
-    </>)}
+    <section className="page-head"><h2>Binance P2P — {t('تنفيذ يدوي', 'Manual execution')}</h2><p className="page-sub">{t('لا triggers ولا cron ولا تنفيذ تلقائي. كل عملية مستقبلية تتطلب تأكيداً بشرياً مسجلاً.', 'No triggers, cron, or automatic execution. Every future order requires a recorded human confirmation.')}</p></section>
+    <div className="card warn"><strong>{t('قيد أمان فعّال:', 'Active safety lock:')}</strong> {t('Binance لا توثّق حالياً API عامة لإنشاء أوامر P2P أو قراءة عروض السوق. لذلك التنفيذ والعروض مقفولان، ولن يستخدم النظام واجهات الموقع غير الموثقة.', 'Binance currently documents no public API for placing P2P orders or reading marketplace ads. Execution and offers are therefore locked; undocumented website endpoints are not used.')}</div>
+    <div className="card"><strong>{t('قبل إدخال المفتاح:', 'Before entering credentials:')}</strong> {t('أنشئ مفتاحاً بصلاحية P2P فقط، وعطّل Withdrawal تماماً من إعدادات Binance.', 'Create a P2P-only key and disable Withdrawal completely in Binance settings.')}</div>
+    {err && <div className="card warn">{err}</div>}{msg && <div className="card">{msg}</div>}
+    {data && <section className="card recent-card"><div className="recent-head"><h3>{t('الحالة والحدود', 'Status and limits')}</h3><span className={`pay-status-badge ${cfg?.p2p_enabled ? 'st-paid' : 'st-dim'}`}>{cfg?.p2p_enabled ? t('مفعّل', 'Enabled') : t('موقوف', 'Disabled')}</span></div>
+      <div className="binance-grid"><label className="filter-field" style={{ flexDirection: 'column', alignItems: 'stretch' }}>{t('الحد الأقصى للعملية (EGP)', 'Maximum per order (EGP)')}<input className="login-input" type="number" min="0.01" step="0.01" value={limits.perOrder} disabled={!isSuperAdmin} onChange={e => setLimits({ ...limits, perOrder: e.target.value })} /></label><label className="filter-field" style={{ flexDirection: 'column', alignItems: 'stretch' }}>{t('الحد المتحرك خلال 24 ساعة (EGP)', 'Rolling 24-hour maximum (EGP)')}<input className="login-input" type="number" min="0.01" step="0.01" value={limits.daily} disabled={!isSuperAdmin} onChange={e => setLimits({ ...limits, daily: e.target.value })} /></label></div>
+      {isSuperAdmin && <div className="control-row" style={{ marginTop: 12 }}><button className="btn-primary btn-sm" onClick={() => void saveLimits()}>{t('حفظ الحدود', 'Save limits')}</button>{cfg?.p2p_enabled ? <button className="btn-ghost btn-sm" onClick={() => void saveLimits(false)}>{t('إيقاف', 'Disable')}</button> : <button className="btn-ghost btn-sm" onClick={() => void saveLimits(true)}>{t('تفعيل يدوي', 'Enable manual mode')}</button>}</div>}
+    </section>}
+    {isSuperAdmin && <section className="card recent-card"><h3>{t('مفتاح API — إدخال مرة واحدة', 'API credentials — one-time entry')}</h3><p className="page-sub">{cfg?.has_credentials ? t('يوجد مفتاح محفوظ. لن يُعرض مطلقاً؛ الحفظ هنا يستبدله ويوقف التكامل.', 'Credentials exist. They are never displayed; saving here replaces them and disables the integration.') : t('لا يوجد مفتاح محفوظ.', 'No credentials stored.')}</p><div className="binance-grid"><input className="login-input" type="password" autoComplete="off" placeholder="API Key" value={keys.api_key} onChange={e => setKeys({ ...keys, api_key: e.target.value })} /><input className="login-input" type="password" autoComplete="new-password" placeholder="API Secret" value={keys.api_secret} onChange={e => setKeys({ ...keys, api_secret: e.target.value })} /></div><button className="btn-primary btn-sm" style={{ marginTop: 12 }} disabled={!keys.api_key || !keys.api_secret} onClick={() => void saveKeys()}>{t('حفظ آمن في Vault', 'Store securely in Vault')}</button></section>}
+    <section className="card recent-card"><h3>{t('عروض P2P', 'P2P offers')}</h3><p className="sidebar-hint">{t('غير متاحة عبر API Binance الرسمية. لا يوجد زر تنفيذ حتى توفير واجهة موثقة ومخوّلة للحساب.', 'Unavailable through Binance’s official API. No execute button is exposed until a documented, account-authorized endpoint is available.')}</p></section>
   </PanelShell>
 }

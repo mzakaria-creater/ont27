@@ -85,9 +85,11 @@ depositRoutes.get('/stats', requirePerm('dashboard', 'can_view'), async (c) => {
     }
   }
 
-  const [total, pending, paidDay, declinedDay, paidWeek, recent] = await Promise.all([
+  const [total, pendingAll, pending, pendingStale, paidDay, declinedDay, paidWeek, recent] = await Promise.all([
     countByStatus(),
     countByStatus('PENDING'),
+    db.from('maven_transactions').select('tx_id', { count: 'exact', head: true }).eq('status', 'PENDING').gte('first_seen_at', day).then(({ count }) => count ?? 0),
+    db.from('maven_transactions').select('tx_id', { count: 'exact', head: true }).eq('status', 'PENDING').lt('first_seen_at', day).then(({ count }) => count ?? 0),
     volumeSince(day, ['PAID', 'APPROVED']),
     volumeSince(day, ['DECLINED']).then((v) => v.count),
     volumeSince(week, ['PAID', 'APPROVED']),
@@ -105,6 +107,8 @@ depositRoutes.get('/stats', requirePerm('dashboard', 'can_view'), async (c) => {
   return c.json({
     total,
     pending,
+    pendingAll,
+    pendingStale,
     day: { paid: paidDay, declined: declinedDay },
     week: { paid: paidWeek },
     recent,

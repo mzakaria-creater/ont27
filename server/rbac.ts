@@ -79,3 +79,13 @@ export const requireAdminRole = createMiddleware<AuthEnv>(async (c, next) => {
   }
   await next()
 })
+
+// Security-sensitive integrations are deliberately stricter than the editable
+// permission matrix: neither owner/admin nor a per-user override may grant
+// access to credentials or trading limits.
+export const requireSuperAdmin = createMiddleware<AuthEnv>(async (c, next) => {
+  if (c.get('actor').role !== 'super_admin') {
+    return c.json({ error: 'super_admin_required' }, 403)
+  }
+  await next()
+})
