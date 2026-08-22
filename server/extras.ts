@@ -1100,13 +1100,18 @@ extraRoutes.get(
   '/executive-dashboard',
   requireAnyPerm(['dashboard', 'reports', 'advanced_analysis', 'treasury', 'wallets'], 'can_view'),
   async (c) => {
-    const now = Date.now()
-    const day = new Date(now - 24 * 86_400_000).toISOString()
-    const week = new Date(now - 7 * 86_400_000).toISOString()
-    const month = new Date(now - 30 * 86_400_000).toISOString()
+    const from = c.req.query('from')?.trim() || new Date(Date.now() - 29 * 86_400_000).toISOString().slice(0, 10)
+    const to = c.req.query('to')?.trim() || new Date().toISOString().slice(0, 10)
+    const merchantFilter = c.req.query('merchant')?.trim() || ''
+    const methodFilter = c.req.query('method')?.trim() || ''
+    const statusFilter = c.req.query('status')?.trim() || ''
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return c.json({ error: 'invalid_date_range' }, 400)
+    const since = `${from}T00:00:00+03:00`
+    const until = `${to}T23:59:59.999+03:00`
+    const day = new Date(Date.now() - 24 * 86_400_000).toISOString()
     const [deposits, payouts, pendingDeposits, pendingPayouts, devices, sms] = await Promise.all([
-      db.from('maven_transactions').select('amount, status, merchant, first_seen_at').gte('first_seen_at', month).order('first_seen_at', { ascending: true, nullsFirst: false }).limit(10_000),
-      db.from('maven_payout_transactions').select('amount, status, merchant, first_seen_at').gte('first_seen_at', month).order('first_seen_at', { ascending: true, nullsFirst: false }).limit(10_000),
+      db.from('maven_transactions').select('amount, status, merchant, master_merchant, payment_method, gateway, fees, commission, first_seen_at').gte('first_seen_at', since).lte('first_seen_at', until).order('first_seen_at', { ascending: true, nullsFirst: false }).limit(20_000),
+      db.from('maven_payout_transactions').select('amount, status, merchant, first_seen_at').gte('first_seen_at', since).lte('first_seen_at', until).order('first_seen_at', { ascending: true, nullsFirst: false }).limit(20_000),
       db.from('maven_transactions').select('tx_id', { count: 'exact', head: true }).eq('status', 'PENDING'),
       db.from('maven_payout_transactions').select('maven_id', { count: 'exact', head: true }).eq('status', 'PENDING'),
       db.from('device_status').select('device, sim_slot, online, battery, last_seen_at').order('device').limit(500),
@@ -1116,51 +1121,71 @@ extraRoutes.get(
       if (result.error) return c.json({ error: 'db_error', detail: result.error.message }, 500)
     }
 
-    const isApproved = (status: string | null) => status === 'PAID' || status === 'APPROVED'
-    const windowSummary = (since: string) => {
-      const dep = (deposits.data ?? []).filter((row) => String(row.first_seen_at ?? '') >= since)
-      const pay = (payouts.data ?? []).filter((row) => String(row.first_seen_at ?? '') >= since)
-      const approvedDep = dep.filter((row) => isApproved(row.status))
-      const approvedPay = pay.filter((row) => isApproved(row.status))
-      return {
-        depositCount: approvedDep.length,
-        depositVolume: approvedDep.reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
-        payoutCount: approvedPay.length,
-        payoutVolume: approvedPay.reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
-        declined: dep.filter((row) => row.status === 'DECLINED').length,
-        attempts: dep.length,
-      }
+    const rawDeposits = deposits.data ?? []
+    const rawPayouts = payouts.data ?? []
+    const options = {
+      merchants: [...new Set(rawDeposits.map((row) => row.master_merchant ?? row.merchant ?? 'Unassigned'))].sort(),
+      methods: [...new Set(rawDeposits.map((row) => row.payment_method ?? row.gateway ?? 'Unspecified'))].sort(),
+      statuses: [...new Set(rawDeposits.map((row) => row.status ?? 'PENDING'))].sort(),
     }
-    const monthly = windowSummary(month)
-    const byMerchant = new Map<string, { merchant: string; volume: number; count: number }>()
-    for (const row of deposits.data ?? []) {
-      if (!isApproved(row.status)) continue
-      const merchant = row.merchant ?? 'Unassigned'
-      const bucket = byMerchant.get(merchant) ?? { merchant, volume: 0, count: 0 }
-      bucket.volume += Number(row.amount ?? 0)
-      bucket.count += 1
-      byMerchant.set(merchant, bucket)
+    const depositRows = rawDeposits.filter((row) => {
+      const merchant = row.master_merchant ?? row.merchant ?? 'Unassigned'
+      const method = row.payment_method ?? row.gateway ?? 'Unspecified'
+      return (!merchantFilter || merchant === merchantFilter) && (!methodFilter || method === methodFilter) && (!statusFilter || row.status === statusFilter)
+    })
+    // Payouts do not have a payment_method column. When a method filter is
+    // active, omit them instead of silently attributing unclassified payouts
+    // to the selected deposit method.
+    const payoutRows = methodFilter ? [] : rawPayouts.filter((row) => (!merchantFilter || (row.merchant ?? 'Unassigned') === merchantFilter) && (!statusFilter || row.status === statusFilter))
+    const isApproved = (status: string | null) => status === 'PAID' || status === 'APPROVED'
+    const approvedDep = depositRows.filter((row) => isApproved(row.status))
+    const approvedPay = payoutRows.filter((row) => isApproved(row.status))
+    const summary = {
+      depositCount: approvedDep.length,
+      depositVolume: approvedDep.reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
+      payoutCount: approvedPay.length,
+      payoutVolume: approvedPay.reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
+      declined: depositRows.filter((row) => row.status === 'DECLINED').length,
+      pending: depositRows.filter((row) => row.status === 'PENDING').length,
+      attempts: depositRows.length,
+      fees: depositRows.reduce((sum, row) => sum + Number(row.fees ?? 0) + Number(row.commission ?? 0), 0),
+    }
+    const pivot = new Map<string, { merchant: string; method: string; paidCount: number; paidVolume: number; pendingCount: number; pendingVolume: number; declinedCount: number; declinedVolume: number; totalCount: number; totalVolume: number }>()
+    for (const row of depositRows) {
+      const merchant = row.master_merchant ?? row.merchant ?? 'Unassigned'
+      const method = row.payment_method ?? row.gateway ?? 'Unspecified'
+      const key = `${merchant}\u0000${method}`
+      const bucket = pivot.get(key) ?? { merchant, method, paidCount: 0, paidVolume: 0, pendingCount: 0, pendingVolume: 0, declinedCount: 0, declinedVolume: 0, totalCount: 0, totalVolume: 0 }
+      const amount = Number(row.amount ?? 0)
+      bucket.totalCount += 1; bucket.totalVolume += amount
+      if (isApproved(row.status)) { bucket.paidCount += 1; bucket.paidVolume += amount }
+      else if (row.status === 'PENDING') { bucket.pendingCount += 1; bucket.pendingVolume += amount }
+      else if (row.status === 'DECLINED') { bucket.declinedCount += 1; bucket.declinedVolume += amount }
+      pivot.set(key, bucket)
     }
     const daily = new Map<string, { date: string; incoming: number; outgoing: number }>()
     const dailyRow = (date: string) => {
       if (!daily.has(date)) daily.set(date, { date, incoming: 0, outgoing: 0 })
       return daily.get(date)!
     }
-    for (const row of deposits.data ?? []) {
+    for (const row of depositRows) {
       if (isApproved(row.status) && row.first_seen_at) dailyRow(row.first_seen_at.slice(0, 10)).incoming += Number(row.amount ?? 0)
     }
-    for (const row of payouts.data ?? []) {
+    for (const row of payoutRows) {
       if (isApproved(row.status) && row.first_seen_at) dailyRow(row.first_seen_at.slice(0, 10)).outgoing += Number(row.amount ?? 0)
     }
     const deviceRows = devices.data ?? []
     const liveSms = sms.data ?? []
     return c.json({
       generatedAt: new Date().toISOString(),
-      windows: { day: windowSummary(day), week: windowSummary(week), month: monthly },
+      range: { from, to },
+      filters: { merchant: merchantFilter || null, method: methodFilter || null, status: statusFilter || null },
+      options,
+      summary,
       queues: { pendingDeposits: pendingDeposits.count ?? 0, pendingPayouts: pendingPayouts.count ?? 0, smsReview: liveSms.filter((row) => !row.matched && (row.sms_category === 'deposit' || row.sms_category === 'withdrawal')).length },
       devices: { total: deviceRows.length, online: deviceRows.filter((row) => row.online).length, rows: deviceRows.slice(0, 20) },
-      topMerchants: [...byMerchant.values()].sort((a, b) => b.volume - a.volume).slice(0, 8),
-      daily: [...daily.values()].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30),
+      pivot: [...pivot.values()].sort((a, b) => b.totalVolume - a.totalVolume),
+      daily: [...daily.values()].sort((a, b) => b.date.localeCompare(a.date)),
     })
   },
 )
