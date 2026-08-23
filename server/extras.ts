@@ -522,6 +522,8 @@ extraRoutes.post('/automation/rules', requirePerm('automation', 'can_edit'), asy
   const priority = num(body?.priority) ?? 0
   const time_window_minutes = num(body?.time_window_minutes) ?? 5
   if (max_amount == null || max_amount < min_amount) return c.json({ error: 'invalid_amount_range' }, 400)
+  if (max_amount <= 0) return c.json({ error: 'maximum_amount_required' }, 400)
+  if (action_type === 'decline' && time_window_minutes < 5) return c.json({ error: 'auto_decline_minimum_wait', minimum_minutes: 5 }, 400)
 
   const master_merchant = str(body?.master_merchant)
   const sub_merchant = str(body?.sub_merchant)
@@ -568,6 +570,10 @@ extraRoutes.patch('/automation/rules/:id', requirePerm('automation', 'can_edit')
 
   const nextEnabled = (update.enabled as boolean | undefined) ?? before.enabled
   const nextPriority = (update.priority as number | undefined) ?? before.priority
+  const nextMax = Number(update.max_amount ?? before.max_amount)
+  const nextWindow = Number(update.time_window_minutes ?? before.time_window_minutes)
+  if (!Number.isFinite(nextMax) || nextMax <= 0) return c.json({ error: 'maximum_amount_required' }, 400)
+  if (before.action_type === 'decline' && nextWindow < 5) return c.json({ error: 'auto_decline_minimum_wait', minimum_minutes: 5 }, 400)
   if (nextEnabled && body?.confirm_conflict !== true && (update.priority !== undefined || update.enabled === true)) {
     const conflicts = await ruleConflict(db, before.scope_type, before.master_merchant, before.sub_merchant, nextPriority, id)
     if (conflicts.length) return c.json({ error: 'priority_conflict', conflicts }, 409)
@@ -630,6 +636,27 @@ extraRoutes.patch('/automation/settings', requirePerm('automation', 'can_edit'),
     action: 'automation.settings_updated', entity: 'automation_settings', entity_id: '1', before, after: data,
   })
   return c.json({ settings: data })
+})
+
+// Brand images are public assets, while their mapping is visible only inside
+// an authenticated panel session. Latest audited upload per type/key wins.
+extraRoutes.get('/branding', async (c) => {
+  const { data, error } = await db.from('audit_log')
+    .select('after, created_at')
+    .eq('action', 'branding.logo_uploaded')
+    .order('created_at', { ascending: false })
+    .limit(1000)
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  const logos: Record<string, string> = {}
+  for (const row of data ?? []) {
+    const after = row.after as Record<string, unknown> | null
+    const type = typeof after?.asset_type === 'string' ? after.asset_type : ''
+    const key = typeof after?.asset_key === 'string' ? after.asset_key : ''
+    const url = typeof after?.url === 'string' ? after.url : ''
+    const mapKey = `${type}:${key.toLowerCase()}`
+    if (type && key && url && !logos[mapKey]) logos[mapKey] = url
+  }
+  return c.json({ logos })
 })
 
 // ---- Mismatch detector ----

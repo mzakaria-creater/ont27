@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import PanelShell from '../components/PanelShell'
 import MethodLogo from '../components/MethodLogo'
+import MerchantLogo from '../components/MerchantLogo'
 import { api } from '../lib/api'
 import { money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -210,7 +211,7 @@ export default function ClientProfile() {
                         <td><span className={`pay-status-badge ${statusMeta(d.status ?? '').cls}`}>{statusMeta(d.status ?? '').label}</span></td>
                         <td><span className="method-cell"><MethodLogo method={d.payment_method} /><span className="method-name">{d.payment_method ?? '—'}</span></span></td>
                         <td className="mono">{d.to_account_number ?? '—'}</td>
-                        <td>{d.sub_merchant ?? d.merchant ?? '—'}</td>
+                        <td><MerchantLogo merchant={d.sub_merchant ?? d.merchant} /></td>
                         <td>{d.approved_by ?? '—'}</td>
                         <td className="mono">{d.first_seen_at ? new Date(d.first_seen_at).toLocaleString() : '—'}</td>
                       </tr>
@@ -240,7 +241,7 @@ export default function ClientProfile() {
                         <td className="mono">{r.ontarget_ref ?? r.maven_id}</td>
                         <td className="mono">{money(r.amount, 'EGP')}</td>
                         <td><span className={`pay-status-badge ${statusMeta(r.status ?? '').cls}`}>{statusMeta(r.status ?? '').label}</span></td>
-                        <td>{r.pay_by ?? '—'}</td>
+                        <td><MethodLogo method={r.pay_by} /></td>
                         <td>{r.account_name ?? '—'}</td>
                         <td className="mono">{r.first_seen_at ? new Date(r.first_seen_at).toLocaleString() : '—'}</td>
                       </tr>

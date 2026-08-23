@@ -397,15 +397,23 @@ body {
 .approval-card-actions button, .approval-card-open { min-height: 40px; justify-content: center; text-align: center; }
 .approval-card-open { display: inline-flex; align-items: center; margin-top: auto; text-decoration: none; }
 .merchant-brand-cell { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-.merchant-brand-logo, .merchant-brand-fallback { flex: 0 0 28px; width: 28px; height: 28px; border-radius: 7px; }
-.merchant-brand-logo { display: block; object-fit: cover; background: #111827; }
+.merchant-brand-logo, .merchant-brand-fallback { flex: 0 0 36px; width: 36px; height: 36px; border-radius: 9px; }
+.merchant-brand-logo { display: block; object-fit: contain; padding: 2px; background: #fff; border: 1px solid rgba(148,163,184,.24); }
 .merchant-brand-fallback { display: inline-flex; align-items: center; justify-content: center; color: var(--text-dim, #94a3b8); background: var(--hover-2, rgba(148,163,184,.12)); font-size: 12px; font-weight: 800; }
 .merchant-brand-name { overflow: hidden; text-overflow: ellipsis; }
 .merchant-brand-melbet { display: inline-flex; flex-direction: column; align-items: center; gap: 5px; min-width: 74px; text-align: center; }
-.merchant-brand-melbet .merchant-brand-logo { flex-basis: 52px; width: 52px; height: 52px; border-radius: 12px; box-shadow: 0 3px 12px rgba(0,0,0,.18); }
-.merchant-brand-melbet .merchant-brand-name { max-width: 110px; font-size: 11px; line-height: 1.25; font-weight: 750; }
-.approval-item-card .merchant-brand-melbet .merchant-brand-logo { flex-basis: 60px; width: 60px; height: 60px; }
+.merchant-brand-melbet .merchant-brand-logo { flex-basis: 64px; width: 64px; height: 64px; padding: 3px; border-radius: 14px; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+.merchant-brand-melbet .merchant-brand-name { max-width: 130px; white-space: normal; font-size: 12px; line-height: 1.3; font-weight: 800; }
+.approval-item-card .merchant-brand-melbet .merchant-brand-logo { flex-basis: 72px; width: 72px; height: 72px; }
 .method-logo img { display: block; width: 100%; height: 100%; border-radius: inherit; object-fit: contain; }
+.user-brand-cell { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.user-brand-cell > img, .user-brand-cell > span:first-child { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 50%; object-fit: cover; }
+.user-brand-cell > span:first-child { display: inline-flex; align-items: center; justify-content: center; background: var(--hover-2, rgba(148,163,184,.14)); font-weight: 800; }
+.brand-upload-form { display: grid; grid-template-columns: repeat(3, minmax(150px, 1fr)) auto; align-items: end; gap: 12px; }
+.brand-upload-form label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 700; }
+.brand-file-field input { min-height: 39px; padding: 7px; border: 1px solid var(--line, rgba(148,163,184,.2)); border-radius: 9px; }
+.brand-preview-grid { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line, rgba(148,163,184,.2)); }
+@media (max-width: 760px) { .brand-upload-form { grid-template-columns: 1fr; } }
 @media (max-width: 600px) {
   .page-head .view-switch { width: 100%; }
   .view-switch button { flex: 1; }
@@ -1864,19 +1872,22 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 }
 
 .method-logo {
-  inline-size: 22px;
-  block-size: 22px;
-  border-radius: 6px;
+  inline-size: 34px;
+  block-size: 34px;
+  border-radius: 9px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1;
   flex: none;
   letter-spacing: -0.02em;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  overflow: hidden;
 }
+
+.data-table tbody tr { animation: none !important; }
 
 .method-name {
   overflow: hidden;

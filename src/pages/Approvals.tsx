@@ -73,8 +73,8 @@ export default function Approvals() {
       // the last background copy. This shared pump is throttled server-side.
       await syncProviders()
       const res = await api<{ deposits: DepRow[]; payouts: PayRow[] }>('/api/approvals')
-      setDeposits(res.deposits)
-      setPayouts(res.payouts)
+      setDeposits((current) => JSON.stringify(current) === JSON.stringify(res.deposits) ? current : res.deposits)
+      setPayouts((current) => JSON.stringify(current) === JSON.stringify(res.payouts) ? current : res.payouts)
       setErr(null)
     } catch (e) {
       setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض طابور الموافقات.', 'You do not have permission to view the approval queue.') : t('تعذّر تحميل الطابور.', 'Failed to load the queue.'))

@@ -9,7 +9,7 @@
 // it, so nothing depends on recognising the mark alone.
 
 const MARKS: { test: (m: string) => boolean; label: string; bg: string; fg: string; title: string; image?: string }[] = [
-  { test: (m) => m.includes('orange'), label: 'O', bg: '#ff7900', fg: '#000', title: 'Orange Money' },
+  { test: (m) => m.includes('orange'), label: 'O', bg: '#ff7900', fg: '#000', title: 'Orange Money', image: 'https://www.orange.com/favicon.ico' },
   { test: (m) => m.includes('vodafone') || m.includes('vf'), label: 'V', bg: '#e60000', fg: '#fff', title: 'Vodafone Cash', image: 'https://www.vodafone.com/favicon.ico' },
   { test: (m) => m.includes('etissalat') || m.includes('etisalat') || m.includes('e&'), label: 'e&', bg: '#95c11f', fg: '#000', title: 'Etisalat Cash' },
   { test: (m) => m.includes('instapay'), label: 'IP', bg: '#5d4fb8', fg: '#fff', title: 'InstaPay' },
@@ -24,6 +24,7 @@ export default function MethodLogo({ method }: { method: string | null | undefin
   const raw = (method ?? '').trim()
   const m = raw.toLowerCase()
   const hit = raw ? MARKS.find((x) => x.test(m)) : undefined
+  const uploadedLogo = useBrandLogo('method', raw)
 
   // Anything unrecognised — a merchant trading name like "Walid Company LTD"
   // shows up in this column too — falls back to its own first letter rather
@@ -35,9 +36,10 @@ export default function MethodLogo({ method }: { method: string | null | undefin
   return (
     <span className="method-cell">
       <span className="method-logo" style={{ background: bg, color: fg }} title={hit?.title ?? raw} aria-hidden="true">
-        {hit?.image ? <img src={hit.image} alt="" loading="lazy" referrerPolicy="no-referrer" /> : label}
+        {uploadedLogo || hit?.image ? <img src={uploadedLogo ?? hit?.image} alt="" loading="lazy" referrerPolicy="no-referrer" /> : label}
       </span>
       <span className="method-name">{raw || '—'}</span>
     </span>
   )
 }
+import { useBrandLogo } from '../lib/brandLogos'

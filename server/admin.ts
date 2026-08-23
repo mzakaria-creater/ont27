@@ -11,6 +11,8 @@ adminRoutes.use('*', requireAuth, requireAdminRole)
 const userColumns = 'id, username, email, display_name, role, active, last_login_at, failed_login_count, locked_until, created_at'
 const permColumns = 'role_key, page_key, can_view, can_create, can_edit, can_delete, can_approve, can_export'
 const keyColumns = 'id, merchant_id, key_name, api_key, environment, is_active, request_count, secret_prefix, last_used_at, revoked_at, expires_at, created_at'
+const BRAND_BUCKET = 'pop'
+const BRAND_PREFIX = 'brand-assets/'
 
 function string(value: unknown, max = 160): string | null {
   return typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null
@@ -25,7 +27,7 @@ async function audit(actor: { sub: string; username: string }, action: string, e
 }
 
 adminRoutes.get('/', requirePerm('settings', 'can_view'), async (c) => {
-  const [users, roles, permissions, keys, merchants, masters, feeDefaults, hierarchy, capacities, accounts, userPerms] = await Promise.all([
+  const [users, roles, permissions, keys, merchants, masters, feeDefaults, hierarchy, capacities, accounts, userPerms, methods] = await Promise.all([
     db.from('panel_users').select(userColumns).order('username'),
     db.from('app_roles').select('role_key, label, active').eq('active', true).order('role_key'),
     db.from('role_page_permissions').select(permColumns).order('page_key').order('role_key'),
@@ -37,10 +39,33 @@ adminRoutes.get('/', requirePerm('settings', 'can_view'), async (c) => {
     db.from('wallet_capacity_limits').select('payment_account_id, daily_limit, current_daily_used, updated_at'),
     db.from('payment_accounts').select('id, account_number, label, device_name, payment_method_id, is_active').order('created_at'),
     db.from('user_page_permissions').select('user_id, page_key, can_view, can_create, can_edit, can_delete, can_approve, can_export, note, granted_by, updated_at'),
+    db.from('payment_methods').select('id, method_code, method_name').order('method_name'),
   ])
-  const error = [users, roles, permissions, keys, merchants, masters, feeDefaults, hierarchy, capacities, accounts, userPerms].find((x) => x.error)?.error
+  const error = [users, roles, permissions, keys, merchants, masters, feeDefaults, hierarchy, capacities, accounts, userPerms, methods].find((x) => x.error)?.error
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  return c.json({ users: users.data ?? [], roles: roles.data ?? [], permissions: permissions.data ?? [], apiKeys: keys.data ?? [], merchants: merchants.data ?? [], masters: masters.data ?? [], feeDefaults: feeDefaults.data ?? [], hierarchy: hierarchy.data ?? [], capacities: capacities.data ?? [], accounts: accounts.data ?? [], userPermissions: userPerms.data ?? [] })
+  return c.json({ users: users.data ?? [], roles: roles.data ?? [], permissions: permissions.data ?? [], apiKeys: keys.data ?? [], merchants: merchants.data ?? [], masters: masters.data ?? [], feeDefaults: feeDefaults.data ?? [], hierarchy: hierarchy.data ?? [], capacities: capacities.data ?? [], accounts: accounts.data ?? [], userPermissions: userPerms.data ?? [], methods: methods.data ?? [] })
+})
+
+adminRoutes.post('/branding/logo', requirePerm('settings', 'can_edit'), async (c) => {
+  const form = await c.req.formData().catch(() => null)
+  const file = form?.get('file')
+  const assetType = String(form?.get('asset_type') ?? '')
+  const key = string(form?.get('asset_key'), 160)
+  if (!(file instanceof File) || file.size < 1) return c.json({ error: 'logo_file_required' }, 400)
+  if (file.size > 2 * 1024 * 1024) return c.json({ error: 'logo_file_too_large', max_mb: 2 }, 400)
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return c.json({ error: 'invalid_logo_type' }, 400)
+  if (!['merchant', 'user', 'method'].includes(assetType)) return c.json({ error: 'invalid_asset_type' }, 400)
+  if (!key) return c.json({ error: 'asset_key_required' }, 400)
+  const actor = c.get('actor')
+  const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg'
+  const safeKey = key.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'brand'
+  const path = `${BRAND_PREFIX}${assetType}/${safeKey}/${Date.now()}.${ext}`
+  const { error } = await db.storage.from(BRAND_BUCKET).upload(path, new Uint8Array(await file.arrayBuffer()), { contentType: file.type, upsert: false })
+  if (error) return c.json({ error: 'logo_upload_failed', detail: error.message }, 500)
+  const { data: publicData } = db.storage.from(BRAND_BUCKET).getPublicUrl(path)
+  const after = { asset_type: assetType, asset_key: key, url: publicData.publicUrl, path, content_type: file.type, size: file.size }
+  await audit(actor, 'branding.logo_uploaded', assetType, key, after)
+  return c.json({ logo: after }, 201)
 })
 
 adminRoutes.post('/users', requirePerm('users', 'can_create'), async (c) => {

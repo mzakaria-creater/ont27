@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import PanelShell from '../components/PanelShell'
+import MerchantLogo from '../components/MerchantLogo'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -185,7 +186,7 @@ export default function Transactions() {
                       </td>
                       <td className="mono">{money(r.amount, r.currency ?? 'EGP')}</td>
                       <td>{party ?? '—'}</td>
-                      <td>{r.merchant ?? '—'}{r.master_merchant && <div className="cell-sub">{r.master_merchant}</div>}</td>
+                      <td><MerchantLogo merchant={r.merchant ?? r.master_merchant} />{r.master_merchant && r.master_merchant !== r.merchant && <div className="cell-sub">{r.master_merchant}</div>}</td>
                       <td>
                         <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
                         {r.kind === 'deposit' && r.gateway === 'NagupayP2P' && (

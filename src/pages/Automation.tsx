@@ -41,7 +41,7 @@ const EMPTY_RULE: NewRule = { scope_type: 'global', master_merchant: 'ngpay', su
 const RULE_TEMPLATES: { id: string; label: [string, string]; desc: [string, string]; rule: Partial<NewRule> }[] = [
   { id: 'small-auto-approve', label: ['موافقة تلقائية للمبالغ الصغيرة', 'Auto-approve small amounts'], desc: ['حد أقصى منخفض، بدون شرط مطابقة، مهلة قصيرة.', 'Low cap, no matching requirement, short window.'], rule: { action_type: 'approve', min_amount: '1', max_amount: '500', time_window_minutes: '5', use_crm_matching: false, use_near_amount: false, use_unique_amount: false } },
   { id: 'strict-matching', label: ['مطابقة صارمة', 'Strict matching'], desc: ['يتطلب كل أدوات المطابقة معاً — سيُرفض تلقائياً من المحرّك اليوم لأن المطابقة الفعلية غير مُنفَّذة بعد (fail-safe).', 'Requires every matching tool — the live engine blocks this today since real matching isn’t implemented yet (fail-safe).'], rule: { action_type: 'approve', min_amount: '1', max_amount: '10000', use_crm_matching: true, use_near_amount: true, use_unique_amount: true } },
-  { id: 'decline-after-wait', label: ['رفض تلقائي بعد فترة انتظار', 'Auto-decline after a wait'], desc: ['يرفض معاملات ظلّت معلّقة أكثر من المهلة المحددة (7 دقائق كحد أدنى).', 'Declines transactions pending longer than the window (7 min minimum).'], rule: { action_type: 'decline', min_amount: '1', max_amount: '10000', time_window_minutes: '7' } },
+  { id: 'decline-after-wait', label: ['رفض تلقائي بعد 5 دقائق', 'Auto-decline after 5 minutes'], desc: ['يعمل فقط حتى الحد الأقصى الذي تراجعه وتحدده قبل الحفظ؛ ما فوق الحد يبقى للمراجعة.', 'Works only up to the maximum amount you review and set before saving; amounts above it remain in review.'], rule: { action_type: 'decline', min_amount: '1', max_amount: '', time_window_minutes: '5' } },
 ]
 interface JobRow { id: string; tx_id: number | null; amount: number | null; target_status: string | null; provider: string | null; state: string | null; mission: string | null; attempts: number | null; last_error: string | null; operator_username: string | null; created_at: string | null; completed_at: string | null }
 interface BalanceRow { account_id: string | null; total_balance: number | null; available_balance: number | null; usdt_value: number | null; measured_at: string | null }
@@ -346,6 +346,7 @@ export default function Automation() {
                 <option value="decline">{t('رفض', 'Decline')}</option>
               </select>
             </div>
+            {newRule.action_type === 'decline' && <div className="card warn">{t('الرفض التلقائي ينتظر 5 دقائق على الأقل، ولن يُحفَظ بدون Maximum Amount موجب. أي مبلغ أعلى من الحد يظل pending review.', 'Auto-decline waits at least 5 minutes and cannot be saved without a positive Maximum Amount. Any amount above the limit remains pending review.')}</div>}
             {newRule.action_type === 'approve' && (
               <div className="control-row">
                 <label className="login-remember" style={{ margin: 0 }}><input type="checkbox" checked={newRule.use_crm_matching} onChange={(e) => setNewRule({ ...newRule, use_crm_matching: e.target.checked })} />{t('مطابقة CRM', 'CRM matching')}</label>
