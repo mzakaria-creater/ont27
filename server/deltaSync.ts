@@ -5,6 +5,7 @@ import { db } from './db.js'
 import { ACCESS_COOKIE, verifyAccessToken } from './tokens.js'
 import { repairPaidSmsMatches } from './smsMatcher.js'
 import { produceRiskAlerts } from './riskAlerts.js'
+import { autoLinkWithdrawalSms } from './payoutSmsMatcher.js'
 
 // Pulls new rows from the OLD prod Supabase (where the Maven workers still
 // write) into the panel-v2 DB. Same overlap-window upsert idea as
@@ -142,23 +143,44 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
       // upsert would erase an edited withdrawal name/note seconds after save.
       if (table === 'inbound_sms') {
         const ids = payload.map((r) => r.id as number)
-        const localMeta = new Map<number, { sender_name: unknown; notes: unknown }>()
+        const localMeta = new Map<number, Record<string, unknown>>()
         const LOOKUP_CHUNK = 200
         for (let i = 0; i < ids.length; i += LOOKUP_CHUNK) {
           const { data: locals, error: localErr } = await db.from('inbound_sms')
-            .select('id, sender_name, notes').in('id', ids.slice(i, i + LOOKUP_CHUNK))
+            .select('id, sender_name, notes, consumed_by_tx_id, matched_transaction_id, matched, match_status, auto_match_score, processed_at').in('id', ids.slice(i, i + LOOKUP_CHUNK))
           if (localErr) throw new Error(`sms metadata guard lookup: ${localErr.message}`)
-          for (const local of locals ?? []) localMeta.set(local.id, { sender_name: local.sender_name, notes: local.notes })
+          for (const local of locals ?? []) localMeta.set(local.id, local)
         }
         payload = payload.map((row) => {
           const local = localMeta.get(row.id as number)
           if (!local) return row
+          const preservedLink = local.consumed_by_tx_id != null ? {
+            consumed_by_tx_id: local.consumed_by_tx_id,
+            matched_transaction_id: local.matched_transaction_id,
+            matched: local.matched,
+            match_status: local.match_status,
+            auto_match_score: local.auto_match_score,
+            processed_at: local.processed_at,
+          } : {}
           return {
             ...row,
             sender_name: local.sender_name ?? row.sender_name ?? null,
             notes: local.notes ?? row.notes ?? null,
+            ...preservedLink,
           }
         })
+      }
+      if (table === 'maven_payout_transactions') {
+        const ids = payload.map((r) => r.maven_id as number)
+        const matchedSms = new Map<number, number>()
+        const LOOKUP_CHUNK = 200
+        for (let i = 0; i < ids.length; i += LOOKUP_CHUNK) {
+          const { data: locals, error: localErr } = await db.from('maven_payout_transactions')
+            .select('maven_id, matched_sms_id').in('maven_id', ids.slice(i, i + LOOKUP_CHUNK))
+          if (localErr) throw new Error(`payout SMS-link guard lookup: ${localErr.message}`)
+          for (const local of locals ?? []) if (local.matched_sms_id != null) matchedSms.set(local.maven_id, local.matched_sms_id)
+        }
+        payload = payload.map((row) => ({ ...row, matched_sms_id: matchedSms.get(row.maven_id as number) ?? row.matched_sms_id ?? null }))
       }
       if (table === 'maven_transactions') {
         const localTs = new Map<number, number>()
@@ -275,6 +297,15 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
       results['sms_exact_matches'] = `error: ${(e as Error).message}`
       console.error('exact SMS matcher failed:', e)
     }
+  }
+
+  try {
+    const payoutSms = await autoLinkWithdrawalSms(mode === 'full' ? 1000 : 300)
+    results['payout_sms_matches'] = payoutSms.linked
+    console.info('withdrawal SMS → payout matcher completed', payoutSms)
+  } catch (e) {
+    results['payout_sms_matches'] = `error: ${(e as Error).message}`
+    console.error('withdrawal SMS → payout matcher failed:', e)
   }
 
   try {

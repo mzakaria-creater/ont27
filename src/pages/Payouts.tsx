@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Eye } from 'lucide-react'
+import { Eye, MessageSquare } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
 import MerchantLogo from '../components/MerchantLogo'
@@ -24,6 +24,7 @@ export interface PayoutRow {
   merchant_reference: string | null; payment_type: string | null; user_account_number: string | null
   bank_name: string | null; bank_ifsc: string | null; utr_number: string | null; currency: string | null
   master_merchant: string | null; commission_percentage: number | null
+  linked_sms?: { id: number; received_at: string | null; amount: number | null; receiver_number: string | null; wallet_number: string | null; provider: string | null; trx_id: string | null; trx_reference: string | null; balance_after: number | null; message: string | null } | null
 }
 interface PayoutDetail extends PayoutRow { updated_utc: string | null }
 interface ListResponse { rows: PayoutRow[]; total: number; limit: number; offset: number }
@@ -103,8 +104,16 @@ export default function Payouts() {
     setParams(p)
   }
   const openDetail = async (mavenId: number) => {
-    setDetailLoading(true); setDecisionErr(null); setDecisionResult(null); setProofUrl(null); setProofName(null); setRemark('')
-    try { setSelected((await api<{ payout: PayoutDetail }>(`/api/payouts/${mavenId}`)).payout) }
+    setDetailLoading(true); setDecisionErr(null); setDecisionResult(null); setProofUrl(null); setProofName(null); setRemark(''); setUtr('')
+    try {
+      const payout = (await api<{ payout: PayoutDetail }>(`/api/payouts/${mavenId}`)).payout
+      setSelected(payout)
+      setUtr(payout.linked_sms?.trx_id ?? payout.linked_sms?.trx_reference ?? '')
+      if (payout.linked_sms) {
+        setProofUrl(`sms-evidence:${payout.linked_sms.id}`)
+        setProofName(`WD SMS #${payout.linked_sms.id}`)
+      }
+    }
     catch { setErr(t('تعذّر تحميل تفاصيل السحب.', 'Failed to load payout details.')) } finally { setDetailLoading(false) }
   }
   const uploadProof = async (file: File | null) => {
@@ -118,11 +127,11 @@ export default function Payouts() {
     finally { setUploading(false) }
   }
   const decide = async (decision: 'APPROVED' | 'DECLINED') => {
-    if (!selected || (decision === 'APPROVED' && !proofUrl)) return
+    if (!selected || (decision === 'APPROVED' && !proofUrl && !selected.linked_sms)) return
     setDecisionBusy(true); setDecisionErr(null); setDecisionResult(null)
     try {
       const result = await api<DecisionResult>(`/api/payouts/${selected.maven_id}/decision`, {
-        method: 'POST', body: JSON.stringify({ decision, proof_url: proofUrl, remark, mode: decision === 'APPROVED' ? mode : 'manual', utr_number: utr.trim() || undefined }),
+        method: 'POST', body: JSON.stringify({ decision, proof_url: proofUrl?.startsWith('sms-evidence:') ? undefined : proofUrl, remark, mode: decision === 'APPROVED' ? mode : 'manual', utr_number: utr.trim() || undefined }),
       })
       setDecisionResult(result); void load()
     } catch (e) {
@@ -152,7 +161,7 @@ export default function Payouts() {
       {!loading && data && data.rows.length > 0 && <div className="table-wrap payout-ledger-wrap"><table className="data-table clickable payout-ledger-table"><thead><tr>
         <th>{t('إجراء', 'Action')}</th><th>{t('رقم المعاملة', 'Transaction ID')}</th><th>{t('مرجع التاجر', 'Merchant Reference')}</th><th>{t('الحالة', 'Status')}</th><th>{t('نوع الدفع', 'Payment Type')}</th><th>{t('رقم هاتف المستخدم', 'User Phone Num.')}</th><th>{t('اسم حساب المستخدم', 'User Account Name')}</th><th>{t('رقم حساب المستخدم', 'User Account Number')}</th><th>{t('اسم البنك', 'Bank Name')}</th><th>{t('رمز IFSC', 'Bank IFSC')}</th><th>{t('رقم UTR', 'UTR Number')}</th><th>{t('العملة', 'Currency')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('العمولة', 'Commission')}</th><th>{t('نسبة العمولة', 'Commission %')}</th><th>{t('التاجر الرئيسي', 'Master Merchant')}</th><th>{t('التاجر', 'Merchant')}</th>
       </tr></thead><tbody>{data.rows.map((row) => { const st = statusMeta(row.status); return <tr key={row.maven_id} onClick={() => void openDetail(row.maven_id)}>
-        <td className="payout-action-cell" onClick={(e) => e.stopPropagation()}><div className="row-actions"><button className="btn-ghost btn-sm icon-text-btn" onClick={() => void openDetail(row.maven_id)}><Eye size={15} aria-hidden="true" />{row.status === 'PENDING' && can('payouts', 'can_approve') ? t('قرار', 'Decide') : t('تفاصيل', 'Details')}</button>{row.image_url && <ProofIconButton url={row.image_url} onOpen={setViewedProofUrl} compact />}</div></td>
+        <td className="payout-action-cell" onClick={(e) => e.stopPropagation()}><div className="row-actions"><button className="btn-ghost btn-sm icon-text-btn" onClick={() => void openDetail(row.maven_id)}><Eye size={15} aria-hidden="true" />{row.status === 'PENDING' && can('payouts', 'can_approve') ? t('قرار', 'Decide') : t('تفاصيل', 'Details')}</button>{row.linked_sms && <button type="button" className="proof-icon-button is-compact payout-sms-linked" title={`WD SMS #${row.linked_sms.id} · ${row.linked_sms.trx_id ?? row.linked_sms.trx_reference ?? '—'}`} aria-label={t('رسالة سحب مرتبطة', 'Linked withdrawal SMS')} onClick={() => void openDetail(row.maven_id)}><MessageSquare size={16} aria-hidden="true" /></button>}{row.image_url && <ProofIconButton url={row.image_url} onOpen={setViewedProofUrl} compact />}</div></td>
         <td className="mono">{row.maven_id}</td><td className="mono">{row.merchant_reference ?? '—'}</td><td><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></td><td><MethodLogo method={row.payment_type} /></td><td className="mono">{row.mobile_no ?? '—'}</td><td>{row.account_name ?? '—'}</td><td className="mono">{row.user_account_number ?? '—'}</td><td>{row.bank_name ?? '—'}</td><td className="mono">{row.bank_ifsc ?? '—'}</td><td className="mono">{row.utr_number ?? '—'}</td><td className="mono">{row.currency ?? CURRENCY}</td><td className="mono">{money(row.amount, row.currency ?? CURRENCY)}</td><td className="mono">{row.commission == null ? '—' : money(row.commission, row.currency ?? CURRENCY)}</td><td className="mono">{row.commission_percentage == null ? '—' : `${row.commission_percentage.toFixed(2)}%`}</td><td>{row.master_merchant ? <MerchantLogo merchant={row.master_merchant} /> : '—'}</td><td><MerchantLogo merchant={row.merchant} /></td>
       </tr> })}</tbody></table></div>}
       {data && totalPages > 1 && <div className="pager"><button className="btn-ghost btn-sm" disabled={page <= 1} onClick={() => setFilter({ page: page - 1 })}>→ {t('السابق', 'Prev')}</button><PageSizeSelect value={pageSize} onChange={(n) => { setPageSize(n); setFilter({ page: 1 }) }} />
