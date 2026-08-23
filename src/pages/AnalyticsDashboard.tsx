@@ -7,7 +7,7 @@ import { useLocale } from '../lib/locale'
 
 type Tab = 'overview' | 'transactions' | 'wallets' | 'merchants' | 'reports'
 interface WindowStats { depositCount: number; depositVolume: number; payoutCount: number; payoutVolume: number; declined: number; attempts: number }
-interface ExecutiveData { generatedAt: string; windows: { day: WindowStats; week: WindowStats; month: WindowStats }; queues: { pendingDeposits: number; pendingPayouts: number; smsReview: number }; devices: { total: number; online: number }; topMerchants: { merchant: string; volume: number; count: number }[]; daily: { date: string; incoming: number; outgoing: number }[] }
+interface ExecutiveData { generatedAt: string; windows?: { day: WindowStats; week: WindowStats; month: WindowStats }; summary?: WindowStats; queues?: { pendingDeposits: number; pendingPayouts: number; smsReview: number }; devices?: { total: number; online: number }; topMerchants?: { merchant: string; volume: number; count: number }[]; pivot?: { merchant: string; paidVolume: number; paidCount: number }[]; daily?: { date: string; incoming: number; outgoing: number }[] }
 interface Transaction { tx_id?: number; maven_id?: number; ontarget_ref: string | null; amount: number | null; status: string | null; payment_method?: string | null; pay_by?: string | null; merchant: string | null; sender_name?: string | null; sender_number?: string | null; account_name?: string | null; mobile_no?: string | null; first_seen_at: string | null; kind: 'deposit' | 'payout' }
 interface Wallet { to_account_number: string; provider: string | null; device: string | null; sim_slot: number | null; daily_limit: number | null; merchant: string | null }
 interface WalletData { wallets: Wallet[]; devices: { device: string; sim_slot: number | null; online: boolean | null; balance: number | null }[] }
@@ -20,6 +20,7 @@ export default function AnalyticsDashboard() {
   const [tab, setTab] = useState<Tab>('overview')
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('day')
   const [executive, setExecutive] = useState<ExecutiveData | null>(null)
+  const [todayExecutive, setTodayExecutive] = useState<ExecutiveData | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [wallets, setWallets] = useState<WalletData | null>(null)
   const [reports, setReports] = useState<Reports | null>(null)
@@ -28,22 +29,33 @@ export default function AnalyticsDashboard() {
 
   const load = useCallback(async () => {
     try {
-      const [exec, tx, wallet, report] = await Promise.all([
-        api<ExecutiveData>('/api/executive-dashboard'),
+      const now = new Date(); const to = now.toISOString().slice(0, 10); const fromDate = new Date(now)
+      fromDate.setDate(fromDate.getDate() - (period === 'day' ? 0 : period === 'week' ? 6 : 29))
+      const range = `from=${fromDate.toISOString().slice(0, 10)}&to=${to}`
+      const [exec, today, tx, wallet, report] = await Promise.all([
+        api<ExecutiveData>(`/api/executive-dashboard?${range}`),
+        period === 'day' ? Promise.resolve(null) : api<ExecutiveData>(`/api/executive-dashboard?from=${to}&to=${to}`),
         api<{ rows: Transaction[] }>('/api/transactions?limit=25'),
         api<WalletData>('/api/wallets'),
         api<Reports>('/api/reports'),
       ])
-      setExecutive(exec); setTransactions(tx.rows); setWallets(wallet); setReports(report); setError(false)
+      setExecutive(exec); setTodayExecutive(today ?? exec); setTransactions(tx.rows ?? []); setWallets(wallet); setReports(report); setError(false)
     } catch { setError(true) } finally { setLoading(false) }
-  }, [])
+  }, [period])
 
   useEffect(() => { void load(); const id = window.setInterval(() => void load(), 30_000); return () => window.clearInterval(id) }, [load])
-  const stats = executive?.windows[period]
+  const stats = executive?.windows?.[period] ?? executive?.summary
+  const todayStats = todayExecutive?.windows?.day ?? todayExecutive?.summary
   const rate = stats?.attempts ? (stats.depositCount / stats.attempts) * 100 : 0
   const net = (stats?.depositVolume ?? 0) - (stats?.payoutVolume ?? 0)
-  const walletUtilization = wallets?.devices.length ? (wallets.devices.filter((row) => row.online).length * 100) / wallets.devices.length : null
-  const pendingReview = (executive?.queues.pendingDeposits ?? 0) + (executive?.queues.pendingPayouts ?? 0) + (executive?.queues.smsReview ?? 0)
+  const walletUtilization = wallets?.devices?.length ? (wallets.devices.filter((row) => row.online).length * 100) / wallets.devices.length : null
+  const pendingReview = (executive?.queues?.pendingDeposits ?? 0) + (executive?.queues?.pendingPayouts ?? 0) + (executive?.queues?.smsReview ?? 0)
+  const topMerchants = useMemo(() => {
+    if (executive?.topMerchants) return executive.topMerchants
+    const grouped = new Map<string, { merchant: string; volume: number; count: number }>()
+    for (const row of executive?.pivot ?? []) { const bucket = grouped.get(row.merchant) ?? { merchant: row.merchant, volume: 0, count: 0 }; bucket.volume += row.paidVolume; bucket.count += row.paidCount; grouped.set(row.merchant, bucket) }
+    return [...grouped.values()].sort((a, b) => b.volume - a.volume)
+  }, [executive])
   // `/api/reports` now serves the comprehensive-report shape. Keep the
   // dashboard tolerant of both shapes during rolling deployments so a newer
   // API can never crash an older dashboard bundle (or vice versa).
@@ -80,10 +92,10 @@ export default function AnalyticsDashboard() {
       <div className="filter-bar">{(['day', 'week', 'month'] as const).map((key) => <button key={key} className={period === key ? 'btn-primary btn-sm' : 'btn-ghost btn-sm'} onClick={() => setPeriod(key)}>{key === 'day' ? t('24 ساعة', '24 hours') : key === 'week' ? t('7 أيام', '7 days') : t('30 يوماً', '30 days')}</button>)}</div>
       <div className="kpi-grid">
         <div className="kpi-card"><div className="kpi-value">{money(reportTotals.depVolume + reportTotals.payVolume, 'EGP')}</div><div className="kpi-label">{t('إجمالي الحجم', 'Total volume')}</div><div className="cell-sub">{t('كل البيانات المعتمدة', 'all approved data')}</div></div>
-        <div className="kpi-card"><div className="kpi-value">{money(executive?.windows.day.depositVolume ?? 0, 'EGP')}</div><div className="kpi-label">{t('إيداعات اليوم', 'Today deposits')}</div><div className="cell-sub">{executive?.windows.day.depositCount ?? 0} {t('عملية', 'transactions')}</div></div>
-        <div className="kpi-card"><div className="kpi-value">{money(executive?.windows.day.payoutVolume ?? 0, 'EGP')}</div><div className="kpi-label">{t('سحوبات اليوم', 'Today payouts')}</div><div className="cell-sub">{executive?.windows.day.payoutCount ?? 0} {t('عملية', 'transactions')}</div></div>
+        <div className="kpi-card"><div className="kpi-value">{money(todayStats?.depositVolume ?? 0, 'EGP')}</div><div className="kpi-label">{t('إيداعات اليوم', 'Today deposits')}</div><div className="cell-sub">{todayStats?.depositCount ?? 0} {t('عملية', 'transactions')}</div></div>
+        <div className="kpi-card"><div className="kpi-value">{money(todayStats?.payoutVolume ?? 0, 'EGP')}</div><div className="kpi-label">{t('سحوبات اليوم', 'Today payouts')}</div><div className="cell-sub">{todayStats?.payoutCount ?? 0} {t('عملية', 'transactions')}</div></div>
         <div className="kpi-card"><div className="kpi-value">{rate.toFixed(1)}%</div><div className="kpi-label">{t('نسبة القبول', 'Approval rate')}</div><div className="cell-sub">{t('للفترة المختارة', 'selected period')}</div></div>
-        <Link to="/approvals" className="kpi-card"><div className="kpi-value">{pendingReview}</div><div className="kpi-label">{t('قيد المراجعة', 'Pending review')}</div><div className="cell-sub">{executive?.queues.smsReview ?? 0} SMS</div></Link>
+        <Link to="/approvals" className="kpi-card"><div className="kpi-value">{pendingReview}</div><div className="kpi-label">{t('قيد المراجعة', 'Pending review')}</div><div className="cell-sub">{executive?.queues?.smsReview ?? 0} SMS</div></Link>
         <div className="kpi-card"><div className="kpi-value">{stats?.declined ?? 0}</div><div className="kpi-label">{t('معاملات فاشلة', 'Failed transactions')}</div><div className="cell-sub">{t('مرفوضة في الفترة', 'declined in period')}</div></div>
         <div className="kpi-card"><div className="kpi-value">{money(net, 'EGP')}</div><div className="kpi-label">{t('صافي المركز النقدي', 'Net cash position')}</div><div className="cell-sub">{t('وارد ناقص صادر', 'incoming less outgoing')}</div></div>
         <div className="kpi-card"><div className="kpi-value">{walletUtilization == null ? '—' : `${walletUtilization.toFixed(0)}%`}</div><div className="kpi-label">{t('استخدام المحافظ', 'Wallet utilization')}</div><div className="cell-sub">{t('نسبة الأجهزة المتصلة', 'online device coverage')}</div></div>
@@ -104,7 +116,7 @@ export default function AnalyticsDashboard() {
 
     {tab === 'wallets' && <section className="card recent-card"><div className="recent-head"><h3>{t('صحة المحافظ', 'Wallet health')}</h3><Link className="pay-status-link" to="/wallets">{t('إدارة المحافظ', 'Manage wallets')} ←</Link></div><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('المحفظة', 'Wallet')}</th><th>{t('المزود', 'Provider')}</th><th>{t('الجهاز', 'Device')}</th><th>{t('الرصيد', 'Balance')}</th><th>{t('الحد اليومي', 'Daily limit')}</th><th>{t('الحالة', 'Status')}</th></tr></thead><tbody>{(wallets?.wallets ?? []).map((wallet) => { const device = wallets?.devices.find((row) => row.device === wallet.device && row.sim_slot === wallet.sim_slot); return <tr key={wallet.to_account_number}><td className="mono">{wallet.to_account_number}</td><td>{wallet.provider ?? '—'}</td><td>{wallet.device ?? '—'}</td><td className="mono">{device?.balance == null ? '—' : money(device.balance, 'EGP')}</td><td className="mono">{wallet.daily_limit == null ? '—' : money(wallet.daily_limit, 'EGP')}</td><td><span className={`pay-status-badge ${device?.online ? 'st-paid' : 'st-dim'}`}>{device?.online ? t('متصل', 'Online') : t('غير متصل', 'Offline')}</span></td></tr> })}</tbody></table></div></section>}
 
-    {tab === 'merchants' && <section className="card recent-card"><div className="recent-head"><h3>{t('أهم التجار حسب الإيداعات المعتمدة', 'Top merchants by approved deposits')}</h3><Link className="pay-status-link" to="/reports">{t('التقارير', 'Reports')} ←</Link></div><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('التاجر', 'Merchant')}</th><th>{t('الحجم', 'Volume')}</th><th>{t('العمليات', 'Transactions')}</th></tr></thead><tbody>{(executive?.topMerchants ?? []).map((merchant) => <tr key={merchant.merchant}><td>{merchant.merchant}</td><td className="mono">{money(merchant.volume, 'EGP')}</td><td className="mono">{merchant.count}</td></tr>)}</tbody></table></div></section>}
+    {tab === 'merchants' && <section className="card recent-card"><div className="recent-head"><h3>{t('أهم التجار حسب الإيداعات المعتمدة', 'Top merchants by approved deposits')}</h3><Link className="pay-status-link" to="/reports">{t('التقارير', 'Reports')} ←</Link></div><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('التاجر', 'Merchant')}</th><th>{t('الحجم', 'Volume')}</th><th>{t('العمليات', 'Transactions')}</th></tr></thead><tbody>{topMerchants.map((merchant) => <tr key={merchant.merchant}><td>{merchant.merchant}</td><td className="mono">{money(merchant.volume, 'EGP')}</td><td className="mono">{merchant.count}</td></tr>)}</tbody></table></div></section>}
 
     {tab === 'reports' && <section className="card recent-card"><div className="recent-head"><h3>{t('ملخص التقارير لكل البيانات', 'All-time report summary')}</h3><Link className="pay-status-link" to="/reports">{t('فتح التقارير التفصيلية', 'Open detailed reports')} ←</Link></div><div className="kpi-grid"><div className="kpi-card"><div className="kpi-value">{money(reportTotals.depVolume, 'EGP')}</div><div className="kpi-label">{t('إيداعات معتمدة', 'Approved deposits')}</div></div><div className="kpi-card"><div className="kpi-value">{money(reportTotals.payVolume, 'EGP')}</div><div className="kpi-label">{t('سحوبات معتمدة', 'Approved payouts')}</div></div><div className="kpi-card"><div className="kpi-value">{reportTotals.depCount}</div><div className="kpi-label">{t('عمليات إيداع', 'Deposit transactions')}</div></div><div className="kpi-card"><div className="kpi-value">{reportTotals.declined}</div><div className="kpi-label">{t('إيداعات مرفوضة', 'Declined deposits')}</div></div></div></section>}
   </PanelShell>
