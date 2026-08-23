@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { Search, X } from 'lucide-react'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
@@ -34,6 +35,8 @@ export default function Complaints() {
   const [rows, setRows] = useState<ComplaintRow[] | null>(null)
   const [total, setTotal] = useState(0)
   const [status, setStatus] = useState('')
+  const [txSearch, setTxSearch] = useState('')
+  const [txId, setTxId] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [selected, setSelected] = useState<ComplaintRow | null>(null)
   const [note, setNote] = useState('')
@@ -41,7 +44,10 @@ export default function Complaints() {
   const [investigation, setInvestigation] = useState<unknown | null>(null)
 
   const load = useCallback(async () => {
-    const qs = status ? `?status=${encodeURIComponent(status)}` : ''
+    const params = new URLSearchParams()
+    if (status) params.set('status', status)
+    if (txId) params.set('tx_id', txId)
+    const qs = params.size ? `?${params.toString()}` : ''
     try {
       const res = await api<{ rows: ComplaintRow[]; total: number }>(`/api/complaints${qs}`)
       setRows(res.rows)
@@ -50,7 +56,7 @@ export default function Complaints() {
     } catch (e) {
       setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض الشكاوى.', 'You do not have permission to view complaints.') : t('تعذّر تحميل الشكاوى.', 'Failed to load complaints.'))
     }
-  }, [status])
+  }, [status, txId])
 
   useEffect(() => { void load() }, [load])
 
@@ -95,6 +101,16 @@ export default function Complaints() {
 
   const meta = (s: string | null) => (s ? STATUS_META[s.toLowerCase()] ?? { ar: s, en: s, cls: 'st-dim' } : { ar: '—', en: '—', cls: 'st-dim' })
 
+  const searchByTx = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setTxId(txSearch.trim())
+  }
+
+  const clearTxSearch = () => {
+    setTxSearch('')
+    setTxId('')
+  }
+
   return (
     <PanelShell>
       <section className="page-head">
@@ -103,6 +119,28 @@ export default function Complaints() {
       </section>
 
       <div className="filter-bar">
+        <form className="complaint-tx-search" onSubmit={searchByTx} role="search">
+          <label htmlFor="complaint-tx-id">{t('رقم المعاملة', 'Transaction ID')}</label>
+          <div className="complaint-tx-search-control">
+            <Search size={17} aria-hidden="true" />
+            <input
+              id="complaint-tx-id"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder={t('ابحث برقم المعاملة…', 'Search by transaction ID…')}
+              value={txSearch}
+              onChange={(event) => setTxSearch(event.target.value.replace(/\D/g, ''))}
+            />
+            {txSearch && (
+              <button type="button" className="complaint-search-clear" onClick={clearTxSearch} aria-label={t('مسح البحث', 'Clear search')}>
+                <X size={16} aria-hidden="true" />
+              </button>
+            )}
+          </div>
+          <button className="btn-primary btn-sm" type="submit" disabled={!txSearch.trim()}>
+            {t('بحث', 'Search')}
+          </button>
+        </form>
         <div className="chip-row">
           <button className={`chip${status === '' ? ' chip-active' : ''}`} onClick={() => setStatus('')}>{t('الكل', 'All')}</button>
           {['open', 'approved', 'declined', 'closed'].map((s) => (
@@ -117,7 +155,7 @@ export default function Complaints() {
 
       <section className="card recent-card">
         {!rows && !err && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
-        {rows && rows.length === 0 && <p>{t('لا توجد شكاوى.', 'No complaints.')}</p>}
+        {rows && rows.length === 0 && <p>{txId ? t(`لا توجد شكوى للمعاملة ${txId}.`, `No complaint found for transaction ${txId}.`) : t('لا توجد شكاوى.', 'No complaints.')}</p>}
         {rows && rows.length > 0 && (
           <div className="table-wrap">
             <table className="data-table clickable">

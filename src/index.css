@@ -834,6 +834,14 @@ a.stat-card:hover { border-color: var(--accent); }
 .page-sub { margin: 0; color: var(--text-dim); font-size: 13px; }
 
 .filter-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-block-end: 12px; }
+.complaint-tx-search { display: flex; align-items: center; gap: 8px; min-width: min(100%, 420px); }
+.complaint-tx-search > label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.complaint-tx-search-control { min-height: 38px; flex: 1; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--muted); }
+.complaint-tx-search-control:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.complaint-tx-search-control input { width: 100%; min-width: 160px; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; }
+.complaint-search-clear { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
+.complaint-search-clear:hover { background: var(--surface-2); color: var(--text); }
+@media (max-width: 640px) { .complaint-tx-search { width: 100%; min-width: 0; } .complaint-tx-search-control { min-width: 0; } }
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
   background: var(--surface);

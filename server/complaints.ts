@@ -64,6 +64,9 @@ complaintRoutes.get('/', async (c) => {
   const old = oldDb()
   if (!old) return c.json({ error: 'old_db_not_configured' }, 500)
   const status = c.req.query('status')?.trim()
+  const txIdRaw = c.req.query('tx_id')?.trim()
+  const txId = txIdRaw && /^\d+$/.test(txIdRaw) ? txIdRaw : null
+  if (txIdRaw && !txId) return c.json({ error: 'invalid_tx_id' }, 400)
   const limit = Math.min(Number(c.req.query('limit')) || 50, 200)
   let query = old
     .from('tx_complaints')
@@ -71,6 +74,7 @@ complaintRoutes.get('/', async (c) => {
     .order('created_at', { ascending: false })
     .limit(limit)
   if (status) query = query.eq('status', status)
+  if (txId) query = query.eq('tx_id', txId)
   const { data, count, error } = await query
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   return c.json({ rows: data ?? [], total: count ?? 0 })
