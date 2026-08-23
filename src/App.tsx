@@ -43,6 +43,7 @@ import Performance from './pages/Performance'
 import WalletMovements from './pages/WalletMovements'
 import ClientProfile from './pages/ClientProfile'
 import ReplayLab from './pages/ReplayLab'
+import AirDroid from './pages/AirDroid'
 import { api } from './lib/api'
 import { merchantChipCls, money } from './lib/deposits'
 import { SUPABASE_URL, SUPABASE_KEY } from './lib/supabase'
@@ -306,6 +307,7 @@ export default function App() {
             <Route path="/payment-methods" element={<PaymentMethods />} />
             <Route path="/known-recipients" element={<KnownRecipients />} />
             <Route path="/replay-lab" element={<ReplayLab />} />
+            <Route path="/airdroid" element={<AirDroid />} />
             <Route path="/ontarget-hub" element={<TreasuryHub />} />
             <Route path="/hub" element={<TreasuryHub />} />
           </Route>

@@ -34,11 +34,10 @@ export default function MethodLogo({ method }: { method: string | null | undefin
   const fg = hit?.fg ?? 'var(--text-dim)'
 
   return (
-    <span className="method-cell">
+    <span className="method-cell method-cell-logo-only" title={hit?.title ?? raw} role="img" aria-label={(hit?.title ?? raw) || 'Unknown payment method'}>
       <span className="method-logo" style={{ background: bg, color: fg }} title={hit?.title ?? raw} aria-hidden="true">
         {uploadedLogo || hit?.image ? <img src={uploadedLogo ?? hit?.image} alt="" loading="lazy" referrerPolicy="no-referrer" /> : label}
       </span>
-      <span className="method-name">{raw || '—'}</span>
     </span>
   )
 }

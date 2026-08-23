@@ -113,5 +113,5 @@ export default function Notifications() {
 }
 
 function SoundPicker({ label, value, onChange, onTest, t }: { label: string; value: AlertTone; onChange: (tone: AlertTone) => void; onTest: () => void; t: (ar: string, en: string) => string }) {
-  return <div className="sound-picker"><label>{label}<select className="login-input" value={value} onChange={(e) => onChange(e.target.value as AlertTone)}><option value="glass">Glass</option><option value="chime">Chime</option><option value="pulse">Pulse</option></select></label><button className="btn-ghost btn-sm" type="button" onClick={onTest}>{t('اختبار', 'Test')}</button></div>
+  return <div className="sound-picker"><label>{label}<select className="login-input" value={value} onChange={(e) => onChange(e.target.value as AlertTone)}><option value="glass">Glass</option><option value="chime">Chime</option><option value="pulse">Pulse</option><option value="bell">Bell</option><option value="sonar">Sonar</option><option value="pop">Pop</option><option value="double">Double</option><option value="urgent">Urgent</option></select></label><button className="btn-ghost btn-sm" type="button" onClick={onTest}>{t('معاينة', 'Preview')}</button></div>
 }
