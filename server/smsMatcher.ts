@@ -1,7 +1,7 @@
 import { db } from './db.js'
 
-type SmsRow = { id: number; trx_id: string | null; amount: number | null; sender_name: string | null; received_at: string | null; receiver_number: string | null }
-type TxRow = { tx_id: number; guid: string | null; ontarget_ref: string | null; merchant_tx_reference: string | null; amount: number | null; sender_name: string | null; first_seen_at: string | null }
+type SmsRow = { id: number; trx_id: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; received_at: string | null; receiver_number: string | null }
+type TxRow = { tx_id: number; guid: string | null; ontarget_ref: string | null; merchant_tx_reference: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; receiving_wallet: string | null; to_account_number: string | null; first_seen_at: string | null }
 
 const PAGE = 1000
 const MAX_LINKS_PER_RUN = 250
@@ -10,6 +10,7 @@ const FALLBACK_TIME_DIFF_MS = 10 * 60_000
 const ref = (value: unknown) => String(value ?? '').trim().toUpperCase()
 const cents = (value: unknown) => Math.round(Number(value) * 100)
 const name = (value: unknown) => String(value ?? '').normalize('NFKC').toUpperCase().replace(/[^\p{L}\p{N}]/gu, '')
+const phone = (value: unknown) => { const digits = String(value ?? '').replace(/\D/g, ''); return digits.length > 10 ? digits.slice(-10) : digits }
 
 export interface PaidSmsRepairResult {
   scannedSms: number
@@ -34,14 +35,14 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
   const limit = Math.min(Math.max(scanLimit, 1), PAGE)
   const [{ data: smsData, error: smsError }, { data: txData, error: txError }] = await Promise.all([
     db.from('inbound_sms')
-      .select('id, trx_id, amount, sender_name, received_at, receiver_number')
+      .select('id, trx_id, amount, sender_name, sender_number, received_at, receiver_number')
       .eq('sms_category', 'deposit')
       .is('consumed_by_tx_id', null)
       .not('trx_id', 'is', null)
       .order('received_at', { ascending: false, nullsFirst: false })
       .limit(limit),
     db.from('maven_transactions')
-      .select('tx_id, guid, ontarget_ref, merchant_tx_reference, amount, sender_name, first_seen_at')
+      .select('tx_id, guid, ontarget_ref, merchant_tx_reference, amount, sender_name, sender_number, receiving_wallet, to_account_number, first_seen_at')
       .in('status', ['PENDING', 'PAID', 'APPROVED'])
       .order('first_seen_at', { ascending: false, nullsFirst: false })
       .limit(limit),
@@ -96,9 +97,15 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
         const byTime = byAmount.filter((tx) => tx.first_seen_at != null && Number.isFinite(Date.parse(tx.first_seen_at))
           && Math.abs(Date.parse(tx.first_seen_at) - smsAt) <= FALLBACK_TIME_DIFF_MS)
         if (!byTime.length) diagnostics.outsideTenMinutes++
-        else if (!name(sms.sender_name)) diagnostics.missingSenderName++
         else {
-          candidates = byTime.filter((tx) => name(tx.sender_name) === name(sms.sender_name))
+          // Prefer the strongest bank evidence: exact normalized sender phone,
+          // exact receiving wallet, amount and a tight time window. Name-only
+          // remains a fallback for bank SMS that genuinely contains no phone.
+          const smsPhone = phone(sms.sender_number)
+          const smsWallet = phone(sms.receiver_number)
+          if (smsPhone) candidates = byTime.filter((tx) => phone(tx.sender_number) === smsPhone && (!smsWallet || phone(tx.receiving_wallet ?? tx.to_account_number) === smsWallet))
+          else if (!name(sms.sender_name)) diagnostics.missingSenderName++
+          else candidates = byTime.filter((tx) => name(tx.sender_name) === name(sms.sender_name))
           if (!candidates.length) diagnostics.senderNameMismatch++
           else if (candidates.length > 1) diagnostics.ambiguousFallback++
         }

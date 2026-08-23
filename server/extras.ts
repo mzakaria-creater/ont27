@@ -147,7 +147,27 @@ extraRoutes.get(
     ])
     if (dep.error) return c.json({ error: 'db_error', detail: dep.error.message }, 500)
     if (pay.error) return c.json({ error: 'db_error', detail: pay.error.message }, 500)
-    return c.json({ deposits: dep.data ?? [], payouts: pay.data ?? [] })
+    const deposits = dep.data ?? []
+    const txIds = deposits.map((row) => row.tx_id)
+    const smsByTx = new Map<number, Record<string, unknown>>()
+    const reasonByTx = new Map<number, Record<string, unknown>>()
+    if (txIds.length) {
+      const { data: smsRows } = await db.from('inbound_sms')
+        .select('id, consumed_by_tx_id, received_at, sender_name, sender_number, receiver_number, amount, sms_first_line, match_status, matched')
+        .in('consumed_by_tx_id', txIds).order('received_at', { ascending: false })
+      for (const sms of smsRows ?? []) if (sms.consumed_by_tx_id != null && !smsByTx.has(Number(sms.consumed_by_tx_id))) smsByTx.set(Number(sms.consumed_by_tx_id), sms)
+      const { data: localReasons } = await db.from('deposit_decision_log')
+        .select('tx_id, decision, reason, actor_name, created_at').in('tx_id', txIds).order('created_at', { ascending: false })
+      for (const row of localReasons ?? []) if (!reasonByTx.has(Number(row.tx_id))) reasonByTx.set(Number(row.tx_id), row)
+      const source = oldDb()
+      if (source) {
+        const { data: reviews } = await source.from('review_queue')
+          .select('tx_id, decision, decision_reason, match_score, match_reasons, matched_sms_id, updated_at')
+          .in('tx_id', txIds).order('updated_at', { ascending: false })
+        for (const row of reviews ?? []) if (!reasonByTx.has(Number(row.tx_id))) reasonByTx.set(Number(row.tx_id), row)
+      }
+    }
+    return c.json({ deposits: deposits.map((row) => ({ ...row, linked_sms: smsByTx.get(row.tx_id) ?? null, decision_context: reasonByTx.get(row.tx_id) ?? null })), payouts: pay.data ?? [] })
   },
 )
 

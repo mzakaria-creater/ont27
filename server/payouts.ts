@@ -22,6 +22,8 @@ const PROOF_PREFIX = 'payout-proofs/'
 payoutRoutes.get('/', requirePerm('payouts', 'can_view'), async (c) => {
   const status = c.req.query('status')?.toUpperCase()
   const q = c.req.query('q')?.trim()
+  const from = c.req.query('from')?.trim()
+  const to = c.req.query('to')?.trim()
   const limit = Math.min(Number(c.req.query('limit')) || 25, MAX_PAGE)
   const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
 
@@ -33,6 +35,8 @@ payoutRoutes.get('/', requirePerm('payouts', 'can_view'), async (c) => {
     .range(offset, offset + limit - 1)
 
   if (status) query = query.eq('status', status)
+  if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) query = query.gte('first_seen_at', `${from}T00:00:00+03:00`)
+  if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) query = query.lte('first_seen_at', `${to}T23:59:59.999+03:00`)
   if (q) {
     const like = `%${q.replaceAll(',', ' ')}%`
     const ors = [
@@ -48,7 +52,15 @@ payoutRoutes.get('/', requirePerm('payouts', 'can_view'), async (c) => {
 
   const { data, count, error } = await query
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  return c.json({ rows: data ?? [], total: count ?? 0, limit, offset })
+  const rows = data ?? []
+  const decisionById = new Map<number, Record<string, unknown>>()
+  if (rows.length) {
+    const { data: decisions } = await db.from('payout_decision_log')
+      .select('maven_id, decision, actor_name, remark, executed_on_provider, created_at')
+      .in('maven_id', rows.map((row) => row.maven_id)).order('created_at', { ascending: false })
+    for (const row of decisions ?? []) if (!decisionById.has(Number(row.maven_id))) decisionById.set(Number(row.maven_id), row)
+  }
+  return c.json({ rows: rows.map((row) => ({ ...row, decision: decisionById.get(row.maven_id) ?? null })), total: count ?? 0, limit, offset })
 })
 
 payoutRoutes.get('/:mavenId', requirePerm('payouts', 'can_view'), async (c) => {
@@ -61,7 +73,11 @@ payoutRoutes.get('/:mavenId', requirePerm('payouts', 'can_view'), async (c) => {
     .maybeSingle()
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   if (!data) return c.json({ error: 'not_found' }, 404)
-  return c.json({ payout: data })
+  const [{ data: decisions }, { data: actions }] = await Promise.all([
+    db.from('payout_decision_log').select('id, decision, actor_name, proof_url, remark, db_status_before, executed_on_provider, created_at').eq('maven_id', Number(mavenId)).order('created_at', { ascending: false }).limit(100),
+    db.from('audit_log').select('id, actor_name, action, before, after, created_at').eq('entity', 'maven_payout_transactions').eq('entity_id', mavenId).order('created_at', { ascending: false }).limit(100),
+  ])
+  return c.json({ payout: { ...data, decisions: decisions ?? [], actions: actions ?? [] } })
 })
 
 payoutRoutes.post('/proof', requirePerm('payouts', 'can_approve'), async (c) => {

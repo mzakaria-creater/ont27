@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { useAuth } from '../auth/AuthContext'
+import { Filter, Search, X } from 'lucide-react'
 
 interface AutomationTemplate { id: string; settings: Record<string, number | boolean> }
 // Bilingual copy lives client-side so it follows the language switcher; the
@@ -119,6 +120,10 @@ export default function Automation() {
   const [ruleMsg, setRuleMsg] = useState<string | null>(null)
   const [ruleConflict, setRuleConflict] = useState<{ id: string; action_type: string; priority: number }[] | null>(null)
   const [settingsBusy, setSettingsBusy] = useState<string | null>(null)
+  const [ruleSearch, setRuleSearch] = useState('')
+  const [ruleProvider, setRuleProvider] = useState('all')
+  const [ruleStatus, setRuleStatus] = useState('all')
+  const [ruleAction, setRuleAction] = useState('all')
 
   const reloadAutomation = () => api<NonNullable<typeof data>>('/api/automation').then(setData).catch(() => {})
 
@@ -244,6 +249,18 @@ export default function Automation() {
   }
 
   const settings = data?.settings ?? null
+  const filteredRules = (data?.rules ?? []).filter((rule) => {
+    const query = ruleSearch.trim().toLowerCase()
+    const searchable = [rule.scope_type, rule.master_merchant, rule.merchant, rule.sub_merchant, rule.account_wallet, rule.provider].filter(Boolean).join(' ').toLowerCase()
+    if (query && !searchable.includes(query)) return false
+    if (ruleProvider !== 'all' && (rule.master_merchant ?? rule.provider) !== ruleProvider) return false
+    if (ruleStatus === 'active' && !rule.enabled) return false
+    if (ruleStatus === 'disabled' && rule.enabled) return false
+    if (ruleAction !== 'all' && rule.action_type !== ruleAction) return false
+    return true
+  })
+  const resetRuleFilters = () => { setRuleSearch(''); setRuleProvider('all'); setRuleStatus('all'); setRuleAction('all') }
+  const hasRuleFilters = Boolean(ruleSearch || ruleProvider !== 'all' || ruleStatus !== 'all' || ruleAction !== 'all')
 
   return (
     <PanelShell>
@@ -356,13 +373,38 @@ export default function Automation() {
 
       <section className="card recent-card">
         <div className="recent-head"><h3>📐 {t('قواعد المحرّك الحي', 'Live engine rules')} ({data?.rules.length ?? 0})</h3></div>
+        <div className="automation-filter-bar" role="search" aria-label={t('فلترة قواعد الأتمتة', 'Filter automation rules')}>
+          <div className="automation-filter-title"><Filter size={16} /><span>{t('فلترة القواعد', 'Rule filters')}</span></div>
+          <label className="automation-filter-search">
+            <Search size={16} />
+            <input value={ruleSearch} onChange={(e) => setRuleSearch(e.target.value)} placeholder={t('بحث بالتاجر، المحفظة أو النطاق', 'Search merchant, wallet or scope')} />
+          </label>
+          <select value={ruleProvider} onChange={(e) => setRuleProvider(e.target.value)} aria-label={t('المزوّد', 'Provider')}>
+            <option value="all">{t('كل المزوّدين', 'All providers')}</option>
+            <option value="ngpay">NGPay</option>
+            <option value="payfuture">PayFuture</option>
+          </select>
+          <select value={ruleStatus} onChange={(e) => setRuleStatus(e.target.value)} aria-label={t('الحالة', 'Status')}>
+            <option value="all">{t('كل الحالات', 'All statuses')}</option>
+            <option value="active">{t('مفعّلة', 'Enabled')}</option>
+            <option value="disabled">{t('موقوفة', 'Disabled')}</option>
+          </select>
+          <select value={ruleAction} onChange={(e) => setRuleAction(e.target.value)} aria-label={t('الإجراء', 'Action')}>
+            <option value="all">{t('كل الإجراءات', 'All actions')}</option>
+            <option value="approve">{t('موافقة', 'Approve')}</option>
+            <option value="decline">{t('رفض', 'Decline')}</option>
+          </select>
+          <span className="automation-filter-count">{filteredRules.length} / {data?.rules.length ?? 0}</span>
+          {hasRuleFilters && <button className="btn-ghost btn-sm" onClick={resetRuleFilters}><X size={14} /> {t('مسح', 'Clear')}</button>}
+        </div>
         {data && data.rules.length === 0 && <p>{t('لا توجد قواعد.', 'No rules.')}</p>}
-        {data && data.rules.length > 0 && (
+        {data && data.rules.length > 0 && filteredRules.length === 0 && <div className="automation-filter-empty">{t('لا توجد قواعد تطابق الفلاتر الحالية.', 'No rules match the current filters.')}</div>}
+        {data && filteredRules.length > 0 && (
           <div className="table-wrap">
             <table className="data-table">
               <thead><tr><th>{t('النطاق', 'Scope')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('المدى', 'Range')}</th><th>{t('المهلة', 'Window')}</th><th>{t('الإجراء', 'Action')}</th><th>{t('مطابقة', 'Matching')}</th><th>{t('الحالة', 'Status')}</th><th /></tr></thead>
               <tbody>
-                {data.rules.map((r) => (
+                {filteredRules.map((r) => (
                   <tr key={r.id}>
                     <td className="mono">{r.scope_type ?? '—'}<div className="cell-sub">{t('أولوية', 'priority')} {r.priority ?? '—'}</div></td>
                     <td>{r.sub_merchant ?? r.merchant ?? r.master_merchant ?? t('الكل', 'any')}</td>
