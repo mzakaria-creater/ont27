@@ -855,6 +855,10 @@ a.stat-card:hover { border-color: var(--accent); }
 .payout-execution-settings { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(220px, 300px) auto; align-items: end; gap: 14px; margin-block-end: 12px; }
 .payout-execution-settings label { display: grid; gap: 6px; font-size: .82rem; color: var(--muted); }
 .payout-execution-settings .control-row { margin: 0; }
+.payout-linked-sms-card { margin-block: 12px; padding: 12px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+.payout-linked-sms-head { display: flex; align-items: center; gap: 8px; margin-block-end: 10px; color: var(--text); }
+.payout-linked-sms-head .pay-status-badge { margin-inline-start: auto; }
+.payout-sms-linked { color: var(--accent); }
 @media (max-width: 900px) { .payout-execution-settings { grid-template-columns: 1fr; align-items: stretch; } }
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
