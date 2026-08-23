@@ -14,7 +14,37 @@ export const payoutRoutes = new Hono<AuthEnv>()
 payoutRoutes.use('*', requireAuth)
 
 const LIST_COLUMNS =
-  'maven_id, guid, ontarget_ref, status, amount, pay_by, merchant, account_name, mobile_no, agent_name, commission, remark, image_url, approved_by, created_utc, first_seen_at, last_seen_at'
+  'maven_id, guid, ontarget_ref, status, amount, pay_by, merchant, account_name, mobile_no, agent_name, commission, remark, image_url, approved_by, created_utc, first_seen_at, last_seen_at, maven_raw_row'
+
+const rawField = (raw: unknown, ...names: string[]) => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const entries = Object.entries(raw as Record<string, unknown>)
+  for (const name of names) {
+    const wanted = name.replace(/[^a-z0-9]/gi, '').toLowerCase()
+    const match = entries.find(([key]) => key.replace(/[^a-z0-9]/gi, '').toLowerCase() === wanted)
+    if (match && match[1] != null && String(match[1]).trim()) return String(match[1]).trim()
+  }
+  return null
+}
+
+const presentPayout = (row: Record<string, unknown>) => {
+  const raw = row.maven_raw_row
+  const amount = Number(row.amount ?? 0)
+  const commission = row.commission == null ? null : Number(row.commission)
+  const { maven_raw_row: _raw, ...safe } = row
+  return {
+    ...safe,
+    merchant_reference: rawField(raw, 'merchant_reference', 'merchant reference', 'merchant_tx_reference') ?? row.ontarget_ref ?? row.guid ?? null,
+    payment_type: rawField(raw, 'payment_type', 'payment type', 'payment_method') ?? row.pay_by ?? null,
+    user_account_number: rawField(raw, 'user_account_number', 'user account number', 'account_number', 'bank_account_number'),
+    bank_name: rawField(raw, 'bank_name', 'bank name') ?? row.pay_by ?? null,
+    bank_ifsc: rawField(raw, 'bank_ifsc', 'bank ifsc', 'ifsc', 'ifsc_code'),
+    utr_number: rawField(raw, 'utr_number', 'utr number', 'utr', 'bank_reference'),
+    currency: rawField(raw, 'currency', 'currency_code') ?? 'EGP',
+    master_merchant: rawField(raw, 'master_merchant', 'master merchant', 'gateway', 'provider'),
+    commission_percentage: commission != null && Number.isFinite(commission) && amount > 0 ? (commission / amount) * 100 : null,
+  }
+}
 
 const PROOF_BUCKET = 'pop'
 const PROOF_PREFIX = 'payout-proofs/'
@@ -60,7 +90,7 @@ payoutRoutes.get('/', requirePerm('payouts', 'can_view'), async (c) => {
       .in('maven_id', rows.map((row) => row.maven_id)).order('created_at', { ascending: false })
     for (const row of decisions ?? []) if (!decisionById.has(Number(row.maven_id))) decisionById.set(Number(row.maven_id), row)
   }
-  return c.json({ rows: rows.map((row) => ({ ...row, decision: decisionById.get(row.maven_id) ?? null })), total: count ?? 0, limit, offset })
+  return c.json({ rows: rows.map((row) => ({ ...presentPayout(row), decision: decisionById.get(row.maven_id) ?? null })), total: count ?? 0, limit, offset })
 })
 
 payoutRoutes.get('/:mavenId', requirePerm('payouts', 'can_view'), async (c) => {

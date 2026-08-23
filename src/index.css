@@ -842,6 +842,12 @@ a.stat-card:hover { border-color: var(--accent); }
 .complaint-search-clear { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
 .complaint-search-clear:hover { background: var(--surface-2); color: var(--text); }
 @media (max-width: 640px) { .complaint-tx-search { width: 100%; min-width: 0; } .complaint-tx-search-control { min-width: 0; } }
+.payout-ledger-wrap { max-width: 100%; overflow: auto; }
+.payout-ledger-table { min-width: 2200px; }
+.payout-ledger-table th, .payout-ledger-table td { white-space: nowrap; }
+.payout-ledger-table th:first-child, .payout-ledger-table td:first-child { position: sticky; inset-inline-start: 0; z-index: 2; background: var(--surface); box-shadow: 1px 0 0 var(--border); }
+.payout-ledger-table thead th:first-child { z-index: 3; }
+.icon-text-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
   background: var(--surface);

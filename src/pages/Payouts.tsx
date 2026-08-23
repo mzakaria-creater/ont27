@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { Eye } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
 import MerchantLogo from '../components/MerchantLogo'
 import MethodLogo from '../components/MethodLogo'
 import { api, ApiError } from '../lib/api'
-import { depositTime, money, statusMeta } from '../lib/deposits'
+import { money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
@@ -18,6 +19,9 @@ export interface PayoutRow {
   pay_by: string | null; merchant: string | null; account_name: string | null; mobile_no: string | null
   agent_name: string | null; approved_by: string | null; commission: number | null; remark: string | null
   image_url: string | null; created_utc: string | null; first_seen_at: string | null; last_seen_at: string | null
+  merchant_reference: string | null; payment_type: string | null; user_account_number: string | null
+  bank_name: string | null; bank_ifsc: string | null; utr_number: string | null; currency: string | null
+  master_merchant: string | null; commission_percentage: number | null
 }
 interface PayoutDetail extends PayoutRow { updated_utc: string | null }
 interface ListResponse { rows: PayoutRow[]; total: number; limit: number; offset: number }
@@ -112,7 +116,12 @@ export default function Payouts() {
     <section className="card recent-card">
       {loading && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
       {!loading && data?.rows.length === 0 && <p>{t('لا توجد نتائج مطابقة.', 'No matching results.')}</p>}
-      {!loading && data && data.rows.length > 0 && <div className="table-wrap"><table className="data-table clickable"><thead><tr><th>{t('رقم العملية', 'Ref')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('المستفيد', 'Beneficiary')}</th><th>{t('الطريقة', 'Method')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('الحالة', 'Status')}</th><th>{t('اعتمد بواسطة', 'Approved by')}</th><th>{t('الوقت', 'Time')}</th><th>{t('إجراء', 'Action')}</th></tr></thead><tbody>{data.rows.map((row) => { const st = statusMeta(row.status); return <tr key={row.maven_id} onClick={() => void openDetail(row.maven_id)}><td className="mono">{row.ontarget_ref ?? row.maven_id}<div className="cell-sub mono">{row.maven_id}</div></td><td className="mono">{money(row.amount, CURRENCY)}</td><td>{row.account_name ?? '—'}{row.mobile_no && <div className="cell-sub mono">{row.mobile_no}</div>}</td><td><MethodLogo method={row.pay_by} /></td><td><MerchantLogo merchant={row.merchant} /></td><td><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></td><td>{row.status === 'PENDING' ? '—' : row.approved_by ?? '—'}</td><td className="mono">{depositTime(row)}</td><td onClick={(e) => e.stopPropagation()}><button className="btn-ghost btn-sm" onClick={() => void openDetail(row.maven_id)}>{row.status === 'PENDING' && can('payouts', 'can_approve') ? t('سجل قرار', 'Record decision') : t('👁 تفاصيل', '👁 Details')}</button></td></tr> })}</tbody></table></div>}
+      {!loading && data && data.rows.length > 0 && <div className="table-wrap payout-ledger-wrap"><table className="data-table clickable payout-ledger-table"><thead><tr>
+        <th>{t('إجراء', 'Action')}</th><th>{t('رقم المعاملة', 'Transaction ID')}</th><th>{t('مرجع التاجر', 'Merchant Reference')}</th><th>{t('الحالة', 'Status')}</th><th>{t('نوع الدفع', 'Payment Type')}</th><th>{t('رقم هاتف المستخدم', 'User Phone Num.')}</th><th>{t('اسم حساب المستخدم', 'User Account Name')}</th><th>{t('رقم حساب المستخدم', 'User Account Number')}</th><th>{t('اسم البنك', 'Bank Name')}</th><th>{t('رمز IFSC', 'Bank IFSC')}</th><th>{t('رقم UTR', 'UTR Number')}</th><th>{t('العملة', 'Currency')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('العمولة', 'Commission')}</th><th>{t('نسبة العمولة', 'Commission %')}</th><th>{t('التاجر الرئيسي', 'Master Merchant')}</th><th>{t('التاجر', 'Merchant')}</th>
+      </tr></thead><tbody>{data.rows.map((row) => { const st = statusMeta(row.status); return <tr key={row.maven_id} onClick={() => void openDetail(row.maven_id)}>
+        <td className="payout-action-cell" onClick={(e) => e.stopPropagation()}><button className="btn-ghost btn-sm icon-text-btn" onClick={() => void openDetail(row.maven_id)}><Eye size={15} aria-hidden="true" />{row.status === 'PENDING' && can('payouts', 'can_approve') ? t('قرار', 'Decide') : t('تفاصيل', 'Details')}</button></td>
+        <td className="mono">{row.maven_id}</td><td className="mono">{row.merchant_reference ?? '—'}</td><td><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></td><td><MethodLogo method={row.payment_type} /></td><td className="mono">{row.mobile_no ?? '—'}</td><td>{row.account_name ?? '—'}</td><td className="mono">{row.user_account_number ?? '—'}</td><td>{row.bank_name ?? '—'}</td><td className="mono">{row.bank_ifsc ?? '—'}</td><td className="mono">{row.utr_number ?? '—'}</td><td className="mono">{row.currency ?? CURRENCY}</td><td className="mono">{money(row.amount, row.currency ?? CURRENCY)}</td><td className="mono">{row.commission == null ? '—' : money(row.commission, row.currency ?? CURRENCY)}</td><td className="mono">{row.commission_percentage == null ? '—' : `${row.commission_percentage.toFixed(2)}%`}</td><td>{row.master_merchant ? <MerchantLogo merchant={row.master_merchant} /> : '—'}</td><td><MerchantLogo merchant={row.merchant} /></td>
+      </tr> })}</tbody></table></div>}
       {data && totalPages > 1 && <div className="pager"><button className="btn-ghost btn-sm" disabled={page <= 1} onClick={() => setFilter({ page: page - 1 })}>→ {t('السابق', 'Prev')}</button><PageSizeSelect value={pageSize} onChange={(n) => { setPageSize(n); setFilter({ page: 1 }) }} />
             <span className="pager-info mono">{page} / {totalPages}</span><button className="btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setFilter({ page: page + 1 })}>{t('التالي', 'Next')} ←</button></div>}
     </section>
