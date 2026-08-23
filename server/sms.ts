@@ -13,7 +13,7 @@ export const smsRoutes = new Hono<AuthEnv>()
 smsRoutes.use('*', requireAuth)
 
 const LIST_COLUMNS =
-  'id, received_at, device_name, sim_slot, sender_number, sender_name, receiver_number, amount, balance_after, sms_category, match_status, matched, review_required, trx_id, matched_transaction_id, maven_transaction_id, consumed_by_tx_id, provider, sms_first_line'
+  'id, received_at, device_name, sim_slot, sender_number, sender_name, receiver_number, wallet_number, confirmed_wallet_number, amount, balance_after, sms_category, match_status, matched, review_required, trx_id, matched_transaction_id, maven_transaction_id, consumed_by_tx_id, provider, sms_first_line'
 
 function sinceIso(hours: number): string {
   return new Date(Date.now() - hours * 3_600_000).toISOString()
@@ -30,7 +30,20 @@ function sinceIso(hours: number): string {
 // left recent matches looking unlinked.
 async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> {
   if (!rows.length) return
-  const ids = rows.map((r) => r.id as number)
+  for (const row of rows) {
+    if (row.sms_category === 'withdrawal') {
+      row.linked_wallet_number = row.confirmed_wallet_number ?? row.wallet_number ?? null
+      const amount = Number(row.amount)
+      const after = Number(row.balance_after)
+      row.wallet_balance_after = row.balance_after ?? null
+      row.wallet_balance_before = row.balance_after != null && Number.isFinite(after) && Number.isFinite(amount) ? after + amount : null
+      row.matched_tx_id = null
+      row.matched_ontarget_ref = null
+    }
+  }
+  const depositRows = rows.filter((row) => row.sms_category !== 'withdrawal')
+  if (!depositRows.length) return
+  const ids = depositRows.map((r) => r.id as number)
   const { data: links } = await db.from('sms_maven_matches').select('sms_id, tx_id').in('sms_id', ids)
   const txBySms = new Map<number, number>((links ?? []).map((l) => [l.sms_id, l.tx_id]))
 
@@ -44,12 +57,12 @@ async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> 
     return direct != null && Number.isFinite(n) ? n : null
   }
 
-  const txIds = [...new Set(rows.map(resolveTx).filter((v): v is number => v != null))]
+  const txIds = [...new Set(depositRows.map(resolveTx).filter((v): v is number => v != null))]
   if (!txIds.length) return
   const { data: txs } = await db.from('maven_transactions').select('tx_id, ontarget_ref').in('tx_id', txIds)
   const refByTx = new Map((txs ?? []).map((t) => [t.tx_id, t.ontarget_ref]))
 
-  for (const r of rows) {
+  for (const r of depositRows) {
     const txId = resolveTx(r)
     if (txId == null) continue
     // Normalize legacy rows for every API consumer. The live matcher writes
@@ -89,7 +102,10 @@ smsRoutes.get('/stats', requirePerm('sms_live', 'can_view'), async (c) => {
       countWhere((q) => q),
       countWhere((q) => q.eq('sms_category', 'deposit')),
       countWhere((q) => q.eq('sms_category', 'withdrawal')),
-      countWhere((q) => q.not('consumed_by_tx_id', 'is', null)),
+      Promise.all([
+        countWhere((q) => q.neq('sms_category', 'withdrawal').not('consumed_by_tx_id', 'is', null)),
+        countWhere((q) => q.eq('sms_category', 'withdrawal').not('wallet_number', 'is', null)),
+      ]).then(([depositLinks, walletLinks]) => depositLinks + walletLinks),
       countWhere((q) => q.eq('review_required', true).eq('matched', false)),
       volumeSince('deposit'),
       volumeSince('withdrawal'),
@@ -127,8 +143,8 @@ smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
   // match_status='unmatched', because nothing has maintained that column since
   // 2026-07-11. On the live TV wall that made a busy matching engine look
   // stalled for hours at a time.
-  if (match === 'linked') query = query.not('consumed_by_tx_id', 'is', null)
-  else if (match === 'unmatched') query = query.is('consumed_by_tx_id', null)
+  if (match === 'linked') query = query.or('and(sms_category.neq.withdrawal,consumed_by_tx_id.not.is.null),and(sms_category.eq.withdrawal,wallet_number.not.is.null)')
+  else if (match === 'unmatched') query = query.or('and(sms_category.neq.withdrawal,consumed_by_tx_id.is.null),and(sms_category.eq.withdrawal,wallet_number.is.null)')
   else if (match === 'review') query = query.eq('review_required', true).eq('matched', false)
 
   if (q) {
@@ -176,11 +192,12 @@ smsRoutes.get('/:id/candidates', requirePerm('sms_live', 'can_view'), async (c) 
 
   const { data: sms, error: smsErr } = await db
     .from('inbound_sms')
-    .select('id, amount, received_at')
+    .select('id, amount, received_at, sms_category')
     .eq('id', id)
     .maybeSingle()
   if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
   if (!sms) return c.json({ error: 'not_found' }, 404)
+  if (sms.sms_category === 'withdrawal') return c.json({ candidates: [], link_type: 'wallet' })
 
   let query = db
     .from('maven_transactions')
@@ -216,12 +233,13 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
   if (!Number.isInteger(txId) || txId <= 0) return c.json({ error: 'bad_tx_id' }, 400)
 
   const [{ data: sms, error: smsErr }, { data: tx, error: txErr }] = await Promise.all([
-    db.from('inbound_sms').select('id, matched, match_status, amount, received_at, receiver_number, sender_name, sender_number, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').eq('id', id).maybeSingle(),
+    db.from('inbound_sms').select('id, matched, match_status, sms_category, amount, received_at, receiver_number, sender_name, sender_number, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').eq('id', id).maybeSingle(),
     db.from('maven_transactions').select('tx_id, amount, status, sender_number, first_seen_at, ontarget_ref').eq('tx_id', txId).maybeSingle(),
   ])
   if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
   if (txErr) return c.json({ error: 'db_error', detail: txErr.message }, 500)
   if (!sms) return c.json({ error: 'not_found' }, 404)
+  if (sms.sms_category === 'withdrawal') return c.json({ error: 'withdrawal_links_to_wallet' }, 409)
   if (!tx) return c.json({ error: 'tx_not_found' }, 404)
   if (sms.matched || sms.consumed_by_tx_id != null || sms.matched_transaction_id != null || sms.maven_transaction_id != null) {
     return c.json({ error: 'already_linked' }, 409)
@@ -308,11 +326,12 @@ smsRoutes.post('/:id/unlink', requirePerm('sms_live', 'can_edit'), async (c) => 
 
   const { data: sms, error: smsErr } = await db
     .from('inbound_sms')
-    .select('id, matched, match_status, matched_transaction_id, maven_transaction_id, consumed_by_tx_id')
+    .select('id, matched, match_status, sms_category, matched_transaction_id, maven_transaction_id, consumed_by_tx_id')
     .eq('id', id)
     .maybeSingle()
   if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
   if (!sms) return c.json({ error: 'not_found' }, 404)
+  if (sms.sms_category === 'withdrawal') return c.json({ error: 'withdrawal_links_to_wallet' }, 409)
   const linkedTxId = sms.consumed_by_tx_id ?? sms.matched_transaction_id ?? sms.maven_transaction_id
   if (!sms.matched && linkedTxId == null) return c.json({ error: 'not_linked' }, 409)
 

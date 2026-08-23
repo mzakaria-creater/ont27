@@ -29,7 +29,7 @@ const MATCH_META: Record<string, { ar: string; en: string; cls: string }> = {
 }
 
 const MATCH_FILTERS = [
-  { key: 'linked', ar: 'مرتبطة بمعاملة', en: 'Linked to tx' },
+  { key: 'linked', ar: 'مرتبطة', en: 'Linked' },
   { key: 'unmatched', ar: 'غير مرتبطة', en: 'Unlinked' },
   { key: 'review', ar: 'تحتاج مراجعة', en: 'Needs review' },
 ]
@@ -52,6 +52,11 @@ interface SmsRow {
   matched_transaction_id: number | null
   maven_transaction_id: string | null
   consumed_by_tx_id: number | null
+  wallet_number: string | null
+  confirmed_wallet_number: string | null
+  linked_wallet_number?: string | null
+  wallet_balance_before?: number | null
+  wallet_balance_after?: number | null
   matched_tx_id?: number | null
   matched_ontarget_ref?: string | null
   provider: string | null
@@ -203,7 +208,7 @@ export default function SmsLive() {
     try {
       const res = await api<{ sms: SmsDetail }>(`/api/sms/${id}`)
       setSelected(res.sms)
-      if (!res.sms.matched_tx_id && can('sms_live', 'can_edit')) void loadCandidates(id)
+      if (res.sms.sms_category !== 'withdrawal' && !res.sms.matched_tx_id && can('sms_live', 'can_edit')) void loadCandidates(id)
     } catch {
       setErr(t('تعذّر تحميل تفاصيل الرسالة.', 'Failed to load message details.'))
     } finally {
@@ -281,7 +286,7 @@ export default function SmsLive() {
           <span className="stat-sub">{stats ? `${money(stats.withdrawals.dayVolume, 'EGP')} · ${t('آخر 24س', 'last 24h')}` : ''}</span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">{t('مرتبطة بمعاملات', 'Linked to tx')}</span>
+          <span className="stat-label">{t('مرتبطة بمعاملة أو محفظة', 'Linked to transaction or wallet')}</span>
           <span className="stat-value">{stats ? stats.linked.toLocaleString('en-US') : '…'}</span>
           <span className="stat-sub">{stats && stats.total > 0 ? `${Math.round((stats.linked / stats.total) * 100)}% ${t('تغطية', 'coverage')}` : ''}</span>
         </div>
@@ -362,7 +367,7 @@ export default function SmsLive() {
                   <th>{t('المبلغ', 'Amount')}</th>
                   <th>{t('مُرسِل ← مستقبِل', 'Sender ← receiver')}</th>
                   <th>{t('الجهاز', 'Device')}</th>
-                  <th>{t('رقم العملية', 'Tx id')}</th>
+                  <th>{t('المحفظة / العملية', 'Wallet / Tx')}</th>
                   <th>{t('الربط', 'Link')}</th>
                   <th>{t('الوقت', 'Time')}</th>
                 </tr>
@@ -370,7 +375,8 @@ export default function SmsLive() {
               <tbody>
                 {data.rows.map((r) => {
                   const cat = r.sms_category ? CATEGORY_META[r.sms_category] : null
-                  const linked = r.matched_tx_id != null
+                  const walletLinked = r.sms_category === 'withdrawal' && r.linked_wallet_number != null
+                  const linked = walletLinked || r.matched_tx_id != null
                   const mt = linked ? MATCH_META.auto : r.match_status ? MATCH_META[r.match_status] : null
                   return (
                     <tr key={r.id} onClick={() => void openDetail(r.id)}>
@@ -396,8 +402,9 @@ export default function SmsLive() {
                         {r.sim_slot != null && <div className="cell-sub mono">SIM {r.sim_slot}</div>}
                       </td>
                       <td className="mono">
-                        {r.trx_id ?? '—'}
-                        {linked && <div className="cell-sub mono">OnTarget {r.matched_ontarget_ref ?? r.matched_tx_id}</div>}
+                        {walletLinked ? r.linked_wallet_number : r.trx_id ?? '—'}
+                        {walletLinked && <div className="cell-sub mono">{r.wallet_balance_before != null ? money(r.wallet_balance_before, 'EGP') : '—'} − {money(r.amount, 'EGP')} = {r.wallet_balance_after != null ? money(r.wallet_balance_after, 'EGP') : '—'}</div>}
+                        {!walletLinked && linked && <div className="cell-sub mono">OnTarget {r.matched_ontarget_ref ?? r.matched_tx_id}</div>}
                       </td>
                       <td>
                         {mt
@@ -448,18 +455,19 @@ export default function SmsLive() {
                 </div>
 
                 {selected.message && (
-                  <pre className="sms-body">{selected.message}</pre>
+                  <div><span className="field-label">{selected.sms_category === 'withdrawal' && selected.linked_wallet_number ? t('SMS الخام المرتبطة بالمحفظة', 'Raw SMS linked to wallet') : t('SMS الخام', 'Raw SMS')}</span><pre className="sms-body">{selected.message}</pre></div>
                 )}
 
                 <dl className="detail-grid">
                   <dt>{t('المُرسِل', 'Sender')}</dt><dd>{selected.sender_name ?? '—'} {selected.sender_number && <span className="mono">({selected.sender_number})</span>}</dd>
-                  <dt>{t('المحفظة المستقبِلة', 'Receiving wallet')}</dt><dd className="mono">{selected.receiver_number ?? selected.wallet ?? '—'}</dd>
+                  <dt>{selected.sms_category === 'withdrawal' ? t('المحفظة الدافعة', 'Paying wallet') : t('المحفظة المستقبِلة', 'Receiving wallet')}</dt><dd className="mono">{selected.sms_category === 'withdrawal' ? selected.linked_wallet_number ?? selected.wallet_number ?? '—' : selected.receiver_number ?? selected.wallet ?? '—'}</dd>
                   <dt>{t('المزوّد', 'Provider')}</dt><dd>{selected.provider ?? '—'} · <span className="mono">{selected.sms_sender ?? '—'}</span></dd>
                   <dt>{t('الجهاز', 'Device')}</dt><dd className="mono">{selected.device_name ?? '—'}{selected.sim_slot != null && <> · SIM {selected.sim_slot}</>}</dd>
                   <dt>{t('رقم العملية (SMS)', 'Tx id (SMS)')}</dt><dd className="mono">{selected.trx_id ?? '—'}</dd>
-                  <dt>{t('معاملة OnTarget', 'OnTarget tx')}</dt><dd className="mono">{selected.matched_ontarget_ref ?? selected.matched_tx_id ?? '—'}</dd>
-                  <dt>{t('حالة الربط', 'Link status')}</dt><dd className="mono">{selected.match_status ?? '—'}{selected.review_required && !selected.matched && <> · ⚠ {t('تحتاج مراجعة', 'needs review')}</>}</dd>
+                  {selected.sms_category !== 'withdrawal' && <><dt>{t('معاملة OnTarget', 'OnTarget tx')}</dt><dd className="mono">{selected.matched_ontarget_ref ?? selected.matched_tx_id ?? '—'}</dd></>}
+                  <dt>{t('حالة الربط', 'Link status')}</dt><dd className="mono">{selected.sms_category === 'withdrawal' ? selected.linked_wallet_number ? t('مرتبطة بالمحفظة', 'Linked to wallet') : t('محفظة غير معروفة', 'Wallet unknown') : selected.match_status ?? '—'}{selected.review_required && !selected.matched && selected.sms_category !== 'withdrawal' && <> · ⚠ {t('تحتاج مراجعة', 'needs review')}</>}</dd>
                   <dt>{t('الرصيد بعد العملية', 'Balance after')}</dt><dd className="mono">{money(selected.balance_after, 'EGP')}</dd>
+                  {selected.sms_category === 'withdrawal' && <><dt>{t('حساب الرصيد', 'Balance calculation')}</dt><dd className="mono">{selected.wallet_balance_before != null ? money(selected.wallet_balance_before, 'EGP') : '—'} − {money(selected.amount, 'EGP')} = {selected.wallet_balance_after != null ? money(selected.wallet_balance_after, 'EGP') : '—'}</dd></>}
                   {selected.risk_score != null && selected.risk_score > 0 && (
                     <><dt>{t('درجة الخطورة', 'Risk score')}</dt><dd className="mono">{selected.risk_score}{selected.risk_reason && <> — {selected.risk_reason}</>}</dd></>
                   )}
@@ -471,7 +479,7 @@ export default function SmsLive() {
 
                 {linkErr && <div className="card warn">{linkErr}</div>}
 
-                {selected.matched_tx_id != null && can('sms_live', 'can_edit') && (
+                {selected.sms_category !== 'withdrawal' && selected.matched_tx_id != null && can('sms_live', 'can_edit') && (
                   <div className="drawer-actions">
                     <button className="btn-ghost danger" disabled={linkBusy} onClick={() => void unlink()}>
                       🔗 {t('فك الربط عن المعاملة', 'Unlink from transaction')}
@@ -479,7 +487,7 @@ export default function SmsLive() {
                   </div>
                 )}
 
-                {selected.matched_tx_id == null && can('sms_live', 'can_edit') && (
+                {selected.sms_category !== 'withdrawal' && selected.matched_tx_id == null && can('sms_live', 'can_edit') && (
                   <div className="link-section">
                     <h4>🔗 {t('ربط بمعاملة', 'Link to a transaction')}</h4>
                     <form

@@ -158,6 +158,8 @@ interface RailSms {
   trx_id: string | null
   matched_tx_id?: number | null
   matched_ontarget_ref?: string | null
+  linked_wallet_number?: string | null
+  wallet_balance_after?: number | null
 }
 
 interface RailDevice {
@@ -211,7 +213,8 @@ function SmsRail() {
       <div className="sms-feed">
         {rows.length === 0 && <span className="sidebar-hint">لا توجد رسائل بعد.</span>}
         {rows.map((r) => {
-          const linked = r.matched_tx_id != null
+          const walletLinked = r.sms_category === 'withdrawal' && r.linked_wallet_number != null
+          const linked = walletLinked || r.matched_tx_id != null
           return (
             <Link key={r.id} to="/sms" className={`sms-feed-item${linked ? ' matched' : ''}`}>
               <div className="sms-feed-head">
@@ -219,8 +222,9 @@ function SmsRail() {
                 <span className="sms-feed-time mono">{depositTime({ first_seen_at: r.received_at })}</span>
               </div>
               <div className="sms-feed-body">{r.sms_category === 'withdrawal' ? 'تحويل' : 'استلام'} {money(r.amount, 'EGP')}{' '}{r.sender_name ?? r.sender_number ? `— ${r.sender_name ?? r.sender_number}` : ''}</div>
+              {walletLinked && <div className="cell-sub mono">{r.linked_wallet_number} · رصيد {money(r.wallet_balance_after, 'EGP')}</div>}
               <div className={`sms-feed-status ${linked ? 'link' : r.sms_category === 'deposit' || r.sms_category === 'withdrawal' ? 'wait' : 'info'}`}>
-                {linked ? <>🔗 مرتبطة <span className="mono">{r.matched_ontarget_ref ?? r.matched_tx_id}</span></> : r.sms_category === 'deposit' || r.sms_category === 'withdrawal' ? '⏳ بانتظار مطابقة' : 'غير مالية'}
+                {walletLinked ? <>👛 محفظة <span className="mono">{r.linked_wallet_number}</span></> : linked ? <>🔗 مرتبطة <span className="mono">{r.matched_ontarget_ref ?? r.matched_tx_id}</span></> : r.sms_category === 'deposit' ? '⏳ بانتظار مطابقة' : r.sms_category === 'withdrawal' ? '⚠ محفظة غير معروفة' : 'غير مالية'}
               </div>
             </Link>
           )
