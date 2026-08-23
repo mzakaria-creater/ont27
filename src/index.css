@@ -414,6 +414,17 @@ body {
 .brand-file-field input { min-height: 39px; padding: 7px; border: 1px solid var(--line, rgba(148,163,184,.2)); border-radius: 9px; }
 .brand-preview-grid { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line, rgba(148,163,184,.2)); }
 @media (max-width: 760px) { .brand-upload-form { grid-template-columns: 1fr; } }
+.reports-scope-grid { display: grid; grid-template-columns: repeat(5, minmax(130px, 1fr)) auto auto; align-items: end; gap: 10px; margin-top: 12px; }
+.reports-scope-grid label { display: flex; flex-direction: column; gap: 5px; min-width: 0; color: var(--text-dim); font-size: 11px; font-weight: 700; }
+.live-financial-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.report-tabs { display: flex; gap: 4px; margin: 16px 0; padding: 4px; overflow-x: auto; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); }
+.report-tabs button { min-height: 38px; padding: 0 13px; border: 0; border-radius: 8px; color: var(--text-dim); background: transparent; white-space: nowrap; cursor: pointer; font: inherit; font-size: 12px; font-weight: 750; }
+.report-tabs button.active { color: #fff; background: var(--accent, #2563eb); }
+.report-tabs button:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+.reports-live-transactions { margin-bottom: 16px; }
+.reports-live-transactions a { color: inherit; font-weight: 750; }
+@media (max-width: 1024px) { .reports-scope-grid { grid-template-columns: repeat(3, minmax(140px, 1fr)); } .live-financial-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .reports-scope-grid, .live-financial-kpis { grid-template-columns: 1fr; } }
 @media (max-width: 600px) {
   .page-head .view-switch { width: 100%; }
   .view-switch button { flex: 1; }
