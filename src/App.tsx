@@ -48,7 +48,7 @@ import { api } from './lib/api'
 import { merchantChipCls, money } from './lib/deposits'
 import { SUPABASE_URL, SUPABASE_KEY } from './lib/supabase'
 import { LocaleProvider, useLocale } from './lib/locale'
-import { playNotificationTone } from './lib/notificationSounds'
+import { installNotificationAudioUnlock, playNotificationTone } from './lib/notificationSounds'
 
 type Conn = 'wait' | 'ok' | 'bad'
 
@@ -68,10 +68,12 @@ function Bell() {
   const wrapRef = useRef<HTMLDivElement>(null)
   const seenRef = useRef<{ tx: number; sms: number } | null>(null)
 
+  useEffect(() => { installNotificationAudioUnlock() }, [])
+
   useEffect(() => {
     const load = () => void api<NotifData>('/api/notifications').then((next) => {
       const latestTx = Math.max(0, ...(next.latestPending ?? []).map((row) => Number(row.tx_id)))
-      const latestSms = Math.max(0, ...(next.recentMatches ?? []).map((row) => Number(row.id)))
+      const latestSms = Number(next.latestSms?.id ?? 0)
       const seen = seenRef.current
       if (seen) {
         if (latestTx > seen.tx) playNotificationTone('transaction')
@@ -81,7 +83,7 @@ function Bell() {
       setData(next)
     }).catch(() => {})
     load()
-    const iv = setInterval(load, 30_000)
+    const iv = setInterval(load, 10_000)
     return () => clearInterval(iv)
   }, [])
 

@@ -874,7 +874,7 @@ extraRoutes.get('/notifications', async (c) => {
     const { count } = await apply(db.from('maven_transactions').select('tx_id', { count: 'exact', head: true }))
     return count ?? 0
   }
-  const [pendingDeposits, pendingDepositsStale, pendingPayouts, smsReview, devices, latestPending, latestPayouts, recentMatches] = await Promise.all([
+  const [pendingDeposits, pendingDepositsStale, pendingPayouts, smsReview, devices, latestPending, latestPayouts, recentMatches, latestSms] = await Promise.all([
     countOf((q: any) => q.eq('status', 'PENDING').gte('first_seen_at', twoDays)),
     countOf((q: any) => q.eq('status', 'PENDING').lt('first_seen_at', twoDays)),
     db
@@ -901,6 +901,13 @@ extraRoutes.get('/notifications', async (c) => {
       .order('ontarget_ref', { ascending: false, nullsFirst: false })
       .limit(5)
       .then(({ data }) => data ?? []),
+    db
+      .from('inbound_sms')
+      .select('id, received_at, sms_category')
+      .order('received_at', { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => data ?? null),
     db
       .from('maven_payout_transactions')
       .select('maven_id, ontarget_ref, amount, account_name, mobile_no, merchant')
@@ -941,6 +948,7 @@ extraRoutes.get('/notifications', async (c) => {
     latestPending,
     latestPayouts,
     recentMatches,
+    latestSms,
     myEditRequests,
     total:
       pendingDeposits + pendingPayouts + (smsReview > 0 ? 1 : 0) +

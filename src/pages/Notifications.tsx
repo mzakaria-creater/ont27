@@ -4,7 +4,7 @@ import PanelShell from '../components/PanelShell'
 import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
-import { getSoundSettings, playNotificationTone, saveSoundSettings, type AlertTone, type SoundSettings } from '../lib/notificationSounds'
+import { getSoundSettings, installNotificationAudioUnlock, isNotificationAudioReady, playNotificationTone, saveSoundSettings, type AlertTone, type SoundSettings } from '../lib/notificationSounds'
 
 // Notifications center — the bell's data, expanded.
 
@@ -17,6 +17,7 @@ export interface NotifData {
   latestPending: { tx_id: number; ontarget_ref: string | null; amount: number | null; currency: string | null; sender_name: string | null; merchant: string | null; master_merchant?: string | null }[]
   latestPayouts?: { maven_id: number; ontarget_ref: string | null; amount: number | null; account_name: string | null; mobile_no: string | null; merchant: string | null }[]
   recentMatches?: { id: number; received_at: string | null; device_name: string | null; sender_name: string | null; amount: number | null; trx_id: string | null; matched_transaction_id: number | null }[]
+  latestSms?: { id: number; received_at: string | null; sms_category: string | null } | null
   // Edit requests raised by the signed-in user that have since been decided —
   // the only place they learn the outcome, since the approval happens in
   // Telegram or in a steward's panel.
@@ -33,6 +34,7 @@ export default function Notifications() {
   const { t } = useLocale()
   const [data, setData] = useState<NotifData | null>(null)
   const [sounds, setSounds] = useState<SoundSettings>(() => getSoundSettings())
+  const [audioReady, setAudioReady] = useState(() => isNotificationAudioReady())
   const updateSounds = (next: SoundSettings) => { setSounds(next); saveSoundSettings(next) }
 
   useEffect(() => {
@@ -41,6 +43,7 @@ export default function Notifications() {
     const iv = setInterval(load, 30_000)
     return () => clearInterval(iv)
   }, [])
+  useEffect(() => { installNotificationAudioUnlock(); const ready = () => setAudioReady(true); window.addEventListener('ontarget:audio-ready', ready); return () => window.removeEventListener('ontarget:audio-ready', ready) }, [])
 
   return (
     <PanelShell>
@@ -52,6 +55,7 @@ export default function Notifications() {
       <section className="card notification-sound-card">
         <div><h3>{t('أصوات التنبيه', 'Notification sounds')}</h3><p className="cell-sub">{t('نغمتان منفصلتان للمعاملات وSMS. اضغط اختبار مرة واحدة للسماح بالصوت في المتصفح.', 'Separate tones for transactions and SMS. Press Test once to allow browser audio.')}</p></div>
         <label className="sound-toggle"><input type="checkbox" checked={sounds.enabled} onChange={(e) => updateSounds({ ...sounds, enabled: e.target.checked })}/><span>{t('تشغيل الأصوات', 'Enable sounds')}</span></label>
+        <span className={`pay-status-badge ${audioReady ? 'st-paid' : 'st-pending'}`}>{audioReady ? t('الصوت جاهز', 'Audio ready') : t('اضغط في الصفحة لتفعيل الصوت', 'Click anywhere to unlock audio')}</span>
         <SoundPicker label={t('معاملة جديدة', 'New transaction')} value={sounds.transaction} onChange={(transaction) => updateSounds({ ...sounds, transaction })} onTest={() => playNotificationTone('transaction', true)} t={t}/>
         <SoundPicker label={t('SMS جديدة', 'New SMS')} value={sounds.sms} onChange={(sms) => updateSounds({ ...sounds, sms })} onTest={() => playNotificationTone('sms', true)} t={t}/>
       </section>

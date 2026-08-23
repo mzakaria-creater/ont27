@@ -4,6 +4,32 @@ export interface SoundSettings { enabled: boolean; transaction: AlertTone; sms: 
 
 const KEY = 'ontarget-notification-sounds-v2'
 const defaults: SoundSettings = { enabled: true, transaction: 'chime', sms: 'glass' }
+let sharedContext: AudioContext | null = null
+let unlockInstalled = false
+let pendingTone: AlertKind | null = null
+
+function audioConstructor() {
+  return window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+}
+
+export function isNotificationAudioReady() { return sharedContext?.state === 'running' }
+
+export function installNotificationAudioUnlock() {
+  if (unlockInstalled) return
+  unlockInstalled = true
+  const unlock = () => {
+    const AudioCtx = audioConstructor()
+    if (!AudioCtx) return
+    sharedContext ??= new AudioCtx()
+    void sharedContext.resume().then(() => {
+      window.dispatchEvent(new CustomEvent('ontarget:audio-ready'))
+      const queued = pendingTone; pendingTone = null
+      if (queued) playNotificationTone(queued, true)
+    })
+  }
+  window.addEventListener('pointerdown', unlock, { passive: true })
+  window.addEventListener('keydown', unlock)
+}
 
 export function getSoundSettings(): SoundSettings {
   try {
@@ -23,9 +49,11 @@ export function playNotificationTone(kind: AlertKind, force = false) {
   const settings = getSoundSettings()
   if (!force && !settings.enabled) return
   const tone = settings[kind]
-  const AudioCtx = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+  const AudioCtx = audioConstructor()
   if (!AudioCtx) return
-  const ctx = new AudioCtx()
+  sharedContext ??= new AudioCtx()
+  const ctx = sharedContext
+  if (ctx.state !== 'running') { pendingTone = kind; void ctx.resume(); return }
   const patterns: Record<AlertTone, { at: number; hz: number; duration: number; gain: number }[]> = {
     glass: [{ at: 0, hz: 1318.5, duration: .09, gain: .12 }, { at: .11, hz: 1760, duration: .17, gain: .09 }],
     chime: [{ at: 0, hz: 659.3, duration: .12, gain: .1 }, { at: .13, hz: 987.8, duration: .2, gain: .1 }],
@@ -36,12 +64,10 @@ export function playNotificationTone(kind: AlertKind, force = false) {
     double: [{ at: 0, hz: 784, duration: .11, gain: .1 }, { at: .16, hz: 784, duration: .11, gain: .1 }],
     urgent: [{ at: 0, hz: 587.3, duration: .1, gain: .11 }, { at: .12, hz: 880, duration: .1, gain: .11 }, { at: .24, hz: 587.3, duration: .1, gain: .1 }, { at: .36, hz: 1174.7, duration: .16, gain: .09 }],
   }
-  void ctx.resume()
   for (const note of patterns[tone]) {
     const osc = ctx.createOscillator(); const gain = ctx.createGain(); const start = ctx.currentTime + note.at
     osc.type = tone === 'glass' || tone === 'bell' || tone === 'sonar' ? 'sine' : 'triangle'; osc.frequency.setValueAtTime(note.hz, start)
     gain.gain.setValueAtTime(0.0001, start); gain.gain.exponentialRampToValueAtTime(note.gain, start + .015); gain.gain.exponentialRampToValueAtTime(0.0001, start + note.duration)
     osc.connect(gain); gain.connect(ctx.destination); osc.start(start); osc.stop(start + note.duration + .02)
   }
-  window.setTimeout(() => void ctx.close(), 1000)
 }
