@@ -3,6 +3,8 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
 import { useLocale } from '../lib/locale'
+import { Building2, CreditCard, LayoutGrid, Search, TableProperties, UsersRound, WalletCards } from 'lucide-react'
+import MethodLogo from '../components/MethodLogo'
 
 interface Method { id: string; method_code: string; method_name: string; channel_type: string; is_active: boolean; sort_order: number }
 interface Account {
@@ -50,6 +52,9 @@ export default function PaymentMethods() {
   const [newMethod, setNewMethod] = useState({ method_code: '', method_name: '', channel_type: 'sms_device' })
   const [newPool, setNewPool] = useState(emptyPool)
   const [assign, setAssign] = useState<Record<string, string>>({})
+  const [search, setSearch] = useState('')
+  const [accountStatus, setAccountStatus] = useState('all')
+  const [accountView, setAccountView] = useState<'table' | 'cards'>(() => localStorage.getItem('payment-account-view') === 'cards' ? 'cards' : 'table')
   const editable = can('payment_methods', 'can_edit')
   const create = can('payment_methods', 'can_create')
 
@@ -85,34 +90,45 @@ export default function PaymentMethods() {
   const activeMethods = data?.methods.filter((m) => m.is_active).length ?? 0
   const activeAccounts = data?.accounts.filter((a) => a.is_active).length ?? 0
   const linkedSubs = data ? new Set(data.poolMembers.filter((m) => m.is_active).map((m) => m.merchant_hierarchy_id)).size : 0
+  const filteredAccounts = (data?.accounts ?? []).filter((row) => {
+    const method = data?.methods.find((item) => item.id === row.payment_method_id)
+    const q = search.trim().toLowerCase()
+    if (q && ![row.account_number, row.label, row.device_name, method?.method_name].filter(Boolean).join(' ').toLowerCase().includes(q)) return false
+    if (accountStatus === 'active' && !row.is_active) return false
+    if (accountStatus === 'disabled' && row.is_active) return false
+    if (accountStatus === 'stale' && !balanceAge(row.balance_updated_at, t)?.stale) return false
+    if (accountStatus === 'unassigned' && row.payment_pool_id) return false
+    return true
+  })
+  const changeAccountView = (view: 'table' | 'cards') => { setAccountView(view); localStorage.setItem('payment-account-view', view) }
 
   return (
     <PanelShell>
-      <section className="page-head">
-        <h2>💳 {t('طرق الدفع والحسابات', 'Payment methods & accounts')}</h2>
-        <p className="page-sub">{t('طبقة عرض وإدارة فقط؛ لا تستبدل خرائط SMS التشغيلية.', 'Reference catalogue only; it does not replace operational SMS mapping.')}</p>
+      <section className="page-head payment-page-head">
+        <div><h2><CreditCard size={25}/> {t('طرق الدفع والحسابات', 'Payment methods & accounts')}</h2>
+        <p className="page-sub">{t('مركز تشغيل الطرق والحسابات والتخصيص وصحة الرصيد.', 'Operations center for methods, accounts, allocation, and balance health.')}</p></div>
       </section>
 
       {error && <div className="card warn">{error}</div>}
 
       <div className="stat-grid">
         <div className="stat-card">
-          <span className="stat-label">💳 {t('طرق دفع نشطة', 'Active methods')}</span>
+          <span className="stat-label"><CreditCard size={16}/> {t('طرق دفع نشطة', 'Active methods')}</span>
           <span className="stat-value">{data ? activeMethods : '…'}</span>
           <span className="stat-sub">{data ? t(`من ${data.methods.length} طريقة`, `of ${data.methods.length} total`) : ''}</span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">🏦 {t('حسابات نشطة', 'Active accounts')}</span>
+          <span className="stat-label"><WalletCards size={16}/> {t('حسابات نشطة', 'Active accounts')}</span>
           <span className="stat-value">{data ? activeAccounts : '…'}</span>
           <span className="stat-sub">{data ? t(`من ${data.accounts.length} حساب`, `of ${data.accounts.length} total`) : ''}</span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">🏢 {t('تجار رئيسيون', 'Master merchants')}</span>
+          <span className="stat-label"><Building2 size={16}/> {t('تجار رئيسيون', 'Master merchants')}</span>
           <span className="stat-value">{data ? data.masters.length : '…'}</span>
           <span className="stat-sub">{data ? data.masters.map((m) => m.name).join(' · ') : ''}</span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">🔗 {t('تجار فرعيون مرتبطون', 'Sub-merchants linked')}</span>
+          <span className="stat-label"><UsersRound size={16}/> {t('تجار فرعيون مرتبطون', 'Sub-merchants linked')}</span>
           <span className="stat-value">{data ? linkedSubs : '…'}</span>
           <span className="stat-sub">{data ? t(`عبر ${data.pools.length} تجمّع`, `across ${data.pools.length} pools`) : ''}</span>
         </div>
@@ -149,7 +165,7 @@ export default function PaymentMethods() {
             return (
               <section className="card recent-card" key={method.id}>
                 <div className="recent-head">
-                  <h3>{method.method_name} <span className="cell-sub mono">{method.method_code}</span></h3>
+                  <h3 className="payment-method-title"><MethodLogo method={method.method_name}/><span>{method.method_name}<small className="mono">{method.method_code}</small></span></h3>
                   <div className="control-row">
                     <span className="pay-status-badge st-dim">{method.channel_type}</span>
                     <span className={`pay-status-badge ${method.is_active ? 'st-paid' : 'st-dim'}`}>{method.is_active ? t('نشط', 'Active') : t('موقوف', 'Disabled')}</span>
@@ -178,6 +194,13 @@ export default function PaymentMethods() {
             <h3>🏦 {t('الحسابات المُسندة', 'Assigned accounts')}</h3>
             <span className="cell-sub">{t('الرصيد يأتي من رسائل SMS الواردة لكل جهاز — ليس قيمة يدوية.', 'Balance comes from each device’s inbound SMS — not a manually entered figure.')}</span>
           </div>
+          <div className="payment-account-toolbar">
+            <label><Search size={16}/><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder={t('بحث برقم الحساب أو الجهاز أو الطريقة','Search account, device, or method')}/></label>
+            <select value={accountStatus} onChange={(e)=>setAccountStatus(e.target.value)}><option value="all">{t('كل الحسابات','All accounts')}</option><option value="active">{t('نشطة','Active')}</option><option value="disabled">{t('موقوفة','Disabled')}</option><option value="stale">{t('رصيد قديم','Stale balance')}</option><option value="unassigned">{t('بدون Pool','Unassigned')}</option></select>
+            <span className="mono cell-sub">{filteredAccounts.length} / {data.accounts.length}</span>
+            <div className="view-switch"><button className={accountView==='table'?'active':''} onClick={()=>changeAccountView('table')}><TableProperties size={15}/></button><button className={accountView==='cards'?'active':''} onClick={()=>changeAccountView('cards')}><LayoutGrid size={15}/></button></div>
+          </div>
+          {accountView === 'table' && (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -194,7 +217,7 @@ export default function PaymentMethods() {
                 </tr>
               </thead>
               <tbody>
-                {data.accounts.map((r) => {
+                {filteredAccounts.map((r) => {
                   const method = data.methods.find((m) => m.id === r.payment_method_id)
                   const master = masterOf(r)
                   const subs = subsOf(r)
@@ -202,7 +225,7 @@ export default function PaymentMethods() {
                   return (
                     <tr key={r.id}>
                       <td className="mono">{r.account_number}{r.label && <div className="cell-sub">{r.label}</div>}</td>
-                      <td>{method?.method_name ?? '—'}</td>
+                      <td><MethodLogo method={method?.method_name}/></td>
                       <td className="mono">{r.device_name ?? '—'}</td>
                       <td>
                         {r.current_balance == null
@@ -229,10 +252,12 @@ export default function PaymentMethods() {
                     </tr>
                   )
                 })}
-                {data.accounts.length === 0 && <tr><td colSpan={9} className="sidebar-hint">{t('لا توجد حسابات.', 'No accounts.')}</td></tr>}
+                {filteredAccounts.length === 0 && <tr><td colSpan={9} className="sidebar-hint">{t('لا توجد حسابات مطابقة.', 'No matching accounts.')}</td></tr>}
               </tbody>
             </table>
           </div>
+          )}
+          {accountView === 'cards' && <div className="payment-account-grid">{filteredAccounts.map((r)=>{const method=data.methods.find((m)=>m.id===r.payment_method_id);const master=masterOf(r);const subs=subsOf(r);const age=balanceAge(r.balance_updated_at,t);return <article className="payment-account-card" key={r.id}><div className="payment-account-card-head"><MethodLogo method={method?.method_name}/><span className={`pay-status-badge ${r.is_active?'st-paid':'st-dim'}`}>{r.is_active?t('نشط','Active'):t('موقوف','Disabled')}</span></div><strong className="mono">{r.account_number}</strong><span className="cell-sub">{r.label??r.device_name??'—'}</span><div className="payment-account-balance"><small>{t('الرصيد الحالي','Current balance')}</small><b className="mono">{r.current_balance==null?'—':Number(r.current_balance).toLocaleString('en-US',{minimumFractionDigits:2})} {r.currency??''}</b>{age&&<span className={age.stale?'warn-text':''}>{age.stale?t(`قديم — ${age.text}`,`Stale — ${age.text}`):age.text}</span>}</div><dl><div><dt>{t('الجهاز','Device')}</dt><dd>{r.device_name??'—'}</dd></div><div><dt>Master</dt><dd>{master?.name??'—'}</dd></div><div><dt>{t('التجار','Merchants')}</dt><dd>{subs.join('، ')||'—'}</dd></div></dl>{editable&&<><select className="login-input" value={r.payment_pool_id??''} onChange={(e)=>void setAccountPool(r,e.target.value)}><option value="">{t('بدون Pool','No pool')}</option>{data.pools.map((p)=><option key={p.id} value={p.id}>{p.pool_name}</option>)}</select><button className="btn-ghost btn-sm" onClick={()=>void toggleAccount(r)}>{r.is_active?t('إيقاف الحساب','Disable account'):t('تفعيل الحساب','Enable account')}</button></>}</article>})}</div>}
         </section>
       )}
 
