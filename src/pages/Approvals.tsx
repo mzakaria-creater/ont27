@@ -9,6 +9,7 @@ import { depositTime, money } from '../lib/deposits'
 import { useBulk } from '../lib/useBulk'
 import { useLocale } from '../lib/locale'
 import { syncProviders } from '../lib/providerSync'
+import { LayoutGrid, TableProperties } from 'lucide-react'
 
 // Approvals queue — every PENDING deposit and payout in one screen with
 // quick + bulk actions.
@@ -57,6 +58,12 @@ export default function Approvals() {
   const [err, setErr] = useState<string | null>(null)
   const [rowBusy, setRowBusy] = useState<string | null>(null)
   const [proof, setProof] = useState<{ url: string; ref: string } | null>(null)
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => localStorage.getItem('approval-queue-view') === 'cards' ? 'cards' : 'table')
+
+  const changeView = (mode: 'table' | 'cards') => {
+    setViewMode(mode)
+    localStorage.setItem('approval-queue-view', mode)
+  }
 
   const load = useCallback(async () => {
     try {
@@ -97,11 +104,17 @@ export default function Approvals() {
   return (
     <PanelShell>
       <section className="page-head">
-        <h2>✅ {t('طابور الموافقات', 'Approval queue')}</h2>
+        <div>
+          <h2>✅ {t('طابور الموافقات', 'Approval queue')}</h2>
         <p className="page-sub">
           {t('كل المعلّق في مكان واحد · تحديث تلقائي كل 30 ثانية', 'Everything pending in one place · auto-refresh every 30s')}
           {deposits && payouts && <> · {deposits.length + payouts.length} {t('بانتظار قرار', 'awaiting decision')}</>}
         </p>
+        </div>
+        <div className="view-switch" role="group" aria-label={t('طريقة العرض', 'View mode')}>
+          <button className={viewMode === 'table' ? 'active' : ''} aria-pressed={viewMode === 'table'} onClick={() => changeView('table')}><TableProperties size={16} /> {t('جدول', 'Table')}</button>
+          <button className={viewMode === 'cards' ? 'active' : ''} aria-pressed={viewMode === 'cards'} onClick={() => changeView('cards')}><LayoutGrid size={16} /> {t('بطاقات', 'Cards')}</button>
+        </div>
       </section>
 
       <EditRequestQueue />
@@ -124,7 +137,7 @@ export default function Approvals() {
         )}
         {!deposits && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
         {deposits && deposits.length === 0 && <p>{t('لا توجد إيداعات معلّقة 🎉', 'No pending deposits 🎉')}</p>}
-        {deposits && deposits.length > 0 && (
+        {deposits && deposits.length > 0 && viewMode === 'table' && (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -207,6 +220,33 @@ export default function Approvals() {
             </table>
           </div>
         )}
+        {deposits && deposits.length > 0 && viewMode === 'cards' && (
+          <div className="approval-card-grid">
+            {deposits.map((r) => (
+              <article className="approval-item-card" key={r.tx_id}>
+                <div className="approval-card-head">
+                  <div>{canDep && <input type="checkbox" aria-label={t('تحديد المعاملة', 'Select transaction')} checked={depBulk.selected.has(r.tx_id)} onChange={() => depBulk.toggle(r.tx_id)} />}<Link to={`/transactions/${encodeURIComponent(r.ontarget_ref ?? String(r.tx_id))}`} className="mono approval-card-ref">{r.ontarget_ref ?? r.tx_id}</Link></div>
+                  <span className="pay-status-badge st-pending">{t('معلّقة', 'Pending')}</span>
+                </div>
+                <div className="approval-card-amount">{money(r.amount, r.currency)}</div>
+                <div className="approval-card-party"><strong>{r.sender_name ?? t('مرسل غير معروف', 'Unknown sender')}</strong><span className="mono">{r.sender_number ?? '—'}</span></div>
+                <dl className="approval-card-facts">
+                  <div><dt>{t('المحفظة', 'Wallet')}</dt><dd className="mono">{r.receiving_wallet ?? r.to_account_number ?? '—'}</dd></div>
+                  <div><dt>{t('الطريقة', 'Method')}</dt><dd>{r.payment_method ?? '—'}</dd></div>
+                  <div><dt>{t('التاجر', 'Merchant')}</dt><dd>{r.merchant ?? '—'}</dd></div>
+                  <div><dt>{t('الوقت', 'Time')}</dt><dd>{depositTime(r)}</dd></div>
+                </dl>
+                <div className={`approval-card-evidence ${r.linked_sms ? 'matched' : 'missing'}`}>
+                  <strong>{r.linked_sms ? `SMS #${r.linked_sms.id}` : t('لا توجد SMS مطابقة', 'No matched SMS')}</strong>
+                  {r.linked_sms && <><span>{r.linked_sms.sender_name ?? r.linked_sms.sender_number ?? '—'} · {money(r.linked_sms.amount, 'EGP')}</span><small>{r.linked_sms.sms_first_line ?? '—'}</small></>}
+                </div>
+                <div className="approval-card-reason"><span>{t('سبب المراجعة', 'Review reason')}</span><strong>{r.decision_context?.decision_reason ?? r.decision_context?.reason ?? (r.linked_sms ? t('SMS مرتبطة — بانتظار قرار', 'SMS linked — awaiting decision') : t('لا توجد مطابقة مؤكدة', 'No confirmed match'))}</strong>{r.decision_context?.match_score != null && <small className="mono">score {r.decision_context.match_score}</small>}</div>
+                {r.proof_image_url && <button className="approval-card-proof" onClick={() => setProof({ url: r.proof_image_url!, ref: String(r.ontarget_ref ?? r.tx_id) })}><img src={r.proof_image_url} alt="" loading="lazy" /><span>{t('عرض إثبات الدفع', 'View payment proof')}</span></button>}
+                {canDep && <div className="approval-card-actions"><button className="btn-primary" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'approve')}>{t('موافقة', 'Approve')}</button><button className="btn-ghost danger" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'decline')}>{t('رفض', 'Decline')}</button></div>}
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* payouts */}
@@ -218,7 +258,7 @@ export default function Approvals() {
         <p className="drawer-note">{t('تسجيل قرارات السحب يتم من صفحة السحوبات فقط، حيث يلزم رفع إثبات للمقبول ويظهر بوضوح أن تنفيذ المزود يدوي.', 'Payout decisions are recorded from the payouts page only, where a proof upload is required for approvals and provider execution is clearly manual.')}</p>
         {!payouts && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
         {payouts && payouts.length === 0 && <p>{t('لا توجد سحوبات معلّقة 🎉', 'No pending payouts 🎉')}</p>}
-        {payouts && payouts.length > 0 && (
+        {payouts && payouts.length > 0 && viewMode === 'table' && (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -246,6 +286,17 @@ export default function Approvals() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+        {payouts && payouts.length > 0 && viewMode === 'cards' && (
+          <div className="approval-card-grid payout-card-grid">
+            {payouts.map((r) => <article className="approval-item-card" key={r.maven_id}>
+              <div className="approval-card-head"><span className="mono approval-card-ref">{r.ontarget_ref ?? r.maven_id}</span><span className="pay-status-badge st-pending">{t('سحب معلّق', 'Pending payout')}</span></div>
+              <div className="approval-card-amount">{money(r.amount, 'EGP')}</div>
+              <div className="approval-card-party"><strong>{r.account_name ?? t('مستفيد غير معروف', 'Unknown beneficiary')}</strong><span className="mono">{r.mobile_no ?? '—'}</span></div>
+              <dl className="approval-card-facts"><div><dt>{t('الطريقة', 'Method')}</dt><dd>{r.pay_by ?? '—'}</dd></div><div><dt>{t('التاجر', 'Merchant')}</dt><dd>{r.merchant ?? '—'}</dd></div><div><dt>{t('رقم المزود', 'Provider ID')}</dt><dd className="mono">{r.maven_id}</dd></div><div><dt>{t('الوقت', 'Time')}</dt><dd>{depositTime(r)}</dd></div></dl>
+              <Link to={`/payouts?status=PENDING&q=${encodeURIComponent(r.ontarget_ref ?? String(r.maven_id))}`} className="btn-primary approval-card-open">{t('فتح السحب واتخاذ القرار', 'Open payout and decide')}</Link>
+            </article>)}
           </div>
         )}
       </section>
