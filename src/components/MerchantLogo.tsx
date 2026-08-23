@@ -5,13 +5,13 @@ export default function MerchantLogo({ merchant }: { merchant: string | null | u
   const isMelBet = /mel\s*bet/i.test(raw)
 
   return (
-    <span className="merchant-brand-cell">
+    <span className={`merchant-brand-cell${isMelBet ? ' merchant-brand-melbet' : ''}`}>
       {isMelBet ? (
         <img className="merchant-brand-logo" src={MELBET_LOGO} alt="MelBet" loading="lazy" referrerPolicy="no-referrer" />
       ) : (
         <span className="merchant-brand-fallback" aria-hidden="true">{raw ? raw.slice(0, 1).toUpperCase() : '—'}</span>
       )}
-      <span>{raw || '—'}</span>
+      <span className="merchant-brand-name">{raw || '—'}</span>
     </span>
   )
 }

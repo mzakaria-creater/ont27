@@ -400,7 +400,12 @@ body {
 .merchant-brand-logo, .merchant-brand-fallback { flex: 0 0 28px; width: 28px; height: 28px; border-radius: 7px; }
 .merchant-brand-logo { display: block; object-fit: cover; background: #111827; }
 .merchant-brand-fallback { display: inline-flex; align-items: center; justify-content: center; color: var(--text-dim, #94a3b8); background: var(--hover-2, rgba(148,163,184,.12)); font-size: 12px; font-weight: 800; }
-.merchant-brand-cell > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.merchant-brand-name { overflow: hidden; text-overflow: ellipsis; }
+.merchant-brand-melbet { display: inline-flex; flex-direction: column; align-items: center; gap: 5px; min-width: 74px; text-align: center; }
+.merchant-brand-melbet .merchant-brand-logo { flex-basis: 52px; width: 52px; height: 52px; border-radius: 12px; box-shadow: 0 3px 12px rgba(0,0,0,.18); }
+.merchant-brand-melbet .merchant-brand-name { max-width: 110px; font-size: 11px; line-height: 1.25; font-weight: 750; }
+.approval-item-card .merchant-brand-melbet .merchant-brand-logo { flex-basis: 60px; width: 60px; height: 60px; }
+.method-logo img { display: block; width: 100%; height: 100%; border-radius: inherit; object-fit: contain; }
 @media (max-width: 600px) {
   .page-head .view-switch { width: 100%; }
   .view-switch button { flex: 1; }
