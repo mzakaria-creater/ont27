@@ -396,6 +396,11 @@ body {
 .approval-card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; }
 .approval-card-actions button, .approval-card-open { min-height: 40px; justify-content: center; text-align: center; }
 .approval-card-open { display: inline-flex; align-items: center; margin-top: auto; text-decoration: none; }
+.merchant-brand-cell { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.merchant-brand-logo, .merchant-brand-fallback { flex: 0 0 28px; width: 28px; height: 28px; border-radius: 7px; }
+.merchant-brand-logo { display: block; object-fit: cover; background: #111827; }
+.merchant-brand-fallback { display: inline-flex; align-items: center; justify-content: center; color: var(--text-dim, #94a3b8); background: var(--hover-2, rgba(148,163,184,.12)); font-size: 12px; font-weight: 800; }
+.merchant-brand-cell > span:last-child { overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 600px) {
   .page-head .view-switch { width: 100%; }
   .view-switch button { flex: 1; }

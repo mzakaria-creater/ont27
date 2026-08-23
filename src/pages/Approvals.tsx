@@ -10,6 +10,7 @@ import { useBulk } from '../lib/useBulk'
 import { useLocale } from '../lib/locale'
 import { syncProviders } from '../lib/providerSync'
 import { LayoutGrid, TableProperties } from 'lucide-react'
+import MerchantLogo from '../components/MerchantLogo'
 
 // Approvals queue — every PENDING deposit and payout in one screen with
 // quick + bulk actions.
@@ -204,7 +205,7 @@ export default function Approvals() {
                       {r.decision_context ? <><strong>{r.decision_context.decision ?? t('مراجعة', 'Review')}</strong><div className="cell-sub">{r.decision_context.decision_reason ?? r.decision_context.reason ?? '—'}</div>{r.decision_context.match_score != null && <div className="cell-sub mono">score {r.decision_context.match_score}</div>}</> : <span className="cell-sub">{r.linked_sms ? t('SMS مرتبطة — بانتظار قرار', 'SMS linked — awaiting decision') : t('لا توجد مطابقة مؤكدة', 'No confirmed match')}</span>}
                     </td>
                     <td>{r.payment_method ?? '—'}</td>
-                    <td>{r.merchant ?? '—'}</td>
+                    <td><MerchantLogo merchant={r.merchant ?? r.master_merchant} /></td>
                     <td className="mono">{depositTime(r)}</td>
                     <td>
                       {canDep && (
@@ -233,7 +234,7 @@ export default function Approvals() {
                 <dl className="approval-card-facts">
                   <div><dt>{t('المحفظة', 'Wallet')}</dt><dd className="mono">{r.receiving_wallet ?? r.to_account_number ?? '—'}</dd></div>
                   <div><dt>{t('الطريقة', 'Method')}</dt><dd>{r.payment_method ?? '—'}</dd></div>
-                  <div><dt>{t('التاجر', 'Merchant')}</dt><dd>{r.merchant ?? '—'}</dd></div>
+                  <div><dt>{t('التاجر', 'Merchant')}</dt><dd><MerchantLogo merchant={r.merchant ?? r.master_merchant} /></dd></div>
                   <div><dt>{t('الوقت', 'Time')}</dt><dd>{depositTime(r)}</dd></div>
                 </dl>
                 <div className={`approval-card-evidence ${r.linked_sms ? 'matched' : 'missing'}`}>
@@ -279,7 +280,7 @@ export default function Approvals() {
                     <td className="mono">{money(r.amount, 'EGP')}</td>
                     <td>{r.account_name ?? '—'}{r.mobile_no && <div className="cell-sub mono">{r.mobile_no}</div>}</td>
                     <td>{r.pay_by ?? '—'}</td>
-                    <td>{r.merchant ?? '—'}</td>
+                    <td><MerchantLogo merchant={r.merchant} /></td>
                     <td className="mono">{depositTime(r)}</td>
                     <td><Link to={`/payouts?status=PENDING&q=${encodeURIComponent(r.ontarget_ref ?? String(r.maven_id))}`} className="btn-ghost btn-sm">{t('فتح السحب', 'Open payout')}</Link></td>
                   </tr>
@@ -294,7 +295,7 @@ export default function Approvals() {
               <div className="approval-card-head"><span className="mono approval-card-ref">{r.ontarget_ref ?? r.maven_id}</span><span className="pay-status-badge st-pending">{t('سحب معلّق', 'Pending payout')}</span></div>
               <div className="approval-card-amount">{money(r.amount, 'EGP')}</div>
               <div className="approval-card-party"><strong>{r.account_name ?? t('مستفيد غير معروف', 'Unknown beneficiary')}</strong><span className="mono">{r.mobile_no ?? '—'}</span></div>
-              <dl className="approval-card-facts"><div><dt>{t('الطريقة', 'Method')}</dt><dd>{r.pay_by ?? '—'}</dd></div><div><dt>{t('التاجر', 'Merchant')}</dt><dd>{r.merchant ?? '—'}</dd></div><div><dt>{t('رقم المزود', 'Provider ID')}</dt><dd className="mono">{r.maven_id}</dd></div><div><dt>{t('الوقت', 'Time')}</dt><dd>{depositTime(r)}</dd></div></dl>
+              <dl className="approval-card-facts"><div><dt>{t('الطريقة', 'Method')}</dt><dd>{r.pay_by ?? '—'}</dd></div><div><dt>{t('التاجر', 'Merchant')}</dt><dd><MerchantLogo merchant={r.merchant} /></dd></div><div><dt>{t('رقم المزود', 'Provider ID')}</dt><dd className="mono">{r.maven_id}</dd></div><div><dt>{t('الوقت', 'Time')}</dt><dd>{depositTime(r)}</dd></div></dl>
               <Link to={`/payouts?status=PENDING&q=${encodeURIComponent(r.ontarget_ref ?? String(r.maven_id))}`} className="btn-primary approval-card-open">{t('فتح السحب واتخاذ القرار', 'Open payout and decide')}</Link>
             </article>)}
           </div>
