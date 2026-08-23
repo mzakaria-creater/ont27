@@ -72,7 +72,7 @@ export default function Approvals() {
 
   useEffect(() => {
     void load()
-    const iv = setInterval(() => void load(), 15_000)
+    const iv = setInterval(() => void load(), 8_000)
     return () => clearInterval(iv)
   }, [load])
 
@@ -81,6 +81,7 @@ export default function Approvals() {
     setRowBusy(`deposits-${id}`)
     try {
       await api(`/api/deposits/${id}/decision`, { method: 'POST', body: JSON.stringify({ action }) })
+      setDeposits((current) => current?.filter((row) => row.tx_id !== id) ?? current)
       void load()
     } catch {
       setErr(t('فشل تنفيذ القرار — أعد المحاولة.', 'Failed to apply the decision — try again.'))

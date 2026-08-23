@@ -71,7 +71,7 @@ const PAGE = 1000
 // an upstream flip is never missed. That is a much bigger read, and running it
 // at the fast cadence would multiply load for no gain in how fast new rows
 // appear.
-const FAST_THROTTLE_MS = 15_000
+const FAST_THROTTLE_MS = 5_000
 // Provider collectors update an existing row when NagoPay/PayFuture changes
 // its status. Re-read a bounded recent window on every fast pass so those
 // changes are live too; the wider full pass remains the repair safety net.
@@ -137,6 +137,29 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
       // time. Rows we already hold with a newer last_status_change keep their
       // status columns; everything else about them still refreshes.
       let payload = rows as Record<string, unknown>[]
+      // Operator annotations are local panel data. The old project continues
+      // to send the original SMS row through the overlap window, so a blind
+      // upsert would erase an edited withdrawal name/note seconds after save.
+      if (table === 'inbound_sms') {
+        const ids = payload.map((r) => r.id as number)
+        const localMeta = new Map<number, { sender_name: unknown; notes: unknown }>()
+        const LOOKUP_CHUNK = 200
+        for (let i = 0; i < ids.length; i += LOOKUP_CHUNK) {
+          const { data: locals, error: localErr } = await db.from('inbound_sms')
+            .select('id, sender_name, notes').in('id', ids.slice(i, i + LOOKUP_CHUNK))
+          if (localErr) throw new Error(`sms metadata guard lookup: ${localErr.message}`)
+          for (const local of locals ?? []) localMeta.set(local.id, { sender_name: local.sender_name, notes: local.notes })
+        }
+        payload = payload.map((row) => {
+          const local = localMeta.get(row.id as number)
+          if (!local) return row
+          return {
+            ...row,
+            sender_name: local.sender_name ?? row.sender_name ?? null,
+            notes: local.notes ?? row.notes ?? null,
+          }
+        })
+      }
       if (table === 'maven_transactions') {
         const localTs = new Map<number, number>()
         // The guard needs our CURRENT values, not just the timestamp: a blocked

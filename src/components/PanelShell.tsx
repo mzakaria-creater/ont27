@@ -89,7 +89,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/telegram', icon: '📨', labelAr: 'تنبيهات Telegram', labelEn: 'Telegram alerts', keys: ['telegram_bot', 'automation'], group: 'risk' },
   { to: '/binance', icon: '🪙', labelAr: 'خزينة USDT', labelEn: 'USDT Treasury', keys: ['binance_p2p', 'treasury'], group: 'risk' },
   // System — reporting, audit, admin
-  { to: '/reports', icon: '📊', labelAr: 'التقارير', labelEn: 'Reports', keys: ['reports', 'advanced_analysis'], group: 'system' },
+  { to: '/reports', icon: '📊', labelAr: 'التقارير الشاملة', labelEn: 'Full reports', keys: ['reports', 'advanced_analysis'], group: 'system' },
   { to: '/audit', icon: '🕵️', labelAr: 'سجل التدقيق', labelEn: 'Audit log', keys: ['audit_log', 'audit-logs'], group: 'system' },
   { to: '/notifications', icon: '🔔', labelAr: 'الإشعارات', labelEn: 'Notifications', keys: ['notifications'], group: 'system' },
   // 'settings' alone is not enough here: 19 of 21 roles hold it, but the API
@@ -191,7 +191,7 @@ function SmsRail() {
       }
     }
     void load()
-    const iv = setInterval(load, 20_000)
+    const iv = setInterval(load, 10_000)
     return () => { alive = false; clearInterval(iv) }
   }, [])
 

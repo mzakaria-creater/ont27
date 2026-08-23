@@ -365,6 +365,34 @@ smsRoutes.post('/:id/unlink', requirePerm('sms_live', 'can_edit'), async (c) => 
   return c.json({ ok: true })
 })
 
+// Operational annotations for withdrawal SMS. These fields already belong to
+// inbound_sms; expose a narrow endpoint instead of allowing arbitrary row
+// updates from the browser. Every change is attributed in audit_log.
+smsRoutes.patch('/:id/withdrawal-meta', requirePerm('sms_live', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)
+  const body = await c.req.json<{ sender_name?: unknown; notes?: unknown }>().catch(() => null)
+  if (!body) return c.json({ error: 'invalid_body' }, 400)
+  const senderName = typeof body.sender_name === 'string' ? body.sender_name.trim().slice(0, 160) : ''
+  const notes = typeof body.notes === 'string' ? body.notes.trim().slice(0, 2000) : ''
+  const { data: before, error: readError } = await db.from('inbound_sms')
+    .select('id, sms_category, sender_name, notes').eq('id', id).maybeSingle()
+  if (readError) return c.json({ error: 'db_error', detail: readError.message }, 500)
+  if (!before) return c.json({ error: 'not_found' }, 404)
+  if (before.sms_category !== 'withdrawal') return c.json({ error: 'withdrawal_only' }, 409)
+  const next = { sender_name: senderName || null, notes: notes || null }
+  const { data, error } = await db.from('inbound_sms').update(next).eq('id', id).eq('sms_category', 'withdrawal')
+    .select('id, sender_name, notes').single()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  const actor = c.get('actor')
+  await db.from('audit_log').insert({
+    actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
+    action: 'sms.withdrawal_meta_updated', entity_type: 'inbound_sms', entity_id: id,
+    before: { sender_name: before.sender_name, notes: before.notes }, after: next,
+  })
+  return c.json({ ok: true, sms: data })
+})
+
 smsRoutes.get('/:id', requirePerm('sms_live', 'can_view'), async (c) => {
   const id = c.req.param('id')
   if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)

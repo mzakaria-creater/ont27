@@ -1125,6 +1125,39 @@ a.stat-card:hover { border-color: var(--accent); }
 .bar-track { position: relative; background: var(--hover); border-radius: 7px; height: 22px; overflow: hidden; }
 .bar-fill { position: absolute; inset-block: 0; inset-inline-start: 0; background: linear-gradient(90deg, var(--amber-bg), var(--accent)); border-radius: 7px; opacity: 0.75; }
 .bar-label { position: absolute; inset-inline-start: 8px; top: 50%; transform: translateY(-50%); font-size: 10.5px; z-index: 1; }
+.reports-page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.reports-eyebrow { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 7px; color: var(--accent); font-size: 10px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.reports-export, .reports-refresh { display: inline-flex; align-items: center; justify-content: center; gap: 7px; white-space: nowrap; }
+.reports-filter-card { max-inline-size: none; padding: 14px; margin-bottom: 14px; }
+.reports-presets { display: flex; flex-wrap: wrap; gap: 7px; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--border-soft); }
+.reports-date-row { display: grid; grid-template-columns: minmax(150px, 210px) minmax(150px, 210px) auto minmax(180px, 1fr); gap: 9px; align-items: end; }
+.reports-date-row label { display: grid; gap: 5px; color: var(--text-dim); font-size: 10.5px; font-weight: 650; }
+.reports-date-row .login-input { width: 100%; min-width: 0; }
+.reports-range { display: inline-flex; align-items: center; justify-content: flex-end; gap: 7px; min-height: 40px; color: var(--text-dim); font-size: 10.5px; direction: ltr; }
+.reports-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.reports-kpis article { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; padding: 15px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); min-width: 0; }
+.reports-kpi-icon { grid-row: 1 / 4; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: var(--accent); background: color-mix(in srgb, var(--accent) 11%, transparent); }
+.reports-kpi-icon.positive { color: var(--status-paid); background: var(--green-bg); }
+.reports-kpi-icon.negative { color: var(--status-declined); background: var(--red-bg); }
+.reports-kpis small, .reports-kpis em { overflow: hidden; color: var(--text-dim); font-size: 10px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.reports-kpis strong { overflow: hidden; font-size: clamp(16px, 1.7vw, 22px); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.reports-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.reports-grid > * { min-width: 0; max-inline-size: none; margin: 0; }
+.reports-span-2 { grid-column: 1 / -1; }
+.reports-table { min-width: 560px; }
+.positive-text { color: var(--status-paid); }
+.negative-text { color: var(--status-declined); }
+.reports-mini-bars { display: grid; gap: 3px; width: 100%; }
+.reports-mini-bars i { display: block; height: 4px; min-width: 2px; border-radius: 99px; background: var(--status-paid); }
+.reports-mini-bars i.out { background: var(--status-declined); }
+.reports-breakdown { display: grid; gap: 13px; padding: 4px 0; }
+.reports-breakdown > div > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 5px; }
+.reports-breakdown strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.reports-breakdown span { flex: none; color: var(--text-dim); font: 10px ui-monospace, monospace; }
+.reports-breakdown .bar-track { height: 6px; }
+.reports-note { margin-top: 12px; }
+@media (max-width: 1050px) { .reports-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }.reports-date-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }.reports-range { justify-content: flex-start; } }
+@media (max-width: 720px) { .reports-page-head { flex-direction: column; }.reports-grid, .reports-kpis, .reports-date-row { grid-template-columns: minmax(0, 1fr); }.reports-span-2 { grid-column: auto; }.reports-export, .reports-refresh { width: 100%; }.reports-range { min-height: auto; }.reports-presets button { flex: 1 1 calc(50% - 7px); } }
 
 /* ===== Fluid / auto layout ===== */
 .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }

@@ -10,7 +10,7 @@ import PageSizeSelect from '../components/PageSizeSelect'
 
 // SMS Live — the inbound_sms queue with its Maven links, auto-refreshing.
 
-const REFRESH_MS = 15_000
+const REFRESH_MS = 8_000
 
 const CATEGORY_META: Record<string, { ar: string; en: string; cls: string }> = {
   deposit: { ar: 'إيداع', en: 'Deposit', cls: 'st-paid' },
@@ -135,6 +135,9 @@ export default function SmsLive() {
   const [candLoading, setCandLoading] = useState(false)
   const [linkBusy, setLinkBusy] = useState(false)
   const [linkErr, setLinkErr] = useState<string | null>(null)
+  const [metaName, setMetaName] = useState('')
+  const [metaNotes, setMetaNotes] = useState('')
+  const [metaBusy, setMetaBusy] = useState(false)
 
   const appliedQ = params.get('q') ?? ''
   const amount = params.get('amount') ?? ''
@@ -208,6 +211,8 @@ export default function SmsLive() {
     try {
       const res = await api<{ sms: SmsDetail }>(`/api/sms/${id}`)
       setSelected(res.sms)
+      setMetaName(res.sms.sender_name ?? '')
+      setMetaNotes(res.sms.notes ?? '')
       if (res.sms.sms_category !== 'withdrawal' && !res.sms.matched_tx_id && can('sms_live', 'can_edit')) void loadCandidates(id)
     } catch {
       setErr(t('تعذّر تحميل تفاصيل الرسالة.', 'Failed to load message details.'))
@@ -253,6 +258,19 @@ export default function SmsLive() {
     } finally {
       setLinkBusy(false)
     }
+  }
+
+  const saveWithdrawalMeta = async () => {
+    if (!selected || selected.sms_category !== 'withdrawal') return
+    setMetaBusy(true); setLinkErr(null)
+    try {
+      const res = await api<{ sms: { sender_name: string | null; notes: string | null } }>(`/api/sms/${selected.id}/withdrawal-meta`, {
+        method: 'PATCH', body: JSON.stringify({ sender_name: metaName, notes: metaNotes }),
+      })
+      setSelected({ ...selected, ...res.sms })
+      void load(true)
+    } catch { setLinkErr(t('فشل حفظ الاسم أو الملاحظة.', 'Failed to save name or note.')) }
+    finally { setMetaBusy(false) }
   }
 
   const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1
@@ -476,6 +494,15 @@ export default function SmsLive() {
                   {selected.notes && <><dt>{t('ملاحظات', 'Notes')}</dt><dd>{selected.notes}</dd></>}
                   <dt>{t('وقت الاستلام', 'Received at')}</dt><dd className="mono">{depositTime({ first_seen_at: selected.received_at })}</dd>
                 </dl>
+
+                {selected.sms_category === 'withdrawal' && can('sms_live', 'can_edit') && (
+                  <section className="link-section withdrawal-meta-editor">
+                    <h4>{t('بيانات السحب التشغيلية', 'Withdrawal operational details')}</h4>
+                    <label className="filter-field">{t('الاسم', 'Name')}<input className="login-input" maxLength={160} value={metaName} onChange={(e) => setMetaName(e.target.value)} placeholder={t('اسم صاحب المحفظة أو المستفيد', 'Wallet owner or beneficiary name')}/></label>
+                    <label className="filter-field">{t('ملاحظة', 'Note')}<textarea className="login-input" rows={3} maxLength={2000} value={metaNotes} onChange={(e) => setMetaNotes(e.target.value)} placeholder={t('ملاحظة تشغيلية تظهر في تفاصيل SMS', 'Operational note shown in SMS details')}/></label>
+                    <button className="btn-primary btn-sm" disabled={metaBusy} onClick={() => void saveWithdrawalMeta()}>{metaBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ الاسم والملاحظة', 'Save name & note')}</button>
+                  </section>
+                )}
 
                 {linkErr && <div className="card warn">{linkErr}</div>}
 

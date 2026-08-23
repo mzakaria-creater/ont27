@@ -140,7 +140,7 @@ export default function Performance() {
 
   useEffect(() => {
     load()
-    const iv = setInterval(load, 60_000)
+    const iv = setInterval(load, 30_000)
     return () => clearInterval(iv)
   }, [load])
 
