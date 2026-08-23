@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
 import ProofModal from '../components/ProofModal'
+import ProofIconButton from '../components/ProofIconButton'
 import DepositCard from '../components/DepositCard'
 import type { CardAction } from '../components/DepositCard'
 import { api, ApiError } from '../lib/api'
@@ -529,17 +530,7 @@ export default function Deposits() {
                               🔎
                             </a>
                           )}
-                          {r.proof_image_url && (
-                            <a
-                              className="btn-ghost btn-sm"
-                              title="صورة الإثبات"
-                              href={r.proof_image_url}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              📷
-                            </a>
-                          )}
+                          {r.proof_image_url && <ProofIconButton url={r.proof_image_url} onOpen={setProofUrl} compact />}
                           {r.status === 'PENDING' && can('deposits', 'can_approve') && (
                             <>
                               <button
@@ -638,11 +629,7 @@ export default function Deposits() {
                   )}
                 </dl>
 
-                {selected.proof_image_url && (
-                  <a className="pay-status-link" href={selected.proof_image_url} target="_blank" rel="noreferrer">
-                    🧾 عرض إثبات الدفع
-                  </a>
-                )}
+                {selected.proof_image_url && <ProofIconButton url={selected.proof_image_url} onOpen={setProofUrl} />}
 
                 {selectedSms && (
                   <div className="sms-match-card">

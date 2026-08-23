@@ -848,6 +848,14 @@ a.stat-card:hover { border-color: var(--accent); }
 .payout-ledger-table th:first-child, .payout-ledger-table td:first-child { position: sticky; inset-inline-start: 0; z-index: 2; background: var(--surface); box-shadow: 1px 0 0 var(--border); }
 .payout-ledger-table thead th:first-child { z-index: 3; }
 .icon-text-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.proof-icon-button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--accent); font: inherit; cursor: pointer; }
+.proof-icon-button:hover { background: var(--surface-2); color: var(--text); }
+.proof-icon-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.proof-icon-button.is-compact { width: 34px; min-height: 34px; padding: 0; }
+.payout-execution-settings { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(220px, 300px) auto; align-items: end; gap: 14px; margin-block-end: 12px; }
+.payout-execution-settings label { display: grid; gap: 6px; font-size: .82rem; color: var(--muted); }
+.payout-execution-settings .control-row { margin: 0; }
+@media (max-width: 900px) { .payout-execution-settings { grid-template-columns: 1fr; align-items: stretch; } }
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
   background: var(--surface);

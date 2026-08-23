@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { db } from './db.js'
-import { requireAuth, requirePerm } from './rbac.js'
+import { requireAuth, requirePerm, requireSuperAdmin } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 import { MAX_PAGE } from './paging.js'
 
@@ -91,6 +91,31 @@ payoutRoutes.get('/', requirePerm('payouts', 'can_view'), async (c) => {
     for (const row of decisions ?? []) if (!decisionById.has(Number(row.maven_id))) decisionById.set(Number(row.maven_id), row)
   }
   return c.json({ rows: rows.map((row) => ({ ...presentPayout(row), decision: decisionById.get(row.maven_id) ?? null })), total: count ?? 0, limit, offset })
+})
+
+// Keep static settings routes above /:mavenId. The previous route order made
+// "execution-settings" hit the dynamic ID handler and return bad_id.
+payoutRoutes.get('/settings/execution', requirePerm('payouts', 'can_view'), async (c) => {
+  const { data, error } = await db.from('payout_execution_settings')
+    .select('auto_execute_enabled, max_auto_amount, updated_at, updated_by').eq('id', 1).maybeSingle()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  return c.json({ settings: data ?? { auto_execute_enabled: false, max_auto_amount: null } })
+})
+
+payoutRoutes.put('/settings/execution', requireSuperAdmin, async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const enabled = body?.auto_execute_enabled === true
+  const maxAmount = Number(body?.max_auto_amount)
+  if (!Number.isFinite(maxAmount) || maxAmount <= 0) return c.json({ error: 'positive_max_auto_amount_required' }, 400)
+  const actor = c.get('actor')
+  const update = { auto_execute_enabled: enabled, max_auto_amount: maxAmount, updated_at: new Date().toISOString(), updated_by: actor.username }
+  const { data, error } = await db.from('payout_execution_settings').update(update).eq('id', 1).select().maybeSingle()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  if (!data) return c.json({ error: 'settings_not_found' }, 404)
+  await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
+    action: enabled ? 'payout.provider_execution_enabled' : 'payout.provider_execution_disabled',
+    entity: 'payout_execution_settings', entity_id: '1', after: update })
+  return c.json({ settings: data })
 })
 
 payoutRoutes.get('/:mavenId', requirePerm('payouts', 'can_view'), async (c) => {
@@ -197,15 +222,4 @@ payoutRoutes.post('/:mavenId/decision', requirePerm('payouts', 'can_approve'), a
   if (!workerResponse.ok) return c.json({ error: 'worker_failed', worker: workerResult }, workerResponse.status as 400 | 401 | 403 | 404 | 409 | 500)
   // Report exactly what the worker verified — never a friendlier version of it.
   return c.json(workerResult)
-})
-
-// Whether auto execution is available, so the UI can offer the choice honestly
-// instead of presenting a button that will be refused.
-payoutRoutes.get('/execution-settings', requirePerm('payouts', 'can_view'), async (c) => {
-  const { data } = await db
-    .from('payout_execution_settings')
-    .select('auto_execute_enabled, max_auto_amount, updated_at, updated_by')
-    .eq('id', 1)
-    .maybeSingle()
-  return c.json({ settings: data ?? { auto_execute_enabled: false, max_auto_amount: null } })
 })
