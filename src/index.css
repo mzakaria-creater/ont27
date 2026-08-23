@@ -1933,6 +1933,13 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .payment-account-card dt { color: var(--text-dim); font-size: 10px; }
 .payment-account-card dd { margin: 3px 0 0; overflow-wrap: anywhere; font-size: 11px; font-weight: 700; }
 @media(max-width:700px){.payment-account-toolbar{flex-wrap:wrap}.payment-account-toolbar>label{min-width:100%;}.payment-account-toolbar>select{flex:1}.payment-account-card dl{grid-template-columns:1fr 1fr}}
+.payment-method-create { display: grid; grid-template-columns: minmax(210px,1.3fr) repeat(3,minmax(140px,1fr)) auto; align-items: end; gap: 10px; }
+.payment-method-create > div { display: flex; flex-direction: column; gap: 4px; }
+.payment-method-create > div span { color: var(--text-dim); font-size: 11px; }
+.method-logo-upload { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.method-logo-upload.disabled { opacity: .55; cursor: wait; pointer-events: none; }
+@media(max-width:900px){.payment-method-create{grid-template-columns:1fr 1fr}.payment-method-create>div{grid-column:1/-1}}
+@media(max-width:540px){.payment-method-create{grid-template-columns:1fr}}
 
 /* ---- System health: gauges, hourly bars, stat tiles ---- */
 .gauge-grid {

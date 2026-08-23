@@ -3,8 +3,9 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
 import { useLocale } from '../lib/locale'
-import { Building2, CreditCard, LayoutGrid, Search, TableProperties, UsersRound, WalletCards } from 'lucide-react'
+import { Building2, CreditCard, LayoutGrid, Search, TableProperties, Upload, UsersRound, WalletCards } from 'lucide-react'
 import MethodLogo from '../components/MethodLogo'
+import { refreshBrandLogos } from '../lib/brandLogos'
 
 interface Method { id: string; method_code: string; method_name: string; channel_type: string; is_active: boolean; sort_order: number }
 interface Account {
@@ -43,7 +44,7 @@ function masterCls(code: string | undefined): string {
 }
 
 export default function PaymentMethods() {
-  const { t } = useLocale(); const { can } = useAuth()
+  const { t } = useLocale(); const { can, user } = useAuth()
   const [data, setData] = useState<Data | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<'methods' | 'accounts'>('methods')
@@ -55,8 +56,10 @@ export default function PaymentMethods() {
   const [search, setSearch] = useState('')
   const [accountStatus, setAccountStatus] = useState('all')
   const [accountView, setAccountView] = useState<'table' | 'cards'>(() => localStorage.getItem('payment-account-view') === 'cards' ? 'cards' : 'table')
+  const [logoBusy, setLogoBusy] = useState<string | null>(null)
   const editable = can('payment_methods', 'can_edit')
   const create = can('payment_methods', 'can_create')
+  const canUploadLogo = ['owner', 'admin', 'super_admin'].includes(user?.role ?? '') && can('settings', 'can_edit')
 
   const load = useCallback(async () => {
     try { setData(await api<Data>('/api/payment-methods')); setError(null) } catch (e) {
@@ -75,6 +78,15 @@ export default function PaymentMethods() {
   const addPool = async (e: React.FormEvent) => { e.preventDefault(); try { await api('/api/payment-methods/pools', { method: 'POST', body: JSON.stringify(newPool) }); setNewPool(emptyPool); await load() } catch { setError(t('تعذر إنشاء الـ pool.', 'Unable to create pool.')) } }
   const assignMerchant = async (poolId: string) => { const mh = assign[poolId]; if (!mh) return; try { await api(`/api/payment-methods/pools/${poolId}/merchants`, { method: 'POST', body: JSON.stringify({ merchant_hierarchy_id: Number(mh) }) }); setAssign({ ...assign, [poolId]: '' }); await load() } catch { setError(t('تعذر إسناد التاجر.', 'Unable to assign merchant.')) } }
   const toggleMember = async (m: PoolMember) => { try { await api(`/api/payment-methods/pools/members/${m.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !m.is_active }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
+  const uploadMethodLogo = async (method: Method, file: File | null) => {
+    if (!file) return
+    setLogoBusy(method.id); setError(null)
+    try {
+      const form = new FormData(); form.set('file', file); form.set('asset_type', 'method'); form.set('asset_key', method.method_name)
+      await api('/api/admin/branding/logo', { method: 'POST', body: form }); await refreshBrandLogos()
+    } catch (e) { setError(e instanceof ApiError ? e.code : t('تعذر رفع الشعار.', 'Could not upload logo.')) }
+    finally { setLogoBusy(null) }
+  }
 
   // account → pool → master merchant + the sub-merchants sharing that pool.
   const poolOf = (a: Account) => data?.pools.find((p) => p.id === a.payment_pool_id) ?? null
@@ -148,8 +160,8 @@ export default function PaymentMethods() {
       {data && tab === 'methods' && (
         <>
           {create && (
-            <form className="card control-row" onSubmit={addMethod}>
-              <strong>{t('إضافة طريقة', 'Add method')}</strong>
+            <form className="card payment-method-create" onSubmit={addMethod}>
+              <div><strong>{t('إضافة طريقة دفع جديدة', 'Add new payment method')}</strong><span>{t('أنشئ الطريقة أولاً، ثم ارفع شعارها من بطاقتها.', 'Create the method first, then upload its logo from its card.')}</span></div>
               <input className="login-input" required placeholder="CODE" value={newMethod.method_code} onChange={(e) => setNewMethod({ ...newMethod, method_code: e.target.value })} />
               <input className="login-input" required placeholder={t('الاسم', 'Name')} value={newMethod.method_name} onChange={(e) => setNewMethod({ ...newMethod, method_name: e.target.value })} />
               <select className="login-input" value={newMethod.channel_type} onChange={(e) => setNewMethod({ ...newMethod, channel_type: e.target.value })}>
@@ -157,7 +169,7 @@ export default function PaymentMethods() {
                 <option value="bank_transfer">Bank transfer</option>
                 <option value="other">Other</option>
               </select>
-              <button className="btn-primary btn-sm">{t('إضافة', 'Add')}</button>
+              <button className="btn-primary btn-sm">{t('إضافة الطريقة', 'Add method')}</button>
             </form>
           )}
           {data.methods.map((method) => {
@@ -170,6 +182,7 @@ export default function PaymentMethods() {
                     <span className="pay-status-badge st-dim">{method.channel_type}</span>
                     <span className={`pay-status-badge ${method.is_active ? 'st-paid' : 'st-dim'}`}>{method.is_active ? t('نشط', 'Active') : t('موقوف', 'Disabled')}</span>
                     <span className="cell-sub">{t(`${rows.length} حساب`, `${rows.length} accounts`)}</span>
+                    {canUploadLogo && <label className={`btn-ghost btn-sm method-logo-upload${logoBusy===method.id?' disabled':''}`}><Upload size={14}/>{logoBusy===method.id?t('جارٍ الرفع…','Uploading…'):t('رفع شعار','Upload logo')}<input type="file" hidden disabled={logoBusy!==null} accept="image/png,image/jpeg,image/webp" onChange={(e)=>{void uploadMethodLogo(method,e.target.files?.[0]??null);e.currentTarget.value='' }}/></label>}
                     {editable && <button className="btn-ghost btn-sm" onClick={() => void toggle(method)}>{method.is_active ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>}
                     {create && <button className="btn-primary btn-sm" onClick={() => setOpen(open === method.id ? null : method.id)}>{t('إسناد حساب جديد', 'Assign new account')}</button>}
                   </div>
