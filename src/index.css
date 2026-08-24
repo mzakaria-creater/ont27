@@ -1903,9 +1903,12 @@ a.command-metric:hover { border-color: var(--accent); transform: translateY(-1px
   box-shadow: 0 24px 70px rgba(0,0,0,0.5);
 }
 .proof-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
-.proof-actions { display: flex; gap: 6px; }
-.proof-body { overflow: auto; padding: 12px; display: flex; justify-content: center; background: var(--bg); }
-.proof-body img { max-width: 100%; max-height: calc(90vh - 60px); border-radius: 8px; object-fit: contain; }
+.proof-actions { display: flex; align-items: center; gap: 6px; }
+.proof-zoom-value { min-width: 42px; color: var(--text-dim); font-size: 11px; text-align: center; }
+.proof-body { overflow: auto; padding: 12px; display: flex; justify-content: center; align-items: flex-start; background: var(--bg); }
+.proof-body img { max-width: 100%; max-height: calc(90vh - 60px); border-radius: 8px; object-fit: contain; transform-origin: top center; transition: transform .12s ease; cursor: zoom-in; }
+@media (prefers-reduced-motion: reduce) { .proof-body img { transition: none; } }
+@media (max-width: 640px) { .proof-head { align-items: flex-start; flex-direction: column; } .proof-actions { width: 100%; flex-wrap: wrap; } }
 
 /* Proof thumbnail in the approvals queue — evidence visible without leaving the row. */
 .proof-thumb-btn {
