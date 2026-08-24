@@ -250,6 +250,13 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   // page visit so button visibility follows the current authenticated role.
   useEffect(() => { void refreshPermissions() }, [pathname, refreshPermissions])
 
+  // The unified transactions table has many operational columns. Give it the
+  // full available width by collapsing the optional 290px SMS rail whenever
+  // the user enters that page; the floating control can still reopen it.
+  useEffect(() => {
+    if (pathname === '/transactions') setSmsOpen(false)
+  }, [pathname])
+
   // A link draws only when the role satisfies BOTH gates the server applies:
   // can_view on one of the page keys, and — where the API is role-gated — the
   // role itself. Hiding is presentation only; server/rbac.ts still refuses a
@@ -293,7 +300,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
         </div>}
       </nav>
       <main className="dash-main">{children}</main>
-      {can('sms_live') && <button type="button" className="btn-ghost btn-sm" style={{ position: 'fixed', insetInlineEnd: 12, bottom: 12, zIndex: 30 }} onClick={() => setSmsOpen((open) => !open)} aria-pressed={smsOpen}>{smsOpen ? t('إخفاء SMS المباشر', 'Hide Live SMS') : t('إظهار SMS المباشر', 'Show Live SMS')}</button>}
+      {can('sms_live') && <button type="button" className="btn-ghost btn-sm sms-rail-toggle" onClick={() => setSmsOpen((open) => !open)} aria-pressed={smsOpen}>{smsOpen ? t('إخفاء SMS المباشر', 'Hide Live SMS') : t('إظهار SMS المباشر', 'Show Live SMS')}</button>}
       {can('sms_live') && smsOpen && <SmsRail />}
     </div>
   )
