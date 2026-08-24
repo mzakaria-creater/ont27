@@ -136,6 +136,9 @@ export default function Payouts() {
   const [maxAutoAmount, setMaxAutoAmount] = useState("");
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const appliedQ = params.get("q") ?? "";
   const appliedFrom = params.get("from") ?? "";
   const appliedTo = params.get("to") ?? "";
@@ -478,6 +481,72 @@ export default function Payouts() {
     }
   };
   const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1;
+  const selectedRows = (data?.rows ?? []).filter((row) => selectedIds.has(row.maven_id));
+  const toggleSelected = (mavenId: number) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(mavenId)) next.delete(mavenId);
+      else if (next.size < 20) next.add(mavenId);
+      return next;
+    });
+  };
+  const runBulkDecision = async (decision: "APPROVED" | "DECLINED") => {
+    const rows = selectedRows.filter((row) => row.status === "PENDING");
+    if (!rows.length) return;
+    if (decision === "APPROVED") {
+      const incomplete = rows.filter(
+        (row) =>
+          !row.image_url ||
+          !(row.utr_number || row.linked_sms?.trx_id || row.linked_sms?.trx_reference),
+      );
+      if (incomplete.length) {
+        setBulkMessage(
+          `${t("أكمل Proof وUTR لكل معاملة أولاً", "Add individual proof and UTR first")}: ${incomplete.map((row) => row.maven_id).join(", ")}`,
+        );
+        return;
+      }
+    }
+    if (
+      !window.confirm(
+        t(
+          `تأكيد إرسال ${rows.length} معاملة إلى NagoPay؟ كل معاملة ستُنفذ وتُدقق منفصلة.`,
+          `Submit ${rows.length} payouts to NagoPay? Each will be executed and audited separately.`,
+        ),
+      )
+    )
+      return;
+    setBulkBusy(true);
+    setBulkMessage(null);
+    const succeeded: number[] = [];
+    const failed: number[] = [];
+    for (const row of rows) {
+      try {
+        const result = await api<DecisionResult>(`/api/payouts/${row.maven_id}/decision`, {
+          method: "POST",
+          body: JSON.stringify({
+            decision,
+            proof_url: decision === "APPROVED" ? row.image_url : undefined,
+            utr_number:
+              decision === "APPROVED"
+                ? row.utr_number || row.linked_sms?.trx_id || row.linked_sms?.trx_reference
+                : undefined,
+            remark: `Bulk ${decision} from ONT27`,
+            mode: "auto",
+          }),
+        });
+        if (result.executed_on_provider) succeeded.push(row.maven_id);
+        else failed.push(row.maven_id);
+      } catch {
+        failed.push(row.maven_id);
+      }
+    }
+    setSelectedIds(new Set(failed));
+    setBulkMessage(
+      `${t("نجح", "Succeeded")}: ${succeeded.length} · ${t("فشل", "Failed")}: ${failed.length}${failed.length ? ` (${failed.join(", ")})` : ""}`,
+    );
+    setBulkBusy(false);
+    await load(true);
+  };
 
   return (
     <PanelShell>
@@ -617,6 +686,15 @@ export default function Payouts() {
           ))}
         </div>
       </div>
+      {can("payouts", "can_approve") && selectedIds.size > 0 && (
+        <section className="card payout-bulk-bar">
+          <strong>{selectedIds.size} {t("محدد", "selected")}</strong>
+          <button className="btn-primary btn-sm" disabled={bulkBusy} onClick={() => void runBulkDecision("APPROVED")}>{t("دفع المحدد على NagoPay", "Pay selected on NagoPay")}</button>
+          <button className="btn-ghost btn-sm danger" disabled={bulkBusy} onClick={() => void runBulkDecision("DECLINED")}>{t("رفض المحدد على NagoPay", "Decline selected on NagoPay")}</button>
+          <button className="btn-ghost btn-sm" disabled={bulkBusy} onClick={() => setSelectedIds(new Set())}>{t("إلغاء التحديد", "Clear")}</button>
+          {bulkMessage && <span className="cell-sub">{bulkMessage}</span>}
+        </section>
+      )}
       {err && <div className="card warn">{err}</div>}
       <section className="card recent-card">
         {loading && (
@@ -630,7 +708,25 @@ export default function Payouts() {
             <table className="data-table clickable payout-ledger-table">
               <thead>
                 <tr>
-                  <th>{t("إجراء", "Action")}</th>
+                  <th>
+                    <span className="row-actions">
+                      {can("payouts", "can_approve") && (
+                        <input
+                          type="checkbox"
+                          aria-label={t("تحديد كل المعلق", "Select pending payouts")}
+                          checked={Boolean(data?.rows.filter((row) => row.status === "PENDING").length) && data!.rows.filter((row) => row.status === "PENDING").slice(0, 20).every((row) => selectedIds.has(row.maven_id))}
+                          onChange={(e) =>
+                            setSelectedIds(
+                              e.target.checked
+                                ? new Set(data!.rows.filter((row) => row.status === "PENDING").slice(0, 20).map((row) => row.maven_id))
+                                : new Set(),
+                            )
+                          }
+                        />
+                      )}
+                      {t("إجراء", "Action")}
+                    </span>
+                  </th>
                   <th>{t("رقم المعاملة", "Transaction ID")}</th>
                   <th>{t("مرجع التاجر", "Merchant Reference")}</th>
                   <th>{t("الحالة", "Status")}</th>
@@ -662,6 +758,14 @@ export default function Payouts() {
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div className="row-actions">
+                          {row.status === "PENDING" && can("payouts", "can_approve") && (
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(row.maven_id)}
+                              aria-label={`${t("تحديد", "Select")} ${row.maven_id}`}
+                              onChange={() => toggleSelected(row.maven_id)}
+                            />
+                          )}
                           <button
                             className="btn-ghost btn-sm icon-text-btn"
                             onClick={() => void openDetail(row.maven_id)}
