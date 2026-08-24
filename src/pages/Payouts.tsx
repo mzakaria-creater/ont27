@@ -660,7 +660,7 @@ export default function Payouts() {
                             <Eye size={15} aria-hidden="true" />
                             {row.status === "PENDING" &&
                             can("payouts", "can_approve")
-                              ? t("قرار", "Decide")
+                              ? t("رفع إثبات ودفع", "Upload proof & Pay")
                               : t("تفاصيل", "Details")}
                           </button>
                           {can("payouts", "can_edit") && (
@@ -677,7 +677,6 @@ export default function Payouts() {
                             </button>
                           )}
                           {row.status === "PENDING" &&
-                            can("payouts", "can_edit") &&
                             can("payouts", "can_approve") && (
                               <select
                                 className="payout-status-action-select"
@@ -685,8 +684,10 @@ export default function Payouts() {
                                 value=""
                                 onChange={(e) => {
                                   const nextStatus = e.target.value;
-                                  if (nextStatus)
+                                  if (!nextStatus) return;
+                                  if (can("payouts", "can_edit"))
                                     void openDetail(row.maven_id, true, nextStatus);
+                                  else void openDetail(row.maven_id);
                                 }}
                               >
                                 <option value="">{t("تغيير الحالة…", "Change status…")}</option>
