@@ -75,7 +75,7 @@ export const STATUS_META: Record<string, { ar: string; en: string; cls: string }
 // Current UI language, mirrored from the LocaleProvider so statusMeta() can pick
 // the right label without every call site threading a hook through. Updated
 // synchronously by setStatusLocale() during the provider's render.
-let statusLocale: 'ar' | 'en' = (typeof localStorage !== 'undefined' && localStorage.getItem('panel-language') === 'en') ? 'en' : 'ar'
+let statusLocale: 'ar' | 'en' = (typeof localStorage !== 'undefined' && localStorage.getItem('panel-language') === 'ar') ? 'ar' : 'en'
 export function setStatusLocale(locale: 'ar' | 'en') { statusLocale = locale }
 
 export function statusMeta(status: string) {

@@ -1,11 +1,20 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="en" dir="ltr" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex" />
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <title>OnTarget Panel</title>
+    <script>
+      (() => {
+        const language = localStorage.getItem('panel-language') === 'ar' ? 'ar' : 'en'
+        const theme = localStorage.getItem('panel-theme') === 'light' ? 'light' : 'dark'
+        document.documentElement.lang = language
+        document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr'
+        document.documentElement.dataset.theme = theme
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -15,7 +15,7 @@ const LocaleContext = createContext<LocaleState | null>(null)
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
   const [locale, setLocale] = useState<Locale>(() => (
-    localStorage.getItem('panel-language') === 'en' ? 'en' : 'ar'
+    localStorage.getItem('panel-language') === 'ar' ? 'ar' : 'en'
   ))
 
   // Keep the status-label locale in sync synchronously so statusMeta() picks the

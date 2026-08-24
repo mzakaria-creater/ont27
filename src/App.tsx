@@ -55,7 +55,7 @@ const AirDroid = lazy(() => import('./pages/AirDroid'))
 type Conn = 'wait' | 'ok' | 'bad'
 
 function useTheme() {
-  const [theme, setTheme] = useState(() => localStorage.getItem('panel-theme') ?? 'light')
+  const [theme, setTheme] = useState(() => localStorage.getItem('panel-theme') === 'light' ? 'light' : 'dark')
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
     localStorage.setItem('panel-theme', theme)
