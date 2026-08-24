@@ -13,6 +13,7 @@ const MARKS: { test: (m: string) => boolean; label: string; bg: string; fg: stri
   { test: (m) => m.includes('vodafone') || m.includes('vf'), label: 'V', bg: '#e60000', fg: '#fff', title: 'Vodafone Cash', image: 'https://live.staticflickr.com/3074/3051439462_01e1a0fb1f_b.jpg' },
   { test: (m) => m.includes('etissalat') || m.includes('etisalat') || m.includes('e&'), label: 'e&', bg: '#95c11f', fg: '#000', title: 'Etisalat Cash', image: 'https://logowik.com/content/uploads/images/etisalat-new-20225210.logowik.com.webp' },
   { test: (m) => m.includes('instapay') || m.includes('insta pay'), label: 'IP', bg: '#5d4fb8', fg: '#fff', title: 'InstaPay', image: 'https://play-lh.googleusercontent.com/_ks0_XUbrZOkeiXkjaiZEK1S-j1skuQgF1E8S3ff702CoVyaiGnbfXPK74WjgxMk0Q4v2hlhu8WTHxp52Wq0' },
+  { test: (m) => m.includes('payfuture') || m.includes('pay future'), label: 'PF', bg: '#fff', fg: '#111', title: 'PayFuture', image: 'https://www.igamingtoday.com/wp-content/uploads/2024/10/PayFuture.jpeg' },
   { test: (m) => m.includes('we pay') || m.includes('wepay'), label: 'WE', bg: '#7b2d8b', fg: '#fff', title: 'WE Pay', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0f/We_logo.svg/3840px-We_logo.svg.png' },
   { test: (m) => m.includes('meeza'), label: 'M', bg: '#0a7a5a', fg: '#fff', title: 'Meeza' },
   { test: (m) => m.includes('bank'), label: '🏦', bg: 'var(--hover-2)', fg: 'var(--text)', title: 'Bank deposit' },

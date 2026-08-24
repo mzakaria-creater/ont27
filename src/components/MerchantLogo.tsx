@@ -6,6 +6,8 @@ const EZINVEST_LOGO =
   "https://consumersiteimages.trustpilot.net/business-units/5ba3ba86026be000014dccd9-198x149-1x.jpg";
 const T365_LOGO =
   "https://media.licdn.com/dms/image/v2/D4E0BAQGF0Cbxg9KOUw/company-logo_200_200/B4EZuNNQKSIMAM-/0/1767600621319/it_support_365_ltd_logo?e=2147483647&v=beta&t=6JEsLB64fnC99PXDenfenMH1XbASwuWgLi9o7N-ebLM";
+const PAYFUTURE_LOGO =
+  "https://www.igamingtoday.com/wp-content/uploads/2024/10/PayFuture.jpeg";
 
 export default function MerchantLogo({
   merchant,
@@ -16,6 +18,7 @@ export default function MerchantLogo({
   const isMelBet = /mel\s*bet/i.test(raw);
   const isEzInvest = /(?:^|[\s_-])ez(?:invest)?(?:$|[\s_-])/i.test(raw);
   const isT365 = /(?:^|[\s_-])t\s*365(?:$|[\s_-])/i.test(raw);
+  const isPayFuture = /pay\s*future/i.test(raw);
   const uploadedLogo = useBrandLogo("merchant", raw);
   const logo =
     uploadedLogo ??
@@ -25,11 +28,13 @@ export default function MerchantLogo({
         ? EZINVEST_LOGO
         : isT365
           ? T365_LOGO
+          : isPayFuture
+            ? PAYFUTURE_LOGO
           : null);
 
   return (
     <span
-      className={`merchant-brand-cell${isMelBet || isEzInvest || isT365 ? " merchant-brand-featured" : ""}`}
+      className={`merchant-brand-cell${isMelBet || isEzInvest || isT365 || isPayFuture ? " merchant-brand-featured" : ""}`}
     >
       {logo ? (
         <img
