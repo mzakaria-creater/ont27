@@ -50,6 +50,7 @@ export default function TvScreen() {
   const { t } = useLocale()
   const { can } = useAuth()
   const [stats, setStats] = useState<DepositStats | null>(null)
+  const [pendingDeposits, setPendingDeposits] = useState<DepositRow[]>([])
   const [control, setControl] = useState<ControlStats | null>(null)
   const [sms, setSms] = useState<TvSms[]>([])
   const [matched, setMatched] = useState<TvSms[]>([])
@@ -67,16 +68,18 @@ export default function TvScreen() {
     await syncProviders()
     const results = await Promise.allSettled([
       api<DepositStats>('/api/deposits/stats'),
+      api<{ rows: DepositRow[] }>('/api/deposits?status=PENDING&limit=12'),
       api<{ rows: TvSms[] }>('/api/sms?limit=9'),
       api<{ rows: TvSms[] }>('/api/sms?match=linked&limit=9'),
       api<{ rows: TvPayout[] }>('/api/payouts?limit=6'),
       api<ControlStats>('/api/control/status'),
     ])
     if (results[0].status === 'fulfilled') setStats(results[0].value)
-    if (results[1].status === 'fulfilled') setSms(results[1].value.rows)
-    if (results[2].status === 'fulfilled') setMatched(results[2].value.rows)
-    if (results[3].status === 'fulfilled') setPayouts(results[3].value.rows)
-    if (results[4].status === 'fulfilled') setControl(results[4].value)
+    if (results[1].status === 'fulfilled') setPendingDeposits(results[1].value.rows)
+    if (results[2].status === 'fulfilled') setSms(results[2].value.rows)
+    if (results[3].status === 'fulfilled') setMatched(results[3].value.rows)
+    if (results[4].status === 'fulfilled') setPayouts(results[4].value.rows)
+    if (results[5].status === 'fulfilled') setControl(results[5].value)
   }, [])
 
   useEffect(() => {
@@ -96,6 +99,7 @@ export default function TvScreen() {
       await api(`/api/deposits/${row.tx_id}/decision`, {
         method: 'POST', body: JSON.stringify({ action, note: `Decision from TV screen: ${action}` }),
       })
+      setPendingDeposits((current) => current.filter((item) => item.tx_id !== row.tx_id))
       setActionMessage(action === 'approve' ? t('تم الاعتماد وإرسال التنفيذ للمزوّد.', 'Approved and queued for provider execution.') : t('تم تسجيل الرفض.', 'Decline recorded.'))
       await load()
     } catch {
@@ -105,13 +109,18 @@ export default function TvScreen() {
   }
 
   const cStats = control?.stats ?? {}
+  const pendingIds = new Set(pendingDeposits.map((row) => row.tx_id))
+  const liveTransactions = [
+    ...pendingDeposits,
+    ...(stats?.recent ?? []).filter((row) => !pendingIds.has(row.tx_id)),
+  ].slice(0, 12)
   const acceptRate = (cStats.approval_rate as number | undefined) ??
     (stats && stats.day.paid.count + stats.day.declined > 0
       ? Math.round((stats.day.paid.count / (stats.day.paid.count + stats.day.declined)) * 100)
       : null)
 
   const kpis: { label: string; value: string | number; cls?: string }[] = [
-    { label: t('معلّقة الآن', 'Pending now'), value: stats?.pending ?? '…', cls: 'amber' },
+    { label: t('معلّقة الآن', 'Pending now'), value: stats?.pendingAll ?? stats?.pending ?? '…', cls: 'amber' },
     { label: t('مقبول اليوم', 'Approved today'), value: (cStats.today_approved as number | undefined) ?? stats?.day.paid.count ?? '…', cls: 'green' },
     { label: t('مرفوض اليوم', 'Declined today'), value: (cStats.today_declined as number | undefined) ?? stats?.day.declined ?? '…', cls: 'red' },
     { label: t('نسبة القبول', 'Approval rate'), value: acceptRate != null ? `${acceptRate}%` : '…' },
@@ -193,10 +202,13 @@ export default function TvScreen() {
         </section>
 
         <section className="tv-col">
-          <h3>💳 {t('معاملات حية', 'Live transactions')}</h3>
+          <h3 className="tv-section-heading">
+            <span>💳 {t('معاملات حية', 'Live transactions')}</span>
+            <span className="tv-pending-count">{pendingDeposits.length} {t('بانتظار إجراء', 'need action')}</span>
+          </h3>
           {actionMessage && <div className="tv-action-message" role="status">{actionMessage}</div>}
           <div className="tv-feed">
-            {(stats?.recent ?? []).slice(0, 9).map((r: DepositRow) => {
+            {liveTransactions.map((r: DepositRow) => {
               const st = statusMeta(r.status)
               return (
                 <div key={r.tx_id} className={`tv-item${r.status === 'PENDING' ? ' warn' : ''}`}>
@@ -209,13 +221,22 @@ export default function TvScreen() {
                     {' '}{r.sender_name ?? '—'} · {r.merchant ?? '—'}
                   </div>
                   {r.status === 'PENDING' && (
-                    <div className="tv-pending-actions">
+                    <>
+                    <div className="tv-action-state" role="status">
+                      {actionBusy === r.tx_id
+                        ? t('جارٍ تنفيذ القرار…', 'Processing decision…')
+                        : canApprove
+                          ? t('إجراء مطلوب الآن', 'Action required now')
+                          : t('معلّقة — للعرض فقط', 'Pending — view only')}
+                    </div>
+                    <div className={`tv-pending-actions${canApprove ? '' : ' view-only'}`}>
                       <Link className="tv-action-btn details" to={`/transactions/${encodeURIComponent(r.ontarget_ref ?? String(r.tx_id))}`} title={t('فتح التفاصيل', 'Open details')}><ExternalLink size={15}/><span>{t('التفاصيل', 'Details')}</span></Link>
                       {canApprove && <>
                         <button className="tv-action-btn approve" disabled={actionBusy === r.tx_id} onClick={() => void decide(r, 'approve')}><Check size={16}/><span>{t('اعتماد', 'Approve')}</span></button>
                         <button className="tv-action-btn decline" disabled={actionBusy === r.tx_id} onClick={() => void decide(r, 'decline')}><X size={16}/><span>{t('رفض', 'Decline')}</span></button>
                       </>}
                     </div>
+                    </>
                   )}
                 </div>
               )
