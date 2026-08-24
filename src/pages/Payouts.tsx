@@ -133,6 +133,14 @@ export default function Payouts() {
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const appliedQ = params.get("q") ?? "";
+  const appliedFrom = params.get("from") ?? "";
+  const appliedTo = params.get("to") ?? "";
+  const appliedMerchant = params.get("merchant") ?? "";
+  const appliedMethod = params.get("method") ?? "";
+  const [from, setFrom] = useState(appliedFrom);
+  const [to, setTo] = useState(appliedTo);
+  const [merchantFilter, setMerchantFilter] = useState(appliedMerchant);
+  const [methodFilter, setMethodFilter] = useState(appliedMethod);
 
   useEffect(() => {
     void api<{ settings: ExecSettings }>("/api/payouts/settings/execution")
@@ -216,6 +224,10 @@ export default function Payouts() {
     });
     if (status) search.set("status", status);
     if (appliedQ) search.set("q", appliedQ);
+    if (appliedFrom) search.set("from", appliedFrom);
+    if (appliedTo) search.set("to", appliedTo);
+    if (appliedMerchant) search.set("merchant", appliedMerchant);
+    if (appliedMethod) search.set("method", appliedMethod);
     try {
       setData(await api<ListResponse>(`/api/payouts?${search}`));
     } catch (e) {
@@ -230,12 +242,12 @@ export default function Payouts() {
     } finally {
       setLoading(false);
     }
-  }, [status, appliedQ, page, pageSize]);
+  }, [status, appliedQ, appliedFrom, appliedTo, appliedMerchant, appliedMethod, page, pageSize]);
   useEffect(() => {
     void load();
   }, [load]);
 
-  const setFilter = (next: { status?: string; q?: string; page?: number }) => {
+  const setFilter = (next: { status?: string; q?: string; from?: string; to?: string; merchant?: string; method?: string; page?: number }) => {
     const p = new URLSearchParams(params);
     if (next.status !== undefined) {
       next.status ? p.set("status", next.status) : p.delete("status");
@@ -245,10 +257,33 @@ export default function Payouts() {
       next.q ? p.set("q", next.q) : p.delete("q");
       p.delete("page");
     }
+    for (const key of ["from", "to", "merchant", "method"] as const) {
+      if (next[key] !== undefined) {
+        next[key] ? p.set(key, next[key]!) : p.delete(key);
+        p.delete("page");
+      }
+    }
     if (next.page !== undefined) {
       next.page > 1 ? p.set("page", String(next.page)) : p.delete("page");
     }
     setParams(p);
+  };
+  const dateValue = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+  const applyDatePreset = (preset: "today" | "week" | "month") => {
+    const end = new Date();
+    const start = new Date(end);
+    if (preset === "week") start.setDate(end.getDate() - ((end.getDay() + 6) % 7));
+    if (preset === "month") start.setDate(1);
+    const nextFrom = dateValue(start);
+    const nextTo = dateValue(end);
+    setFrom(nextFrom);
+    setTo(nextTo);
+    setFilter({ from: nextFrom, to: nextTo });
   };
   const openDetail = async (mavenId: number, startEditing = false) => {
     setDetailLoading(true);
@@ -455,6 +490,58 @@ export default function Payouts() {
           {settingsMessage && <p className="drawer-note">{settingsMessage}</p>}
         </section>
       )}
+      <section className="card payout-filter-panel">
+        <div className="payout-filter-presets">
+          <button className="btn-ghost btn-sm" onClick={() => applyDatePreset("today")}>{t("اليوم", "Today")}</button>
+          <button className="btn-ghost btn-sm" onClick={() => applyDatePreset("week")}>{t("هذا الأسبوع", "This week")}</button>
+          <button className="btn-ghost btn-sm" onClick={() => applyDatePreset("month")}>{t("هذا الشهر", "This month")}</button>
+        </div>
+        <form
+          className="payout-filter-grid"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setFilter({
+              from,
+              to,
+              merchant: merchantFilter.trim(),
+              method: methodFilter.trim(),
+              q: q.trim(),
+            });
+          }}
+        >
+          <label className="field-label">
+            {t("من", "From")}
+            <input className="login-input" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+          </label>
+          <label className="field-label">
+            {t("إلى", "To")}
+            <input className="login-input" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+          </label>
+          <label className="field-label">
+            {t("التاجر", "Merchant")}
+            <input className="login-input" value={merchantFilter} onChange={(e) => setMerchantFilter(e.target.value)} placeholder={t("كل التجار", "All merchants")} />
+          </label>
+          <label className="field-label">
+            {t("طريقة الدفع", "Payment method")}
+            <input className="login-input" value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)} placeholder={t("كل الطرق", "All methods")} />
+          </label>
+          <label className="field-label payout-filter-search">
+            {t("بحث", "Search")}
+            <input className="login-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("رقم العملية / الهاتف / الاسم", "Transaction / phone / name")} />
+          </label>
+          <button type="submit" className="btn-primary btn-sm">{t("تطبيق", "Apply")}</button>
+          <button
+            type="button"
+            className="btn-ghost btn-sm"
+            onClick={() => {
+              setFrom(""); setTo(""); setMerchantFilter(""); setMethodFilter(""); setQ("");
+              setParams(new URLSearchParams());
+            }}
+          >
+            {t("إعادة ضبط", "Reset")}
+          </button>
+        </form>
+      </section>
       <div className="filter-bar">
         <div className="chip-row">
           <button
@@ -473,38 +560,6 @@ export default function Payouts() {
             </button>
           ))}
         </div>
-        <form
-          className="search-row"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setFilter({ q: q.trim() });
-          }}
-        >
-          <input
-            className="login-input search-input"
-            placeholder={t(
-              "بحث: مرجع / موبايل / اسم حساب / تاجر",
-              "Search: ref / phone / account name / merchant",
-            )}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-          <button type="submit" className="btn-primary btn-sm">
-            {t("بحث", "Search")}
-          </button>
-          {appliedQ && (
-            <button
-              type="button"
-              className="btn-ghost btn-sm"
-              onClick={() => {
-                setQ("");
-                setFilter({ q: "" });
-              }}
-            >
-              {t("مسح", "Clear")}
-            </button>
-          )}
-        </form>
       </div>
       {err && <div className="card warn">{err}</div>}
       <section className="card recent-card">

@@ -91,6 +91,8 @@ payoutRoutes.get("/", requirePerm("payouts", "can_view"), async (c) => {
   const q = c.req.query("q")?.trim();
   const from = c.req.query("from")?.trim();
   const to = c.req.query("to")?.trim();
+  const merchant = c.req.query("merchant")?.trim();
+  const method = c.req.query("method")?.trim();
   const limit = Math.min(Number(c.req.query("limit")) || 25, MAX_PAGE);
   const offset = Math.max(Number(c.req.query("offset")) || 0, 0);
 
@@ -106,6 +108,8 @@ payoutRoutes.get("/", requirePerm("payouts", "can_view"), async (c) => {
     query = query.gte("first_seen_at", `${from}T00:00:00+03:00`);
   if (to && /^\d{4}-\d{2}-\d{2}$/.test(to))
     query = query.lte("first_seen_at", `${to}T23:59:59.999+03:00`);
+  if (merchant) query = query.ilike("merchant", `%${merchant.replaceAll(",", " ")}%`);
+  if (method) query = query.ilike("pay_by", `%${method.replaceAll(",", " ")}%`);
   if (q) {
     const like = `%${q.replaceAll(",", " ")}%`;
     const ors = [
