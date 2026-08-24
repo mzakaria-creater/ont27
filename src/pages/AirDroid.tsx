@@ -6,6 +6,7 @@ import { depositTime } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 
 interface Device { device: string; sim_slot: number | null; online: boolean | null; battery: number | null; last_seen_at: string | null }
+const AIRDROID_BUSINESS_URL = 'https://biz.airdroid.com/#/signin?isBusiness=1&lang=en'
 
 export default function AirDroid() {
   const { t } = useLocale()
@@ -17,12 +18,12 @@ export default function AirDroid() {
   useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 15_000); return () => window.clearInterval(timer) }, [])
 
   return <PanelShell>
-    <section className="page-head"><div><h2><Smartphone size={24}/> AirDroid</h2><p className="page-sub">{t('وصول آمن للأجهزة مع حالة الاتصال الحية من نظام SMS.', 'Secure device access with live connection state from the SMS system.')}</p></div><a className="btn-primary btn-sm" href="https://web.airdroid.com/" target="_blank" rel="noreferrer">{t('فتح AirDroid Web', 'Open AirDroid Web')} <ExternalLink size={15}/></a></section>
+    <section className="page-head"><div><h2><Smartphone size={24}/> AirDroid Business</h2><p className="page-sub">{t('وصول آمن للأجهزة مع حالة الاتصال الحية من نظام SMS.', 'Secure device access with live connection state from the SMS system.')}</p></div><a className="btn-primary btn-sm" href={AIRDROID_BUSINESS_URL} target="_blank" rel="noreferrer">{t('فتح AirDroid Business', 'Open AirDroid Business')} <ExternalLink size={15}/></a></section>
     <section className="card airdroid-security"><ShieldCheck size={20}/><div><strong>{t('تسجيل الدخول يبقى لدى AirDroid', 'Authentication stays with AirDroid')}</strong><p>{t('لا نخزن بيانات دخول AirDroid. قد يمنع AirDroid العرض المدمج، وفي هذه الحالة استخدم زر الفتح في تبويب.', 'We never store AirDroid credentials. AirDroid may block embedded access; use the open-in-tab action when it does.')}</p></div></section>
     <section className="card airdroid-console-card">
-      <div className="recent-head"><div><h3><MonitorSmartphone size={18}/> {t('لوحة AirDroid المدمجة', 'Embedded AirDroid console')}</h3><span className="cell-sub">web.airdroid.com</span></div><div className="airdroid-console-actions"><button className="btn-ghost btn-sm" onClick={()=>setFrameKey((value)=>value+1)}><RefreshCw size={14}/> {t('إعادة تحميل','Reload')}</button><a className="btn-primary btn-sm" href="https://web.airdroid.com/" target="_blank" rel="noreferrer">{t('فتح بأمان','Open securely')} <ExternalLink size={14}/></a></div></div>
+      <div className="recent-head"><div><h3><MonitorSmartphone size={18}/> {t('لوحة AirDroid Business المدمجة', 'Embedded AirDroid Business console')}</h3><span className="cell-sub">biz.airdroid.com</span></div><div className="airdroid-console-actions"><button className="btn-ghost btn-sm" onClick={()=>setFrameKey((value)=>value+1)}><RefreshCw size={14}/> {t('إعادة تحميل','Reload')}</button><a className="btn-primary btn-sm" href={AIRDROID_BUSINESS_URL} target="_blank" rel="noreferrer">{t('فتح بأمان','Open securely')} <ExternalLink size={14}/></a></div></div>
       <div className="airdroid-frame-wrap">
-        <iframe key={frameKey} className="airdroid-frame" src="https://web.airdroid.com/" title={t('لوحة AirDroid','AirDroid console')} allow="clipboard-read; clipboard-write; fullscreen" referrerPolicy="strict-origin-when-cross-origin"/>
+        <iframe key={frameKey} className="airdroid-frame" src={AIRDROID_BUSINESS_URL} title={t('لوحة AirDroid Business','AirDroid Business console')} allow="clipboard-read; clipboard-write; fullscreen" referrerPolicy="strict-origin-when-cross-origin"/>
         <div className="airdroid-frame-help"><strong>{t('هل الإطار فارغ؟','Blank frame?')}</strong><span>{t('AirDroid يقيّد العرض داخل مواقع أخرى. افتحه في تبويب آمن للتحكم الكامل.','AirDroid restricts display inside other sites. Open it in a secure tab for full control.')}</span></div>
       </div>
     </section>
