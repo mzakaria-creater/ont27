@@ -439,6 +439,10 @@ body {
 .approval-card-amount { font-size: clamp(22px, 3vw, 28px); line-height: 1; font-weight: 850; letter-spacing: -.03em; }
 .approval-card-party { display: flex; flex-direction: column; gap: 3px; }
 .approval-card-party span { color: var(--muted, #94a3b8); font-size: 12px; }
+.approval-sender-identity { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.approval-sender-identity > span:last-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.approval-sender-identity strong { overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
+.approval-sender-identity .method-logo { inline-size: 44px; block-size: 44px; border-radius: 11px; background: rgba(255,255,255,.94) !important; }
 .approval-card-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; }
 .approval-card-facts div { min-width: 0; }
 .approval-card-facts dt { margin-bottom: 3px; color: var(--muted, #94a3b8); font-size: 11px; }
@@ -449,8 +453,14 @@ body {
 .approval-card-evidence small { color: var(--muted, #94a3b8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .approval-card-reason { background: rgba(148,163,184,.08); }
 .approval-card-reason > span { color: var(--muted, #94a3b8); }
-.approval-card-proof { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px; border: 1px solid var(--line, rgba(148,163,184,.2)); border-radius: 9px; color: inherit; background: transparent; cursor: pointer; text-align: start; }
-.approval-card-proof img { width: 46px; height: 38px; border-radius: 6px; object-fit: cover; }
+.approval-card-proof { display: grid; gap: 8px; width: 100%; padding: 8px; border: 1px solid var(--line, rgba(148,163,184,.2)); border-radius: 11px; color: inherit; background: var(--bg); cursor: pointer; text-align: start; }
+.approval-card-proof img { width: 100%; height: clamp(190px, 25vw, 280px); border-radius: 8px; object-fit: contain; background: #080b12; }
+.approval-card-proof span { color: var(--accent); font-size: 12px; font-weight: 750; text-align: center; }
+.approval-card-proof:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.approval-item-card .method-logo, .approval-item-card .merchant-brand-logo, .approval-item-card .merchant-brand-fallback { flex-basis: 48px; width: 48px; height: 48px; border-radius: 11px; }
+.approval-item-card .merchant-brand-featured { min-width: 0; flex-direction: row; text-align: start; }
+.approval-item-card .merchant-brand-featured .merchant-brand-logo { flex-basis: 48px; width: 48px; height: 48px; padding: 2px; border-radius: 11px; box-shadow: none; }
+.approval-item-card .merchant-brand-featured .merchant-brand-name { max-width: 120px; white-space: nowrap; font-size: 12px; }
 .approval-card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; }
 .approval-card-actions button, .approval-card-open { min-height: 40px; justify-content: center; text-align: center; }
 .approval-card-open { display: inline-flex; align-items: center; margin-top: auto; text-decoration: none; }

@@ -52,6 +52,24 @@ interface PayRow {
   created_utc: string | null
 }
 
+const networkFromPhone = (phone: string | null | undefined) => {
+  const digits = String(phone ?? '').replace(/\D/g, '')
+  const local = digits.startsWith('20') ? `0${digits.slice(2)}` : digits
+  if (local.startsWith('010')) return 'Vodafone Cash'
+  if (local.startsWith('012')) return 'Orange Money'
+  if (local.startsWith('011')) return 'Etisalat Cash'
+  if (local.startsWith('015')) return 'WE Pay'
+  return null
+}
+
+function SenderIdentity({ name, phone, unknown }: { name: string | null | undefined; phone: string | null | undefined; unknown: string }) {
+  const network = networkFromPhone(phone)
+  return <span className="approval-sender-identity">
+    {network && <MethodLogo method={network} />}
+    <span><strong>{name ?? unknown}</strong><span className="mono">{phone ?? '—'}</span></span>
+  </span>
+}
+
 export default function Approvals() {
   const { can } = useAuth()
   const { t } = useLocale()
@@ -200,7 +218,7 @@ export default function Approvals() {
                       {r.merchant_tx_reference && <div className="cell-sub mono">{r.merchant_tx_reference}</div>}
                     </td>
                     <td className="mono">{money(r.amount, r.currency)}</td>
-                    <td>{r.sender_name ?? '—'}{r.sender_number && <div className="cell-sub mono">{r.sender_number}</div>}</td>
+                    <td><SenderIdentity name={r.sender_name} phone={r.sender_number} unknown="—" /></td>
                     <td>
                       <span className="mono">{r.receiving_wallet ?? r.to_account_number ?? '—'}</span>
                       {(r.to_account_name ?? r.to_bank) && <div className="cell-sub">{r.to_account_name ?? r.to_bank}</div>}
@@ -237,7 +255,7 @@ export default function Approvals() {
                   <span className="pay-status-badge st-pending">{t('معلّقة', 'Pending')}</span>
                 </div>
                 <div className="approval-card-amount">{money(r.amount, r.currency)}</div>
-                <div className="approval-card-party"><strong>{r.sender_name ?? t('مرسل غير معروف', 'Unknown sender')}</strong><span className="mono">{r.sender_number ?? '—'}</span></div>
+                <div className="approval-card-party"><SenderIdentity name={r.sender_name} phone={r.sender_number} unknown={t('مرسل غير معروف', 'Unknown sender')} /></div>
                 <dl className="approval-card-facts">
                   <div><dt>{t('المحفظة', 'Wallet')}</dt><dd className="mono">{r.receiving_wallet ?? r.to_account_number ?? '—'}</dd></div>
                   <div><dt>{t('الطريقة', 'Method')}</dt><dd><MethodLogo method={r.payment_method} /></dd></div>
