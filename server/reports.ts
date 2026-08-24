@@ -105,6 +105,56 @@ async function buildReport(c: any) {
 }
 const esc = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`
 
+reportsRoutes.get('/withdrawal-sms', requireAnyPerm(['reports', 'advanced_analysis', 'sms_live'], 'can_view'), async (c) => {
+  const from = c.req.query('from')?.trim() || null
+  const to = c.req.query('to')?.trim() || null
+  const wallet = c.req.query('wallet')?.trim() || null
+  const provider = c.req.query('provider')?.trim() || null
+  const link = c.req.query('link')?.trim() || null
+  const q = c.req.query('q')?.trim() || null
+  const limit = Math.min(Math.max(Number(c.req.query('limit')) || 100, 1), 500)
+  const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
+  const columns = 'id, received_at, device_name, sim_slot, receiver_number, wallet_number, confirmed_wallet_number, provider, amount, balance_after, matched, match_status, consumed_by_tx_id, matched_transaction_id, trx_id, trx_reference, sender_name, sms_first_line'
+  const apply = (base: any) => {
+    let query = base.eq('sms_category', 'withdrawal')
+    if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) query = query.gte('received_at', `${from}T00:00:00+03:00`)
+    if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) query = query.lte('received_at', `${to}T23:59:59.999+03:00`)
+    if (provider) query = query.ilike('provider', `%${provider.replaceAll(',', ' ')}%`)
+    if (wallet) query = query.or(`confirmed_wallet_number.ilike.%${wallet.replaceAll(',', ' ')}%,wallet_number.ilike.%${wallet.replaceAll(',', ' ')}%,receiver_number.ilike.%${wallet.replaceAll(',', ' ')}%`)
+    if (link === 'linked') query = query.or('matched.eq.true,consumed_by_tx_id.not.is.null,matched_transaction_id.not.is.null')
+    if (link === 'unlinked') query = query.or('matched.eq.false,matched.is.null').is('consumed_by_tx_id', null).is('matched_transaction_id', null)
+    if (q) query = query.or(`trx_id.ilike.%${q.replaceAll(',', ' ')}%,trx_reference.ilike.%${q.replaceAll(',', ' ')}%,sender_name.ilike.%${q.replaceAll(',', ' ')}%,sms_first_line.ilike.%${q.replaceAll(',', ' ')}%`)
+    return query
+  }
+  try {
+    const [pageResult, allRows] = await Promise.all([
+      apply(db.from('inbound_sms').select(columns, { count: 'exact' })).order('received_at', { ascending: false, nullsFirst: false }).range(offset, offset + limit - 1),
+      fetchAll<any>(apply(db.from('inbound_sms').select('id, amount, balance_after, matched, consumed_by_tx_id, matched_transaction_id, confirmed_wallet_number, wallet_number, receiver_number, provider').order('id', { ascending: true }))),
+    ])
+    if (pageResult.error) throw new Error(pageResult.error.message)
+    const linked = (row: any) => row.matched === true || row.consumed_by_tx_id != null || row.matched_transaction_id != null
+    const rows = (pageResult.data ?? []).map((row: any) => ({ ...row, linked: linked(row), wallet: row.confirmed_wallet_number ?? row.wallet_number ?? row.receiver_number ?? null }))
+    const linkedCount = allRows.filter(linked).length
+    const withBalance = allRows.filter((row) => row.balance_after != null).length
+    const providers = [...new Set(allRows.map((row) => row.provider).filter(Boolean))].sort()
+    const wallets = [...new Set(allRows.map((row) => row.confirmed_wallet_number ?? row.wallet_number ?? row.receiver_number).filter(Boolean))]
+    return c.json({
+      rows, total: pageResult.count ?? 0, limit, offset, providers,
+      kpis: {
+        count: allRows.length,
+        amount: allRows.reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
+        linked: linkedCount,
+        unlinked: allRows.length - linkedCount,
+        coverage: allRows.length ? linkedCount / allRows.length * 100 : 0,
+        wallets: wallets.length,
+        with_balance: withBalance,
+      },
+    })
+  } catch (error) {
+    return c.json({ error: 'db_error', detail: (error as Error).message }, 500)
+  }
+})
+
 reportsRoutes.get('/', requireAnyPerm(['reports', 'advanced_analysis'], 'can_view'), async (c) => {
   try { return c.json(await buildReport(c)) } catch (error) { return c.json({ error: 'db_error', detail: (error as Error).message }, 500) }
 })

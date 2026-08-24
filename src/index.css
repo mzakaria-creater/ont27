@@ -368,6 +368,53 @@ body {
   .auth-hero { display: none; }
   .auth-form { padding: 30px 26px; }
 }
+
+/* Withdrawal SMS reporting */
+.withdrawal-report-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.withdrawal-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  margin-block-end: 12px;
+}
+.withdrawal-report-filters {
+  display: grid;
+  gap: 10px;
+  margin-block-end: 12px;
+}
+.withdrawal-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(120px, 1fr)) auto auto auto;
+  gap: 9px;
+  align-items: end;
+}
+.withdrawal-filter-grid label {
+  display: grid;
+  gap: 5px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 650;
+}
+.withdrawal-filter-grid .login-input { inline-size: 100%; min-inline-size: 0; }
+.withdrawal-report-table { min-inline-size: 1120px; }
+.withdrawal-unlinked-row { background: rgba(239, 68, 68, 0.055); }
+@media (max-width: 1200px) {
+  .withdrawal-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .withdrawal-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .withdrawal-report-head { flex-direction: column; }
+  .withdrawal-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .withdrawal-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 420px) {
+  .withdrawal-filter-grid { grid-template-columns: 1fr; }
+}
 .view-switch { display: inline-flex; align-items: center; gap: 3px; padding: 3px; border: 1px solid var(--line, rgba(148,163,184,.22)); border-radius: 10px; background: var(--surface, rgba(15,23,42,.65)); }
 .view-switch button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border: 0; border-radius: 7px; color: var(--muted, #94a3b8); background: transparent; cursor: pointer; font: inherit; font-weight: 700; }
 .view-switch button.active { color: #fff; background: #2563eb; box-shadow: 0 2px 8px rgba(37,99,235,.28); }
