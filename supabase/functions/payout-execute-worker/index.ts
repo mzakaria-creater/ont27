@@ -357,7 +357,16 @@ Deno.serve(async (req) => {
     const nowIso = new Date().toISOString();
     const { error: updErr } = await sb
       .from("maven_payout_transactions")
-      .update({ status: STATUS_MAP[decision], updated_utc: nowIso, manual_status_override: false })
+      // Provider calls a successful payout PAID; the local Maven mirror uses
+      // APPROVED. Hold the verified local result until the source replica has
+      // caught up, otherwise a stale PENDING sync immediately reverts the UI.
+      .update({
+        status: decision,
+        updated_utc: nowIso,
+        manual_status_override: true,
+        manual_reopened_at: null,
+        manual_reopened_by: null,
+      })
       .eq("maven_id", maven_id);
 
     return json({

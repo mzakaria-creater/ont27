@@ -186,10 +186,15 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
         }
         payload = payload.map((row) => {
           const held = statusOverrides.get(row.maven_id as number)
+          const isReopenedReview = held?.manual_reopened_at != null
+          const incomingStillPending = /^pending$/i.test(String(row.status ?? ''))
+          const preserveHeldStatus = Boolean(held && (isReopenedReview || incomingStillPending))
           return {
             ...row,
             matched_sms_id: matchedSms.get(row.maven_id as number) ?? row.matched_sms_id ?? null,
-            ...(held ? { status: held.status, manual_status_override: true, manual_reopened_at: held.manual_reopened_at, manual_reopened_by: held.manual_reopened_by } : {}),
+            ...(preserveHeldStatus
+              ? { status: held?.status, manual_status_override: true, manual_reopened_at: held?.manual_reopened_at, manual_reopened_by: held?.manual_reopened_by }
+              : held ? { manual_status_override: false, manual_reopened_at: null, manual_reopened_by: null } : {}),
           }
         })
       }
