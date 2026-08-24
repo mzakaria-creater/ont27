@@ -219,8 +219,8 @@ export default function Payouts() {
     }
   };
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setErr(null);
     const search = new URLSearchParams({
       limit: String(pageSize),
@@ -244,11 +244,20 @@ export default function Payouts() {
           : t("تعذّر تحميل السحوبات.", "Failed to load payouts."),
       );
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [status, appliedQ, appliedFrom, appliedTo, appliedMerchant, appliedMethod, page, pageSize]);
   useEffect(() => {
     void load();
+  }, [load]);
+  useEffect(() => {
+    const refresh = () => void load(true);
+    window.addEventListener("ontarget:provider-sync", refresh);
+    const interval = window.setInterval(refresh, 15_000);
+    return () => {
+      window.removeEventListener("ontarget:provider-sync", refresh);
+      window.clearInterval(interval);
+    };
   }, [load]);
 
   const setFilter = (next: { status?: string; q?: string; from?: string; to?: string; merchant?: string; method?: string; page?: number }) => {

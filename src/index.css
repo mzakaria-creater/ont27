@@ -859,10 +859,28 @@ a.stat-card:hover { border-color: var(--accent); }
 .complaint-search-clear:hover { background: var(--surface-2); color: var(--text); }
 @media (max-width: 640px) { .complaint-tx-search { width: 100%; min-width: 0; } .complaint-tx-search-control { min-width: 0; } }
 .payout-ledger-wrap { max-width: 100%; overflow: auto; }
-.payout-ledger-table { min-width: 2200px; }
+.payout-ledger-table { width: 100%; min-width: 1180px; table-layout: auto; }
 .payout-ledger-table th, .payout-ledger-table td { white-space: nowrap; }
 .payout-ledger-table th:first-child, .payout-ledger-table td:first-child { position: sticky; inset-inline-start: 0; z-index: 2; background: var(--surface); box-shadow: 1px 0 0 var(--border); }
 .payout-ledger-table thead th:first-child { z-index: 3; }
+@media (max-width: 1600px) {
+  .payout-ledger-table th:nth-child(10), .payout-ledger-table td:nth-child(10),
+  .payout-ledger-table th:nth-child(15), .payout-ledger-table td:nth-child(15),
+  .payout-ledger-table th:nth-child(16), .payout-ledger-table td:nth-child(16) { display: none; }
+}
+@media (max-width: 1250px) {
+  .payout-ledger-table { min-width: 960px; }
+  .payout-ledger-table th:nth-child(8), .payout-ledger-table td:nth-child(8),
+  .payout-ledger-table th:nth-child(9), .payout-ledger-table td:nth-child(9),
+  .payout-ledger-table th:nth-child(11), .payout-ledger-table td:nth-child(11),
+  .payout-ledger-table th:nth-child(14), .payout-ledger-table td:nth-child(14) { display: none; }
+}
+@media (max-width: 820px) {
+  .payout-ledger-table { min-width: 720px; }
+  .payout-ledger-table th:nth-child(3), .payout-ledger-table td:nth-child(3),
+  .payout-ledger-table th:nth-child(7), .payout-ledger-table td:nth-child(7),
+  .payout-ledger-table th:nth-child(17), .payout-ledger-table td:nth-child(17) { display: none; }
+}
 .icon-text-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .proof-icon-button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--accent); font: inherit; cursor: pointer; }
 .proof-icon-button:hover { background: var(--surface-2); color: var(--text); }
