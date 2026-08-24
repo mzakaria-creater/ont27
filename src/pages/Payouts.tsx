@@ -102,9 +102,6 @@ export default function Payouts() {
   const [proofName, setProofName] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [remark, setRemark] = useState("");
-  // Manual stays the default. Auto only appears when the switch is on, so the
-  // UI never offers a button the worker is going to refuse.
-  const [mode, setMode] = useState<"manual" | "auto">("manual");
   const [utr, setUtr] = useState("");
   const [execSettings, setExecSettings] = useState<ExecSettings | null>(null);
   const [maxAutoAmount, setMaxAutoAmount] = useState("");
@@ -121,7 +118,6 @@ export default function Payouts() {
             ? ""
             : String(r.settings.max_auto_amount),
         );
-        setMode(r.settings.auto_execute_enabled ? "auto" : "manual");
       })
       .catch(() => setExecSettings(null));
   }, []);
@@ -161,7 +157,6 @@ export default function Payouts() {
         },
       );
       setExecSettings(result.settings);
-      setMode(result.settings.auto_execute_enabled ? "auto" : "manual");
       setSettingsMessage(
         enabled
           ? t(
@@ -243,7 +238,6 @@ export default function Payouts() {
         await api<{ payout: PayoutDetail }>(`/api/payouts/${mavenId}`)
       ).payout;
       setSelected(payout);
-      setMode(execSettings?.auto_execute_enabled ? "auto" : "manual");
       setUtr(
         payout.linked_sms?.trx_id ?? payout.linked_sms?.trx_reference ?? "",
       );
@@ -296,7 +290,7 @@ export default function Payouts() {
               ? undefined
               : proofUrl,
             remark,
-            mode: decision === "APPROVED" ? mode : "manual",
+            mode: "auto",
             utr_number: utr.trim() || undefined,
           }),
         },
@@ -799,8 +793,8 @@ export default function Payouts() {
                               "This sends the screenshot and UTR to NagoPay, marks the payout PAID, then reads the provider status back before recording success.",
                             )
                           : t(
-                              "الموافقة تتطلب إثباتاً مرفوعاً. القرار يُسجَّل فقط — نفّذ التحويل على بوابة المزوّد بنفسك.",
-                              "Approval requires an uploaded proof. The decision is only recorded — move the money on the provider portal yourself.",
+                              "إجراءات NagoPay المباشرة متوقفة. فعّل التنفيذ المباشر أولاً؛ لن يسجّل هذا النموذج قراراً يدوياً مضللاً.",
+                              "Live NagoPay actions are disabled. Enable live execution first; this form will not record a misleading manual decision.",
                             )}
                       </p>
                       {!execSettings?.auto_execute_enabled && (
@@ -828,10 +822,24 @@ export default function Payouts() {
                       </button>
                       <button
                         className="btn-ghost danger"
-                        disabled={decisionBusy || uploading}
-                        onClick={() => void decide("DECLINED")}
+                        disabled={
+                          decisionBusy ||
+                          uploading ||
+                          !execSettings?.auto_execute_enabled
+                        }
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              t(
+                                "تأكيد رفض هذا السحب مباشرة على NagoPay؟",
+                                "Decline this payout live on NagoPay?",
+                              ),
+                            )
+                          )
+                            void decide("DECLINED");
+                        }}
                       >
-                        {t("تسجيل مرفوض", "Record declined")}
+                        {t("رفض على NagoPay", "Decline on NagoPay")}
                       </button>
                     </div>
                   )}
