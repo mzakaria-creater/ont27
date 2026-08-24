@@ -73,6 +73,8 @@ interface PayoutEditForm {
   pay_by: string;
   merchant: string;
   remark: string;
+  status: string;
+  image_url: string;
 }
 interface ListResponse {
   rows: PayoutRow[];
@@ -116,6 +118,8 @@ export default function Payouts() {
     pay_by: "",
     merchant: "",
     remark: "",
+    status: "PENDING",
+    image_url: "",
   });
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [decisionErr, setDecisionErr] = useState<string | null>(null);
@@ -306,6 +310,8 @@ export default function Payouts() {
         pay_by: payout.pay_by ?? "",
         merchant: payout.merchant ?? "",
         remark: payout.remark ?? "",
+        status: payout.status,
+        image_url: payout.image_url ?? "",
       });
       setEditing(startEditing && can("payouts", "can_edit"));
       setUtr(
@@ -319,13 +325,35 @@ export default function Payouts() {
   };
   const saveEdit = async () => {
     if (!selected) return;
+    const statusChanged = editForm.status !== selected.status;
+    if (statusChanged && selected.status !== "PENDING") {
+      setEditError(t("لا يمكن عكس حالة نُفذت بالفعل على NagoPay.", "A status already executed on NagoPay cannot be reversed."));
+      return;
+    }
+    if (statusChanged && editForm.status === "APPROVED" && (!editForm.image_url || !utr.trim())) {
+      setEditError(t("اختيار Paid يتطلب إثباتاً وUTR.", "Selecting Paid requires proof and UTR."));
+      return;
+    }
+    if (statusChanged && !window.confirm(t("سيتم تغيير الحالة مباشرة على NagoPay. متابعة؟", "This will change the status live on NagoPay. Continue?"))) return;
     setEditBusy(true);
     setEditError(null);
     try {
       await api(`/api/payouts/${selected.maven_id}`, {
         method: "PUT",
-        body: JSON.stringify(editForm),
+        body: JSON.stringify({ ...editForm, status: undefined }),
       });
+      if (statusChanged) {
+        await api(`/api/payouts/${selected.maven_id}/decision`, {
+          method: "POST",
+          body: JSON.stringify({
+            decision: editForm.status,
+            proof_url: editForm.image_url || undefined,
+            remark: editForm.remark,
+            mode: "auto",
+            utr_number: utr.trim() || undefined,
+          }),
+        });
+      }
       setEditing(false);
       await openDetail(selected.maven_id);
       void load();
@@ -351,6 +379,7 @@ export default function Payouts() {
         body: form,
       });
       setProofUrl(result.proof_url);
+      setEditForm((current) => ({ ...current, image_url: result.proof_url }));
       setProofName(file.name);
     } catch (e) {
       setDecisionErr(
@@ -782,6 +811,19 @@ export default function Payouts() {
                   <section className="payout-edit-card">
                     <strong>{t("تعديل بيانات السحب", "Edit payout details")}</strong>
                     <div className="payout-edit-grid">
+                      <label className="field-label">
+                        {t("الحالة", "Status")}
+                        <select
+                          className="login-input"
+                          value={editForm.status}
+                          disabled={selected.status !== "PENDING" || !can("payouts", "can_approve")}
+                          onChange={(e) => setEditForm((current) => ({ ...current, status: e.target.value }))}
+                        >
+                          <option value="PENDING">PENDING</option>
+                          <option value="APPROVED">PAID</option>
+                          <option value="DECLINED">DECLINED</option>
+                        </select>
+                      </label>
                       {(
                         [
                           ["account_name", t("اسم المستفيد", "Beneficiary name")],
@@ -818,6 +860,32 @@ export default function Payouts() {
                           }
                         />
                       </label>
+                      <label className="field-label payout-edit-note">
+                        {t("إثبات الدفع", "Payment proof")}
+                        <span className="row-actions">
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,application/pdf"
+                            disabled={uploading || !can("payouts", "can_approve")}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0] ?? null;
+                              if (!file) return;
+                              void (async () => {
+                                await uploadProof(file);
+                              })();
+                            }}
+                          />
+                          {(proofUrl || editForm.image_url) && (
+                            <ProofIconButton url={proofUrl ?? editForm.image_url} onOpen={setViewedProofUrl} compact />
+                          )}
+                        </span>
+                      </label>
+                      {editForm.status === "APPROVED" && editForm.status !== selected.status && (
+                        <label className="field-label payout-edit-note">
+                          UTR
+                          <input className="login-input mono" value={utr} onChange={(e) => setUtr(e.target.value)} />
+                        </label>
+                      )}
                     </div>
                     {editError && <p className="cell-sub danger-text">{editError}</p>}
                     <div className="row-actions">

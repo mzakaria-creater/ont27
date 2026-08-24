@@ -287,13 +287,18 @@ payoutRoutes.put("/:mavenId", requirePerm("payouts", "can_edit"), async (c) => {
     pay_by: value("pay_by", 80),
     merchant: value("merchant", 180),
     remark: value("remark", 500),
+    image_url: value("image_url", 1000),
     updated_utc: new Date().toISOString(),
   };
+  const baseUrl = process.env.SUPABASE_URL;
+  const allowedProofPrefix = `${baseUrl}/storage/v1/object/public/${PROOF_BUCKET}/${PROOF_PREFIX}`;
+  if (update.image_url && !update.image_url.startsWith(allowedProofPrefix))
+    return c.json({ error: "invalid_proof_url" }, 400);
   if (update.mobile_no && !/^\+?[0-9\s()-]{7,24}$/.test(update.mobile_no))
     return c.json({ error: "invalid_mobile_no" }, 400);
   const { data: before, error: readError } = await db
     .from("maven_payout_transactions")
-    .select("maven_id, account_name, mobile_no, pay_by, merchant, remark")
+    .select("maven_id, account_name, mobile_no, pay_by, merchant, remark, image_url")
     .eq("maven_id", mavenId)
     .maybeSingle();
   if (readError)
