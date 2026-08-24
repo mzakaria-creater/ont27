@@ -6,6 +6,7 @@ import MethodLogo from '../components/MethodLogo'
 import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { RotateCcw, Search } from 'lucide-react'
 
 type Tab = 'overview' | 'transactions' | 'wallets' | 'merchants' | 'reports'
 interface WindowStats { depositCount: number; depositVolume: number; payoutCount: number; payoutVolume: number; declined: number; attempts: number }
@@ -16,6 +17,7 @@ interface WalletData { wallets: Wallet[]; devices: { device: string; sim_slot: n
 interface Reports { totals?: { depCount: number; depVolume: number; declined: number; payCount: number; payVolume: number; commission: number; fees: number }; depositStatuses?: Record<string, { count: number; amount: number }>; payoutStatuses?: Record<string, { count: number; amount: number }>; daily: unknown[]; byMethod: { key?: string; method?: string; master?: string; count: number; volume?: number; amount?: number }[] }
 
 const approved = (status: string | null) => status === 'PAID' || status === 'APPROVED'
+const EMPTY_FILTERS = { q: '', type: '', status: '', merchant: '', method: '', from: '', to: '' }
 
 export default function AnalyticsDashboard() {
   const { t } = useLocale()
@@ -28,6 +30,8 @@ export default function AnalyticsDashboard() {
   const [reports, setReports] = useState<Reports | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [filterDraft, setFilterDraft] = useState(EMPTY_FILTERS)
+  const [filters, setFilters] = useState(EMPTY_FILTERS)
 
   const load = useCallback(async () => {
     try {
@@ -37,13 +41,16 @@ export default function AnalyticsDashboard() {
       const [exec, today, tx, wallet, report] = await Promise.all([
         api<ExecutiveData>(`/api/executive-dashboard?${range}`),
         period === 'day' ? Promise.resolve(null) : api<ExecutiveData>(`/api/executive-dashboard?from=${to}&to=${to}`),
-        api<{ rows: Transaction[] }>('/api/transactions?limit=25'),
+        api<{ rows: Transaction[] }>(`/api/transactions?${new URLSearchParams({
+          limit: '50',
+          ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value)),
+        })}`),
         api<WalletData>('/api/wallets'),
         api<Reports>('/api/reports'),
       ])
-      setExecutive(exec); setTodayExecutive(today ?? exec); setTransactions(tx.rows ?? []); setWallets(wallet); setReports(report); setError(false)
+      setExecutive(exec); setTodayExecutive(today ?? exec); setTransactions((current) => JSON.stringify(current) === JSON.stringify(tx.rows ?? []) ? current : tx.rows ?? []); setWallets(wallet); setReports(report); setError(false)
     } catch { setError(true) } finally { setLoading(false) }
-  }, [period])
+  }, [period, filters])
 
   useEffect(() => { void load(); const id = window.setInterval(() => void load(), 30_000); return () => window.clearInterval(id) }, [load])
   const stats = executive?.windows?.[period] ?? executive?.summary
@@ -89,6 +96,25 @@ export default function AnalyticsDashboard() {
       </div>
     </section>
     {error && <div className="card warn">{t('تعذّر تحميل بعض البيانات الحية.', 'Unable to load some live data.')}</div>}
+
+    <form className="filter-bar analytics-filter-bar" onSubmit={(event) => { event.preventDefault(); setFilters(filterDraft); setTab('transactions') }}>
+      <label className="analytics-filter-search">
+        <Search size={16} aria-hidden="true" />
+        <input value={filterDraft.q} onChange={(event) => setFilterDraft({ ...filterDraft, q: event.target.value })} placeholder={t('مرجع، اسم، هاتف أو تاجر…', 'Reference, name, phone, or merchant…')} aria-label={t('بحث المعاملات', 'Search transactions')} />
+      </label>
+      <select className="filter-select" value={filterDraft.type} onChange={(event) => setFilterDraft({ ...filterDraft, type: event.target.value })} aria-label={t('نوع المعاملة', 'Transaction type')}>
+        <option value="">{t('كل الأنواع', 'All types')}</option><option value="deposit">{t('إيداع', 'Deposit')}</option><option value="payout">{t('سحب', 'Payout')}</option>
+      </select>
+      <select className="filter-select" value={filterDraft.status} onChange={(event) => setFilterDraft({ ...filterDraft, status: event.target.value })} aria-label={t('الحالة', 'Status')}>
+        <option value="">{t('كل الحالات', 'All statuses')}</option>{['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID'].map((status) => <option key={status} value={status}>{status}</option>)}
+      </select>
+      <input className="login-input" value={filterDraft.merchant} onChange={(event) => setFilterDraft({ ...filterDraft, merchant: event.target.value })} placeholder={t('التاجر', 'Merchant')} aria-label={t('التاجر', 'Merchant')} />
+      <input className="login-input" value={filterDraft.method} onChange={(event) => setFilterDraft({ ...filterDraft, method: event.target.value })} placeholder={t('الطريقة', 'Method')} aria-label={t('طريقة الدفع', 'Payment method')} />
+      <label className="analytics-date-field"><span>{t('من', 'From')}</span><input className="login-input" type="date" value={filterDraft.from} onChange={(event) => setFilterDraft({ ...filterDraft, from: event.target.value })} /></label>
+      <label className="analytics-date-field"><span>{t('إلى', 'To')}</span><input className="login-input" type="date" value={filterDraft.to} onChange={(event) => setFilterDraft({ ...filterDraft, to: event.target.value })} /></label>
+      <button className="btn-primary btn-sm" type="submit">{t('تطبيق', 'Apply')}</button>
+      <button className="btn-ghost btn-sm" type="button" onClick={() => { setFilterDraft(EMPTY_FILTERS); setFilters(EMPTY_FILTERS) }}><RotateCcw size={14} />{t('إعادة', 'Reset')}</button>
+    </form>
 
     {tab === 'overview' && <>
       <div className="filter-bar">{(['day', 'week', 'month'] as const).map((key) => <button key={key} className={period === key ? 'btn-primary btn-sm' : 'btn-ghost btn-sm'} onClick={() => setPeriod(key)}>{key === 'day' ? t('24 ساعة', '24 hours') : key === 'week' ? t('7 أيام', '7 days') : t('30 يوماً', '30 days')}</button>)}</div>
