@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
 import { useLocale } from '../lib/locale'
-import { Building2, CreditCard, LayoutGrid, Search, TableProperties, Upload, UsersRound, WalletCards } from 'lucide-react'
+import { Building2, CreditCard, LayoutGrid, Plus, Power, Search, TableProperties, Upload, UsersRound, WalletCards } from 'lucide-react'
 import MethodLogo from '../components/MethodLogo'
 import { refreshBrandLogos } from '../lib/brandLogos'
 
@@ -22,6 +22,14 @@ type Data = { methods: Method[]; accounts: Account[]; pools: Pool[]; poolMembers
 
 const emptyAccount = { account_number: '', label: '', device_name: '', bank_name: '' }
 const emptyPool = { pool_name: '', pool_code: '', master_merchant_id: '' }
+const methodPresets = [
+  { code: 'INSTAPAY', name: 'InstaPay', channel: 'bank_transfer' },
+  { code: 'VODAFONE_CASH', name: 'Vodafone Cash', channel: 'sms_device' },
+  { code: 'ORANGE_CASH', name: 'Orange Cash', channel: 'sms_device' },
+  { code: 'ETISALAT_CASH', name: 'Etisalat Cash', channel: 'sms_device' },
+  { code: 'BANK_TRANSFER', name: 'Bank Transfer', channel: 'bank_transfer' },
+  { code: 'BINANCE_USDT', name: 'Binance USDT', channel: 'other' },
+]
 
 // Balance freshness — matches the 15-minute window used when the SMS→wallet
 // sync was built, so a figure that stopped updating never reads as live.
@@ -72,6 +80,10 @@ export default function PaymentMethods() {
 
   const toggle = async (m: Method) => { try { await api(`/api/payment-methods/${m.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !m.is_active }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
   const addMethod = async (e: React.FormEvent) => { e.preventDefault(); try { await api('/api/payment-methods', { method: 'POST', body: JSON.stringify(newMethod) }); setNewMethod({ method_code: '', method_name: '', channel_type: 'sms_device' }); await load() } catch { setError(t('تعذر إضافة الطريقة.', 'Unable to add method.')) } }
+  const useMethodPreset = (code: string) => {
+    const preset = methodPresets.find((item) => item.code === code)
+    if (preset) setNewMethod({ method_code: preset.code, method_name: preset.name, channel_type: preset.channel })
+  }
   const addAccount = async (e: React.FormEvent) => { e.preventDefault(); if (!open) return; try { await api(`/api/payment-methods/${open}/accounts`, { method: 'POST', body: JSON.stringify(account) }); setAccount(emptyAccount); setOpen(null); await load() } catch { setError(t('تعذر إضافة الحساب.', 'Unable to add account.')) } }
   const toggleAccount = async (r: Account) => { try { await api(`/api/payment-methods/accounts/${r.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !r.is_active }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
   const setAccountPool = async (r: Account, poolId: string) => { try { await api(`/api/payment-methods/accounts/${r.id}`, { method: 'PATCH', body: JSON.stringify({ payment_pool_id: poolId || null }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
@@ -146,7 +158,8 @@ export default function PaymentMethods() {
         </div>
       </div>
 
-      <div className="filter-pills" role="tablist" style={{ marginBlock: 14 }}>
+      <section className="payment-glass-console">
+      <div className="filter-pills payment-console-tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'methods'} className={`pill${tab === 'methods' ? ' active' : ''}`} onClick={() => setTab('methods')}>
           {t('طرق الدفع', 'Payment methods')} <span className="mono">{data?.methods.length ?? 0}</span>
         </button>
@@ -161,7 +174,11 @@ export default function PaymentMethods() {
         <>
           {create && (
             <form className="card payment-method-create" onSubmit={addMethod}>
-              <div><strong>{t('إضافة طريقة دفع جديدة', 'Add new payment method')}</strong><span>{t('أنشئ الطريقة أولاً، ثم ارفع شعارها من بطاقتها.', 'Create the method first, then upload its logo from its card.')}</span></div>
+              <div><strong><Plus size={16}/> {t('إضافة طريقة دفع جديدة', 'Add new payment method')}</strong><span>{t('اختر قالباً أو أدخل بيانات مخصصة، ثم ارفع الشعار بعد الحفظ.', 'Choose a preset or enter a custom method, then upload its logo after saving.')}</span></div>
+              <select className="login-input" value="" onChange={(e) => useMethodPreset(e.target.value)} aria-label={t('قالب طريقة الدفع', 'Payment method preset')}>
+                <option value="">{t('اختر قالباً', 'Choose preset')}</option>
+                {methodPresets.map((preset) => <option key={preset.code} value={preset.code}>{preset.name}</option>)}
+              </select>
               <input className="login-input" required placeholder="CODE" value={newMethod.method_code} onChange={(e) => setNewMethod({ ...newMethod, method_code: e.target.value })} />
               <input className="login-input" required placeholder={t('الاسم', 'Name')} value={newMethod.method_name} onChange={(e) => setNewMethod({ ...newMethod, method_name: e.target.value })} />
               <select className="login-input" value={newMethod.channel_type} onChange={(e) => setNewMethod({ ...newMethod, channel_type: e.target.value })}>
@@ -172,32 +189,36 @@ export default function PaymentMethods() {
               <button className="btn-primary btn-sm">{t('إضافة الطريقة', 'Add method')}</button>
             </form>
           )}
+          <section className="payment-method-table-card">
+            <div className="table-wrap"><table className="data-table payment-method-table"><thead><tr>
+              <th>{t('الشعار', 'Logo')}</th><th>{t('اسم الطريقة', 'Method name')}</th><th>{t('النوع', 'Type')}</th><th>{t('الحسابات', 'Accounts')}</th><th>{t('الحالة', 'Status')}</th><th>{t('الإجراءات', 'Actions')}</th>
+            </tr></thead><tbody>
           {data.methods.map((method) => {
             const rows = data.accounts.filter((r) => r.payment_method_id === method.id)
-            return (
-              <section className="card recent-card" key={method.id}>
-                <div className="recent-head">
-                  <h3 className="payment-method-title"><MethodLogo method={method.method_name}/><span>{method.method_name}<small className="mono">{method.method_code}</small></span></h3>
-                  <div className="control-row">
-                    <span className="pay-status-badge st-dim">{method.channel_type}</span>
-                    <span className={`pay-status-badge ${method.is_active ? 'st-paid' : 'st-dim'}`}>{method.is_active ? t('نشط', 'Active') : t('موقوف', 'Disabled')}</span>
-                    <span className="cell-sub">{t(`${rows.length} حساب`, `${rows.length} accounts`)}</span>
-                    {canUploadLogo && <label className={`btn-ghost btn-sm method-logo-upload${logoBusy===method.id?' disabled':''}`}><Upload size={14}/>{logoBusy===method.id?t('جارٍ الرفع…','Uploading…'):t('رفع شعار','Upload logo')}<input type="file" hidden disabled={logoBusy!==null} accept="image/png,image/jpeg,image/webp" onChange={(e)=>{void uploadMethodLogo(method,e.target.files?.[0]??null);e.currentTarget.value='' }}/></label>}
-                    {editable && <button className="btn-ghost btn-sm" onClick={() => void toggle(method)}>{method.is_active ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>}
-                    {create && <button className="btn-primary btn-sm" onClick={() => setOpen(open === method.id ? null : method.id)}>{t('إسناد حساب جديد', 'Assign new account')}</button>}
-                  </div>
-                </div>
+            return (<Fragment key={method.id}>
+              <tr>
+                <td><MethodLogo method={method.method_name}/></td>
+                <td><strong>{method.method_name}</strong><div className="cell-sub mono">{method.method_code}</div></td>
+                <td><span className="pay-status-badge st-dim">{method.channel_type.replaceAll('_', ' ')}</span></td>
+                <td><strong className="mono">{rows.length}</strong><div className="cell-sub">{t('حسابات مُسندة', 'assigned accounts')}</div></td>
+                <td><span className={`pay-status-badge ${method.is_active ? 'st-paid' : 'st-declined'}`}>{method.is_active ? t('نشط', 'Active') : t('موقوف', 'Inactive')}</span></td>
+                <td><div className="payment-method-actions">
+                  {canUploadLogo && <label title={t('رفع شعار','Upload logo')} className={`icon-action method-logo-upload${logoBusy===method.id?' disabled':''}`}><Upload size={15}/><input type="file" hidden disabled={logoBusy!==null} accept="image/png,image/jpeg,image/webp" onChange={(e)=>{void uploadMethodLogo(method,e.target.files?.[0]??null);e.currentTarget.value='' }}/></label>}
+                  {editable && <button title={method.is_active?t('إيقاف','Disable'):t('تفعيل','Enable')} className={`icon-action ${method.is_active?'danger':'success'}`} onClick={() => void toggle(method)}><Power size={15}/></button>}
+                  {create && <button title={t('إسناد حساب','Assign account')} className="icon-action primary" onClick={() => setOpen(open === method.id ? null : method.id)}><Plus size={16}/></button>}
+                </div></td>
+              </tr>
                 {open === method.id && (
-                  <form className="control-row" onSubmit={addAccount}>
+                  <tr className="payment-method-inline-row"><td colSpan={6}><form className="control-row" onSubmit={addAccount}>
                     <input required className="login-input" placeholder={t('رقم الحساب', 'Account number')} value={account.account_number} onChange={(e) => setAccount({ ...account, account_number: e.target.value })} />
                     <input className="login-input" placeholder={t('تسمية', 'Label')} value={account.label} onChange={(e) => setAccount({ ...account, label: e.target.value })} />
                     <input className="login-input" placeholder={t('الجهاز', 'Device')} value={account.device_name} onChange={(e) => setAccount({ ...account, device_name: e.target.value })} />
                     <button className="btn-primary btn-sm">{t('حفظ', 'Save')}</button>
-                  </form>
+                  </form></td></tr>
                 )}
-              </section>
-            )
+              </Fragment>)
           })}
+          </tbody></table></div></section>
         </>
       )}
 
@@ -273,6 +294,7 @@ export default function PaymentMethods() {
           {accountView === 'cards' && <div className="payment-account-grid">{filteredAccounts.map((r)=>{const method=data.methods.find((m)=>m.id===r.payment_method_id);const master=masterOf(r);const subs=subsOf(r);const age=balanceAge(r.balance_updated_at,t);return <article className="payment-account-card" key={r.id}><div className="payment-account-card-head"><MethodLogo method={method?.method_name}/><span className={`pay-status-badge ${r.is_active?'st-paid':'st-dim'}`}>{r.is_active?t('نشط','Active'):t('موقوف','Disabled')}</span></div><strong className="mono">{r.account_number}</strong><span className="cell-sub">{r.label??r.device_name??'—'}</span><div className="payment-account-balance"><small>{t('الرصيد الحالي','Current balance')}</small><b className="mono">{r.current_balance==null?'—':Number(r.current_balance).toLocaleString('en-US',{minimumFractionDigits:2})} {r.currency??''}</b>{age&&<span className={age.stale?'warn-text':''}>{age.stale?t(`قديم — ${age.text}`,`Stale — ${age.text}`):age.text}</span>}</div><dl><div><dt>{t('الجهاز','Device')}</dt><dd>{r.device_name??'—'}</dd></div><div><dt>Master</dt><dd>{master?.name??'—'}</dd></div><div><dt>{t('التجار','Merchants')}</dt><dd>{subs.join('، ')||'—'}</dd></div></dl>{editable&&<><select className="login-input" value={r.payment_pool_id??''} onChange={(e)=>void setAccountPool(r,e.target.value)}><option value="">{t('بدون Pool','No pool')}</option>{data.pools.map((p)=><option key={p.id} value={p.id}>{p.pool_name}</option>)}</select><button className="btn-ghost btn-sm" onClick={()=>void toggleAccount(r)}>{r.is_active?t('إيقاف الحساب','Disable account'):t('تفعيل الحساب','Enable account')}</button></>}</article>})}</div>}
         </section>
       )}
+      </section>
 
       <section className="page-head">
         <h2>{t('تجمّعات الدفع (Pools)', 'Payment pools')}</h2>

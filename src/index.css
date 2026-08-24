@@ -2064,6 +2064,35 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
   .airdroid-frame-help { align-items: flex-start; flex-direction: column; }
 }
 .payment-page-head h2, .payment-method-title, .stat-label { display: flex; align-items: center; gap: 8px; }
+.payment-glass-console {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.105);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at 82% 0%, rgba(60,125,255,.12), transparent 34%),
+    linear-gradient(145deg, rgba(255,255,255,.075), rgba(255,255,255,.025));
+  box-shadow: 0 28px 80px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  padding: 0 18px 18px;
+}
+.payment-console-tabs { margin: 0 -18px 16px; padding: 8px 18px 0; border-bottom: 1px solid rgba(255,255,255,.09); }
+.payment-console-tabs .pill { min-height: 48px; border-radius: 10px 10px 0 0; }
+.payment-method-table-card { overflow: hidden; border: 1px solid rgba(255,255,255,.09); border-radius: 18px; background: rgba(5,7,13,.34); }
+.payment-method-table { min-width: 760px; }
+.payment-method-table th { height: 48px; color: var(--text-dim); font-size: 10px; letter-spacing: .055em; text-transform: uppercase; }
+.payment-method-table td { height: 68px; }
+.payment-method-table .method-logo { inline-size: 42px; block-size: 42px; border-radius: 10px; background: rgba(255,255,255,.92) !important; }
+.payment-method-table .method-logo img { inline-size: 88%; block-size: 88%; object-fit: contain; }
+.payment-method-actions { display: flex; align-items: center; gap: 7px; }
+.icon-action { inline-size: 34px; block-size: 34px; display: inline-grid; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; color: var(--text-dim); background: rgba(255,255,255,.035); cursor: pointer; }
+.icon-action:hover { color: var(--text); border-color: rgba(255,255,255,.2); background: rgba(255,255,255,.075); }
+.icon-action:focus-visible { outline: 2px solid #3c7dff; outline-offset: 2px; }
+.icon-action.primary { color: #7da6ff; background: rgba(60,125,255,.1); }
+.icon-action.success { color: var(--status-paid); background: rgba(33,212,143,.08); }
+.icon-action.danger { color: var(--status-declined); background: rgba(255,82,103,.07); }
+.payment-method-inline-row td { height: auto; padding: 13px 18px !important; background: rgba(60,125,255,.045); }
 .payment-method-title > span { display: flex; flex-direction: column; gap: 2px; }
 .payment-method-title small { color: var(--text-dim); font-size: 10px; font-weight: 500; }
 .payment-account-toolbar { display: flex; align-items: center; gap: 9px; margin: 12px 0; padding: 9px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); }
@@ -2081,13 +2110,15 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .payment-account-card dt { color: var(--text-dim); font-size: 10px; }
 .payment-account-card dd { margin: 3px 0 0; overflow-wrap: anywhere; font-size: 11px; font-weight: 700; }
 @media(max-width:700px){.payment-account-toolbar{flex-wrap:wrap}.payment-account-toolbar>label{min-width:100%;}.payment-account-toolbar>select{flex:1}.payment-account-card dl{grid-template-columns:1fr 1fr}}
-.payment-method-create { display: grid; grid-template-columns: minmax(210px,1.3fr) repeat(3,minmax(140px,1fr)) auto; align-items: end; gap: 10px; }
+.payment-method-create { display: grid; grid-template-columns: minmax(210px,1.3fr) repeat(4,minmax(130px,1fr)) auto; align-items: end; gap: 10px; border-color: rgba(247,185,85,.14); background: rgba(5,7,13,.28); }
 .payment-method-create > div { display: flex; flex-direction: column; gap: 4px; }
+.payment-method-create > div strong { display: inline-flex; align-items: center; gap: 7px; }
 .payment-method-create > div span { color: var(--text-dim); font-size: 11px; }
 .method-logo-upload { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .method-logo-upload.disabled { opacity: .55; cursor: wait; pointer-events: none; }
 @media(max-width:900px){.payment-method-create{grid-template-columns:1fr 1fr}.payment-method-create>div{grid-column:1/-1}}
 @media(max-width:540px){.payment-method-create{grid-template-columns:1fr}}
+@media (prefers-reduced-motion: reduce) { .payment-glass-console *, .payment-glass-console *::before, .payment-glass-console *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }
 
 /* ---- System health: gauges, hourly bars, stat tiles ---- */
 .gauge-grid {

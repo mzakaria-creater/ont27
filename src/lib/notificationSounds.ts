@@ -54,6 +54,17 @@ export function playNotificationTone(kind: AlertKind, force = false) {
   sharedContext ??= new AudioCtx()
   const ctx = sharedContext
   if (ctx.state !== 'running') { pendingTone = kind; void ctx.resume(); return }
+  // A short master-compressor gives small phone/laptop speakers a clearer,
+  // louder alert while preventing clipping when several realtime events land.
+  const master = ctx.createGain()
+  const compressor = ctx.createDynamicsCompressor()
+  master.gain.setValueAtTime(1.85, ctx.currentTime)
+  compressor.threshold.setValueAtTime(-18, ctx.currentTime)
+  compressor.knee.setValueAtTime(12, ctx.currentTime)
+  compressor.ratio.setValueAtTime(6, ctx.currentTime)
+  compressor.attack.setValueAtTime(.003, ctx.currentTime)
+  compressor.release.setValueAtTime(.18, ctx.currentTime)
+  master.connect(compressor); compressor.connect(ctx.destination)
   const patterns: Record<AlertTone, { at: number; hz: number; duration: number; gain: number }[]> = {
     glass: [{ at: 0, hz: 1318.5, duration: .09, gain: .12 }, { at: .11, hz: 1760, duration: .17, gain: .09 }],
     chime: [{ at: 0, hz: 659.3, duration: .12, gain: .1 }, { at: .13, hz: 987.8, duration: .2, gain: .1 }],
@@ -68,6 +79,6 @@ export function playNotificationTone(kind: AlertKind, force = false) {
     const osc = ctx.createOscillator(); const gain = ctx.createGain(); const start = ctx.currentTime + note.at
     osc.type = tone === 'glass' || tone === 'bell' || tone === 'sonar' ? 'sine' : 'triangle'; osc.frequency.setValueAtTime(note.hz, start)
     gain.gain.setValueAtTime(0.0001, start); gain.gain.exponentialRampToValueAtTime(note.gain, start + .015); gain.gain.exponentialRampToValueAtTime(0.0001, start + note.duration)
-    osc.connect(gain); gain.connect(ctx.destination); osc.start(start); osc.stop(start + note.duration + .02)
+    osc.connect(gain); gain.connect(master); osc.start(start); osc.stop(start + note.duration + .02)
   }
 }
