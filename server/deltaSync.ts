@@ -173,14 +173,25 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
       if (table === 'maven_payout_transactions') {
         const ids = payload.map((r) => r.maven_id as number)
         const matchedSms = new Map<number, number>()
+        const statusOverrides = new Map<number, { status: unknown; manual_reopened_at: unknown; manual_reopened_by: unknown }>()
         const LOOKUP_CHUNK = 200
         for (let i = 0; i < ids.length; i += LOOKUP_CHUNK) {
           const { data: locals, error: localErr } = await db.from('maven_payout_transactions')
-            .select('maven_id, matched_sms_id').in('maven_id', ids.slice(i, i + LOOKUP_CHUNK))
+            .select('maven_id, matched_sms_id, status, manual_status_override, manual_reopened_at, manual_reopened_by').in('maven_id', ids.slice(i, i + LOOKUP_CHUNK))
           if (localErr) throw new Error(`payout SMS-link guard lookup: ${localErr.message}`)
-          for (const local of locals ?? []) if (local.matched_sms_id != null) matchedSms.set(local.maven_id, local.matched_sms_id)
+          for (const local of locals ?? []) {
+            if (local.matched_sms_id != null) matchedSms.set(local.maven_id, local.matched_sms_id)
+            if (local.manual_status_override) statusOverrides.set(local.maven_id, local)
+          }
         }
-        payload = payload.map((row) => ({ ...row, matched_sms_id: matchedSms.get(row.maven_id as number) ?? row.matched_sms_id ?? null }))
+        payload = payload.map((row) => {
+          const held = statusOverrides.get(row.maven_id as number)
+          return {
+            ...row,
+            matched_sms_id: matchedSms.get(row.maven_id as number) ?? row.matched_sms_id ?? null,
+            ...(held ? { status: held.status, manual_status_override: true, manual_reopened_at: held.manual_reopened_at, manual_reopened_by: held.manual_reopened_by } : {}),
+          }
+        })
       }
       if (table === 'maven_transactions') {
         const localTs = new Map<number, number>()

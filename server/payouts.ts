@@ -327,6 +327,36 @@ payoutRoutes.put("/:mavenId", requirePerm("payouts", "can_edit"), async (c) => {
   return c.json({ payout: data });
 });
 
+payoutRoutes.post("/:mavenId/reopen", async (c) => {
+  const actor = c.get("actor");
+  if (!new Set(["owner", "super_admin"]).has(actor.role))
+    return c.json({ error: "owner_or_super_admin_required" }, 403);
+  const mavenId = c.req.param("mavenId");
+  if (!/^\d+$/.test(mavenId)) return c.json({ error: "bad_id" }, 400);
+  const { data: before, error: readError } = await db
+    .from("maven_payout_transactions")
+    .select("maven_id, status, manual_status_override")
+    .eq("maven_id", mavenId)
+    .maybeSingle();
+  if (readError) return c.json({ error: "db_error", detail: readError.message }, 500);
+  if (!before) return c.json({ error: "not_found" }, 404);
+  if (before.status !== "DECLINED") return c.json({ error: "declined_required", status: before.status }, 409);
+  const now = new Date().toISOString();
+  const { data, error } = await db
+    .from("maven_payout_transactions")
+    .update({ status: "PENDING", manual_status_override: true, manual_reopened_at: now, manual_reopened_by: actor.username, updated_utc: now })
+    .eq("maven_id", mavenId)
+    .select()
+    .maybeSingle();
+  if (error) return c.json({ error: "db_error", detail: error.message }, 500);
+  await db.from("audit_log").insert({
+    actor_type: "manual_panel", actor_id: actor.sub, actor_name: actor.username,
+    action: "payout.declined_reopened", entity: "maven_payout_transactions", entity_id: mavenId,
+    before: { status: before.status }, after: { status: "PENDING", manual_status_override: true },
+  });
+  return c.json({ payout: data });
+});
+
 payoutRoutes.post(
   "/proof",
   requirePerm("payouts", "can_approve"),

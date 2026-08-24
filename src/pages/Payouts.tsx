@@ -371,6 +371,20 @@ export default function Payouts() {
       setEditBusy(false);
     }
   };
+  const reopenDeclined = async (mavenId: number) => {
+    if (!window.confirm(t("إعادة المعاملة المرفوضة إلى PENDING للمراجعة؟", "Reopen this declined payout as PENDING for review?"))) return;
+    setErr(null);
+    try {
+      await api(`/api/payouts/${mavenId}/reopen`, { method: "POST" });
+      await load();
+    } catch (e) {
+      setErr(
+        e instanceof ApiError && e.status === 403
+          ? t("الإجراء متاح للمالك وSuper Admin فقط.", "Only owner and Super Admin can use this action.")
+          : t("تعذّرت إعادة فتح السحب.", "Failed to reopen payout."),
+      );
+    }
+  };
   const uploadProof = async (file: File | null) => {
     if (!file) return;
     setUploading(true);
@@ -678,6 +692,20 @@ export default function Payouts() {
                                 <option value="">{t("تغيير الحالة…", "Change status…")}</option>
                                 <option value="APPROVED">{t("مدفوع PAID", "Mark PAID")}</option>
                                 <option value="DECLINED">{t("مرفوض DECLINED", "Mark DECLINED")}</option>
+                              </select>
+                            )}
+                          {row.status === "DECLINED" &&
+                            (user?.role === "owner" || user?.role === "super_admin") && (
+                              <select
+                                className="payout-status-action-select"
+                                aria-label={t("اختيار إجراء الحالة", "Select status action")}
+                                value=""
+                                onChange={(e) => {
+                                  if (e.target.value === "REOPEN") void reopenDeclined(row.maven_id);
+                                }}
+                              >
+                                <option value="">{t("تغيير الحالة…", "Change status…")}</option>
+                                <option value="REOPEN">{t("إعادة إلى PENDING", "Reopen as PENDING")}</option>
                               </select>
                             )}
                           {row.linked_sms && (

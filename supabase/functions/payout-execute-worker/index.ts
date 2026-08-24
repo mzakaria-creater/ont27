@@ -357,7 +357,7 @@ Deno.serve(async (req) => {
     const nowIso = new Date().toISOString();
     const { error: updErr } = await sb
       .from("maven_payout_transactions")
-      .update({ status: STATUS_MAP[decision], updated_utc: nowIso })
+      .update({ status: STATUS_MAP[decision], updated_utc: nowIso, manual_status_override: false })
       .eq("maven_id", maven_id);
 
     return json({
