@@ -8,6 +8,29 @@ import type { AuthEnv } from './rbac.js'
 export const adminRoutes = new Hono<AuthEnv>()
 adminRoutes.use('*', requireAuth, requireAdminRole)
 
+adminRoutes.get('/transactions', requirePerm('settings', 'can_view'), async (c) => {
+  const status = c.req.query('status')?.trim().toUpperCase()
+  const q = c.req.query('q')?.trim()
+  const from = c.req.query('from')?.trim()
+  const to = c.req.query('to')?.trim()
+  const limit = Math.min(Math.max(Number(c.req.query('limit')) || 50, 1), 200)
+  const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
+  let query = db.from('maven_transactions').select('*', { count: 'exact' })
+    .order('tx_id', { ascending: false }).range(offset, offset + limit - 1)
+  if (status) query = query.eq('status', status)
+  if (from) query = query.gte('first_seen_at', `${from}T00:00:00Z`)
+  if (to) query = query.lte('first_seen_at', `${to}T23:59:59.999Z`)
+  if (q) {
+    const like = `%${q.replaceAll(',', ' ')}%`
+    const ors = [`ontarget_ref.ilike.${like}`, `merchant_tx_reference.ilike.${like}`, `sender_number.ilike.${like}`, `email.ilike.${like}`]
+    if (/^\d+$/.test(q)) ors.push(`tx_id.eq.${q}`)
+    query = query.or(ors.join(','))
+  }
+  const { data, error, count } = await query
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  return c.json({ rows: data ?? [], total: count ?? 0, limit, offset })
+})
+
 const userColumns = 'id, username, email, display_name, role, active, last_login_at, failed_login_count, locked_until, created_at'
 const permColumns = 'role_key, page_key, can_view, can_create, can_edit, can_delete, can_approve, can_export'
 const keyColumns = 'id, merchant_id, key_name, api_key, environment, is_active, request_count, secret_prefix, last_used_at, revoked_at, expires_at, created_at'

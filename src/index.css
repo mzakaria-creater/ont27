@@ -2142,6 +2142,17 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .maven-frame-blocked > div { flex: 1 1 auto; }
 .maven-frame-blocked > .btn-primary { flex: 0 0 auto; }
 @media (max-width: 640px) { .maven-frame-blocked { align-items: stretch; flex-direction: column; } .maven-frame-blocked > .btn-primary { justify-content: center; } }
+.admin-trx-filter { justify-content: flex-start; }
+.admin-trx-filter .analytics-filter-search { min-width: min(100%, 320px); }
+.admin-trx-card { padding: 0; overflow: hidden; }
+.admin-trx-table { min-width: 2100px; font-size: 11px; }
+.admin-trx-table th { position: sticky; top: 0; z-index: 2; background: var(--surface); }
+.admin-trx-table th, .admin-trx-table td { border-inline-end: 1px solid var(--border-soft); border-block-end: 1px solid var(--border-soft); vertical-align: middle; }
+.admin-trx-actions { display: flex; flex-wrap: wrap; gap: 4px; min-width: 190px; }
+.admin-trx-extra-row td { padding: 14px; background: var(--hover); }
+.admin-trx-extra-row dl { display: grid; grid-template-columns: repeat(7,minmax(140px,1fr)); gap: 12px; margin: 0; }
+.admin-trx-extra-row dt { color: var(--text-dim); font-size: 10px; }
+.admin-trx-extra-row dd { margin: 3px 0 0; font-weight: 700; overflow-wrap: anywhere; }
 .airdroid-device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }
 .airdroid-device { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 11px; padding: 13px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .airdroid-device-icon { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 11px; color: var(--text-dim); background: var(--hover-2); }

@@ -51,6 +51,7 @@ const WalletMovements = lazy(() => import('./pages/WalletMovements'))
 const ClientProfile = lazy(() => import('./pages/ClientProfile'))
 const ReplayLab = lazy(() => import('./pages/ReplayLab'))
 const AirDroid = lazy(() => import('./pages/AirDroid'))
+const AdminTransactions = lazy(() => import('./pages/AdminTransactions'))
 
 type Conn = 'wait' | 'ok' | 'bad'
 
@@ -306,6 +307,7 @@ export default function App() {
             <Route path="/wallet-report" element={<WalletReport />} />
             <Route path="/withdrawal-sms-report" element={<WithdrawalSmsReport />} />
             <Route path="/admin" element={<AdminPage />} />
+            <Route path="/admin-transactions" element={<AdminTransactions />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/tv" element={<TvScreen />} />
             <Route path="/complaints" element={<Complaints />} />
