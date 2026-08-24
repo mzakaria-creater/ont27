@@ -921,18 +921,63 @@ a.stat-card:hover { border-color: var(--accent); }
 
 .filter-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-block-end: 12px; }
 .transaction-filter-toolbar { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); align-items: center; }
-.transaction-filter-fields { display: flex; flex: 1 1 100%; align-items: end; gap: 8px; min-width: 0; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
-.transaction-filter-fields .filter-field { flex: 0 0 auto; min-width: 120px; display: grid; gap: 4px; }
+.transaction-filter-fields { display: grid; grid-template-columns: repeat(7, minmax(105px, 1fr)) auto; flex: 1 1 100%; align-items: end; gap: 8px; min-width: 0; }
+.transaction-filter-fields .filter-field { min-width: 0; display: grid; gap: 4px; }
 .transaction-filter-fields .filter-field:nth-last-child(3), .transaction-filter-fields .filter-field:nth-last-child(2) { min-width: 105px; }
-.transaction-filter-fields .login-input { width: 150px; min-height: 36px; }
+.transaction-filter-fields .login-input { width: 100%; min-width: 0; min-height: 36px; }
 .transaction-filter-fields button { flex: 0 0 auto; min-height: 36px; }
 .transaction-filter-toolbar .filter-pills, .transaction-filter-toolbar .chip-row, .transaction-filter-toolbar .search-row { flex: 0 0 auto; }
+.all-transactions-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.transaction-search-row { flex: 1 1 300px !important; display: flex; align-items: center; gap: 7px; }
+.transaction-search-row .search-input { flex: 1 1 auto; min-width: 180px; }
+.all-tx-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 12px; }
+.all-tx-card { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 15px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.all-tx-card.pending { border-color: var(--amber-border); background: linear-gradient(145deg, var(--amber-bg), var(--surface) 46%); }
+.all-tx-card header, .all-tx-card-brands, .all-tx-card-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.all-tx-card-amount { font-size: 24px; font-weight: 850; }
+.all-tx-card-brands { justify-content: flex-start; min-height: 48px; }
+.all-tx-card-brands .merchant-brand-logo, .all-tx-card-brands .merchant-brand-fallback, .all-tx-card-brands .method-logo { flex-basis: 44px; width: 44px; height: 44px; }
+.all-tx-card-brands .merchant-brand-featured { flex-direction: row; min-width: 0; text-align: start; }
+.all-tx-card-brands .merchant-brand-featured .merchant-brand-logo { flex-basis: 44px; width: 44px; height: 44px; border-radius: 10px; box-shadow: none; }
+.all-tx-card dl { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; }
+.all-tx-card dl > div { min-width: 0; }
+.all-tx-card dt { color: var(--text-dim); font-size: 10.5px; }
+.all-tx-card dd { display: flex; flex-direction: column; gap: 2px; margin: 3px 0 0; overflow-wrap: anywhere; font-size: 12px; font-weight: 650; }
+.all-tx-card-actions { justify-content: stretch; margin-top: auto; }
+.all-tx-card-actions > * { flex: 1 1 0; justify-content: center; text-align: center; }
+.all-transactions-table { width: 100%; table-layout: fixed; font-size: clamp(9px, .72vw, 12px); }
+.all-transactions-table th, .all-transactions-table td { padding: 7px 5px; white-space: normal; overflow-wrap: anywhere; vertical-align: middle; }
+.all-transactions-table th:nth-child(1) { width: 9%; }
+.all-transactions-table th:nth-child(2) { width: 7%; }
+.all-transactions-table th:nth-child(3) { width: 8%; }
+.all-transactions-table th:nth-child(4) { width: 11%; }
+.all-transactions-table th:nth-child(5) { width: 9%; }
+.all-transactions-table th:nth-child(6) { width: 7%; }
+.all-transactions-table th:nth-child(7) { width: 11%; }
+.all-transactions-table th:nth-child(8) { width: 6%; }
+.all-transactions-table th:nth-child(9) { width: 8%; }
+.all-transactions-table th:nth-child(10) { width: 8%; }
+.all-transactions-table th:nth-child(11) { width: 7%; }
+.all-transactions-table th:nth-child(12) { width: 9%; }
+.all-transactions-table .merchant-brand-cell { gap: 4px; max-width: 100%; }
+.all-transactions-table .merchant-brand-logo, .all-transactions-table .merchant-brand-fallback, .all-transactions-table .method-logo { flex-basis: 26px; width: 26px; height: 26px; border-radius: 7px; }
+.all-transactions-table .merchant-brand-featured { min-width: 0; flex-direction: row; gap: 4px; text-align: start; }
+.all-transactions-table .merchant-brand-featured .merchant-brand-logo { flex-basis: 26px; width: 26px; height: 26px; padding: 1px; border-radius: 7px; box-shadow: none; }
+.all-transactions-table .merchant-brand-name { white-space: normal; font-size: inherit; }
+.all-transactions-table .transaction-action-buttons { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.all-transactions-table .transaction-action-buttons .btn-sm { min-height: 27px; padding: 3px 5px; font-size: 9px; white-space: normal; }
+.all-transactions-table .pay-status-badge { padding: 3px 5px; font-size: inherit; white-space: normal; }
 @media (max-width: 768px) {
   .transaction-filter-toolbar { padding: 8px; gap: 8px; }
   .transaction-filter-toolbar .filter-pills, .transaction-filter-toolbar .chip-row { width: 100%; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
   .transaction-filter-toolbar .search-row { width: 100%; }
   .transaction-filter-toolbar .search-input { flex: 1 1 auto; min-width: 140px; }
+  .transaction-filter-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .transaction-filter-fields button { grid-column: 1 / -1; }
+  .all-transactions-head { align-items: stretch; flex-direction: column; }
 }
+@media (min-width: 769px) and (max-width: 1200px) { .transaction-filter-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 420px) { .transaction-filter-fields { grid-template-columns: 1fr; } .transaction-filter-fields button { grid-column: auto; } .all-tx-card dl { grid-template-columns: 1fr; } }
 .complaint-tx-search { display: flex; align-items: center; gap: 8px; min-width: min(100%, 420px); }
 .complaint-tx-search > label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .complaint-tx-search-control { min-height: 38px; flex: 1; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--muted); }
