@@ -439,10 +439,10 @@ body {
 .approval-card-amount { font-size: clamp(22px, 3vw, 28px); line-height: 1; font-weight: 850; letter-spacing: -.03em; }
 .approval-card-party { display: flex; flex-direction: column; gap: 3px; }
 .approval-card-party span { color: var(--muted, #94a3b8); font-size: 12px; }
-.approval-sender-identity { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
-.approval-sender-identity > span:last-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.approval-sender-identity strong { overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
-.approval-sender-identity .method-logo { inline-size: 44px; block-size: 44px; border-radius: 11px; background: rgba(255,255,255,.94) !important; }
+.sender-identity { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.sender-identity > span:last-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sender-identity-name { overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; font-weight: 750; }
+.sender-identity .method-logo { inline-size: 44px; block-size: 44px; border-radius: 11px; background: rgba(255,255,255,.94) !important; }
 .approval-card-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; }
 .approval-card-facts div { min-width: 0; }
 .approval-card-facts dt { margin-bottom: 3px; color: var(--muted, #94a3b8); font-size: 11px; }
@@ -964,6 +964,9 @@ a.stat-card:hover { border-color: var(--accent); }
 .all-transactions-table th:nth-child(12) { width: 7%; }
 .all-transactions-table th:nth-child(13) { width: 14%; }
 .all-transactions-table .proof-thumb-btn { inline-size: 38px; block-size: 38px; }
+.all-transactions-table .sender-identity { gap: 5px; max-width: 100%; }
+.all-transactions-table .sender-identity .method-logo { inline-size: 26px; block-size: 26px; border-radius: 7px; }
+.all-transactions-table .sender-identity-name { white-space: normal; }
 .all-transactions-table .merchant-brand-cell { gap: 4px; max-width: 100%; }
 .all-transactions-table .merchant-brand-logo, .all-transactions-table .merchant-brand-fallback, .all-transactions-table .method-logo { flex-basis: 26px; width: 26px; height: 26px; border-radius: 7px; }
 .all-transactions-table .merchant-brand-featured { min-width: 0; flex-direction: row; gap: 4px; text-align: start; }

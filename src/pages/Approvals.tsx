@@ -12,6 +12,7 @@ import { syncProviders } from '../lib/providerSync'
 import { LayoutGrid, TableProperties } from 'lucide-react'
 import MerchantLogo from '../components/MerchantLogo'
 import MethodLogo from '../components/MethodLogo'
+import SenderIdentity from '../components/SenderIdentity'
 
 // Approvals queue — every PENDING deposit and payout in one screen with
 // quick + bulk actions.
@@ -50,24 +51,6 @@ interface PayRow {
   mobile_no: string | null
   first_seen_at: string | null
   created_utc: string | null
-}
-
-const networkFromPhone = (phone: string | null | undefined) => {
-  const digits = String(phone ?? '').replace(/\D/g, '')
-  const local = digits.startsWith('20') ? `0${digits.slice(2)}` : digits
-  if (local.startsWith('010')) return 'Vodafone Cash'
-  if (local.startsWith('012')) return 'Orange Money'
-  if (local.startsWith('011')) return 'Etisalat Cash'
-  if (local.startsWith('015')) return 'WE Pay'
-  return null
-}
-
-function SenderIdentity({ name, phone, unknown }: { name: string | null | undefined; phone: string | null | undefined; unknown: string }) {
-  const network = networkFromPhone(phone)
-  return <span className="approval-sender-identity">
-    {network && <MethodLogo method={network} />}
-    <span><strong>{name ?? unknown}</strong><span className="mono">{phone ?? '—'}</span></span>
-  </span>
 }
 
 export default function Approvals() {

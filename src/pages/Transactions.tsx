@@ -9,6 +9,7 @@ import { useLocale } from '../lib/locale'
 import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
 import ProofModal from '../components/ProofModal'
+import SenderIdentity from '../components/SenderIdentity'
 import { useAuth } from '../auth/AuthContext'
 import { LayoutGrid, Search, TableProperties } from 'lucide-react'
 
@@ -234,10 +235,7 @@ export default function Transactions() {
                       </td>
                       <td>{proofUrl ? <button type="button" className="proof-thumb-btn" title={t('عرض إثبات الدفع', 'View payment proof')} aria-label={t('عرض إثبات الدفع', 'View payment proof')} onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id) })}><img src={proofUrl} alt="" loading="lazy" /></button> : <span className="cell-sub">{t('بدون', 'None')}</span>}</td>
                       <td className="mono">{money(r.amount, r.currency ?? 'EGP')}</td>
-                      <td>
-                        {party ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(party)}`}>{party}</Link> : '—'}
-                        {clientPhone && <div><Link className="cell-sub mono transaction-cell-link" to={`/client/${encodeURIComponent(clientPhone)}`}>{clientPhone} · {t('ملف العميل','Client profile')}</Link></div>}
-                      </td>
+                      <td><SenderIdentity name={party} phone={clientPhone} nameHref={party ? `/transactions?q=${encodeURIComponent(party)}` : undefined} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined} /></td>
                       <td>{wallet ? <Link className="mono transaction-cell-link" to={`/transactions?type=deposit&q=${encodeURIComponent(wallet)}`}>{wallet}</Link> : '—'}</td>
                       <td>{(r.client_transaction_count ?? 1) > 1 ? <Link className="pay-status-badge st-under transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات','transactions')}</Link> : <span className="cell-sub">{t('أول معاملة','First')}</span>}</td>
                       <td><MerchantLogo merchant={r.merchant ?? r.master_merchant} />{r.master_merchant && r.master_merchant !== r.merchant && <div className="cell-sub">{r.master_merchant}</div>}</td>
@@ -296,7 +294,7 @@ export default function Transactions() {
                 <div className="all-tx-card-brands"><MerchantLogo merchant={r.merchant ?? r.master_merchant} /><MethodLogo method={r.kind === 'deposit' ? r.payment_method : r.pay_by} /></div>
                 <dl>
                   <div><dt>{t('النوع', 'Type')}</dt><dd>{r.kind === 'deposit' ? t('إيداع', 'Deposit') : t('سحب', 'Payout')}</dd></div>
-                  <div><dt>{t('الطرف', 'Party')}</dt><dd>{party ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(party)}`}>{party}</Link> : '—'}{clientPhone && <Link className="cell-sub mono transaction-cell-link" to={`/client/${encodeURIComponent(clientPhone)}`}>{clientPhone}</Link>}</dd></div>
+                  <div><dt>{t('الطرف', 'Party')}</dt><dd><SenderIdentity name={party} phone={clientPhone} nameHref={party ? `/transactions?q=${encodeURIComponent(party)}` : undefined} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined} /></dd></div>
                   <div><dt>{t('المحفظة', 'Wallet')}</dt><dd className="mono">{wallet ?? '—'}</dd></div>
                   <div><dt>{t('التكرار', 'Duplicates')}</dt><dd>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First')}</dd></div>
                   <div><dt>{t('اعتمد بواسطة', 'Approved by')}</dt><dd>{r.status === 'PENDING' ? '—' : (!r.approved_by || r.approved_by === 'Manual' ? t('النظام (آلي)', 'System (auto)') : r.approved_by)}</dd></div>
