@@ -89,7 +89,8 @@ export default function Deposits() {
     if (master) search.set('master', master)
     if (appliedQ) search.set('q', appliedQ)
     try {
-      setData(await api<ListResponse>(`/api/deposits?${search}`))
+      const next = await api<ListResponse>(`/api/deposits?${search}`)
+      setData((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next)
     } catch (e) {
       setErr(e instanceof ApiError && e.status === 403 ? 'لا تملك صلاحية عرض الإيداعات.' : 'تعذّر تحميل الإيداعات.')
     } finally {
@@ -388,12 +389,12 @@ export default function Deposits() {
         </div>
       )}
 
-      {loading && <p className="sidebar-hint">جارٍ التحميل…</p>}
-      {!loading && data && data.rows.length === 0 && (
+      {loading && !data && <p className="sidebar-hint">جارٍ التحميل…</p>}
+      {data && data.rows.length === 0 && (
         <section className="card recent-card"><p>لا توجد نتائج مطابقة.</p></section>
       )}
 
-      {view === 'cards' && !loading && data && data.rows.length > 0 && (
+      {view === 'cards' && data && data.rows.length > 0 && (
         <div className="dep-card-grid">
           {data.rows.map((r) => (
             <DepositCard
@@ -413,7 +414,7 @@ export default function Deposits() {
         </div>
       )}
 
-      {view === 'table' && !loading && data && data.rows.length > 0 && (
+      {view === 'table' && data && data.rows.length > 0 && (
         <section className="card recent-card">
           <div className="table-wrap">
             <table className="data-table clickable">

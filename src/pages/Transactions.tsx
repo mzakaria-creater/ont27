@@ -73,7 +73,8 @@ export default function Transactions() {
     if (appliedQ) search.set('q', appliedQ)
     for (const [key, value] of Object.entries({ from, to, merchant, method, currency, min_amount: minAmount, max_amount: maxAmount })) if (value) search.set(key, value)
     try {
-      setData(await api<ListResponse>(`/api/transactions?${search}`))
+      const next = await api<ListResponse>(`/api/transactions?${search}`)
+      setData((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next)
     } catch (e) {
       setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض المعاملات.', 'You do not have permission to view transactions.') : t('تعذّر تحميل المعاملات.', 'Failed to load transactions.'))
     } finally {
@@ -174,9 +175,9 @@ export default function Transactions() {
       {err && <div className="card warn">{err}</div>}
 
       <section className="card recent-card">
-        {loading && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
-        {!loading && data && data.rows.length === 0 && <p>{t('لا توجد نتائج مطابقة.', 'No matching results.')}</p>}
-        {!loading && data && data.rows.length > 0 && (
+        {loading && !data && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
+        {data && data.rows.length === 0 && <p>{t('لا توجد نتائج مطابقة.', 'No matching results.')}</p>}
+        {data && data.rows.length > 0 && (
           <div className="table-wrap">
             <table className="data-table">
               <thead>

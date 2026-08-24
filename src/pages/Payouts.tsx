@@ -236,7 +236,8 @@ export default function Payouts() {
     if (appliedMerchant) search.set("merchant", appliedMerchant);
     if (appliedMethod) search.set("method", appliedMethod);
     try {
-      setData(await api<ListResponse>(`/api/payouts?${search}`));
+      const next = await api<ListResponse>(`/api/payouts?${search}`);
+      setData((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next);
     } catch (e) {
       setErr(
         e instanceof ApiError && e.status === 403
@@ -697,13 +698,13 @@ export default function Payouts() {
       )}
       {err && <div className="card warn">{err}</div>}
       <section className="card recent-card">
-        {loading && (
+        {loading && !data && (
           <p className="sidebar-hint">{t("جارٍ التحميل…", "Loading…")}</p>
         )}
-        {!loading && data?.rows.length === 0 && (
+        {data?.rows.length === 0 && (
           <p>{t("لا توجد نتائج مطابقة.", "No matching results.")}</p>
         )}
-        {!loading && data && data.rows.length > 0 && (
+        {data && data.rows.length > 0 && (
           <div className="table-wrap payout-ledger-wrap">
             <table className="data-table clickable payout-ledger-table">
               <thead>

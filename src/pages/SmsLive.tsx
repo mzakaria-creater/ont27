@@ -157,7 +157,7 @@ export default function SmsLive() {
         api<ListResponse>(`/api/sms?${search}`),
         api<SmsStats>('/api/sms/stats'),
       ])
-      setData(list)
+      setData((current) => JSON.stringify(current) === JSON.stringify(list) ? current : list)
       setStats(st)
       setErr(null)
     } catch (e) {
@@ -373,9 +373,9 @@ export default function SmsLive() {
       {err && <div className="card warn">{err}</div>}
 
       <section className="card recent-card">
-        {loading && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
-        {!loading && data && data.rows.length === 0 && <p>{t('لا توجد نتائج مطابقة.', 'No matching results.')}</p>}
-        {!loading && data && data.rows.length > 0 && (
+        {loading && !data && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
+        {data && data.rows.length === 0 && <p>{t('لا توجد نتائج مطابقة.', 'No matching results.')}</p>}
+        {data && data.rows.length > 0 && (
           <div className="table-wrap">
             <table className="data-table clickable">
               <thead>
