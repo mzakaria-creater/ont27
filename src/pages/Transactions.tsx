@@ -29,11 +29,14 @@ interface TxRow {
   payment_method?: string | null
   pay_by?: string | null
   gateway?: string | null
+  receiving_wallet?: string | null
+  to_account_number?: string | null
   merchant: string | null
   master_merchant?: string | null
   approved_by: string | null
   first_seen_at: string | null
   created_utc: string | null
+  client_transaction_count?: number
 }
 
 interface ListResponse {
@@ -186,6 +189,8 @@ export default function Transactions() {
                   <th>{t('النوع', 'Type')}</th>
                   <th>{t('المبلغ', 'Amount')}</th>
                   <th>{t('الطرف', 'Party')}</th>
+                  <th>{t('المحفظة', 'Wallet')}</th>
+                  <th>{t('التكرار', 'Duplicates')}</th>
                   <th>{t('التاجر', 'Merchant')}</th>
                   <th>{t('الحالة', 'Status')}</th>
                   <th>{t('اعتمد بواسطة', 'Approved by')}</th>
@@ -198,10 +203,12 @@ export default function Transactions() {
                   const st = statusMeta(r.status)
                   const id = r.kind === 'deposit' ? r.tx_id : r.maven_id
                   const party = r.kind === 'deposit' ? (r.sender_name ?? r.sender_number) : (r.account_name ?? r.mobile_no)
+                  const clientPhone = r.kind === 'deposit' ? r.sender_number : r.mobile_no
+                  const wallet = r.kind === 'deposit' ? (r.receiving_wallet ?? r.to_account_number) : null
                   return (
                     <tr key={`${r.kind}-${id}`} className={r.status === 'PENDING' ? 'row-pending' : undefined}>
                       <td className="mono">
-                        {r.ontarget_ref ?? id}
+                        <Link className="transaction-cell-link" to={r.kind === 'deposit' && r.ontarget_ref ? `/transactions/${encodeURIComponent(r.ontarget_ref)}` : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{r.ontarget_ref ?? id}</Link>
                         {r.merchant_tx_reference && <div className="cell-sub mono">{r.merchant_tx_reference}</div>}
                       </td>
                       <td>
@@ -210,7 +217,12 @@ export default function Transactions() {
                         </span>
                       </td>
                       <td className="mono">{money(r.amount, r.currency ?? 'EGP')}</td>
-                      <td>{party ?? '—'}</td>
+                      <td>
+                        {party ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(party)}`}>{party}</Link> : '—'}
+                        {clientPhone && <div><Link className="cell-sub mono transaction-cell-link" to={`/client/${encodeURIComponent(clientPhone)}`}>{clientPhone} · {t('ملف العميل','Client profile')}</Link></div>}
+                      </td>
+                      <td>{wallet ? <Link className="mono transaction-cell-link" to={`/transactions?type=deposit&q=${encodeURIComponent(wallet)}`}>{wallet}</Link> : '—'}</td>
+                      <td>{(r.client_transaction_count ?? 1) > 1 ? <Link className="pay-status-badge st-under transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات','transactions')}</Link> : <span className="cell-sub">{t('أول معاملة','First')}</span>}</td>
                       <td><MerchantLogo merchant={r.merchant ?? r.master_merchant} />{r.master_merchant && r.master_merchant !== r.merchant && <div className="cell-sub">{r.master_merchant}</div>}</td>
                       <td>
                         <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>

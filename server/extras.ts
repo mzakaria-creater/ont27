@@ -13,7 +13,7 @@ export const extraRoutes = new Hono<AuthEnv>()
 extraRoutes.use('*', requireAuth)
 
 const DEPOSIT_COLS =
-  'tx_id, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, payment_method, gateway, merchant, master_merchant, approved_by, first_seen_at, created_utc'
+  'tx_id, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, receiving_wallet, to_account_number, payment_method, gateway, merchant, master_merchant, approved_by, first_seen_at, created_utc'
 const PAYOUT_COLS =
   'maven_id, ontarget_ref, status, amount, pay_by, merchant, account_name, mobile_no, agent_name, approved_by, first_seen_at, created_utc'
 
@@ -52,7 +52,7 @@ extraRoutes.get(
       if (Number.isFinite(maxAmount)) query = query.lte('amount', maxAmount)
       if (q) {
         const like = `%${q.replaceAll(',', ' ')}%`
-        const ors = [`ontarget_ref.ilike.${like}`, `sender_number.ilike.${like}`, `sender_name.ilike.${like}`, `merchant.ilike.${like}`]
+        const ors = [`ontarget_ref.ilike.${like}`, `sender_number.ilike.${like}`, `sender_name.ilike.${like}`, `receiving_wallet.ilike.${like}`, `to_account_number.ilike.${like}`, `merchant.ilike.${like}`]
         if (/^\d+$/.test(q)) ors.push(`tx_id.eq.${q}`)
         query = query.or(ors.join(','))
       }
@@ -97,8 +97,22 @@ extraRoutes.get(
       String(b.ontarget_ref ?? '').localeCompare(String(a.ontarget_ref ?? '')),
     )
 
+    const pageRows = rows.slice(offset, offset + limit)
+    const depositPhones = [...new Set(pageRows.filter((row) => row.kind === 'deposit').map((row) => String(row.sender_number ?? '').trim()).filter(Boolean))]
+    const payoutPhones = [...new Set(pageRows.filter((row) => row.kind === 'payout').map((row) => String(row.mobile_no ?? '').trim()).filter(Boolean))]
+    const [depositHistory, payoutHistory] = await Promise.all([
+      depositPhones.length ? db.from('maven_transactions').select('sender_number').in('sender_number', depositPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
+      payoutPhones.length ? db.from('maven_payout_transactions').select('mobile_no').in('mobile_no', payoutPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
+    ])
+    const clientCounts = new Map<string, number>()
+    for (const item of depositHistory.data ?? []) { const key = String(item.sender_number ?? '').trim(); if (key) clientCounts.set(key, (clientCounts.get(key) ?? 0) + 1) }
+    for (const item of payoutHistory.data ?? []) { const key = String(item.mobile_no ?? '').trim(); if (key) clientCounts.set(key, (clientCounts.get(key) ?? 0) + 1) }
+
     return c.json({
-      rows: rows.slice(offset, offset + limit),
+      rows: pageRows.map((row) => {
+        const clientKey = String(row.kind === 'deposit' ? row.sender_number ?? '' : row.mobile_no ?? '').trim()
+        return { ...row, client_transaction_count: clientKey ? clientCounts.get(clientKey) ?? 1 : 1 }
+      }),
       total: (dep.count ?? 0) + (pay.count ?? 0),
       limit,
       offset,
