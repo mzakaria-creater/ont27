@@ -948,8 +948,14 @@ a.stat-card:hover { border-color: var(--accent); }
 .all-tx-card dd { display: flex; flex-direction: column; gap: 2px; margin: 3px 0 0; overflow-wrap: anywhere; font-size: 12px; font-weight: 650; }
 .all-tx-card-actions { justify-content: stretch; margin-top: auto; }
 .all-tx-card-actions > * { flex: 1 1 0; justify-content: center; text-align: center; }
-.all-transactions-table { width: 100%; table-layout: fixed; font-size: clamp(9px, .72vw, 12px); }
-.all-transactions-table th, .all-transactions-table td { padding: 7px 5px; white-space: normal; overflow-wrap: anywhere; vertical-align: middle; }
+.all-transactions-table { width: 100%; table-layout: fixed; border: 1px solid color-mix(in srgb, var(--border) 82%, transparent); border-radius: 10px; border-collapse: separate; border-spacing: 0; overflow: hidden; font-size: clamp(10.5px, .76vw, 12px); }
+.all-transactions-table th, .all-transactions-table td { padding: 8px 6px; white-space: normal; overflow-wrap: anywhere; vertical-align: middle; border-inline-end: 1px solid color-mix(in srgb, var(--border) 72%, transparent); border-block-end: 1px solid color-mix(in srgb, var(--border) 72%, transparent); }
+.all-transactions-table th:last-child, .all-transactions-table td:last-child { border-inline-end: 0; }
+.all-transactions-table tbody tr:last-child td { border-block-end: 0; }
+.all-transactions-table thead th { position: sticky; top: 0; z-index: 2; color: var(--text); background: color-mix(in srgb, var(--surface) 88%, var(--accent) 12%); font-size: 10px; font-weight: 750; letter-spacing: .025em; }
+.all-transactions-table tbody tr:nth-child(even):not(.row-pending) td { background: color-mix(in srgb, var(--surface) 82%, var(--hover) 18%); }
+.all-transactions-table tbody tr:hover td { background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
+.all-transactions-table tbody tr.row-pending td { background: color-mix(in srgb, var(--status-pending) 9%, var(--surface)); border-block-color: color-mix(in srgb, var(--status-pending) 28%, var(--border)); }
 .all-transactions-table th:nth-child(1) { width: 8%; }
 .all-transactions-table th:nth-child(2) { width: 6%; }
 .all-transactions-table th:nth-child(3) { width: 5%; }
@@ -963,17 +969,17 @@ a.stat-card:hover { border-color: var(--accent); }
 .all-transactions-table th:nth-child(11) { width: 7%; }
 .all-transactions-table th:nth-child(12) { width: 7%; }
 .all-transactions-table th:nth-child(13) { width: 14%; }
-.all-transactions-table .proof-thumb-btn { inline-size: 38px; block-size: 38px; }
+.all-transactions-table .proof-thumb-btn { inline-size: 42px; block-size: 42px; margin-inline: auto; }
 .all-transactions-table .sender-identity { gap: 5px; max-width: 100%; }
-.all-transactions-table .sender-identity .method-logo { inline-size: 26px; block-size: 26px; border-radius: 7px; }
+.all-transactions-table .sender-identity .method-logo { inline-size: 30px; block-size: 30px; border-radius: 8px; }
 .all-transactions-table .sender-identity-name { white-space: normal; }
 .all-transactions-table .merchant-brand-cell { gap: 4px; max-width: 100%; }
-.all-transactions-table .merchant-brand-logo, .all-transactions-table .merchant-brand-fallback, .all-transactions-table .method-logo { flex-basis: 26px; width: 26px; height: 26px; border-radius: 7px; }
+.all-transactions-table .merchant-brand-logo, .all-transactions-table .merchant-brand-fallback, .all-transactions-table .method-logo { flex-basis: 30px; width: 30px; height: 30px; border-radius: 8px; }
 .all-transactions-table .merchant-brand-featured { min-width: 0; flex-direction: row; gap: 4px; text-align: start; }
-.all-transactions-table .merchant-brand-featured .merchant-brand-logo { flex-basis: 26px; width: 26px; height: 26px; padding: 1px; border-radius: 7px; box-shadow: none; }
+.all-transactions-table .merchant-brand-featured .merchant-brand-logo { flex-basis: 30px; width: 30px; height: 30px; padding: 1px; border-radius: 8px; box-shadow: none; }
 .all-transactions-table .merchant-brand-name { white-space: normal; font-size: inherit; }
 .all-transactions-table .transaction-action-buttons { display: grid; grid-template-columns: 1fr; gap: 4px; }
-.all-transactions-table .transaction-action-buttons .btn-sm { min-height: 27px; padding: 3px 5px; font-size: 9px; white-space: normal; }
+.all-transactions-table .transaction-action-buttons .btn-sm { min-height: 30px; padding: 4px 6px; font-size: 10px; white-space: normal; }
 .all-transactions-table .pay-status-badge { padding: 3px 5px; font-size: inherit; white-space: normal; }
 @media (max-width: 768px) {
   .transaction-filter-toolbar { padding: 8px; gap: 8px; }
