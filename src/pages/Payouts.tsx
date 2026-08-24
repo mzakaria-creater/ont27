@@ -289,7 +289,11 @@ export default function Payouts() {
     setTo(nextTo);
     setFilter({ from: nextFrom, to: nextTo });
   };
-  const openDetail = async (mavenId: number, startEditing = false) => {
+  const openDetail = async (
+    mavenId: number,
+    startEditing = false,
+    requestedStatus?: string,
+  ) => {
     setDetailLoading(true);
     setDecisionErr(null);
     setDecisionResult(null);
@@ -310,7 +314,7 @@ export default function Payouts() {
         pay_by: payout.pay_by ?? "",
         merchant: payout.merchant ?? "",
         remark: payout.remark ?? "",
-        status: payout.status,
+        status: requestedStatus ?? payout.status,
         image_url: payout.image_url ?? "",
       });
       setEditing(startEditing && can("payouts", "can_edit"));
@@ -658,6 +662,24 @@ export default function Payouts() {
                               {t("تعديل", "Edit")}
                             </button>
                           )}
+                          {row.status === "PENDING" &&
+                            can("payouts", "can_edit") &&
+                            can("payouts", "can_approve") && (
+                              <select
+                                className="payout-status-action-select"
+                                aria-label={t("اختيار إجراء الحالة", "Select status action")}
+                                value=""
+                                onChange={(e) => {
+                                  const nextStatus = e.target.value;
+                                  if (nextStatus)
+                                    void openDetail(row.maven_id, true, nextStatus);
+                                }}
+                              >
+                                <option value="">{t("تغيير الحالة…", "Change status…")}</option>
+                                <option value="APPROVED">{t("مدفوع PAID", "Mark PAID")}</option>
+                                <option value="DECLINED">{t("مرفوض DECLINED", "Mark DECLINED")}</option>
+                              </select>
+                            )}
                           {row.linked_sms && (
                             <button
                               type="button"
