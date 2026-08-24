@@ -2039,6 +2039,19 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .airdroid-device > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .airdroid-device > div > span, .airdroid-device small { color: var(--text-dim); font-size: 11px; }
 .airdroid-device .airdroid-device-meta { align-items: flex-end; }
+.airdroid-console-card { margin-block-end: 14px; }
+.airdroid-console-card .recent-head h3 { display: inline-flex; align-items: center; gap: 7px; }
+.airdroid-console-actions { display: flex; align-items: center; gap: 8px; }
+.airdroid-frame-wrap { overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.airdroid-frame { display: block; inline-size: 100%; block-size: clamp(520px, 70vh, 820px); border: 0; background: #fff; }
+.airdroid-frame-help { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-block-start: 1px solid var(--border); color: var(--text-dim); font-size: 12px; }
+.airdroid-frame-help strong { color: var(--text); white-space: nowrap; }
+@media (max-width: 700px) {
+  .airdroid-console-card .recent-head { align-items: stretch; flex-direction: column; }
+  .airdroid-console-actions { flex-wrap: wrap; }
+  .airdroid-frame { block-size: 65vh; min-block-size: 460px; }
+  .airdroid-frame-help { align-items: flex-start; flex-direction: column; }
+}
 .payment-page-head h2, .payment-method-title, .stat-label { display: flex; align-items: center; gap: 8px; }
 .payment-method-title > span { display: flex; flex-direction: column; gap: 2px; }
 .payment-method-title small { color: var(--text-dim); font-size: 10px; font-weight: 500; }
