@@ -101,12 +101,14 @@ export default function Deposits() {
   useEffect(() => {
     let alive = true
     const refresh = async (silent = false) => {
-      await syncProviders()
-      if (!alive) return
-      await Promise.all([
+      const sync = syncProviders()
+      const read = () => Promise.all([
         load(silent),
         api<DepositStats>('/api/deposits/stats').then((value) => { if (alive) setStats(value) }).catch(() => { if (alive) setStats(null) }),
       ])
+      await read()
+      if (!alive) return
+      if (await sync) await read()
     }
     void refresh(false)
     const interval = setInterval(() => void refresh(true), 15_000)

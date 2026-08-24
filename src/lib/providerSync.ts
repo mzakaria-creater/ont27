@@ -9,8 +9,11 @@ export function syncProviders(): Promise<boolean> {
   const now = Date.now()
   let sharedStartedAt = 0
   try { sharedStartedAt = Number(localStorage.getItem(SHARED_KEY) ?? 0) } catch { /* storage may be unavailable */ }
-  if (!inFlight && now - Math.max(lastStartedAt, sharedStartedAt) < CLIENT_COOLDOWN_MS) return Promise.resolve(true)
-  if (document.visibilityState === 'hidden') return Promise.resolve(true)
+  // `true` means this call actually completed a provider pull. Callers use
+  // that signal to do one follow-up read; cooldown/hidden skips must not cause
+  // an unnecessary second API refresh.
+  if (!inFlight && now - Math.max(lastStartedAt, sharedStartedAt) < CLIENT_COOLDOWN_MS) return Promise.resolve(false)
+  if (document.visibilityState === 'hidden') return Promise.resolve(false)
   lastStartedAt = now
   try { localStorage.setItem(SHARED_KEY, String(now)) } catch { /* best-effort cross-tab coordination */ }
   inFlight ??= fetch('/api/cron/delta-sync', { method: 'POST', credentials: 'same-origin' })

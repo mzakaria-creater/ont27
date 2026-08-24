@@ -180,7 +180,7 @@ function SmsRail() {
     let alive = true
     const load = async () => {
       try {
-        await syncProviders()
+        const sync = syncProviders()
         const [list, dev] = await Promise.all([
           api<{ rows: RailSms[] }>('/api/sms?limit=8'),
           api<{ devices: RailDevice[] }>('/api/sms/devices'),
@@ -188,6 +188,15 @@ function SmsRail() {
         if (!alive) return
         setRows(list.rows)
         setDevices(dev.devices)
+        if (await sync) {
+          const [freshList, freshDev] = await Promise.all([
+            api<{ rows: RailSms[] }>('/api/sms?limit=8'),
+            api<{ devices: RailDevice[] }>('/api/sms/devices'),
+          ])
+          if (!alive) return
+          setRows(freshList.rows)
+          setDevices(freshDev.devices)
+        }
       } catch {
         /* rail is best-effort */
       }

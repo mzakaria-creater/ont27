@@ -69,13 +69,19 @@ export default function Approvals() {
 
   const load = useCallback(async () => {
     try {
-      // Approval decisions must be based on the provider's current state, not
-      // the last background copy. This shared pump is throttled server-side.
-      await syncProviders()
+      // Never block the visible queue behind the provider pull. Read the local
+      // live copy immediately, then refresh once more only if this tab really
+      // completed a sync (the shared pump/DB lease prevents duplicate pulls).
+      const sync = syncProviders()
       const res = await api<{ deposits: DepRow[]; payouts: PayRow[] }>('/api/approvals')
       setDeposits((current) => JSON.stringify(current) === JSON.stringify(res.deposits) ? current : res.deposits)
       setPayouts((current) => JSON.stringify(current) === JSON.stringify(res.payouts) ? current : res.payouts)
       setErr(null)
+      if (await sync) {
+        const fresh = await api<{ deposits: DepRow[]; payouts: PayRow[] }>('/api/approvals')
+        setDeposits((current) => JSON.stringify(current) === JSON.stringify(fresh.deposits) ? current : fresh.deposits)
+        setPayouts((current) => JSON.stringify(current) === JSON.stringify(fresh.payouts) ? current : fresh.payouts)
+      }
     } catch (e) {
       setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض طابور الموافقات.', 'You do not have permission to view the approval queue.') : t('تعذّر تحميل الطابور.', 'Failed to load the queue.'))
     }
@@ -109,7 +115,7 @@ export default function Approvals() {
         <div>
           <h2>✅ {t('طابور الموافقات', 'Approval queue')}</h2>
         <p className="page-sub">
-          {t('كل المعلّق في مكان واحد · تحديث تلقائي كل 30 ثانية', 'Everything pending in one place · auto-refresh every 30s')}
+          {t('كل المعلّق في مكان واحد · تحديث تلقائي كل 8 ثوانٍ', 'Everything pending in one place · auto-refresh every 8s')}
           {deposits && payouts && <> · {deposits.length + payouts.length} {t('بانتظار قرار', 'awaiting decision')}</>}
         </p>
         </div>

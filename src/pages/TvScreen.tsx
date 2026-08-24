@@ -65,7 +65,7 @@ export default function TvScreen() {
     // rail inside PanelShell — but this wall renders outside PanelShell, so a
     // TV left on its own would read a table nothing is refreshing until the
     // daily cron. Pump it here too; the server throttles to one run per 60s.
-    await syncProviders()
+    void syncProviders().then((didSync) => { if (didSync) window.setTimeout(() => void load(), 0) })
     const results = await Promise.allSettled([
       api<DepositStats>('/api/deposits/stats'),
       api<{ rows: DepositRow[] }>('/api/deposits?status=PENDING&limit=12'),
@@ -100,8 +100,14 @@ export default function TvScreen() {
         method: 'POST', body: JSON.stringify({ action, note: `Decision from TV screen: ${action}` }),
       })
       setPendingDeposits((current) => current.filter((item) => item.tx_id !== row.tx_id))
+      setStats((current) => current ? {
+        ...current,
+        pending: Math.max(0, current.pending - 1),
+        pendingAll: current.pendingAll == null ? undefined : Math.max(0, current.pendingAll - 1),
+        recent: current.recent.map((item) => item.tx_id === row.tx_id ? { ...item, status: action === 'approve' ? 'PAID' : 'DECLINED' } : item),
+      } : current)
       setActionMessage(action === 'approve' ? t('تم الاعتماد وإرسال التنفيذ للمزوّد.', 'Approved and queued for provider execution.') : t('تم تسجيل الرفض.', 'Decline recorded.'))
-      await load()
+      void load()
     } catch {
       setActionMessage(t('تعذّر تنفيذ القرار؛ ربما تغيّرت الحالة. تم تحديث الشاشة.', 'Decision failed; the status may have changed. The screen was refreshed.'))
       await load()
