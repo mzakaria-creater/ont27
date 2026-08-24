@@ -1,15 +1,35 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 
 interface Props { children: ReactNode }
-interface State { error: Error | null }
+interface State { error: Error | null; recovering: boolean }
 
 export default class AppErrorBoundary extends Component<Props, State> {
-  state: State = { error: null }
+  state: State = { error: null, recovering: false }
 
-  static getDerivedStateFromError(error: Error): State { return { error } }
+  static getDerivedStateFromError(error: Error): State { return { error, recovering: false } }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[panel-render]', error, info.componentStack)
+    const route = `${window.location.pathname}${window.location.search}`
+    const buildAsset = document.querySelector<HTMLScriptElement>('script[type="module"][src]')?.src ?? null
+    void fetch('/api/monitoring/client-error', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ route, message: error.message, stack: error.stack, component_stack: info.componentStack,
+        user_agent: navigator.userAgent, build_asset: buildAsset }),
+    }).catch(() => undefined)
+
+    // A transient render race should not strand the whole panel. Retry once
+    // per route/error every five minutes; deterministic errors stay visible
+    // after that one retry instead of entering a crash loop.
+    try {
+      const key = `panel-render-retry:${route}:${error.message}`.slice(0, 500)
+      const previous = Number(sessionStorage.getItem(key) ?? 0)
+      if (!Number.isFinite(previous) || Date.now() - previous > 5 * 60_000) {
+        sessionStorage.setItem(key, String(Date.now()))
+        this.setState({ recovering: true })
+        window.setTimeout(() => this.setState({ error: null, recovering: false }), 700)
+      }
+    } catch { /* storage can be unavailable in private/restricted contexts */ }
   }
 
   render() {
@@ -18,7 +38,8 @@ export default class AppErrorBoundary extends Component<Props, State> {
       <img src="/logo.svg" alt="OnTarget" />
       <span>ON TARGET PANEL</span>
       <h1>Something interrupted this screen</h1>
-      <p>The application is connected, but this page could not render. Reload to recover.</p>
+      <p>{this.state.recovering ? 'Recovering this screen automatically…' : 'The error was logged. Try the screen again or reload the panel.'}</p>
+      <button disabled={this.state.recovering} onClick={() => this.setState({ error: null, recovering: false })}>Try screen again</button>
       <button onClick={() => window.location.reload()}>Reload panel</button>
       <details><summary>Technical detail</summary><code>{this.state.error.message}</code></details>
     </main>

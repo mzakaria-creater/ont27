@@ -10,6 +10,28 @@ monitoringRoutes.use('*', requireAuth)
 const latest = (values: Array<string | null | undefined>) =>
   values.filter((v): v is string => Boolean(v)).sort().at(-1) ?? null
 
+monitoringRoutes.post('/client-error', async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const text = (value: unknown, max: number) => typeof value === 'string' ? value.slice(0, max) : null
+  const route = text(body?.route, 300) ?? 'unknown'
+  const message = text(body?.message, 1000) ?? 'unknown_client_error'
+  const after = {
+    route,
+    message,
+    stack: text(body?.stack, 4000),
+    component_stack: text(body?.component_stack, 4000),
+    user_agent: text(body?.user_agent, 500),
+    build_asset: text(body?.build_asset, 300),
+  }
+  const actor = c.get('actor')
+  console.error('[client-render-error]', { actor: actor.username, route, message, stack: after.stack })
+  const { error } = await db.from('audit_log').insert({
+    actor_type: 'panel_client', actor_id: actor.sub, actor_name: actor.username,
+    action: 'client.render_error', entity: 'route', entity_id: route, after,
+  })
+  return c.json({ ok: !error }, error ? 500 : 200)
+})
+
 monitoringRoutes.get('/', async (c) => {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   const deviceDb = oldDb() ?? db
