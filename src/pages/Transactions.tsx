@@ -114,7 +114,7 @@ export default function Transactions() {
         <p className="page-sub">{t('إيداعات وسحوبات موحّدة', 'Deposits and payouts unified')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p>
       </section>
 
-      <div className="filter-bar">
+      <div className="filter-bar transaction-filter-toolbar">
         <div className="filter-pills">
           <button className={`pill${type === '' ? ' active' : ''}`} onClick={() => setFilter({ type: '' })}>{t('الكل', 'All')}</button>
           <button className={`pill${type === 'deposit' ? ' active' : ''}`} onClick={() => setFilter({ type: 'deposit' })}>💰 {t('إيداعات', 'Deposits')}</button>
@@ -135,7 +135,7 @@ export default function Transactions() {
           <input className="login-input search-input" placeholder={t('بحث: مرجع / اسم / موبايل / تاجر…', 'Search: ref / name / phone / merchant…')} value={q} onChange={(e) => setQ(e.target.value)} />
           <button type="submit" className="btn-primary btn-sm">{t('بحث', 'Search')}</button>
         </form>
-        <div className="binance-grid">
+        <div className="transaction-filter-fields">
           <label className="filter-field">{t('من', 'From')}<input className="login-input" type="date" value={from} onChange={(e) => setFilter({ from: e.target.value })} /></label>
           <label className="filter-field">{t('إلى', 'To')}<input className="login-input" type="date" value={to} onChange={(e) => setFilter({ to: e.target.value })} /></label>
           <label className="filter-field">{t('التاجر', 'Merchant')}<input className="login-input" value={merchant} onChange={(e) => setFilter({ merchant: e.target.value })} /></label>

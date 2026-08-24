@@ -304,7 +304,7 @@ export default function Deposits() {
         </div>
       </div>
 
-      <div className="filter-bar">
+      <div className="filter-bar transaction-filter-toolbar">
         <div className="filter-pills">
           <button className={`pill${master === '' ? ' active' : ''}`} onClick={() => setFilter({ master: '' })}>
             الكل

@@ -615,7 +615,7 @@ export default function Payouts() {
           {settingsMessage && <p className="drawer-note">{settingsMessage}</p>}
         </section>
       )}
-      <section className="card payout-filter-panel">
+      <section className="card payout-filter-panel transaction-filter-toolbar">
         <div className="payout-filter-presets">
           <button className="btn-ghost btn-sm" onClick={() => applyDatePreset("today")}>{t("اليوم", "Today")}</button>
           <button className="btn-ghost btn-sm" onClick={() => applyDatePreset("week")}>{t("هذا الأسبوع", "This week")}</button>
