@@ -59,6 +59,9 @@ interface SmsRow {
   wallet_balance_after?: number | null
   matched_tx_id?: number | null
   matched_ontarget_ref?: string | null
+  matched_payout_id?: number | null
+  matched_payout_ref?: string | null
+  matched_payout_status?: string | null
   provider: string | null
   sms_first_line: string | null
 }
@@ -386,6 +389,7 @@ export default function SmsLive() {
                   <th>{t('مُرسِل ← مستقبِل', 'Sender ← receiver')}</th>
                   <th>{t('الجهاز', 'Device')}</th>
                   <th>{t('المحفظة / العملية', 'Wallet / Tx')}</th>
+                  <th>{t('معيّنة لسحب', 'Assigned to WD')}</th>
                   <th>{t('الربط', 'Link')}</th>
                   <th>{t('الوقت', 'Time')}</th>
                 </tr>
@@ -394,7 +398,8 @@ export default function SmsLive() {
                 {data.rows.map((r) => {
                   const cat = r.sms_category ? CATEGORY_META[r.sms_category] : null
                   const walletLinked = r.sms_category === 'withdrawal' && r.linked_wallet_number != null
-                  const linked = walletLinked || r.matched_tx_id != null
+                  const payoutLinked = r.sms_category === 'withdrawal' && r.matched_payout_id != null
+                  const linked = payoutLinked || r.matched_tx_id != null
                   const mt = linked ? MATCH_META.auto : r.match_status ? MATCH_META[r.match_status] : null
                   return (
                     <tr key={r.id} onClick={() => void openDetail(r.id)}>
@@ -410,6 +415,9 @@ export default function SmsLive() {
                       <td className="mono">
                         {money(r.amount, 'EGP')}
                         {r.balance_after != null && <div className="cell-sub mono">{t('رصيد', 'bal')} {money(r.balance_after, 'EGP')}</div>}
+                      </td>
+                      <td onClick={(event)=>event.stopPropagation()}>
+                        {r.sms_category !== 'withdrawal' ? <span className="cell-sub">—</span> : payoutLinked ? <Link className="transaction-cell-link" to={`/payouts?q=${encodeURIComponent(r.matched_payout_ref ?? String(r.matched_payout_id))}`}><span className="pay-status-badge st-paid">{t('معيّنة','Assigned')}</span><div className="cell-sub mono">WD {r.matched_payout_ref ?? r.matched_payout_id}{r.matched_payout_status ? ` · ${r.matched_payout_status}` : ''}</div></Link> : <span className="pay-status-badge st-declined">{t('غير معيّنة','Unassigned')}</span>}
                       </td>
                       <td>
                         {r.sender_name ?? r.sender_number ?? '—'}
@@ -483,7 +491,8 @@ export default function SmsLive() {
                   <dt>{t('الجهاز', 'Device')}</dt><dd className="mono">{selected.device_name ?? '—'}{selected.sim_slot != null && <> · SIM {selected.sim_slot}</>}</dd>
                   <dt>{t('رقم العملية (SMS)', 'Tx id (SMS)')}</dt><dd className="mono">{selected.trx_id ?? '—'}</dd>
                   {selected.sms_category !== 'withdrawal' && <><dt>{t('معاملة OnTarget', 'OnTarget tx')}</dt><dd className="mono">{selected.matched_ontarget_ref ?? selected.matched_tx_id ?? '—'}</dd></>}
-                  <dt>{t('حالة الربط', 'Link status')}</dt><dd className="mono">{selected.sms_category === 'withdrawal' ? selected.linked_wallet_number ? t('مرتبطة بالمحفظة', 'Linked to wallet') : t('محفظة غير معروفة', 'Wallet unknown') : selected.match_status ?? '—'}{selected.review_required && !selected.matched && selected.sms_category !== 'withdrawal' && <> · ⚠ {t('تحتاج مراجعة', 'needs review')}</>}</dd>
+                  {selected.sms_category === 'withdrawal' && <><dt>{t('معيّنة لسحب','Assigned to WD')}</dt><dd>{selected.matched_payout_id ? <Link className="transaction-cell-link mono" to={`/payouts?q=${encodeURIComponent(selected.matched_payout_ref ?? String(selected.matched_payout_id))}`}>WD {selected.matched_payout_ref ?? selected.matched_payout_id}{selected.matched_payout_status ? ` · ${selected.matched_payout_status}` : ''}</Link> : <span className="pay-status-badge st-declined">{t('غير معيّنة','Unassigned')}</span>}</dd></>}
+                  <dt>{t('حالة الربط', 'Link status')}</dt><dd className="mono">{selected.sms_category === 'withdrawal' ? selected.matched_payout_id ? t('مرتبطة بمعاملة سحب','Linked to payout') : selected.linked_wallet_number ? t('مرتبطة بالمحفظة فقط','Wallet only') : t('غير مرتبطة','Unlinked') : selected.match_status ?? '—'}{selected.review_required && !selected.matched && selected.sms_category !== 'withdrawal' && <> · ⚠ {t('تحتاج مراجعة', 'needs review')}</>}</dd>
                   <dt>{t('الرصيد بعد العملية', 'Balance after')}</dt><dd className="mono">{money(selected.balance_after, 'EGP')}</dd>
                   {selected.sms_category === 'withdrawal' && <><dt>{t('حساب الرصيد', 'Balance calculation')}</dt><dd className="mono">{selected.wallet_balance_before != null ? money(selected.wallet_balance_before, 'EGP') : '—'} − {money(selected.amount, 'EGP')} = {selected.wallet_balance_after != null ? money(selected.wallet_balance_after, 'EGP') : '—'}</dd></>}
                   {selected.risk_score != null && selected.risk_score > 0 && (

@@ -30,15 +30,37 @@ function sinceIso(hours: number): string {
 // left recent matches looking unlinked.
 async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> {
   if (!rows.length) return
-  for (const row of rows) {
-    if (row.sms_category === 'withdrawal') {
-      row.linked_wallet_number = row.confirmed_wallet_number ?? row.wallet_number ?? null
-      const amount = Number(row.amount)
-      const after = Number(row.balance_after)
-      row.wallet_balance_after = row.balance_after ?? null
-      row.wallet_balance_before = row.balance_after != null && Number.isFinite(after) && Number.isFinite(amount) ? after + amount : null
-      row.matched_tx_id = null
-      row.matched_ontarget_ref = null
+  const withdrawalRows = rows.filter((row) => row.sms_category === 'withdrawal')
+  for (const row of withdrawalRows) {
+    row.linked_wallet_number = row.confirmed_wallet_number ?? row.wallet_number ?? null
+    const amount = Number(row.amount)
+    const after = Number(row.balance_after)
+    row.wallet_balance_after = row.balance_after ?? null
+    row.wallet_balance_before = row.balance_after != null && Number.isFinite(after) && Number.isFinite(amount) ? after + amount : null
+    row.matched_tx_id = null
+    row.matched_ontarget_ref = null
+    row.matched_payout_id = null
+    row.matched_payout_ref = null
+    row.matched_payout_status = null
+  }
+  const payoutId = (row: Record<string, unknown>): number | null => {
+    const raw = row.consumed_by_tx_id ?? row.matched_transaction_id
+    const id = Number(raw)
+    return raw != null && Number.isFinite(id) ? id : null
+  }
+  const payoutIds = [...new Set(withdrawalRows.map(payoutId).filter((id): id is number => id != null))]
+  if (payoutIds.length) {
+    const { data: payouts } = await db.from('maven_payout_transactions').select('maven_id, ontarget_ref, status').in('maven_id', payoutIds)
+    const payoutById = new Map((payouts ?? []).map((payout) => [Number(payout.maven_id), payout]))
+    for (const row of withdrawalRows) {
+      const id = payoutId(row)
+      if (id == null) continue
+      const payout = payoutById.get(id)
+      row.matched = true
+      if (!row.match_status || row.match_status === 'unmatched') row.match_status = 'auto_payout'
+      row.matched_payout_id = id
+      row.matched_payout_ref = payout?.ontarget_ref ?? null
+      row.matched_payout_status = payout?.status ?? null
     }
   }
   const depositRows = rows.filter((row) => row.sms_category !== 'withdrawal')
