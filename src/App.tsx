@@ -1,55 +1,56 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
 import { useAuth } from './auth/AuthContext'
 import ProtectedRoute from './auth/ProtectedRoute'
 import LoginPage from './auth/LoginPage'
-import Dashboard from './pages/Dashboard'
-import Monitor from './pages/Monitor'
-import Deposits from './pages/Deposits'
-import Payouts from './pages/Payouts'
-import Merchants from './pages/Merchants'
-import Wallets from './pages/Wallets'
-import SmsLive from './pages/SmsLive'
-import Transactions from './pages/Transactions'
-import TransactionDetail from './pages/TransactionDetail'
-import Approvals from './pages/Approvals'
-import Settlements from './pages/Settlements'
-import Crm from './pages/Crm'
-import Risk from './pages/Risk'
-import Automation from './pages/Automation'
-import Audit from './pages/Audit'
-import AdminPage from './pages/AdminPage'
-import Reports from './pages/Reports'
-import Review from './pages/Review'
-import Mismatch from './pages/Mismatch'
-import Telegram from './pages/Telegram'
-import Binance from './pages/Binance'
-import OperationsArchive from './pages/OperationsArchive'
-import WalletReport from './pages/WalletReport'
-import WithdrawalSmsReport from './pages/WithdrawalSmsReport'
-import Notifications from './pages/Notifications'
-import TvScreen from './pages/TvScreen'
-import Complaints from './pages/Complaints'
 import type { NotifData } from './pages/Notifications'
-import LinkGenerator from './pages/LinkGenerator'
-import PaymentCheckout from './pages/PaymentCheckout'
-import PaymentStatus from './pages/PaymentStatus'
-import PaymentMethods from './pages/PaymentMethods'
-import KnownRecipients from './pages/KnownRecipients'
-import TreasuryHub from './pages/TreasuryHub'
-import ExecutiveDashboard from './pages/ExecutiveDashboard'
-import AnalyticsDashboard from './pages/AnalyticsDashboard'
-import SystemHealth from './pages/SystemHealth'
-import Performance from './pages/Performance'
-import WalletMovements from './pages/WalletMovements'
-import ClientProfile from './pages/ClientProfile'
-import ReplayLab from './pages/ReplayLab'
-import AirDroid from './pages/AirDroid'
 import { api } from './lib/api'
 import { merchantChipCls, money } from './lib/deposits'
 import { SUPABASE_URL, SUPABASE_KEY } from './lib/supabase'
 import { LocaleProvider, useLocale } from './lib/locale'
 import { installNotificationAudioUnlock, playNotificationTone } from './lib/notificationSounds'
+
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Monitor = lazy(() => import('./pages/Monitor'))
+const Deposits = lazy(() => import('./pages/Deposits'))
+const Payouts = lazy(() => import('./pages/Payouts'))
+const Merchants = lazy(() => import('./pages/Merchants'))
+const Wallets = lazy(() => import('./pages/Wallets'))
+const SmsLive = lazy(() => import('./pages/SmsLive'))
+const Transactions = lazy(() => import('./pages/Transactions'))
+const TransactionDetail = lazy(() => import('./pages/TransactionDetail'))
+const Approvals = lazy(() => import('./pages/Approvals'))
+const Settlements = lazy(() => import('./pages/Settlements'))
+const Crm = lazy(() => import('./pages/Crm'))
+const Risk = lazy(() => import('./pages/Risk'))
+const Automation = lazy(() => import('./pages/Automation'))
+const Audit = lazy(() => import('./pages/Audit'))
+const AdminPage = lazy(() => import('./pages/AdminPage'))
+const Reports = lazy(() => import('./pages/Reports'))
+const Review = lazy(() => import('./pages/Review'))
+const Mismatch = lazy(() => import('./pages/Mismatch'))
+const Telegram = lazy(() => import('./pages/Telegram'))
+const Binance = lazy(() => import('./pages/Binance'))
+const OperationsArchive = lazy(() => import('./pages/OperationsArchive'))
+const WalletReport = lazy(() => import('./pages/WalletReport'))
+const WithdrawalSmsReport = lazy(() => import('./pages/WithdrawalSmsReport'))
+const Notifications = lazy(() => import('./pages/Notifications'))
+const TvScreen = lazy(() => import('./pages/TvScreen'))
+const Complaints = lazy(() => import('./pages/Complaints'))
+const LinkGenerator = lazy(() => import('./pages/LinkGenerator'))
+const PaymentCheckout = lazy(() => import('./pages/PaymentCheckout'))
+const PaymentStatus = lazy(() => import('./pages/PaymentStatus'))
+const PaymentMethods = lazy(() => import('./pages/PaymentMethods'))
+const KnownRecipients = lazy(() => import('./pages/KnownRecipients'))
+const TreasuryHub = lazy(() => import('./pages/TreasuryHub'))
+const ExecutiveDashboard = lazy(() => import('./pages/ExecutiveDashboard'))
+const AnalyticsDashboard = lazy(() => import('./pages/AnalyticsDashboard'))
+const SystemHealth = lazy(() => import('./pages/SystemHealth'))
+const Performance = lazy(() => import('./pages/Performance'))
+const WalletMovements = lazy(() => import('./pages/WalletMovements'))
+const ClientProfile = lazy(() => import('./pages/ClientProfile'))
+const ReplayLab = lazy(() => import('./pages/ReplayLab'))
+const AirDroid = lazy(() => import('./pages/AirDroid'))
 
 type Conn = 'wait' | 'ok' | 'bad'
 
@@ -267,6 +268,7 @@ export default function App() {
       <LocaleProvider>
         <div className="shell">
           <Topbar />
+        <Suspense fallback={<div className="route-loading" role="status"><span className="ld" /> Loading…</div>}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/payment-checkout" element={<PaymentCheckout />} />
@@ -317,6 +319,7 @@ export default function App() {
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
         </div>
       </LocaleProvider>
     </BrowserRouter>

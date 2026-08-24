@@ -80,6 +80,17 @@ const FAST_UPDATED_LOOKBACK_MS = 10 * 60_000
 let lastFastRunAt = 0
 let activeSync: Promise<Record<string, number | string>> | null = null
 
+async function claimDistributedLease(ttlSeconds: number): Promise<boolean> {
+  const { data, error } = await db.rpc('claim_provider_sync_lease', {
+    p_lease_name: 'provider_delta_sync', p_ttl_seconds: ttlSeconds,
+  })
+  if (error) {
+    console.error('provider sync lease failed:', error.message)
+    return false
+  }
+  return data === true
+}
+
 async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, number | string>> {
   const oldUrl = process.env.OLD_SUPABASE_URL
   const oldKey = process.env.OLD_SERVICE_KEY
@@ -296,7 +307,7 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
   // pass scans farther back as a repair net.
   {
     try {
-      const repair = await repairPaidSmsMatches(true, mode === 'full' ? 1000 : 300)
+      const repair = await repairPaidSmsMatches(true, mode === 'full' ? 1000 : 150)
       results['sms_exact_matches'] = repair.linked
       console.info('exact SMS matcher completed', {
         scannedSms: repair.scannedSms,
@@ -316,7 +327,7 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
   }
 
   try {
-    const payoutSms = await autoLinkWithdrawalSms(mode === 'full' ? 1000 : 300)
+    const payoutSms = await autoLinkWithdrawalSms(mode === 'full' ? 1000 : 150)
     results['payout_sms_matches'] = payoutSms.linked
     console.info('withdrawal SMS → payout matcher completed', payoutSms)
   } catch (e) {
@@ -354,6 +365,7 @@ deltaSyncRoutes.get('/delta-sync', async (c) => {
   if (!secret || auth !== `Bearer ${secret}`) {
     return c.json({ error: 'unauthorized' }, 401)
   }
+  if (!(await claimDistributedLease(240))) return c.json({ ok: true, skipped: 'distributed_lease' })
   const results = await syncOnce('full').catch((e) => ({ error: `error: ${(e as Error).message}` }))
   return c.json({ ok: resultOk(results), mode: 'full', results, at: new Date().toISOString() }, resultOk(results) ? 200 : 502)
 })
@@ -378,6 +390,8 @@ deltaSyncRoutes.post('/delta-sync', async (c) => {
   const now = Date.now()
   const wantFast = now - lastFastRunAt >= FAST_THROTTLE_MS
   if (!wantFast) return c.json({ ok: true, skipped: 'throttled' })
+
+  if (!(await claimDistributedLease(10))) return c.json({ ok: true, skipped: 'distributed_lease' })
 
   const mode = 'fast'
   lastFastRunAt = now
