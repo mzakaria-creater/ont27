@@ -8,6 +8,7 @@ import { depositTime, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
+import ProofModal from '../components/ProofModal'
 import { useAuth } from '../auth/AuthContext'
 import { LayoutGrid, Search, TableProperties } from 'lucide-react'
 
@@ -35,6 +36,8 @@ interface TxRow {
   to_account_number?: string | null
   merchant: string | null
   master_merchant?: string | null
+  proof_image_url?: string | null
+  image_url?: string | null
   approved_by: string | null
   first_seen_at: string | null
   created_utc: string | null
@@ -69,6 +72,7 @@ export default function Transactions() {
   const [err, setErr] = useState<string | null>(null)
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [actionBusy, setActionBusy] = useState<string | null>(null)
+  const [proof, setProof] = useState<{ url: string; ref: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -196,6 +200,7 @@ export default function Transactions() {
                 <tr>
                   <th>{t('رقم العملية', 'Ref')}</th>
                   <th>{t('النوع', 'Type')}</th>
+                  <th>{t('الإثبات', 'Proof')}</th>
                   <th>{t('المبلغ', 'Amount')}</th>
                   <th>{t('الطرف', 'Party')}</th>
                   <th>{t('المحفظة', 'Wallet')}</th>
@@ -215,6 +220,7 @@ export default function Transactions() {
                   const party = r.kind === 'deposit' ? (r.sender_name ?? r.sender_number) : (r.account_name ?? r.mobile_no)
                   const clientPhone = r.kind === 'deposit' ? r.sender_number : r.mobile_no
                   const wallet = r.kind === 'deposit' ? (r.receiving_wallet ?? r.to_account_number) : null
+                  const proofUrl = r.kind === 'deposit' ? r.proof_image_url : r.image_url
                   return (
                     <tr key={`${r.kind}-${id}`} className={r.status === 'PENDING' ? 'row-pending' : undefined}>
                       <td className="mono">
@@ -226,6 +232,7 @@ export default function Transactions() {
                           {r.kind === 'deposit' ? `💰 ${t('إيداع', 'Deposit')}` : `📤 ${t('سحب', 'Payout')}`}
                         </span>
                       </td>
+                      <td>{proofUrl ? <button type="button" className="proof-thumb-btn" title={t('عرض إثبات الدفع', 'View payment proof')} aria-label={t('عرض إثبات الدفع', 'View payment proof')} onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id) })}><img src={proofUrl} alt="" loading="lazy" /></button> : <span className="cell-sub">{t('بدون', 'None')}</span>}</td>
                       <td className="mono">{money(r.amount, r.currency ?? 'EGP')}</td>
                       <td>
                         {party ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(party)}`}>{party}</Link> : '—'}
@@ -280,10 +287,12 @@ export default function Transactions() {
               const party = r.kind === 'deposit' ? (r.sender_name ?? r.sender_number) : (r.account_name ?? r.mobile_no)
               const clientPhone = r.kind === 'deposit' ? r.sender_number : r.mobile_no
               const wallet = r.kind === 'deposit' ? (r.receiving_wallet ?? r.to_account_number) : null
+              const proofUrl = r.kind === 'deposit' ? r.proof_image_url : r.image_url
               const details = r.kind === 'deposit' && r.ontarget_ref ? `/transactions/${encodeURIComponent(r.ontarget_ref)}` : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`
               return <article key={`${r.kind}-${id}`} className={`all-tx-card${r.status === 'PENDING' ? ' pending' : ''}`}>
                 <header><Link className="mono transaction-cell-link" to={details}>{r.ontarget_ref ?? id}</Link><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></header>
                 <div className="all-tx-card-amount mono">{money(r.amount, r.currency ?? 'EGP')}</div>
+                {proofUrl && <button type="button" className="all-tx-card-proof" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id) })}><img src={proofUrl} alt="" loading="lazy" /><span>{t('عرض إثبات الدفع', 'View payment proof')}</span></button>}
                 <div className="all-tx-card-brands"><MerchantLogo merchant={r.merchant ?? r.master_merchant} /><MethodLogo method={r.kind === 'deposit' ? r.payment_method : r.pay_by} /></div>
                 <dl>
                   <div><dt>{t('النوع', 'Type')}</dt><dd>{r.kind === 'deposit' ? t('إيداع', 'Deposit') : t('سحب', 'Payout')}</dd></div>
@@ -311,6 +320,7 @@ export default function Transactions() {
           </div>
         )}
       </section>
+      {proof && <ProofModal url={proof.url} title={`${t('إثبات الدفع', 'Payment proof')} · ${proof.ref}`} onClose={() => setProof(null)} />}
     </PanelShell>
   )
 }

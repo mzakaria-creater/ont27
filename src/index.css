@@ -935,6 +935,9 @@ a.stat-card:hover { border-color: var(--accent); }
 .all-tx-card.pending { border-color: var(--amber-border); background: linear-gradient(145deg, var(--amber-bg), var(--surface) 46%); }
 .all-tx-card header, .all-tx-card-brands, .all-tx-card-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .all-tx-card-amount { font-size: 24px; font-weight: 850; }
+.all-tx-card-proof { display: grid; gap: 6px; width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 10px; color: var(--accent); background: var(--bg); cursor: pointer; font: inherit; font-size: 11px; font-weight: 750; text-align: center; }
+.all-tx-card-proof img { width: 100%; height: 150px; border-radius: 7px; object-fit: contain; background: #080b12; }
+.all-tx-card-proof:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .all-tx-card-brands { justify-content: flex-start; min-height: 48px; }
 .all-tx-card-brands .merchant-brand-logo, .all-tx-card-brands .merchant-brand-fallback, .all-tx-card-brands .method-logo { flex-basis: 44px; width: 44px; height: 44px; }
 .all-tx-card-brands .merchant-brand-featured { flex-direction: row; min-width: 0; text-align: start; }
@@ -947,18 +950,20 @@ a.stat-card:hover { border-color: var(--accent); }
 .all-tx-card-actions > * { flex: 1 1 0; justify-content: center; text-align: center; }
 .all-transactions-table { width: 100%; table-layout: fixed; font-size: clamp(9px, .72vw, 12px); }
 .all-transactions-table th, .all-transactions-table td { padding: 7px 5px; white-space: normal; overflow-wrap: anywhere; vertical-align: middle; }
-.all-transactions-table th:nth-child(1) { width: 9%; }
-.all-transactions-table th:nth-child(2) { width: 7%; }
-.all-transactions-table th:nth-child(3) { width: 8%; }
-.all-transactions-table th:nth-child(4) { width: 11%; }
-.all-transactions-table th:nth-child(5) { width: 9%; }
-.all-transactions-table th:nth-child(6) { width: 7%; }
-.all-transactions-table th:nth-child(7) { width: 11%; }
-.all-transactions-table th:nth-child(8) { width: 6%; }
-.all-transactions-table th:nth-child(9) { width: 8%; }
-.all-transactions-table th:nth-child(10) { width: 8%; }
+.all-transactions-table th:nth-child(1) { width: 8%; }
+.all-transactions-table th:nth-child(2) { width: 6%; }
+.all-transactions-table th:nth-child(3) { width: 5%; }
+.all-transactions-table th:nth-child(4) { width: 8%; }
+.all-transactions-table th:nth-child(5) { width: 10%; }
+.all-transactions-table th:nth-child(6) { width: 8%; }
+.all-transactions-table th:nth-child(7) { width: 6%; }
+.all-transactions-table th:nth-child(8) { width: 9%; }
+.all-transactions-table th:nth-child(9) { width: 5%; }
+.all-transactions-table th:nth-child(10) { width: 7%; }
 .all-transactions-table th:nth-child(11) { width: 7%; }
-.all-transactions-table th:nth-child(12) { width: 9%; }
+.all-transactions-table th:nth-child(12) { width: 7%; }
+.all-transactions-table th:nth-child(13) { width: 14%; }
+.all-transactions-table .proof-thumb-btn { inline-size: 38px; block-size: 38px; }
 .all-transactions-table .merchant-brand-cell { gap: 4px; max-width: 100%; }
 .all-transactions-table .merchant-brand-logo, .all-transactions-table .merchant-brand-fallback, .all-transactions-table .method-logo { flex-basis: 26px; width: 26px; height: 26px; border-radius: 7px; }
 .all-transactions-table .merchant-brand-featured { min-width: 0; flex-direction: row; gap: 4px; text-align: start; }

@@ -13,9 +13,9 @@ export const extraRoutes = new Hono<AuthEnv>()
 extraRoutes.use('*', requireAuth)
 
 const DEPOSIT_COLS =
-  'tx_id, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, receiving_wallet, to_account_number, payment_method, gateway, merchant, master_merchant, approved_by, first_seen_at, created_utc'
+  'tx_id, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, receiving_wallet, to_account_number, payment_method, gateway, merchant, master_merchant, approved_by, proof_image_url, first_seen_at, created_utc'
 const PAYOUT_COLS =
-  'maven_id, ontarget_ref, status, amount, pay_by, merchant, account_name, mobile_no, agent_name, approved_by, first_seen_at, created_utc'
+  'maven_id, ontarget_ref, status, amount, pay_by, merchant, account_name, mobile_no, agent_name, approved_by, image_url, first_seen_at, created_utc'
 
 // ---- Unified transactions (deposits + payouts) ----
 extraRoutes.get(
