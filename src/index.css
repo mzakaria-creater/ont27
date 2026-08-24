@@ -2138,6 +2138,10 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .method-cell-logo-only { gap: 0; min-inline-size: 34px; justify-content: center; }
 .airdroid-security { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
 .airdroid-security p { margin: 4px 0 0; color: var(--text-dim); font-size: 12px; }
+.maven-frame-blocked { align-items: center; border-color: var(--amber-border); background: linear-gradient(135deg, var(--amber-bg), var(--surface)); }
+.maven-frame-blocked > div { flex: 1 1 auto; }
+.maven-frame-blocked > .btn-primary { flex: 0 0 auto; }
+@media (max-width: 640px) { .maven-frame-blocked { align-items: stretch; flex-direction: column; } .maven-frame-blocked > .btn-primary { justify-content: center; } }
 .airdroid-device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }
 .airdroid-device { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 11px; padding: 13px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .airdroid-device-icon { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 11px; color: var(--text-dim); background: var(--hover-2); }
