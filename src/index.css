@@ -405,6 +405,13 @@ body {
 .merchant-brand-featured .merchant-brand-logo { flex-basis: 64px; width: 64px; height: 64px; padding: 3px; border-radius: 14px; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
 .merchant-brand-featured .merchant-brand-name { max-width: 130px; white-space: normal; font-size: 12px; line-height: 1.3; font-weight: 800; }
 .approval-item-card .merchant-brand-featured .merchant-brand-logo { flex-basis: 72px; width: 72px; height: 72px; }
+.payout-edit-card, .payout-action-history { margin: 14px 0; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-soft); }
+.payout-edit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+.payout-edit-note { grid-column: 1 / -1; }
+.payout-history-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+.payout-history-row:last-child { border-bottom: 0; }
+.payout-history-row time { color: var(--muted); white-space: nowrap; }
+@media (max-width: 640px) { .payout-edit-grid { grid-template-columns: 1fr; } .payout-edit-note { grid-column: auto; } .payout-history-row { grid-template-columns: 1fr; } }
 .method-logo img { display: block; width: 100%; height: 100%; border-radius: inherit; object-fit: contain; }
 .user-brand-cell { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .user-brand-cell > img, .user-brand-cell > span:first-child { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 50%; object-fit: cover; }

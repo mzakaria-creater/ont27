@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Eye, MessageSquare } from "lucide-react";
+import { Eye, MessageSquare, Pencil, Save, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import PanelShell from "../components/PanelShell";
 import MerchantLogo from "../components/MerchantLogo";
@@ -58,6 +58,21 @@ export interface PayoutRow {
 }
 interface PayoutDetail extends PayoutRow {
   updated_utc: string | null;
+  actions?: Array<{
+    id: string;
+    actor_name: string | null;
+    action: string;
+    before: Record<string, unknown> | null;
+    after: Record<string, unknown> | null;
+    created_at: string;
+  }>;
+}
+interface PayoutEditForm {
+  account_name: string;
+  mobile_no: string;
+  pay_by: string;
+  merchant: string;
+  remark: string;
 }
 interface ListResponse {
   rows: PayoutRow[];
@@ -92,6 +107,16 @@ export default function Payouts() {
   const [err, setErr] = useState<string | null>(null);
   const [selected, setSelected] = useState<PayoutDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<PayoutEditForm>({
+    account_name: "",
+    mobile_no: "",
+    pay_by: "",
+    merchant: "",
+    remark: "",
+  });
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [decisionErr, setDecisionErr] = useState<string | null>(null);
   const [decisionResult, setDecisionResult] = useState<DecisionResult | null>(
@@ -225,7 +250,7 @@ export default function Payouts() {
     }
     setParams(p);
   };
-  const openDetail = async (mavenId: number) => {
+  const openDetail = async (mavenId: number, startEditing = false) => {
     setDetailLoading(true);
     setDecisionErr(null);
     setDecisionResult(null);
@@ -233,11 +258,21 @@ export default function Payouts() {
     setProofName(null);
     setRemark("");
     setUtr("");
+    setEditing(false);
+    setEditError(null);
     try {
       const payout = (
         await api<{ payout: PayoutDetail }>(`/api/payouts/${mavenId}`)
       ).payout;
       setSelected(payout);
+      setEditForm({
+        account_name: payout.account_name ?? "",
+        mobile_no: payout.mobile_no ?? "",
+        pay_by: payout.pay_by ?? "",
+        merchant: payout.merchant ?? "",
+        remark: payout.remark ?? "",
+      });
+      setEditing(startEditing && can("payouts", "can_edit"));
       setUtr(
         payout.linked_sms?.trx_id ?? payout.linked_sms?.trx_reference ?? "",
       );
@@ -245,6 +280,28 @@ export default function Payouts() {
       setErr(t("تعذّر تحميل تفاصيل السحب.", "Failed to load payout details."));
     } finally {
       setDetailLoading(false);
+    }
+  };
+  const saveEdit = async () => {
+    if (!selected) return;
+    setEditBusy(true);
+    setEditError(null);
+    try {
+      await api(`/api/payouts/${selected.maven_id}`, {
+        method: "PUT",
+        body: JSON.stringify(editForm),
+      });
+      setEditing(false);
+      await openDetail(selected.maven_id);
+      void load();
+    } catch (e) {
+      setEditError(
+        e instanceof ApiError && e.status === 403
+          ? t("لا تملك صلاحية التعديل.", "You lack edit permission.")
+          : t("تعذّر حفظ التعديلات.", "Failed to save changes."),
+      );
+    } finally {
+      setEditBusy(false);
     }
   };
   const uploadProof = async (file: File | null) => {
@@ -504,6 +561,19 @@ export default function Payouts() {
                               ? t("قرار", "Decide")
                               : t("تفاصيل", "Details")}
                           </button>
+                          {can("payouts", "can_edit") && (
+                            <button
+                              type="button"
+                              className="btn-ghost btn-sm icon-text-btn"
+                              title={t("تعديل السحب", "Edit payout")}
+                              onClick={() =>
+                                void openDetail(row.maven_id, true)
+                              }
+                            >
+                              <Pencil size={15} aria-hidden="true" />
+                              {t("تعديل", "Edit")}
+                            </button>
+                          )}
                           {row.linked_sms && (
                             <button
                               type="button"
@@ -625,12 +695,23 @@ export default function Payouts() {
                   <h3 className="mono">
                     {selected.ontarget_ref ?? selected.maven_id}
                   </h3>
-                  <button
-                    className="btn-ghost btn-sm"
-                    onClick={() => setSelected(null)}
-                  >
-                    ✕
-                  </button>
+                  <div className="row-actions">
+                    {can("payouts", "can_edit") && !editing && (
+                      <button
+                        className="btn-ghost btn-sm icon-text-btn"
+                        onClick={() => setEditing(true)}
+                      >
+                        <Pencil size={15} aria-hidden="true" />
+                        {t("تعديل", "Edit")}
+                      </button>
+                    )}
+                    <button
+                      className="btn-ghost btn-sm"
+                      onClick={() => setSelected(null)}
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
                 <div className="drawer-amount">
                   <span className="mono">
@@ -642,6 +723,68 @@ export default function Payouts() {
                     {statusMeta(selected.status).label}
                   </span>
                 </div>
+                {editing && can("payouts", "can_edit") && (
+                  <section className="payout-edit-card">
+                    <strong>{t("تعديل بيانات السحب", "Edit payout details")}</strong>
+                    <div className="payout-edit-grid">
+                      {(
+                        [
+                          ["account_name", t("اسم المستفيد", "Beneficiary name")],
+                          ["mobile_no", t("رقم الهاتف", "Phone number")],
+                          ["pay_by", t("طريقة الدفع", "Payment method")],
+                          ["merchant", t("التاجر", "Merchant")],
+                        ] as Array<[keyof PayoutEditForm, string]>
+                      ).map(([key, label]) => (
+                        <label className="field-label" key={key}>
+                          {label}
+                          <input
+                            className="login-input"
+                            value={editForm[key]}
+                            onChange={(e) =>
+                              setEditForm((current) => ({
+                                ...current,
+                                [key]: e.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                      ))}
+                      <label className="field-label payout-edit-note">
+                        {t("ملاحظة", "Note")}
+                        <textarea
+                          className="login-input"
+                          rows={3}
+                          value={editForm.remark}
+                          onChange={(e) =>
+                            setEditForm((current) => ({
+                              ...current,
+                              remark: e.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                    </div>
+                    {editError && <p className="cell-sub danger-text">{editError}</p>}
+                    <div className="row-actions">
+                      <button
+                        className="btn-primary icon-text-btn"
+                        disabled={editBusy}
+                        onClick={() => void saveEdit()}
+                      >
+                        <Save size={15} aria-hidden="true" />
+                        {editBusy ? t("جارٍ الحفظ…", "Saving…") : t("حفظ", "Save")}
+                      </button>
+                      <button
+                        className="btn-ghost icon-text-btn"
+                        disabled={editBusy}
+                        onClick={() => setEditing(false)}
+                      >
+                        <X size={15} aria-hidden="true" />
+                        {t("إلغاء", "Cancel")}
+                      </button>
+                    </div>
+                  </section>
+                )}
                 <dl className="detail-grid">
                   <dt>{t("رقم العملية", "Ref")}</dt>
                   <dd className="mono">{selected.maven_id}</dd>
@@ -659,6 +802,18 @@ export default function Payouts() {
                   <dt>{t("اعتمده", "Approved by")}</dt>
                   <dd>{selected.approved_by ?? "—"}</dd>
                 </dl>
+                {!!selected.actions?.length && (
+                  <section className="payout-action-history">
+                    <strong>{t("سجل الإجراءات", "Action history")}</strong>
+                    {selected.actions.map((action) => (
+                      <div className="payout-history-row" key={action.id}>
+                        <span>{action.action}</span>
+                        <span>{action.actor_name ?? "—"}</span>
+                        <time>{new Date(action.created_at).toLocaleString()}</time>
+                      </div>
+                    ))}
+                  </section>
+                )}
                 {selected.linked_sms && (
                   <section className="payout-linked-sms-card">
                     <div className="payout-linked-sms-head">
