@@ -1697,6 +1697,15 @@ a.command-metric:hover { border-color: var(--accent); transform: translateY(-1px
 .tv-item-head { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-dim); margin-bottom: 3px; }
 .tv-item-main { font-size: 13px; }
 .tv-item-sub { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.tv-action-message { margin: -3px 0 8px; padding: 7px 9px; border: 1px solid var(--amber-border); border-radius: 9px; color: var(--status-pending); background: var(--amber-bg); font-size: 10.5px; }
+.tv-pending-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 8px; }
+.tv-action-btn { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--border); border-radius: 9px; color: var(--text); background: var(--hover); font: inherit; font-size: 10.5px; font-weight: 700; cursor: pointer; text-decoration: none; }
+.tv-action-btn:hover { border-color: var(--accent); background: var(--hover-2); }
+.tv-action-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tv-action-btn:disabled { opacity: .5; cursor: wait; }
+.tv-action-btn.approve { color: var(--status-paid); border-color: var(--green-border); background: var(--green-bg); }
+.tv-action-btn.decline { color: var(--status-declined); border-color: var(--red-border); background: var(--red-bg); }
+.tv-action-btn.details { color: var(--accent); }
 
 /* Active/disabled toggle row in the user editor. */
 .user-active-row {

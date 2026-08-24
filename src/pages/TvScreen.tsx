@@ -5,6 +5,8 @@ import { depositTime, money, statusMeta } from '../lib/deposits'
 import type { DepositRow, DepositStats } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { syncProviders } from '../lib/providerSync'
+import { useAuth } from '../auth/AuthContext'
+import { Check, ExternalLink, X } from 'lucide-react'
 
 // 🖥️ شاشة TV — full-screen live operations wall (from the control room's
 // tvscreen view), driven by the panel's own APIs. Auto-refreshes every 10s.
@@ -46,12 +48,16 @@ interface ControlStats {
 
 export default function TvScreen() {
   const { t } = useLocale()
+  const { can } = useAuth()
   const [stats, setStats] = useState<DepositStats | null>(null)
   const [control, setControl] = useState<ControlStats | null>(null)
   const [sms, setSms] = useState<TvSms[]>([])
   const [matched, setMatched] = useState<TvSms[]>([])
   const [payouts, setPayouts] = useState<TvPayout[]>([])
   const [now, setNow] = useState(new Date())
+  const [actionBusy, setActionBusy] = useState<number | null>(null)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const canApprove = can('deposits', 'can_approve')
 
   const load = useCallback(async () => {
     // The delta pull from the old prod DB is normally kicked off by the SMS
@@ -79,6 +85,24 @@ export default function TvScreen() {
     const clock = setInterval(() => setNow(new Date()), 1000)
     return () => { clearInterval(iv); clearInterval(clock) }
   }, [load])
+
+  const decide = async (row: DepositRow, action: 'approve' | 'decline') => {
+    const prompt = action === 'approve'
+      ? t(`تأكيد اعتماد المعاملة ${row.ontarget_ref ?? row.tx_id}؟`, `Approve transaction ${row.ontarget_ref ?? row.tx_id}?`)
+      : t(`تأكيد رفض المعاملة ${row.ontarget_ref ?? row.tx_id}؟`, `Decline transaction ${row.ontarget_ref ?? row.tx_id}?`)
+    if (!window.confirm(prompt)) return
+    setActionBusy(row.tx_id); setActionMessage(null)
+    try {
+      await api(`/api/deposits/${row.tx_id}/decision`, {
+        method: 'POST', body: JSON.stringify({ action, note: `Decision from TV screen: ${action}` }),
+      })
+      setActionMessage(action === 'approve' ? t('تم الاعتماد وإرسال التنفيذ للمزوّد.', 'Approved and queued for provider execution.') : t('تم تسجيل الرفض.', 'Decline recorded.'))
+      await load()
+    } catch {
+      setActionMessage(t('تعذّر تنفيذ القرار؛ ربما تغيّرت الحالة. تم تحديث الشاشة.', 'Decision failed; the status may have changed. The screen was refreshed.'))
+      await load()
+    } finally { setActionBusy(null) }
+  }
 
   const cStats = control?.stats ?? {}
   const acceptRate = (cStats.approval_rate as number | undefined) ??
@@ -170,6 +194,7 @@ export default function TvScreen() {
 
         <section className="tv-col">
           <h3>💳 {t('معاملات حية', 'Live transactions')}</h3>
+          {actionMessage && <div className="tv-action-message" role="status">{actionMessage}</div>}
           <div className="tv-feed">
             {(stats?.recent ?? []).slice(0, 9).map((r: DepositRow) => {
               const st = statusMeta(r.status)
@@ -183,6 +208,15 @@ export default function TvScreen() {
                     <b className="mono">{money(r.amount, r.currency)}</b>
                     {' '}{r.sender_name ?? '—'} · {r.merchant ?? '—'}
                   </div>
+                  {r.status === 'PENDING' && (
+                    <div className="tv-pending-actions">
+                      <Link className="tv-action-btn details" to={`/transactions/${encodeURIComponent(r.ontarget_ref ?? String(r.tx_id))}`} title={t('فتح التفاصيل', 'Open details')}><ExternalLink size={15}/><span>{t('التفاصيل', 'Details')}</span></Link>
+                      {canApprove && <>
+                        <button className="tv-action-btn approve" disabled={actionBusy === r.tx_id} onClick={() => void decide(r, 'approve')}><Check size={16}/><span>{t('اعتماد', 'Approve')}</span></button>
+                        <button className="tv-action-btn decline" disabled={actionBusy === r.tx_id} onClick={() => void decide(r, 'decline')}><X size={16}/><span>{t('رفض', 'Decline')}</span></button>
+                      </>}
+                    </div>
+                  )}
                 </div>
               )
             })}
