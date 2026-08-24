@@ -89,7 +89,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/automation', icon: '🤖', labelAr: 'الأتمتة', labelEn: 'Automation', keys: ['automation', 'telegram_bot', 'binance_p2p', 'treasury', 'allocation_engine', 'capacity_monitor', 'workspace_hub', 'launchpad', 'ai_team'], group: 'risk' },
   { to: '/replay-lab', icon: '🧪', labelAr: 'مختبر Replay', labelEn: 'Replay lab', keys: ['automation', 'sms_live', 'webhooks'], group: 'risk' },
   { to: '/telegram', icon: '📨', labelAr: 'تنبيهات Telegram', labelEn: 'Telegram alerts', keys: ['telegram_bot', 'automation'], group: 'risk' },
-  { to: '/binance', icon: '🪙', labelAr: 'خزينة USDT', labelEn: 'USDT Treasury', keys: ['binance_p2p', 'treasury'], group: 'risk' },
+  { to: '/binance', icon: '🪙', labelAr: 'Binance P2P', labelEn: 'Binance P2P', keys: ['binance_p2p_config', 'binance_p2p', 'treasury'], group: 'risk' },
   // System — reporting, audit, admin
   { to: '/reports', icon: '📊', labelAr: 'التقارير الشاملة', labelEn: 'Full reports', keys: ['reports', 'advanced_analysis'], group: 'system' },
   { to: '/audit', icon: '🕵️', labelAr: 'سجل التدقيق', labelEn: 'Audit log', keys: ['audit_log', 'audit-logs'], group: 'system' },
@@ -112,7 +112,7 @@ const BUILT_PAGE_KEYS = new Set([
   'wallets', 'wallet_pool', 'wallet-pools', 'accounts', 'payment_methods',
   'client_crm',
   'risk', 'risk_audit', 'flagged', 'exceptions', 'manual_review', 'velocity', 'compliance',
-  'telegram_bot', 'binance_p2p', 'treasury', 'allocation_engine', 'capacity_monitor', 'workspace_hub', 'launchpad', 'ai_team',
+  'telegram_bot', 'binance_p2p_config', 'binance_p2p', 'treasury', 'allocation_engine', 'capacity_monitor', 'workspace_hub', 'launchpad', 'ai_team',
   'audit_log', 'audit-logs', 'review',
   'users', 'permissions', 'api-keys', 'webhooks', 'developers', 'settings',
   'reports', 'advanced_analysis',
