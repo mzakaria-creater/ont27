@@ -7,6 +7,7 @@ import { depositTime, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
+import { useAuth } from '../auth/AuthContext'
 
 // All transactions — deposits + payouts merged, sorted by our ref.
 
@@ -43,6 +44,7 @@ interface ListResponse {
 export default function Transactions() {
   const [pageSize, setPageSize] = usePageSize('transactions')
   const { t } = useLocale()
+  const { can } = useAuth()
   const [params, setParams] = useSearchParams()
   const type = params.get('type') ?? ''
   const status = params.get('status') ?? ''
@@ -60,6 +62,7 @@ export default function Transactions() {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [counts, setCounts] = useState<Record<string, number>>({})
+  const [actionBusy, setActionBusy] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -106,6 +109,27 @@ export default function Transactions() {
   }
 
   const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1
+
+  const decide = async (row: TxRow, action: 'approve' | 'decline') => {
+    const id = row.kind === 'deposit' ? row.tx_id : row.maven_id
+    if (!id) return
+    if (!window.confirm(action === 'approve' ? t('تأكيد اعتماد المعاملة؟', 'Approve this transaction?') : t('تأكيد رفض المعاملة؟', 'Reject this transaction?'))) return
+    const key = `${row.kind}-${id}-${action}`
+    setActionBusy(key)
+    setErr(null)
+    try {
+      if (row.kind === 'deposit') {
+        await api(`/api/deposits/${id}/decision`, { method: 'POST', body: JSON.stringify({ action, note: `Decision from All Transactions: ${action}` }) })
+      } else if (action === 'decline') {
+        await api(`/api/payouts/${id}/decision`, { method: 'POST', body: JSON.stringify({ decision: 'DECLINED', remark: 'Declined from All Transactions', mode: 'auto' }) })
+      }
+      await load()
+    } catch (e) {
+      setErr(e instanceof ApiError ? `${t('فشل تنفيذ القرار', 'Decision failed')}: ${e.code}` : t('فشل تنفيذ القرار.', 'Decision failed.'))
+    } finally {
+      setActionBusy(null)
+    }
+  }
 
   return (
     <PanelShell>
@@ -198,6 +222,15 @@ export default function Transactions() {
                       <td>{r.status === 'PENDING' ? '—' : (!r.approved_by || r.approved_by === 'Manual' ? t('النظام (آلي)', 'System (auto)') : r.approved_by)}</td>
                       <td className="mono">{depositTime(r)}</td>
                       <td>
+                        <div className="transaction-action-buttons">
+                        {r.status === 'PENDING' && r.kind === 'deposit' && can('deposits', 'can_approve') && <>
+                          <button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r, 'approve')}>{t('اعتماد', 'Approve')}</button>
+                          <button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r, 'decline')}>{t('رفض', 'Reject')}</button>
+                        </>}
+                        {r.status === 'PENDING' && r.kind === 'payout' && can('payouts', 'can_approve') && <>
+                          <Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('رفع إثبات ودفع', 'Proof & Pay')}</Link>
+                          <button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r, 'decline')}>{t('رفض', 'Reject')}</button>
+                        </>}
                         <Link
                           className="btn-ghost btn-sm"
                           to={r.kind === 'deposit' && r.ontarget_ref
@@ -206,6 +239,7 @@ export default function Transactions() {
                         >
                           👁 {t('تفاصيل', 'Details')}
                         </Link>
+                        </div>
                       </td>
                     </tr>
                   )
