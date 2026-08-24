@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { RefreshCw, RotateCcw, Search } from 'lucide-react'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
@@ -33,6 +34,10 @@ export default function WalletReport() {
   const { t } = useLocale()
   const [rows, setRows] = useState<WalletRow[] | null>(null)
   const [days, setDays] = useState(30)
+  const [query, setQuery] = useState('')
+  const [activity, setActivity] = useState('')
+  const [sort, setSort] = useState('sms')
+  const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [detail, setDetail] = useState<WalletDetail | null>(null)
   const [detailBusy, setDetailBusy] = useState(false)
@@ -46,13 +51,31 @@ export default function WalletReport() {
   const stCls = (s: string | null) => s === 'PAID' || s === 'APPROVED' ? 'st-paid' : s === 'DECLINED' ? 'st-declined' : s === 'PENDING' ? 'st-pending' : 'st-dim'
 
   const load = useCallback(async () => {
-    setRows(null)
-    try { setRows((await api<{ rows: WalletRow[] }>(`/api/wallet-report?days=${days}`)).rows); setErr(null) }
+    setLoading(true)
+    try {
+      const next = (await api<{ rows: WalletRow[] }>(`/api/wallet-report?days=${days}`)).rows
+      setRows((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next)
+      setErr(null)
+    }
     catch (e) { setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض تقرير المحافظ.', 'You do not have permission to view the wallet report.') : t('تعذّر تحميل التقرير.', 'Failed to load the report.')) }
+    finally { setLoading(false) }
   }, [days, t])
   useEffect(() => { void load() }, [load])
 
-  const totals = (rows ?? []).reduce((a, r) => ({
+  const filteredRows = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    const list = (rows ?? []).filter((row) => {
+      if (needle && ![row.wallet, row.device, row.merchant].some((value) => String(value ?? '').toLowerCase().includes(needle))) return false
+      if (activity === 'unconfirmed' && row.unconfirmed === 0) return false
+      if (activity === 'withdrawals' && row.withdrawals_count === 0) return false
+      if (activity === 'deposits' && row.deposits_count === 0) return false
+      if (activity === 'balance' && row.balance == null) return false
+      return true
+    })
+    return list.sort((a, b) => sort === 'balance' ? Number(b.balance ?? 0) - Number(a.balance ?? 0) : sort === 'withdrawals' ? Number(b.withdrawals_amount ?? 0) - Number(a.withdrawals_amount ?? 0) : sort === 'unconfirmed' ? b.unconfirmed - a.unconfirmed : b.sms_count - a.sms_count)
+  }, [rows, query, activity, sort])
+
+  const totals = filteredRows.reduce((a, r) => ({
     wallets: a.wallets + 1,
     sms: a.sms + r.sms_count,
     deposits: a.deposits + (r.deposits_amount ?? 0),
@@ -68,7 +91,7 @@ export default function WalletReport() {
     </section>
 
     <div className="kpi-grid">
-      <div className="kpi-card"><div className="kpi-value">{rows ? totals.wallets : '…'}</div><div className="kpi-label">{t('المحافظ', 'Wallets')}</div></div>
+      <div className="kpi-card"><div className="kpi-value">{rows ? totals.wallets : '…'}</div><div className="kpi-label">{t('المحافظ', 'Wallets')}</div>{rows && filteredRows.length !== rows.length && <div className="cell-sub">{t('من','of')} {rows.length}</div>}</div>
       <div className="kpi-card"><div className="kpi-value">{rows ? totals.sms.toLocaleString('en-US') : '…'}</div><div className="kpi-label">{t('رسائل SMS', 'SMS received')}</div></div>
       <div className="kpi-card"><div className="kpi-value">{rows ? money(totals.deposits, 'EGP') : '…'}</div><div className="kpi-label">{t('إيداعات', 'Deposits')}</div></div>
       <div className="kpi-card"><div className="kpi-value">{rows ? money(totals.withdrawals, 'EGP') : '…'}</div><div className="kpi-label">{t('سحوبات', 'Withdrawals')}</div></div>
@@ -76,24 +99,30 @@ export default function WalletReport() {
       <div className="kpi-card"><div className="kpi-value">{rows ? money(totals.balance, 'EGP') : '…'}</div><div className="kpi-label">{t('إجمالي الرصيد', 'Total balance')}</div></div>
     </div>
 
-    <div className="filter-bar">
+    <div className="filter-bar transaction-filter-toolbar wallet-report-filter-bar">
       <div className="filter-pills">
         {[7, 30, 90].map((d) => <button key={d} className={`pill${days === d ? ' active' : ''}`} onClick={() => setDays(d)}>{t('آخر', 'Last')} {d} {t('يوم', 'days')}</button>)}
       </div>
+      <label className="wallet-report-search"><Search size={15}/><input value={query} onChange={(e)=>setQuery(e.target.value)} placeholder={t('بحث: محفظة / جهاز / تاجر…','Search wallet / device / merchant…')}/></label>
+      <select className="login-input" value={activity} onChange={(e)=>setActivity(e.target.value)} aria-label={t('نوع النشاط','Activity type')}><option value="">{t('كل النشاط','All activity')}</option><option value="unconfirmed">{t('غير مؤكدة','Unconfirmed')}</option><option value="withdrawals">{t('لديها سحوبات','Has withdrawals')}</option><option value="deposits">{t('لديها إيداعات','Has deposits')}</option><option value="balance">{t('لديها رصيد','Has balance')}</option></select>
+      <select className="login-input" value={sort} onChange={(e)=>setSort(e.target.value)} aria-label={t('ترتيب','Sort')}><option value="sms">{t('الأكثر SMS','Most SMS')}</option><option value="balance">{t('الأعلى رصيداً','Highest balance')}</option><option value="withdrawals">{t('الأكثر سحباً','Most withdrawals')}</option><option value="unconfirmed">{t('الأكثر غير مؤكد','Most unconfirmed')}</option></select>
+      <span className="automation-filter-count">{filteredRows.length} / {rows?.length ?? 0}</span>
+      <button className="btn-ghost btn-sm" disabled={loading} onClick={()=>void load()}><RefreshCw size={14} className={loading?'spin':''}/> {t('تحديث','Refresh')}</button>
+      <button className="btn-ghost btn-sm" onClick={()=>{setQuery('');setActivity('');setSort('sms');setDays(30)}}><RotateCcw size={14}/> {t('إعادة ضبط','Reset')}</button>
     </div>
 
     {err && <div className="card warn">{err}</div>}
     <section className="card recent-card">
       {!rows && !err && <p className="sidebar-hint">{t('جارٍ الحساب…', 'Calculating…')}</p>}
-      {rows && rows.length === 0 && <p>{t('لا توجد بيانات في هذه الفترة.', 'No data in this window.')}</p>}
-      {rows && rows.length > 0 && <div className="table-wrap"><table className="data-table">
+      {rows && filteredRows.length === 0 && <p>{t('لا توجد بيانات مطابقة.', 'No matching wallet data.')}</p>}
+      {filteredRows.length > 0 && <div className="table-wrap"><table className="data-table">
         <thead><tr>
           <th>{t('المحفظة', 'Wallet')}</th><th>{t('الجهاز / التاجر', 'Device / merchant')}</th>
           <th>SMS</th><th>{t('مبلغ SMS', 'SMS amount')}</th>
           <th>{t('إيداعات', 'Deposits')}</th><th>{t('سحوبات', 'Withdrawals')}</th>
           <th>{t('غير مؤكدة', 'Unconfirmed')}</th><th>{t('الرصيد الحالي', 'Balance')}</th>
           <th title={t('فرق نشاط SMS عن تغيّر الرصيد — غالباً تحويلات للخزينة', 'SMS activity vs balance change — usually treasury sweeps')}>{t('فرق الرصيد', 'Balance diff')}</th><th /></tr></thead>
-        <tbody>{rows.map((r) => (
+        <tbody>{filteredRows.map((r) => (
           <tr key={r.wallet} className="clickable-row" onClick={() => void openDetail(r.wallet)}>
             <td className="mono">{r.wallet}</td>
             <td>{r.device ?? '—'}{r.merchant && <div className="cell-sub">{r.merchant}</div>}</td>
