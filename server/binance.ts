@@ -124,6 +124,18 @@ binanceRoutes.get('/history', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) =
   return c.json(result)
 })
 
+// Human-confirmation audit. Provider payloads are deliberately not returned
+// here because they can contain counterparty details; the operational view
+// exposes only the result fields needed to reconcile a decision.
+binanceRoutes.get('/executions', requireSuperAdmin, async (c) => {
+  const limit = Math.min(Math.max(Number(c.req.query('limit')) || 50, 1), 200)
+  const { data, error } = await db.from('binance_p2p_execution_log')
+    .select('id, idempotency_key, actor_name, side, asset, fiat, fiat_amount, advertisement_number, confirmed_at, status, provider_order_number, provider_http_status, failure_code, created_at')
+    .order('created_at', { ascending: false }).limit(limit)
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  return c.json({ rows: data ?? [] })
+})
+
 binanceRoutes.post('/execute', requireSuperAdmin, async (c) => {
   const body = await c.req.json().catch(() => null)
   const amount = Number(body?.fiat_amount)
