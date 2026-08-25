@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Activity, CheckCircle2, Clock3, Database, ExternalLink, RefreshCw, Server, WalletCards, XCircle } from 'lucide-react'
+import { Activity, CheckCircle2, Clock3, Database, Download, ExternalLink, RefreshCw, Server, WalletCards, XCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import PanelShell from '../components/PanelShell'
 import { api } from '../lib/api'
@@ -29,9 +29,28 @@ export default function ApiDashboard() {
     return { total: rows.length, approved: rows.filter((r)=>['PAID','APPROVED'].includes(r.status)).length, pending: rows.filter((r)=>r.status==='PENDING').length, declined: rows.filter((r)=>r.status==='DECLINED').length }
   }, [data])
   const online = data?.devices.filter((d)=>d.online).length ?? 0
+  const exportXlsx = async () => {
+    if (!data?.transactions.length) return
+    const ExcelJS = await import('exceljs')
+    const workbook = new ExcelJS.Workbook()
+    workbook.creator = 'OnTarget'; workbook.created = new Date()
+    const sheet = workbook.addWorksheet('Transactions', { views: [{ state: 'frozen', ySplit: 1 }] })
+    sheet.columns = [
+      { header: 'Our TRX', key: 'ourTrx', width: 20 }, { header: 'Provider Transaction ID', key: 'txId', width: 22 },
+      { header: 'Merchant', key: 'merchant', width: 28 }, { header: 'Gateway', key: 'gateway', width: 20 },
+      { header: 'Amount', key: 'amount', width: 14 }, { header: 'Currency', key: 'currency', width: 11 },
+      { header: 'Status', key: 'status', width: 14 }, { header: 'Created UTC', key: 'created', width: 24 },
+    ]
+    data.transactions.forEach((row) => sheet.addRow({ ourTrx: row.ontarget_ref ?? '', txId: row.tx_id, merchant: row.merchant ?? '', gateway: row.gateway ?? '', amount: Number(row.amount ?? 0), currency: row.currency ?? '', status: row.status, created: row.first_seen_at ? new Date(row.first_seen_at) : '' }))
+    sheet.getRow(1).font = { bold: true, color: { argb: 'FF111827' } }; sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF7B84B' } }; sheet.autoFilter = { from: 'A1', to: 'H1' }
+    sheet.getColumn('amount').numFmt = '#,##0.00'; sheet.getColumn('created').numFmt = 'yyyy-mm-dd hh:mm:ss'
+    const bytes = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([bytes as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `ontarget-transactions-${new Date().toISOString().slice(0,10)}.xlsx`; anchor.click(); URL.revokeObjectURL(url)
+  }
 
   return <PanelShell>
-    <section className="api-dash-head"><div><span>ONTARGET · OPERATIONS API</span><h2>API Dashboard</h2><p>Live platform health, transaction flow, and operational tools in one authenticated workspace.</p></div><button className="btn-primary btn-sm" disabled={loading} onClick={()=>void load()}><RefreshCw size={15} className={loading?'spin':''}/>Refresh</button></section>
+    <section className="api-dash-head"><div><span>ONTARGET · OPERATIONS API</span><h2>API Dashboard</h2><p>Live platform health, transaction flow, and operational tools in one authenticated workspace.</p></div><div className="api-dash-actions"><button className="btn-ghost btn-sm" disabled={!data?.transactions.length} onClick={()=>void exportXlsx()}><Download size={15}/>Export XLSX</button><button className="btn-primary btn-sm" disabled={loading} onClick={()=>void load()}><RefreshCw size={15} className={loading?'spin':''}/>Refresh</button></div></section>
     {error&&<div className="card warn">The monitoring API could not be reached. Existing operational pages remain available.</div>}
 
     <section className="api-health-grid">

@@ -2195,6 +2195,7 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .api-dash-head span { color: #f7b84b; font-size: 10px; font-weight: 800; letter-spacing: .14em; }
 .api-dash-head h2 { margin: 5px 0 3px; font-size: clamp(25px,3vw,36px); }
 .api-dash-head p { margin: 0; color: var(--text-dim); }
+.api-dash-actions { display: flex; align-items: center; gap: 7px; }
 .api-health-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; margin-bottom: 10px; }
 .api-health-card { display: flex; align-items: center; gap: 12px; min-height: 96px; padding: 14px; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); }
 .api-health-card > svg { flex: 0 0 auto; width: 38px; height: 38px; padding: 9px; color: #f7b84b; border-radius: 12px; background: rgba(247,184,75,.1); }
@@ -2207,7 +2208,7 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .api-provider-strip { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 0; padding: 0; overflow: hidden; }.api-provider-strip > div { display: grid; gap: 2px; padding: 15px; border-inline-end: 1px solid var(--border); }.api-provider-strip > div:last-child { border: 0; }.api-provider-strip span,.api-provider-strip small { color: var(--text-dim); font-size: 10px; }.api-provider-strip strong { font-size: 20px; }.api-provider-strip .api-generated { display: flex; align-items: center; gap: 6px; font-size: 11px; }
 :root[data-theme='light'] .api-dash-head { background: radial-gradient(circle at 10% 0, rgba(247,184,75,.18), transparent 42%), #fff; }.api-dash-layout .data-table thead th { background: var(--surface); }
 @media (max-width: 1100px) { .api-health-grid,.api-metric-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }.api-dash-layout { grid-template-columns: 1fr; } }
-@media (max-width: 650px) { .api-dash-head { align-items: flex-start; flex-direction: column; }.api-dash-head button { width: 100%; }.api-health-grid,.api-metric-grid,.api-provider-strip { grid-template-columns: 1fr; }.api-provider-strip > div { border-inline-end: 0; border-block-end: 1px solid var(--border); } }
+@media (max-width: 650px) { .api-dash-head { align-items: flex-start; flex-direction: column; }.api-dash-actions { width: 100%; }.api-dash-actions button { flex: 1; }.api-health-grid,.api-metric-grid,.api-provider-strip { grid-template-columns: 1fr; }.api-provider-strip > div { border-inline-end: 0; border-block-end: 1px solid var(--border); } }
 .airdroid-device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }
 .airdroid-device { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 11px; padding: 13px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .airdroid-device-icon { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 11px; color: var(--text-dim); background: var(--hover-2); }
