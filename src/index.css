@@ -2340,6 +2340,7 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .method-generator-modal footer { display: flex; justify-content: flex-end; gap: 9px; }
 @media(max-width:760px){.modal-backdrop{padding:10px}.method-generator-modal{max-height:calc(100vh - 20px)}.method-generator-grid,.method-generator-grid.two{grid-template-columns:1fr 1fr}}
 @media(max-width:480px){.method-generator-grid,.method-generator-grid.two{grid-template-columns:1fr}.method-generator-modal>header,.method-generator-modal form{padding-inline:15px}}
+.payout-auto-utr-note { display: block; color: var(--status-paid); font-size: 11px; font-weight: 600; margin-top: -4px; }
 @media (prefers-reduced-motion: reduce) { .payment-glass-console *, .payment-glass-console *::before, .payment-glass-console *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }
 
 /* ---- System health: gauges, hourly bars, stat tiles ---- */

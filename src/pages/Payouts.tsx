@@ -347,7 +347,8 @@ export default function Payouts() {
       setEditError(t("لا يمكن عكس حالة نُفذت بالفعل على NagoPay.", "A status already executed on NagoPay cannot be reversed."));
       return;
     }
-    if (statusChanged && editForm.status === "APPROVED" && (!editForm.image_url || !utr.trim())) {
+    const exactLinkedSms = selected.linked_sms && Number(selected.linked_sms.amount) === Number(selected.amount)
+    if (statusChanged && editForm.status === "APPROVED" && ((!editForm.image_url && !exactLinkedSms) || !utr.trim())) {
       setEditError(t("اختيار Paid يتطلب إثباتاً وUTR.", "Selecting Paid requires proof and UTR."));
       return;
     }
@@ -423,9 +424,12 @@ export default function Payouts() {
     }
   };
   const decide = async (decision: "APPROVED" | "DECLINED") => {
+    const exactLinkedSms = selected?.linked_sms && Number(selected.linked_sms.amount) === Number(selected.amount)
+      ? selected.linked_sms
+      : null;
     if (
       !selected ||
-      (decision === "APPROVED" && !proofUrl && !selected.linked_sms)
+      (decision === "APPROVED" && !proofUrl && !exactLinkedSms)
     )
       return;
     setDecisionBusy(true);
@@ -1227,6 +1231,9 @@ export default function Payouts() {
                               "The real transfer reference",
                             )}
                           />
+                          {selected.linked_sms && Number(selected.linked_sms.amount) === Number(selected.amount) && utr && (
+                            <span className="payout-auto-utr-note">✓ {t(`UTR تلقائي من SMS سحب مطابقة للمبلغ ${money(selected.amount, 'EGP')}`, `UTR auto-filled from withdrawal SMS matching ${money(selected.amount, 'EGP')}`)}</span>
+                          )}
                         </>
                       )}
                       <p className="drawer-note">
@@ -1253,7 +1260,7 @@ export default function Payouts() {
                         disabled={
                           decisionBusy ||
                           uploading ||
-                          !proofUrl ||
+                          (!proofUrl && !(selected.linked_sms && Number(selected.linked_sms.amount) === Number(selected.amount))) ||
                           !execSettings?.auto_execute_enabled ||
                           !utr.trim()
                         }

@@ -435,7 +435,12 @@ payoutRoutes.post(
           .eq("id", before.matched_sms_id)
           .maybeSingle()
       : { data: null };
-    if (decision === "APPROVED" && !proofUrl && !linkedSms)
+    // A historical/manual link is not automatically trusted. It can provide
+    // proof and UTR only when its withdrawal amount exactly equals the payout.
+    const verifiedLinkedSms = linkedSms && Number(linkedSms.amount) === Number(before.amount)
+      ? linkedSms
+      : null;
+    if (decision === "APPROVED" && !proofUrl && !verifiedLinkedSms)
       return c.json({ error: "payment_proof_required" }, 400);
     if (before.status !== "PENDING") {
       return c.json({ error: "not_pending", status: before.status }, 409);
@@ -452,7 +457,7 @@ payoutRoutes.post(
         ? body.utr_number.trim().slice(0, 120)
         : "";
     const utrNumber =
-      suppliedUtr || linkedSms?.trx_id || linkedSms?.trx_reference || "";
+      suppliedUtr || verifiedLinkedSms?.trx_id || verifiedLinkedSms?.trx_reference || "";
     if (mode === "auto" && decision === "APPROVED" && !utrNumber)
       return c.json({ error: "utr_required" }, 400);
 
