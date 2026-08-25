@@ -105,6 +105,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   // Risk & automation
   { to: '/risk', icon: '🛡️', labelAr: 'المخاطر', labelEn: 'Risk & compliance', keys: ['risk', 'risk_audit', 'flagged', 'exceptions', 'manual_review', 'velocity', 'compliance'], group: 'automation' },
   { to: '/automation', icon: '🤖', labelAr: 'الأتمتة', labelEn: 'Automation', keys: ['automation', 'telegram_bot', 'binance_p2p', 'treasury', 'allocation_engine', 'capacity_monitor', 'workspace_hub', 'launchpad', 'ai_team'], group: 'automation' },
+  { to: '/automation-control', icon: '⚙️', labelAr: 'لوحة تحكم الأتمتة', labelEn: 'Automation control', keys: ['automation'], group: 'automation' },
   { to: '/replay-lab', icon: '🧪', labelAr: 'مختبر Replay', labelEn: 'Replay lab', keys: ['automation', 'sms_live', 'webhooks'], group: 'automation' },
   { to: '/telegram', icon: '📨', labelAr: 'تنبيهات Telegram', labelEn: 'Telegram alerts', keys: ['telegram_bot', 'automation'], group: 'automation' },
   { to: '/binance', icon: '🪙', labelAr: 'Binance P2P', labelEn: 'Binance P2P', keys: ['binance_p2p_config', 'binance_p2p', 'treasury'], group: 'automation' },
@@ -112,6 +113,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/reports', icon: '📊', labelAr: 'التقارير الشاملة', labelEn: 'Full reports', keys: ['reports', 'advanced_analysis'], group: 'insights' },
   { to: '/audit', icon: '🕵️', labelAr: 'سجل التدقيق', labelEn: 'Audit log', keys: ['audit_log', 'audit-logs'], group: 'admin' },
   { to: '/notifications', icon: '🔔', labelAr: 'الإشعارات', labelEn: 'Notifications', keys: ['notifications'], group: 'admin' },
+  { to: '/integration-guide', icon: '📘', labelAr: 'دليل ربط API', labelEn: 'API integration guide', keys: ['api-keys', 'settings', 'merchants'], group: 'admin' },
   // 'settings' alone is not enough here: 19 of 21 roles hold it, but the API
   // is behind requireAdminRole. Both conditions must hold for the link to draw.
   { to: '/admin/users', icon: '👥', labelAr: 'المستخدمون', labelEn: 'Users', keys: ['users', 'settings'], roles: ADMIN_ROLES, group: 'admin' },

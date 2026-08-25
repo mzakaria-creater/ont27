@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Search, X } from 'lucide-react'
+import { RefreshCw, Search, X } from 'lucide-react'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
@@ -42,6 +42,13 @@ export default function Complaints() {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [investigation, setInvestigation] = useState<unknown | null>(null)
+  const [caseTx, setCaseTx] = useState('')
+  const [casePhone, setCasePhone] = useState('')
+  const [caseAmount, setCaseAmount] = useState('')
+  const [caseNote, setCaseNote] = useState('')
+  const [caseResult, setCaseResult] = useState<unknown | null>(null)
+  const [caseBusy, setCaseBusy] = useState(false)
+  const [caseMessage, setCaseMessage] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const params = new URLSearchParams()
@@ -82,6 +89,28 @@ export default function Complaints() {
     }
   }
 
+  const investigateCase = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!caseTx && !(casePhone && caseAmount)) return
+    setCaseBusy(true); setCaseMessage(null)
+    try {
+      const res = await api<{ result: unknown }>('/api/complaints/investigate', { method: 'POST', body: JSON.stringify({ tx_id: caseTx || null, phone: casePhone || null, amount: caseAmount || null }) })
+      setCaseResult(res.result)
+    } catch { setCaseResult({ error: t('فشل الفحص', 'Investigation failed') }) }
+    finally { setCaseBusy(false) }
+  }
+
+  const logCase = async () => {
+    if (!caseTx && !casePhone) return
+    setCaseBusy(true); setCaseMessage(null)
+    try {
+      await api('/api/complaints/log', { method: 'POST', body: JSON.stringify({ tx_id: caseTx || null, phone: casePhone || null, amount: caseAmount || null, note: caseNote.trim() || 'Complaint filed from panel' }) })
+      setCaseMessage(t('تم تسجيل الشكوى وإرسال التنبيه.', 'Complaint recorded and notification sent.'))
+      setCaseNote(''); await load()
+    } catch { setCaseMessage(t('تعذّر تسجيل الشكوى.', 'Unable to record complaint.')) }
+    finally { setCaseBusy(false) }
+  }
+
   const decide = async (decision: 'approve' | 'decline' | 'close') => {
     if (!selected || !selected.tx_id) return
     setBusy(true)
@@ -111,14 +140,37 @@ export default function Complaints() {
     setTxId('')
   }
 
+  const counts = (rows ?? []).reduce((acc, row) => { const key = row.status?.toLowerCase() ?? 'open'; if (key === 'approved' || key === 'resolved' || key === 'resolved_approved') acc.resolved += 1; else if (key === 'declined' || key === 'resolved_declined') acc.declined += 1; else if (key === 'closed') acc.closed += 1; else acc.open += 1; return acc }, { open: 0, resolved: 0, declined: 0, closed: 0 })
+
   return (
     <PanelShell>
-      <section className="page-head">
-        <h2>🛎️ {t('الشكاوى', 'Complaints')}</h2>
-        <p className="page-sub">{t('شكاوى العملاء من غرفة التحكم', 'Customer complaints from the control room')} · {total.toLocaleString('en-US')}</p>
+      <section className="page-head complaint-page-head">
+        <div><span className="guide-eyebrow">CONTROL ROOM · CASE MANAGEMENT</span><h2>📮 {t('مركز الشكاوى', 'Complaint center')}</h2>
+        <p className="page-sub">{t('افحص المعاملة والدليل وسجل القرار من مكان واحد.', 'Investigate transactions, evidence, and decisions in one place.')}</p></div>
+        <button className="btn-ghost btn-sm" onClick={() => void load()}><RefreshCw size={14}/> {t('تحديث', 'Refresh')}</button>
       </section>
 
-      <div className="filter-bar">
+      <section className="complaint-kpis">
+        <div className="complaint-kpi"><span>{t('الإجمالي','Total')}</span><strong>{total.toLocaleString('en-US')}</strong><small>{t('كل الشكاوى المسجلة','all recorded complaints')}</small></div>
+        <div className="complaint-kpi amber"><span>{t('مفتوحة','Open')}</span><strong>{counts.open}</strong><small>{t('تحتاج فحصاً','require investigation')}</small></div>
+        <div className="complaint-kpi green"><span>{t('محلولة','Resolved')}</span><strong>{counts.resolved}</strong><small>{t('تمت الموافقة أو الحل','approved or resolved')}</small></div>
+        <div className="complaint-kpi red"><span>{t('مرفوضة','Declined')}</span><strong>{counts.declined}</strong><small>{t('قرار رفض مسجل','decline recorded')}</small></div>
+      </section>
+
+      <section className="card complaint-investigator">
+        <div className="complaint-panel-title"><div><h3>🔎 {t('فحص شكوى معاملة','Investigate a transaction complaint')}</h3><p>{t('اكتب رقم معاملة Maven، أو رقم العميل والمبلغ.', 'Enter a Maven transaction ID, or customer phone and amount.')}</p></div><span className="pay-status-badge st-pending">LIVE CHECK</span></div>
+        <form className="complaint-investigation-form" onSubmit={investigateCase}>
+          <label>{t('رقم المعاملة','Transaction ID')}<input className="login-input" inputMode="numeric" value={caseTx} onChange={(e)=>setCaseTx(e.target.value.replace(/\D/g,''))} placeholder="Maven TRX"/></label>
+          <span className="complaint-or">{t('أو','OR')}</span>
+          <label>{t('رقم العميل','Customer phone')}<input className="login-input" value={casePhone} onChange={(e)=>setCasePhone(e.target.value.replace(/[^0-9+]/g,''))} placeholder="01xxxxxxxxx"/></label>
+          <label>{t('المبلغ','Amount')}<input className="login-input" type="number" min="0" step="0.01" value={caseAmount} onChange={(e)=>setCaseAmount(e.target.value)} placeholder="EGP"/></label>
+          <button className="btn-primary" disabled={caseBusy || (!caseTx && !(casePhone && caseAmount))}>{caseBusy ? t('جارٍ الفحص…','Investigating…') : `🔍 ${t('افحص','Investigate')}`}</button>
+        </form>
+        {caseResult != null && <div className="complaint-analysis"><div className="section-label">{t('نتيجة التحليل','Analysis result')}</div><pre className="sms-body">{JSON.stringify(caseResult,null,2).slice(0,3000)}</pre><div className="complaint-log-row"><input className="login-input" value={caseNote} onChange={(e)=>setCaseNote(e.target.value)} placeholder={t('وصف الشكوى أو ملاحظة العميل…','Complaint description or customer note…')}/><button className="btn-primary btn-sm" disabled={caseBusy || (!caseTx && !casePhone)} onClick={() => void logCase()}>{t('تسجيل شكوى وإرسال تنبيه','File complaint & notify')}</button></div></div>}
+        {caseMessage && <div className="guide-callout success">{caseMessage}</div>}
+      </section>
+
+      <div className="filter-bar complaint-filter-bar">
         <form className="complaint-tx-search" onSubmit={searchByTx} role="search">
           <label htmlFor="complaint-tx-id">{t('رقم المعاملة', 'Transaction ID')}</label>
           <div className="complaint-tx-search-control">
@@ -153,14 +205,15 @@ export default function Complaints() {
 
       {err && <div className="card warn">{err}</div>}
 
-      <section className="card recent-card">
+      <section className="card recent-card complaint-ledger">
+        <div className="recent-head"><div><h3>{t('سجل الشكاوى','Complaint ledger')}</h3><span className="cell-sub">{total.toLocaleString('en-US')} {t('سجل','records')}</span></div></div>
         {!rows && !err && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
         {rows && rows.length === 0 && <p>{txId ? t(`لا توجد شكوى للمعاملة ${txId}.`, `No complaint found for transaction ${txId}.`) : t('لا توجد شكاوى.', 'No complaints.')}</p>}
         {rows && rows.length > 0 && (
           <div className="table-wrap">
             <table className="data-table clickable">
               <thead>
-                <tr><th>#</th><th>tx</th><th>{t('الهاتف', 'Phone')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('الشكوى', 'Complaint')}</th><th>{t('النتيجة', 'Finding')}</th><th>{t('الحالة', 'Status')}</th><th>{t('الوقت', 'Time')}</th></tr>
+                <tr><th>#</th><th>TRX</th><th>{t('العميل', 'Customer')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('النتيجة', 'Finding')}</th><th>{t('الحالة', 'Status')}</th><th>{t('الوقت', 'Time')}</th><th>{t('إجراء','Action')}</th></tr>
               </thead>
               <tbody>
                 {rows.map((r) => {
@@ -169,12 +222,12 @@ export default function Complaints() {
                     <tr key={r.id} onClick={() => open(r)}>
                       <td className="mono">{r.id}</td>
                       <td className="mono">{r.tx_id ?? '—'}</td>
-                      <td className="mono">{r.customer_phone ?? '—'}</td>
+                      <td className="mono">{r.customer_phone ?? '—'}{r.note&&<div className="cell-sub">{r.note}</div>}</td>
                       <td className="mono">{money(r.amount, 'EGP')}</td>
-                      <td className="sms-cell">{r.note ?? '—'}</td>
                       <td className="sms-cell">{r.finding ?? '—'}</td>
                       <td><span className={`pay-status-badge ${m.cls}`}>{t(m.ar, m.en)}</span></td>
                       <td className="mono">{depositTime({ first_seen_at: r.created_at })}</td>
+                      <td><button className="btn-ghost btn-sm" onClick={(e)=>{e.stopPropagation();open(r)}}>{t('التفاصيل','Details')}</button></td>
                     </tr>
                   )
                 })}

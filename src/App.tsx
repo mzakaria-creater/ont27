@@ -54,6 +54,7 @@ const AirDroid = lazy(() => import('./pages/AirDroid'))
 const AdminTransactions = lazy(() => import('./pages/AdminTransactions'))
 const ApiDashboard = lazy(() => import('./pages/ApiDashboard'))
 const InternalChat = lazy(() => import('./pages/InternalChat'))
+const IntegrationGuide = lazy(() => import('./pages/IntegrationGuide'))
 
 type Conn = 'wait' | 'ok' | 'bad'
 
@@ -315,6 +316,8 @@ export default function App() {
             <Route path="/crm" element={<Crm />} />
             <Route path="/risk" element={<Risk />} />
             <Route path="/automation" element={<Automation />} />
+            <Route path="/automation-control" element={<Automation />} />
+            <Route path="/integration-guide" element={<IntegrationGuide />} />
             <Route path="/audit" element={<Audit />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/review" element={<Review />} />
