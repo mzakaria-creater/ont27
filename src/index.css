@@ -1240,6 +1240,10 @@ a.stat-card:hover { border-color: var(--accent); }
 .nav-group-icon { width: 20px; height: 20px; flex: 0 0 20px; display: grid; place-items: center; color: #fff; }
 .nav-group-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-group-label:hover { color: #fff; background: rgba(255,255,255,.06); border-radius: 8px; }
+:root[data-theme='light'] .nav-group-label,
+:root[data-theme='light'] .nav-group-icon,
+:root[data-theme='light'] .nav-group-label:hover { color: #0f172a; }
+:root[data-theme='light'] .nav-group-label:hover { background: rgba(15,23,42,.06); }
 .nav-group-chevron { transition: transform .15s var(--ease); }
 .nav-group:not(.collapsed) .nav-group-chevron { transform: rotate(180deg); }
 
