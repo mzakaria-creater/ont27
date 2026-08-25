@@ -2234,6 +2234,7 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .airdroid-device > div > span, .airdroid-device small { color: var(--text-dim); font-size: 11px; }
 .airdroid-device .airdroid-device-meta { align-items: flex-end; }
 .airdroid-console-card { margin-block-end: 14px; }
+.airdroid-portal-tabs { margin-block-end:12px; }.airdroid-portal-tabs .pill { display:inline-flex;align-items:center;gap:7px; }
 .airdroid-console-card .recent-head h3 { display: inline-flex; align-items: center; gap: 7px; }
 .airdroid-console-actions { display: flex; align-items: center; gap: 8px; }
 .airdroid-frame-wrap { overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
