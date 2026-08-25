@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from '../auth/AuthContext'
@@ -8,6 +8,7 @@ import { syncProviders } from '../lib/providerSync'
 import { depositTime, money } from '../lib/deposits'
 import type { PagePermission } from '../lib/api'
 import { useLocale } from '../lib/locale'
+import { installNotificationAudioUnlock, playNotificationTone } from '../lib/notificationSounds'
 
 // Shared authed layout ("Live Transaction Monitor" skin): nav rail (real pages
 // first, then the role's remaining permitted modules as "قريباً" placeholders),
@@ -266,11 +267,27 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   const permsLoaded = permissions.length > 0
   const [navOpen, setNavOpen] = useState(false)
   const [smsOpen, setSmsOpen] = useState(true)
+  const [chatUnread, setChatUnread] = useState(0)
+  const chatSeenRef = useRef<number | null>(null)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<NavGroupId>>(() => new Set(NAV_GROUPS.map((group) => group.id).filter((id) => id !== activeGroup)))
 
   // Refresh the role permission matrix from role_page_permissions on each
   // page visit so button visibility follows the current authenticated role.
   useEffect(() => { void refreshPermissions() }, [pathname, refreshPermissions])
+
+  // Internal chat uses the familiar SMS tone. The first response only sets a
+  // baseline, so opening or refreshing the panel never creates a false alert.
+  useEffect(() => {
+    installNotificationAudioUnlock()
+    const check = () => void api<{ rooms?: { unread?: number }[] }>('/api/chat').then((next) => {
+      const unread = (next.rooms ?? []).reduce((sum, room) => sum + Number(room.unread ?? 0), 0)
+      if (chatSeenRef.current !== null && unread > chatSeenRef.current && pathname !== '/chat') playNotificationTone('sms')
+      chatSeenRef.current = unread
+      setChatUnread(unread)
+    }).catch(() => {})
+    check(); const timer = setInterval(check, 6000)
+    return () => clearInterval(timer)
+  }, [pathname])
 
   // The unified transactions table has many operational columns. Give it the
   // full available width by collapsing the optional 290px SMS rail whenever
@@ -295,7 +312,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
     (!l.roles || l.roles.includes(user?.role ?? ''))
   const renderLinks = (group: NavGroupId) => BUILT_LINKS.filter((l) => l.group === group && visible(l)).map((l) => (
     <Link key={l.to} to={l.to} title={locale === 'en' ? l.labelEn : l.labelAr} onClick={() => setNavOpen(false)} className={`sidebar-item sidebar-link${pathname === l.to ? ' active' : ''}`}>
-      <span className="sidebar-icon">{l.icon}</span><span>{locale === 'en' ? l.labelEn : l.labelAr}</span>
+      <span className="sidebar-icon">{l.icon}</span><span>{locale === 'en' ? l.labelEn : l.labelAr}</span>{l.to === '/chat' && chatUnread > 0 && <span className="sidebar-chat-badge" aria-label={`${chatUnread} unread`}>{chatUnread > 99 ? '99+' : chatUnread}</span>}
     </Link>
   ))
   const toggleGroup = (group: NavGroupId) => setCollapsedGroups((current) => {

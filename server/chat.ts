@@ -17,7 +17,7 @@ chatRoutes.get('/', async (c) => {
   const [{ data: users, error: usersError }, { data: memberships, error: memberError }, { data: presence }] = await Promise.all([
     db.from('panel_users').select('id, username, display_name, role, active').eq('active', true).order('display_name'),
     db.from('internal_chat_members').select('room_id, last_read_at, internal_chat_rooms(id, name, kind, created_at, updated_at)').eq('user_id', actor.sub),
-    db.from('internal_chat_presence').select('user_id, last_seen_at'),
+    db.from('internal_chat_presence').select('user_id, last_seen_at, typing_room_id, typing_at'),
   ])
   if (usersError || memberError) return c.json({ error: 'db_error', detail: (usersError ?? memberError)?.message }, 500)
   const roomIds = (memberships ?? []).map((row: any) => row.room_id)
@@ -78,3 +78,9 @@ chatRoutes.post('/rooms/:id/messages', async (c) => {
 
 chatRoutes.post('/presence', async (c) => { const actor = c.get('actor'); const last_seen_at = new Date().toISOString(); const { error } = await db.from('internal_chat_presence').upsert({ user_id: actor.sub, last_seen_at }, { onConflict: 'user_id' }); return error ? c.json({ error: 'db_error' }, 500) : c.json({ ok: true, last_seen_at }) })
 
+chatRoutes.post('/typing', async (c) => {
+  const actor = c.get('actor'); const payload = await c.req.json().catch(() => null); const roomId = typeof payload?.room_id === 'string' ? payload.room_id : null
+  if (roomId && !await member(roomId, actor.sub)) return c.json({ error: 'forbidden' }, 403)
+  const typing_at = new Date().toISOString(); const { error } = await db.from('internal_chat_presence').upsert({ user_id: actor.sub, last_seen_at: typing_at, typing_room_id: roomId, typing_at }, { onConflict: 'user_id' })
+  return error ? c.json({ error: 'db_error' }, 500) : c.json({ ok: true })
+})
