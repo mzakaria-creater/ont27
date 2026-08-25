@@ -52,6 +52,7 @@ const ClientProfile = lazy(() => import('./pages/ClientProfile'))
 const ReplayLab = lazy(() => import('./pages/ReplayLab'))
 const AirDroid = lazy(() => import('./pages/AirDroid'))
 const AdminTransactions = lazy(() => import('./pages/AdminTransactions'))
+const ApiDashboard = lazy(() => import('./pages/ApiDashboard'))
 
 type Conn = 'wait' | 'ok' | 'bad'
 
@@ -278,6 +279,7 @@ export default function App() {
             <Route path="/" element={<AnalyticsDashboard />} />
             <Route path="/control-room" element={<Dashboard />} />
             <Route path="/monitor" element={<Monitor />} />
+            <Route path="/api-dashboard" element={<ApiDashboard />} />
             <Route path="/executive-dashboard" element={<ExecutiveDashboard />} />
             <Route path="/analytics-dashboard" element={<AnalyticsDashboard />} />
             <Route path="/system-health" element={<SystemHealth />} />
