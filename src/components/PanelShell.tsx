@@ -9,6 +9,7 @@ import { depositTime, money } from '../lib/deposits'
 import type { PagePermission } from '../lib/api'
 import { useLocale } from '../lib/locale'
 import { installNotificationAudioUnlock, playNotificationTone } from '../lib/notificationSounds'
+import { BarChart3, Bot, CircleDollarSign, LayoutDashboard, Settings, Users, WalletCards } from 'lucide-react'
 
 // Shared authed layout ("Live Transaction Monitor" skin): nav rail (real pages
 // first, then the role's remaining permitted modules as "قريباً" placeholders),
@@ -53,6 +54,16 @@ const NAV_GROUPS: { id: NavGroupId; ar: string; en: string }[] = [
   { id: 'insights', ar: 'التقارير والتحليلات', en: 'Reports & insights' },
   { id: 'admin', ar: 'النظام والإدارة', en: 'System & admin' },
 ]
+
+const NAV_GROUP_ICONS: Record<NavGroupId, ReactNode> = {
+  overview: <LayoutDashboard size={16} strokeWidth={2} />,
+  transactions: <CircleDollarSign size={16} strokeWidth={2} />,
+  payments: <WalletCards size={16} strokeWidth={2} />,
+  customers: <Users size={16} strokeWidth={2} />,
+  automation: <Bot size={16} strokeWidth={2} />,
+  insights: <BarChart3 size={16} strokeWidth={2} />,
+  admin: <Settings size={16} strokeWidth={2} />,
+}
 
 const BUILT_LINKS: NavLinkDef[] = [
   // Main — dashboards & live monitoring
@@ -334,7 +345,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
           return (
             <div className={`nav-group${collapsed ? ' collapsed' : ''}`} key={g.id}>
               <button type="button" className="nav-group-label" onClick={() => toggleGroup(g.id)} aria-expanded={!collapsed} title={locale === 'en' ? g.en : g.ar}>
-                <span>{locale === 'en' ? g.en : g.ar}</span><span className="nav-group-chevron" aria-hidden="true">⌄</span>
+                <span className="nav-group-title"><span className="nav-group-icon" aria-hidden="true">{NAV_GROUP_ICONS[g.id]}</span><span className="nav-group-name">{locale === 'en' ? g.en : g.ar}</span></span><span className="nav-group-chevron" aria-hidden="true">⌄</span>
               </button>
               <div className="nav-group-links">{links}</div>
             </div>
