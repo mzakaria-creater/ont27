@@ -309,6 +309,7 @@ export default function App() {
             <Route path="/wallet-report" element={<WalletReport />} />
             <Route path="/withdrawal-sms-report" element={<WithdrawalSmsReport />} />
             <Route path="/admin" element={<AdminPage />} />
+            <Route path="/admin/*" element={<AdminPage />} />
             <Route path="/admin-transactions" element={<AdminTransactions />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/tv" element={<TvScreen />} />

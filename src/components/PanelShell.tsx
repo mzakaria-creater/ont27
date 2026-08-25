@@ -101,7 +101,13 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/notifications', icon: '🔔', labelAr: 'الإشعارات', labelEn: 'Notifications', keys: ['notifications'], group: 'admin' },
   // 'settings' alone is not enough here: 19 of 21 roles hold it, but the API
   // is behind requireAdminRole. Both conditions must hold for the link to draw.
-  { to: '/admin', icon: '⚙️', labelAr: 'الإدارة', labelEn: 'Administration', keys: ['users', 'permissions', 'api-keys', 'webhooks', 'developers', 'settings'], roles: ADMIN_ROLES, group: 'admin' },
+  { to: '/admin/users', icon: '👥', labelAr: 'المستخدمون', labelEn: 'Users', keys: ['users', 'settings'], roles: ADMIN_ROLES, group: 'admin' },
+  { to: '/admin/merchants/new', icon: '➕', labelAr: 'تاجر جديد', labelEn: 'New merchant', keys: ['merchants', 'settings'], roles: ADMIN_ROLES, group: 'admin' },
+  { to: '/admin/logos', icon: '🎨', labelAr: 'الشعارات', labelEn: 'Logos', keys: ['settings'], roles: ADMIN_ROLES, group: 'admin' },
+  { to: '/admin/permissions', icon: '🔐', labelAr: 'الصلاحيات', labelEn: 'Permissions', keys: ['permissions', 'settings'], roles: ADMIN_ROLES, group: 'admin' },
+  { to: '/admin/fees', icon: '🪙', labelAr: 'الرسوم', labelEn: 'Fees', keys: ['fees', 'settings'], roles: ADMIN_ROLES, group: 'admin' },
+  { to: '/admin/wallet-capacity', icon: '📊', labelAr: 'سعة المحافظ', labelEn: 'Wallet capacity', keys: ['wallets', 'settings'], roles: ADMIN_ROLES, group: 'admin' },
+  { to: '/admin/api-keys', icon: '🔑', labelAr: 'مفاتيح API', labelEn: 'API keys', keys: ['api-keys', 'settings'], roles: ADMIN_ROLES, group: 'admin' },
 ]
 
 // Every page_key now represented by a real page — the "قريباً" module list
