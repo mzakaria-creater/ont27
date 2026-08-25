@@ -1,6 +1,7 @@
 {
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api" },
+    { "source": "/api-dashboard", "destination": "/index.html" },
     { "source": "/((?!api).*)", "destination": "/index.html" }
   ],
   "crons": [
