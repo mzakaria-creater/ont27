@@ -205,6 +205,20 @@ function Bell() {
   )
 }
 
+function ChatTopIcon() {
+  const { t } = useLocale()
+  const [unread, setUnread] = useState(0)
+  useEffect(() => {
+    const update = (event: Event) => setUnread(Number((event as CustomEvent<number>).detail ?? 0))
+    window.addEventListener('ontarget:chat-unread', update)
+    return () => window.removeEventListener('ontarget:chat-unread', update)
+  }, [])
+  return <Link to="/chat" className="theme-btn top-chat-btn" title={t('محادثات الفريق', 'Internal Chat')} aria-label={t('محادثات الفريق', 'Internal Chat')}>
+    <span aria-hidden="true">💬</span>
+    {unread > 0 && <span className="bell-badge">{unread > 99 ? '99+' : unread}</span>}
+  </Link>
+}
+
 function Topbar() {
   const { user, logout, status } = useAuth()
   const { locale, toggleLocale, t } = useLocale()
@@ -244,6 +258,7 @@ function Topbar() {
       <h1><Link to="/" className="home-link">OnTarget <span className="brand-sub">Payment Provider</span></Link></h1>
       <span className="live-dot"><span className="ld" />{t('مباشر', 'Live')}</span>
       <div className="spacer" />
+      <ChatTopIcon />
       <Bell />
       <button className="theme-btn" onClick={toggleLocale} aria-label={t('تبديل اللغة', 'Switch language')}>
         <span className="theme-btn-label">{locale === 'ar' ? 'EN' : 'AR'}</span>

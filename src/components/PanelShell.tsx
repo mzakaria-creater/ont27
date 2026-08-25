@@ -284,6 +284,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
       if (chatSeenRef.current !== null && unread > chatSeenRef.current && pathname !== '/chat') playNotificationTone('sms')
       chatSeenRef.current = unread
       setChatUnread(unread)
+      window.dispatchEvent(new CustomEvent('ontarget:chat-unread', { detail: unread }))
     }).catch(() => {})
     check(); const timer = setInterval(check, 6000)
     return () => clearInterval(timer)
