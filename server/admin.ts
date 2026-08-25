@@ -217,6 +217,29 @@ adminRoutes.patch('/users/:id', requirePerm('users', 'can_edit'), async (c) => {
   return c.json({ user: data })
 })
 
+// Clear only the credential lockout. This deliberately does not activate a
+// disabled account, change its password, role, or permissions.
+adminRoutes.post('/users/:id/unblock-login', requirePerm('users', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  const actor = c.get('actor')
+  const { data: before, error: readError } = await db.from('panel_users')
+    .select(userColumns).eq('id', id).maybeSingle()
+  if (readError) return c.json({ error: 'db_error', detail: readError.message }, 500)
+  if (!before) return c.json({ error: 'not_found' }, 404)
+
+  const { data, error } = await db.from('panel_users').update({
+    failed_login_count: 0,
+    locked_until: null,
+  }).eq('id', id).select(userColumns).single()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+
+  await audit(actor, 'admin.user_login_unblocked', 'panel_users', id, {
+    before: { failed_login_count: before.failed_login_count, locked_until: before.locked_until },
+    after: { failed_login_count: 0, locked_until: null },
+  })
+  return c.json({ user: data })
+})
+
 // Per-user permission override for one page. The body carries the full action
 // set, so this both grants and revokes relative to the role.
 adminRoutes.put('/users/:id/permissions/:page', requirePerm('permissions', 'can_edit'), async (c) => {
