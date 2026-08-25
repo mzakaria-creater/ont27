@@ -9,21 +9,25 @@ paymentMethodRoutes.use('*', requireAuth)
 const methodColumns = 'id, method_code, method_name, channel_type, is_active, sort_order, created_at'
 const accountColumns = 'id, payment_method_id, payment_pool_id, account_number, account_name, iban, bank_name, currency, country_code, device_name, label, is_active, current_balance, balance_updated_at, created_at'
 const poolColumns = 'id, master_merchant_id, pool_name, pool_code, is_active, notes, created_at'
+const countryColumns = 'id, payment_method_id, country_code, currency_code, is_active, created_at, updated_at'
+const countryMerchantColumns = 'id, method_country_id, merchant_hierarchy_id, is_active, created_at, updated_at'
 
 function text(value: unknown, max = 120): string | null {
   return typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null
 }
 
 paymentMethodRoutes.get('/', requirePerm('payment_methods', 'can_view'), async (c) => {
-  const [methods, accounts, pools, poolMembers, hierarchy, masters] = await Promise.all([
+  const [methods, accounts, pools, poolMembers, hierarchy, masters, methodCountries, countryMerchants] = await Promise.all([
     db.from('payment_methods').select(methodColumns).order('sort_order').order('method_name'),
     db.from('payment_accounts').select(accountColumns).order('created_at'),
     db.from('payment_pools').select(poolColumns).order('pool_name'),
     db.from('payment_pool_merchants').select('id, payment_pool_id, merchant_hierarchy_id, is_active'),
     db.from('merchants_hierarchy').select('id, name, payin_commission_pct'),
     db.from('master_merchants').select('id, name, code'),
+    db.from('payment_method_countries').select(countryColumns).order('country_code'),
+    db.from('payment_method_country_merchants').select(countryMerchantColumns).order('created_at'),
   ])
-  const firstError = methods.error ?? accounts.error ?? pools.error ?? poolMembers.error ?? hierarchy.error ?? masters.error
+  const firstError = methods.error ?? accounts.error ?? pools.error ?? poolMembers.error ?? hierarchy.error ?? masters.error ?? methodCountries.error ?? countryMerchants.error
   if (firstError) return c.json({ error: 'db_error', detail: firstError.message }, 500)
   return c.json({
     methods: methods.data ?? [],
@@ -32,7 +36,53 @@ paymentMethodRoutes.get('/', requirePerm('payment_methods', 'can_view'), async (
     poolMembers: poolMembers.data ?? [],
     hierarchy: hierarchy.data ?? [],
     masters: masters.data ?? [],
+    methodCountries: methodCountries.data ?? [],
+    countryMerchants: countryMerchants.data ?? [],
   })
+})
+
+paymentMethodRoutes.post('/countries', requirePerm('payment_methods', 'can_create'), async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const payment_method_id = text(body?.payment_method_id, 60)
+  const country_code = text(body?.country_code, 2)?.toUpperCase()
+  const currency_code = text(body?.currency_code, 3)?.toUpperCase()
+  if (!payment_method_id || !country_code?.match(/^[A-Z]{2}$/) || !currency_code?.match(/^[A-Z]{3}$/)) return c.json({ error: 'invalid_country_method' }, 400)
+  const { data, error } = await db.from('payment_method_countries').upsert({
+    payment_method_id, country_code, currency_code, is_active: true, updated_at: new Date().toISOString(),
+  }, { onConflict: 'payment_method_id,country_code,currency_code' }).select(countryColumns).single()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
+  return c.json({ countryMethod: data }, 201)
+})
+
+paymentMethodRoutes.patch('/countries/:id', requirePerm('payment_methods', 'can_edit'), async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (typeof body?.is_active !== 'boolean') return c.json({ error: 'invalid_is_active' }, 400)
+  const { data, error } = await db.from('payment_method_countries').update({ is_active: body.is_active, updated_at: new Date().toISOString() })
+    .eq('id', c.req.param('id')).select(countryColumns).maybeSingle()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
+  if (!data) return c.json({ error: 'not_found' }, 404)
+  return c.json({ countryMethod: data })
+})
+
+paymentMethodRoutes.post('/countries/:id/merchants', requirePerm('payment_methods', 'can_edit'), async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const merchant_hierarchy_id = Number(body?.merchant_hierarchy_id)
+  if (!Number.isInteger(merchant_hierarchy_id)) return c.json({ error: 'invalid_merchant_hierarchy_id' }, 400)
+  const { data, error } = await db.from('payment_method_country_merchants').upsert({
+    method_country_id: c.req.param('id'), merchant_hierarchy_id, is_active: true, updated_at: new Date().toISOString(),
+  }, { onConflict: 'method_country_id,merchant_hierarchy_id' }).select(countryMerchantColumns).single()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
+  return c.json({ assignment: data }, 201)
+})
+
+paymentMethodRoutes.patch('/countries/merchants/:id', requirePerm('payment_methods', 'can_edit'), async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (typeof body?.is_active !== 'boolean') return c.json({ error: 'invalid_is_active' }, 400)
+  const { data, error } = await db.from('payment_method_country_merchants').update({ is_active: body.is_active, updated_at: new Date().toISOString() })
+    .eq('id', c.req.param('id')).select(countryMerchantColumns).maybeSingle()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
+  if (!data) return c.json({ error: 'not_found' }, 404)
+  return c.json({ assignment: data })
 })
 
 // --- Payment pools (a pool belongs to one master merchant but can be shared

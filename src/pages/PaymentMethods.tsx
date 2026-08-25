@@ -3,7 +3,7 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
 import { useLocale } from '../lib/locale'
-import { Building2, CreditCard, LayoutGrid, Plus, Power, Search, TableProperties, Upload, UsersRound, WalletCards } from 'lucide-react'
+import { Building2, CreditCard, Globe2, LayoutGrid, Plus, Power, Search, TableProperties, Upload, UsersRound, WalletCards } from 'lucide-react'
 import MethodLogo from '../components/MethodLogo'
 import { refreshBrandLogos } from '../lib/brandLogos'
 
@@ -18,10 +18,13 @@ interface Pool { id: string; master_merchant_id: string; pool_name: string; pool
 interface PoolMember { id: string; payment_pool_id: string; merchant_hierarchy_id: number; is_active: boolean }
 interface HierarchyRow { id: number; name: string; payin_commission_pct: number | null }
 interface Master { id: string; name: string; code: string }
-type Data = { methods: Method[]; accounts: Account[]; pools: Pool[]; poolMembers: PoolMember[]; hierarchy: HierarchyRow[]; masters: Master[] }
+interface MethodCountry { id: string; payment_method_id: string; country_code: string; currency_code: string; is_active: boolean }
+interface CountryMerchant { id: string; method_country_id: string; merchant_hierarchy_id: number; is_active: boolean }
+type Data = { methods: Method[]; accounts: Account[]; pools: Pool[]; poolMembers: PoolMember[]; hierarchy: HierarchyRow[]; masters: Master[]; methodCountries: MethodCountry[]; countryMerchants: CountryMerchant[] }
 
 const emptyAccount = { account_number: '', label: '', device_name: '', bank_name: '' }
 const emptyPool = { pool_name: '', pool_code: '', master_merchant_id: '' }
+const countryPresets = [{ code: 'EG', name: 'Egypt', currency: 'EGP' }, { code: 'AE', name: 'United Arab Emirates', currency: 'AED' }, { code: 'SA', name: 'Saudi Arabia', currency: 'SAR' }, { code: 'KW', name: 'Kuwait', currency: 'KWD' }, { code: 'QA', name: 'Qatar', currency: 'QAR' }, { code: 'BH', name: 'Bahrain', currency: 'BHD' }, { code: 'OM', name: 'Oman', currency: 'OMR' }, { code: 'GB', name: 'United Kingdom', currency: 'GBP' }, { code: 'US', name: 'United States', currency: 'USD' }, { code: 'EU', name: 'European Union', currency: 'EUR' }]
 const methodPresets = [
   { code: 'INSTAPAY', name: 'InstaPay', channel: 'bank_transfer' },
   { code: 'VODAFONE_CASH', name: 'Vodafone Cash', channel: 'sms_device' },
@@ -61,12 +64,14 @@ export default function PaymentMethods() {
   const { t } = useLocale(); const { can, user } = useAuth()
   const [data, setData] = useState<Data | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<'methods' | 'accounts'>('methods')
+  const [tab, setTab] = useState<'methods' | 'countries' | 'accounts'>('methods')
   const [open, setOpen] = useState<string | null>(null)
   const [account, setAccount] = useState(emptyAccount)
   const [newMethod, setNewMethod] = useState({ method_code: '', method_name: '', channel_type: 'sms_device' })
   const [newPool, setNewPool] = useState(emptyPool)
   const [assign, setAssign] = useState<Record<string, string>>({})
+  const [countryMethod, setCountryMethod] = useState({ payment_method_id: '', country_code: 'EG', currency_code: 'EGP' })
+  const [countryAssign, setCountryAssign] = useState<Record<string, string>>({})
   const [search, setSearch] = useState('')
   const [accountStatus, setAccountStatus] = useState('all')
   const [accountView, setAccountView] = useState<'table' | 'cards'>(() => localStorage.getItem('payment-account-view') === 'cards' ? 'cards' : 'table')
@@ -95,6 +100,10 @@ export default function PaymentMethods() {
   const setAccountPool = async (r: Account, poolId: string) => { try { await api(`/api/payment-methods/accounts/${r.id}`, { method: 'PATCH', body: JSON.stringify({ payment_pool_id: poolId || null }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
   const addPool = async (e: React.FormEvent) => { e.preventDefault(); try { await api('/api/payment-methods/pools', { method: 'POST', body: JSON.stringify(newPool) }); setNewPool(emptyPool); await load() } catch { setError(t('تعذر إنشاء الـ pool.', 'Unable to create pool.')) } }
   const assignMerchant = async (poolId: string) => { const mh = assign[poolId]; if (!mh) return; try { await api(`/api/payment-methods/pools/${poolId}/merchants`, { method: 'POST', body: JSON.stringify({ merchant_hierarchy_id: Number(mh) }) }); setAssign({ ...assign, [poolId]: '' }); await load() } catch { setError(t('تعذر إسناد التاجر.', 'Unable to assign merchant.')) } }
+  const addCountryMethod = async (e: React.FormEvent) => { e.preventDefault(); try { await api('/api/payment-methods/countries', { method: 'POST', body: JSON.stringify(countryMethod) }); await load() } catch { setError(t('تعذر إضافة الطريقة للدولة.', 'Unable to add method for country.')) } }
+  const toggleCountryMethod = async (row: MethodCountry) => { try { await api(`/api/payment-methods/countries/${row.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !row.is_active }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
+  const assignCountryMerchant = async (rowId: string) => { const merchant = countryAssign[rowId]; if (!merchant) return; try { await api(`/api/payment-methods/countries/${rowId}/merchants`, { method: 'POST', body: JSON.stringify({ merchant_hierarchy_id: Number(merchant) }) }); setCountryAssign({ ...countryAssign, [rowId]: '' }); await load() } catch { setError(t('تعذر إسناد التاجر.', 'Unable to assign merchant.')) } }
+  const toggleCountryMerchant = async (row: CountryMerchant) => { try { await api(`/api/payment-methods/countries/merchants/${row.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !row.is_active }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
   const toggleMember = async (m: PoolMember) => { try { await api(`/api/payment-methods/pools/members/${m.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !m.is_active }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
   const uploadMethodLogo = async (method: Method, file: File | null) => {
     if (!file) return
@@ -169,6 +178,9 @@ export default function PaymentMethods() {
         <button role="tab" aria-selected={tab === 'methods'} className={`pill${tab === 'methods' ? ' active' : ''}`} onClick={() => setTab('methods')}>
           {t('طرق الدفع', 'Payment methods')} <span className="mono">{data?.methods.length ?? 0}</span>
         </button>
+        <button role="tab" aria-selected={tab === 'countries'} className={`pill${tab === 'countries' ? ' active' : ''}`} onClick={() => setTab('countries')}>
+          {t('الدول والتجار', 'Countries & merchants')} <span className="mono">{data?.methodCountries.length ?? 0}</span>
+        </button>
         <button role="tab" aria-selected={tab === 'accounts'} className={`pill${tab === 'accounts' ? ' active' : ''}`} onClick={() => setTab('accounts')}>
           {t('الحسابات المُسندة', 'Assigned accounts')} <span className="mono">{data?.accounts.length ?? 0}</span>
         </button>
@@ -227,6 +239,17 @@ export default function PaymentMethods() {
           </tbody></table></div></section>
         </>
       )}
+
+      {data && tab === 'countries' && <section className="card recent-card country-method-section">
+        <div className="recent-head"><div><h3><Globe2 size={18}/> {t('إتاحة طرق الدفع حسب الدولة', 'Payment methods by country')}</h3><span className="cell-sub">{t('فعّل الطريقة للدولة والعملـة ثم حدّد التجار المسموح لهم باستخدامها.', 'Enable a method for a country and currency, then assign the merchants allowed to use it.')}</span></div></div>
+        {create&&<form className="country-method-create" onSubmit={addCountryMethod}>
+          <select required className="login-input" value={countryMethod.payment_method_id} onChange={(e)=>setCountryMethod({...countryMethod,payment_method_id:e.target.value})}><option value="">{t('طريقة الدفع','Payment method')}</option>{data.methods.map((m)=><option key={m.id} value={m.id}>{m.method_name}</option>)}</select>
+          <select className="login-input" value={countryMethod.country_code} onChange={(e)=>{const p=countryPresets.find((x)=>x.code===e.target.value);setCountryMethod({...countryMethod,country_code:e.target.value,currency_code:p?.currency??countryMethod.currency_code})}}>{countryPresets.map((c)=><option key={c.code} value={c.code}>{c.name} ({c.code})</option>)}</select>
+          <input required maxLength={3} className="login-input mono" value={countryMethod.currency_code} onChange={(e)=>setCountryMethod({...countryMethod,currency_code:e.target.value.toUpperCase()})} placeholder="EGP"/>
+          <button className="btn-primary btn-sm">{t('إضافة للدولة','Add to country')}</button>
+        </form>}
+        <div className="table-wrap"><table className="data-table country-method-table"><thead><tr><th>{t('الدولة','Country')}</th><th>{t('الطريقة','Method')}</th><th>{t('العملة','Currency')}</th><th>{t('التجار المسموحون','Assigned merchants')}</th><th>{t('الحالة','Status')}</th><th>{t('الإجراءات','Actions')}</th></tr></thead><tbody>{data.methodCountries.map((row)=>{const method=data.methods.find((m)=>m.id===row.payment_method_id);const memberships=data.countryMerchants.filter((m)=>m.method_country_id===row.id);const available=data.hierarchy.filter((h)=>!memberships.some((m)=>m.merchant_hierarchy_id===h.id&&m.is_active));return <tr key={row.id}><td><strong>{countryPresets.find((c)=>c.code===row.country_code)?.name??row.country_code}</strong><div className="cell-sub mono">{row.country_code}</div></td><td><MethodLogo method={method?.method_name}/><div className="cell-sub">{method?.method_name??'—'}</div></td><td className="mono">{row.currency_code}</td><td><div className="country-merchant-chips">{memberships.map((member)=>{const merchant=data.hierarchy.find((h)=>h.id===member.merchant_hierarchy_id);return <button type="button" key={member.id} disabled={!editable} className={`merchant-chip-toggle${member.is_active?' active':''}`} onClick={()=>void toggleCountryMerchant(member)}>{merchant?.name??member.merchant_hierarchy_id}{member.is_active?' ✓':' ×'}</button>})}{memberships.length===0&&<span className="cell-sub">{t('لا يوجد','None')}</span>}</div>{editable&&<div className="country-merchant-assign"><select className="login-input" value={countryAssign[row.id]??''} onChange={(e)=>setCountryAssign({...countryAssign,[row.id]:e.target.value})}><option value="">{t('اختر تاجراً','Choose merchant')}</option>{available.map((h)=><option key={h.id} value={h.id}>{h.name}</option>)}</select><button className="btn-ghost btn-sm" disabled={!countryAssign[row.id]} onClick={()=>void assignCountryMerchant(row.id)}>{t('إسناد','Assign')}</button></div>}</td><td><span className={`pay-status-badge ${row.is_active?'st-paid':'st-declined'}`}>{row.is_active?t('نشط','Active'):t('موقوف','Inactive')}</span></td><td>{editable&&<button className="btn-ghost btn-sm" onClick={()=>void toggleCountryMethod(row)}>{row.is_active?t('إيقاف','Disable'):t('تفعيل','Enable')}</button>}</td></tr>})}{data.methodCountries.length===0&&<tr><td colSpan={6} className="sidebar-hint">{t('أضف أول طريقة دفع لدولة.','Add the first country payment method.')}</td></tr>}</tbody></table></div>
+      </section>}
 
       {data && tab === 'accounts' && (
         <section className="card recent-card">

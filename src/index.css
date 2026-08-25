@@ -2311,6 +2311,17 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .method-logo-upload.disabled { opacity: .55; cursor: wait; pointer-events: none; }
 @media(max-width:900px){.payment-method-create{grid-template-columns:1fr 1fr}.payment-method-create>div{grid-column:1/-1}}
 @media(max-width:540px){.payment-method-create{grid-template-columns:1fr}}
+.country-method-section .recent-head h3 { display: flex; align-items: center; gap: 8px; }
+.country-method-create { display: grid; grid-template-columns: minmax(190px,1.4fr) minmax(180px,1fr) 110px auto; gap: 10px; margin: 14px 0 18px; align-items: center; }
+.country-method-table { min-width: 980px; }
+.country-merchant-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.merchant-chip-toggle { border: 1px solid var(--border); background: var(--surface-2); color: var(--text-dim); border-radius: 999px; padding: 5px 9px; font: inherit; font-size: 11px; cursor: pointer; }
+.merchant-chip-toggle.active { border-color: rgba(34,197,94,.35); color: var(--status-paid); background: rgba(34,197,94,.09); }
+.merchant-chip-toggle:disabled { cursor: default; opacity: .8; }
+.country-merchant-assign { display: flex; gap: 7px; align-items: center; }
+.country-merchant-assign .login-input { min-width: 180px; }
+@media(max-width:800px){.country-method-create{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){.country-method-create{grid-template-columns:1fr}}
 @media (prefers-reduced-motion: reduce) { .payment-glass-console *, .payment-glass-console *::before, .payment-glass-console *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }
 
 /* ---- System health: gauges, hourly bars, stat tiles ---- */
