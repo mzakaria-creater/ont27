@@ -13,7 +13,7 @@ import { useLocale } from '../lib/locale'
 // first, then the role's remaining permitted modules as "قريباً" placeholders),
 // main content, and an always-on live SMS rail for roles with sms_live access.
 
-type NavGroupId = 'main' | 'operations' | 'management' | 'risk' | 'system'
+type NavGroupId = 'overview' | 'transactions' | 'payments' | 'customers' | 'automation' | 'insights' | 'admin'
 
 interface NavLinkDef {
   to: string
@@ -44,62 +44,64 @@ const COMPLAINT_ROLES = ['owner', 'admin', 'super_admin', 'operator', 'operation
 
 // Ordered nav groups. Only groups with at least one visible link render.
 const NAV_GROUPS: { id: NavGroupId; ar: string; en: string }[] = [
-  { id: 'main', ar: 'رئيسية', en: 'Main' },
-  { id: 'operations', ar: 'العمليات', en: 'Operations' },
-  { id: 'management', ar: 'الإدارة والتجار', en: 'Management' },
-  { id: 'risk', ar: 'المخاطر والأتمتة', en: 'Risk & automation' },
-  { id: 'system', ar: 'النظام', en: 'System' },
+  { id: 'overview', ar: 'نظرة عامة', en: 'Overview' },
+  { id: 'transactions', ar: 'المعاملات', en: 'Transactions' },
+  { id: 'payments', ar: 'المدفوعات والمحافظ', en: 'Payments & wallets' },
+  { id: 'customers', ar: 'العملاء والتجار', en: 'Customers & merchants' },
+  { id: 'automation', ar: 'الأتمتة والمخاطر', en: 'Automation & risk' },
+  { id: 'insights', ar: 'التقارير والتحليلات', en: 'Reports & insights' },
+  { id: 'admin', ar: 'النظام والإدارة', en: 'System & admin' },
 ]
 
 const BUILT_LINKS: NavLinkDef[] = [
   // Main — dashboards & live monitoring
-  { to: '/', icon: '🏠', labelAr: 'لوحة التحكم', labelEn: 'Dashboard', keys: ['dashboard'], group: 'main' },
-  { to: '/control-room', icon: '🎛️', labelAr: 'غرفة التحكم', labelEn: 'Control room', keys: ['dashboard'], group: 'main' },
-  { to: '/monitor', icon: '📡', labelAr: 'المراقبة المباشرة', labelEn: 'Live Monitor', keys: ['dashboard'], group: 'main' },
-  { to: '/api-dashboard', icon: '◆', labelAr: 'لوحة API', labelEn: 'API Dashboard', keys: ['dashboard'], group: 'main' },
-  { to: '/executive-dashboard', icon: '▦', labelAr: 'لوحة الإدارة التنفيذية', labelEn: 'Executive Dashboard', keys: ['dashboard', 'reports', 'advanced_analysis', 'treasury', 'wallets'], group: 'main' },
-  { to: '/analytics-dashboard', icon: '◫', labelAr: 'لوحة التحليلات', labelEn: 'Analytics Dashboard', keys: ['dashboard', 'reports', 'advanced_analysis', 'wallets'], group: 'main' },
-  { to: '/system-health', icon: '♥', labelAr: 'حالة النظام', labelEn: 'System Health', keys: ['dashboard', 'automation', 'audit'], group: 'main' },
-  { to: '/performance', icon: '📈', labelAr: 'أداء المزوّدين والتجار', labelEn: 'Provider & merchant performance', keys: ['reports', 'analytics', 'dashboard', 'transactions', 'merchants'], group: 'main' },
+  { to: '/', icon: '🏠', labelAr: 'لوحة التحكم', labelEn: 'Dashboard', keys: ['dashboard'], group: 'overview' },
+  { to: '/control-room', icon: '🎛️', labelAr: 'غرفة التحكم', labelEn: 'Control room', keys: ['dashboard'], group: 'overview' },
+  { to: '/monitor', icon: '📡', labelAr: 'المراقبة المباشرة', labelEn: 'Live Monitor', keys: ['dashboard'], group: 'overview' },
+  { to: '/api-dashboard', icon: '◆', labelAr: 'لوحة API', labelEn: 'API Dashboard', keys: ['dashboard'], group: 'overview' },
+  { to: '/executive-dashboard', icon: '▦', labelAr: 'لوحة الإدارة التنفيذية', labelEn: 'Executive Dashboard', keys: ['dashboard', 'reports', 'advanced_analysis', 'treasury', 'wallets'], group: 'insights' },
+  { to: '/analytics-dashboard', icon: '◫', labelAr: 'لوحة التحليلات', labelEn: 'Analytics Dashboard', keys: ['dashboard', 'reports', 'advanced_analysis', 'wallets'], group: 'insights' },
+  { to: '/system-health', icon: '♥', labelAr: 'حالة النظام', labelEn: 'System Health', keys: ['dashboard', 'automation', 'audit'], group: 'admin' },
+  { to: '/performance', icon: '📈', labelAr: 'أداء المزوّدين والتجار', labelEn: 'Provider & merchant performance', keys: ['reports', 'analytics', 'dashboard', 'transactions', 'merchants'], group: 'insights' },
   // Operations — the daily transaction workflow
-  { to: '/approvals', icon: '✅', labelAr: 'طابور الموافقات', labelEn: 'Approval queue', keys: ['approvals', 'approval-queue', 'my-queue', 'my-tasks', 'assigned_to_me'], group: 'operations' },
-  { to: '/deposits', icon: '💰', labelAr: 'الإيداعات', labelEn: 'Deposits', keys: ['deposits'], group: 'operations' },
-  { to: '/payouts', icon: '📤', labelAr: 'السحوبات', labelEn: 'Payouts', keys: ['payouts'], group: 'operations' },
-  { to: '/transactions', icon: '📋', labelAr: 'كل المعاملات', labelEn: 'All transactions', keys: ['transactions', 'all_transactions', 'refunds', 'reversals'], group: 'operations' },
-  { to: '/admin-transactions', icon: '🧰', labelAr: 'معاملات الإدارة', labelEn: 'Admin Transactions', keys: ['transactions'], roles: TRANSACTION_ADMIN_ROLES, group: 'operations' },
-  { to: '/review', icon: '🧐', labelAr: 'مراجعة القرارات', labelEn: 'Decision review', keys: ['review', 'audit_log', 'audit-logs'], group: 'operations' },
-  { to: '/mismatch', icon: '🎯', labelAr: 'كشف عدم التطابق', labelEn: 'Mismatch detector', keys: ['review', 'audit_log', 'audit-logs', 'risk', 'risk_audit', 'compliance'], group: 'operations' },
-  { to: '/operations-archive', icon: '🗄️', labelAr: 'أرشيف العمليات', labelEn: 'Operations archive', keys: ['audit_log', 'audit-logs', 'transactions'], group: 'operations' },
-  { to: '/sms', icon: '📨', labelAr: 'SMS مباشر', labelEn: 'Live SMS', keys: ['sms_live'], group: 'operations' },
-  { to: '/airdroid', icon: '📱', labelAr: 'إدارة AirDroid', labelEn: 'AirDroid devices', keys: ['sms_live', 'wallets'], group: 'operations' },
-  { to: '/wallet-report', icon: '📊', labelAr: 'تقرير المحافظ', labelEn: 'Wallet report', keys: ['sms_live', 'wallets'], group: 'operations' },
-  { to: '/withdrawal-sms-report', icon: '🧾', labelAr: 'تقرير SMS السحب', labelEn: 'Withdrawal SMS report', keys: ['reports', 'advanced_analysis', 'sms_live'], group: 'operations' },
-  { to: '/wallet-movements', icon: '💱', labelAr: 'حركة المحافظ', labelEn: 'Wallet movements', keys: ['wallets', 'treasury', 'reports', 'sms_live'], group: 'operations' },
-  { to: '/tv', icon: '🖥️', labelAr: 'شاشة TV', labelEn: 'TV screen', keys: ['sms_live'], group: 'operations' },
-  { to: '/complaints', icon: '🛎️', labelAr: 'الشكاوى', labelEn: 'Complaints', keys: ['support'], roles: COMPLAINT_ROLES, group: 'operations' },
-  { to: '/merchant-link-generator', icon: '🔗', labelAr: 'روابط الدفع', labelEn: 'Payment links', keys: ['checkout-builder'], group: 'operations' },
+  { to: '/approvals', icon: '✅', labelAr: 'طابور الموافقات', labelEn: 'Approval queue', keys: ['approvals', 'approval-queue', 'my-queue', 'my-tasks', 'assigned_to_me'], group: 'transactions' },
+  { to: '/deposits', icon: '💰', labelAr: 'الإيداعات', labelEn: 'Deposits', keys: ['deposits'], group: 'transactions' },
+  { to: '/payouts', icon: '📤', labelAr: 'السحوبات', labelEn: 'Payouts', keys: ['payouts'], group: 'transactions' },
+  { to: '/transactions', icon: '📋', labelAr: 'كل المعاملات', labelEn: 'All transactions', keys: ['transactions', 'all_transactions', 'refunds', 'reversals'], group: 'transactions' },
+  { to: '/admin-transactions', icon: '🧰', labelAr: 'معاملات الإدارة', labelEn: 'Admin Transactions', keys: ['transactions'], roles: TRANSACTION_ADMIN_ROLES, group: 'transactions' },
+  { to: '/review', icon: '🧐', labelAr: 'مراجعة القرارات', labelEn: 'Decision review', keys: ['review', 'audit_log', 'audit-logs'], group: 'transactions' },
+  { to: '/mismatch', icon: '🎯', labelAr: 'كشف عدم التطابق', labelEn: 'Mismatch detector', keys: ['review', 'audit_log', 'audit-logs', 'risk', 'risk_audit', 'compliance'], group: 'transactions' },
+  { to: '/operations-archive', icon: '🗄️', labelAr: 'أرشيف العمليات', labelEn: 'Operations archive', keys: ['audit_log', 'audit-logs', 'transactions'], group: 'transactions' },
+  { to: '/sms', icon: '📨', labelAr: 'SMS مباشر', labelEn: 'Live SMS', keys: ['sms_live'], group: 'payments' },
+  { to: '/airdroid', icon: '📱', labelAr: 'إدارة AirDroid', labelEn: 'AirDroid devices', keys: ['sms_live', 'wallets'], group: 'payments' },
+  { to: '/wallet-report', icon: '📊', labelAr: 'تقرير المحافظ', labelEn: 'Wallet report', keys: ['sms_live', 'wallets'], group: 'payments' },
+  { to: '/withdrawal-sms-report', icon: '🧾', labelAr: 'تقرير SMS السحب', labelEn: 'Withdrawal SMS report', keys: ['reports', 'advanced_analysis', 'sms_live'], group: 'payments' },
+  { to: '/wallet-movements', icon: '💱', labelAr: 'حركة المحافظ', labelEn: 'Wallet movements', keys: ['wallets', 'treasury', 'reports', 'sms_live'], group: 'payments' },
+  { to: '/tv', icon: '🖥️', labelAr: 'شاشة TV', labelEn: 'TV screen', keys: ['sms_live'], group: 'overview' },
+  { to: '/complaints', icon: '🛎️', labelAr: 'الشكاوى', labelEn: 'Complaints', keys: ['support'], roles: COMPLAINT_ROLES, group: 'customers' },
+  { to: '/merchant-link-generator', icon: '🔗', labelAr: 'روابط الدفع', labelEn: 'Payment links', keys: ['checkout-builder'], group: 'payments' },
   // Management — merchants, wallets, money movement
-  { to: '/merchants', icon: '🏬', labelAr: 'التجار', labelEn: 'Merchants', keys: ['merchants'], group: 'management' },
-  { to: '/wallets', icon: '👛', labelAr: 'المحافظ', labelEn: 'Wallets', keys: ['wallets'], group: 'management' },
-  { to: '/payment-methods', icon: '💳', labelAr: 'طرق الدفع', labelEn: 'Payment Methods', keys: ['wallets', 'payment_methods'], group: 'management' },
-  { to: '/known-recipients', icon: '🎯', labelAr: 'المستلمون المعروفون', labelEn: 'Known Recipients', keys: ['wallets', 'payouts'], group: 'management' },
-  { to: '/ontarget-hub', icon: '🏛️', labelAr: 'مركز الخزينة', labelEn: 'Treasury Hub', keys: ['wallets', 'payouts', 'sms_live', 'treasury'], group: 'management' },
-  { to: '/crm', icon: '👥', labelAr: 'CRM العملاء', labelEn: 'Customer CRM', keys: ['client_crm'], group: 'management' },
-  { to: '/client', icon: '🗂️', labelAr: 'ملف عميل كامل', labelEn: 'Client profile', keys: ['client_crm'], group: 'management' },
-  { to: '/settlements', icon: '🧾', labelAr: 'التسويات', labelEn: 'Settlements', keys: ['settlements', 'settlements_list', 'settlement_recon', 'fees'], group: 'management' },
+  { to: '/merchants', icon: '🏬', labelAr: 'التجار', labelEn: 'Merchants', keys: ['merchants'], group: 'customers' },
+  { to: '/wallets', icon: '👛', labelAr: 'المحافظ', labelEn: 'Wallets', keys: ['wallets'], group: 'payments' },
+  { to: '/payment-methods', icon: '💳', labelAr: 'طرق الدفع', labelEn: 'Payment Methods', keys: ['wallets', 'payment_methods'], group: 'payments' },
+  { to: '/known-recipients', icon: '🎯', labelAr: 'المستلمون المعروفون', labelEn: 'Known Recipients', keys: ['wallets', 'payouts'], group: 'payments' },
+  { to: '/ontarget-hub', icon: '🏛️', labelAr: 'مركز الخزينة', labelEn: 'Treasury Hub', keys: ['wallets', 'payouts', 'sms_live', 'treasury'], group: 'payments' },
+  { to: '/crm', icon: '👥', labelAr: 'CRM العملاء', labelEn: 'Customer CRM', keys: ['client_crm'], group: 'customers' },
+  { to: '/client', icon: '🗂️', labelAr: 'ملف عميل كامل', labelEn: 'Client profile', keys: ['client_crm'], group: 'customers' },
+  { to: '/settlements', icon: '🧾', labelAr: 'التسويات', labelEn: 'Settlements', keys: ['settlements', 'settlements_list', 'settlement_recon', 'fees'], group: 'payments' },
   // Risk & automation
-  { to: '/risk', icon: '🛡️', labelAr: 'المخاطر', labelEn: 'Risk & compliance', keys: ['risk', 'risk_audit', 'flagged', 'exceptions', 'manual_review', 'velocity', 'compliance'], group: 'risk' },
-  { to: '/automation', icon: '🤖', labelAr: 'الأتمتة', labelEn: 'Automation', keys: ['automation', 'telegram_bot', 'binance_p2p', 'treasury', 'allocation_engine', 'capacity_monitor', 'workspace_hub', 'launchpad', 'ai_team'], group: 'risk' },
-  { to: '/replay-lab', icon: '🧪', labelAr: 'مختبر Replay', labelEn: 'Replay lab', keys: ['automation', 'sms_live', 'webhooks'], group: 'risk' },
-  { to: '/telegram', icon: '📨', labelAr: 'تنبيهات Telegram', labelEn: 'Telegram alerts', keys: ['telegram_bot', 'automation'], group: 'risk' },
-  { to: '/binance', icon: '🪙', labelAr: 'Binance P2P', labelEn: 'Binance P2P', keys: ['binance_p2p_config', 'binance_p2p', 'treasury'], group: 'risk' },
+  { to: '/risk', icon: '🛡️', labelAr: 'المخاطر', labelEn: 'Risk & compliance', keys: ['risk', 'risk_audit', 'flagged', 'exceptions', 'manual_review', 'velocity', 'compliance'], group: 'automation' },
+  { to: '/automation', icon: '🤖', labelAr: 'الأتمتة', labelEn: 'Automation', keys: ['automation', 'telegram_bot', 'binance_p2p', 'treasury', 'allocation_engine', 'capacity_monitor', 'workspace_hub', 'launchpad', 'ai_team'], group: 'automation' },
+  { to: '/replay-lab', icon: '🧪', labelAr: 'مختبر Replay', labelEn: 'Replay lab', keys: ['automation', 'sms_live', 'webhooks'], group: 'automation' },
+  { to: '/telegram', icon: '📨', labelAr: 'تنبيهات Telegram', labelEn: 'Telegram alerts', keys: ['telegram_bot', 'automation'], group: 'automation' },
+  { to: '/binance', icon: '🪙', labelAr: 'Binance P2P', labelEn: 'Binance P2P', keys: ['binance_p2p_config', 'binance_p2p', 'treasury'], group: 'automation' },
   // System — reporting, audit, admin
-  { to: '/reports', icon: '📊', labelAr: 'التقارير الشاملة', labelEn: 'Full reports', keys: ['reports', 'advanced_analysis'], group: 'system' },
-  { to: '/audit', icon: '🕵️', labelAr: 'سجل التدقيق', labelEn: 'Audit log', keys: ['audit_log', 'audit-logs'], group: 'system' },
-  { to: '/notifications', icon: '🔔', labelAr: 'الإشعارات', labelEn: 'Notifications', keys: ['notifications'], group: 'system' },
+  { to: '/reports', icon: '📊', labelAr: 'التقارير الشاملة', labelEn: 'Full reports', keys: ['reports', 'advanced_analysis'], group: 'insights' },
+  { to: '/audit', icon: '🕵️', labelAr: 'سجل التدقيق', labelEn: 'Audit log', keys: ['audit_log', 'audit-logs'], group: 'admin' },
+  { to: '/notifications', icon: '🔔', labelAr: 'الإشعارات', labelEn: 'Notifications', keys: ['notifications'], group: 'admin' },
   // 'settings' alone is not enough here: 19 of 21 roles hold it, but the API
   // is behind requireAdminRole. Both conditions must hold for the link to draw.
-  { to: '/admin', icon: '⚙️', labelAr: 'الإدارة', labelEn: 'Administration', keys: ['users', 'permissions', 'api-keys', 'webhooks', 'developers', 'settings'], roles: ADMIN_ROLES, group: 'system' },
+  { to: '/admin', icon: '⚙️', labelAr: 'الإدارة', labelEn: 'Administration', keys: ['users', 'permissions', 'api-keys', 'webhooks', 'developers', 'settings'], roles: ADMIN_ROLES, group: 'admin' },
 ]
 
 // Every page_key now represented by a real page — the "قريباً" module list
@@ -252,11 +254,12 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   const { permissions, can, refreshPermissions, user } = useAuth()
   const { locale, t } = useLocale()
   const { pathname } = useLocation()
+  const activeGroup = BUILT_LINKS.find((link) => link.to === pathname)?.group ?? 'overview'
   const modules = usePermittedModules()
   const permsLoaded = permissions.length > 0
   const [navOpen, setNavOpen] = useState(false)
   const [smsOpen, setSmsOpen] = useState(true)
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<NavGroupId>>(() => new Set())
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<NavGroupId>>(() => new Set(NAV_GROUPS.map((group) => group.id).filter((id) => id !== activeGroup)))
 
   // Refresh the role permission matrix from role_page_permissions on each
   // page visit so button visibility follows the current authenticated role.
@@ -266,8 +269,15 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   // full available width by collapsing the optional 290px SMS rail whenever
   // the user enters that page; the floating control can still reopen it.
   useEffect(() => {
-    if (pathname === '/transactions') setSmsOpen(false)
+    if (pathname === '/transactions' || pathname === '/airdroid') setSmsOpen(false)
   }, [pathname])
+
+  // Keep the active category open and collapse the rest. This makes the long
+  // operations menu scannable while preserving one-click access to every
+  // section through its category header.
+  useEffect(() => {
+    setCollapsedGroups(new Set(NAV_GROUPS.map((group) => group.id).filter((id) => id !== activeGroup)))
+  }, [activeGroup])
 
   // A link draws only when the role satisfies BOTH gates the server applies:
   // can_view on one of the page keys, and — where the API is role-gated — the

@@ -6,7 +6,8 @@ import { depositTime } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 
 interface Device { device: string; sim_slot: number | null; online: boolean | null; battery: number | null; last_seen_at: string | null }
-const AIRDROID_BUSINESS_URL = 'https://my.airdroid.com/user-center/signin/?type=biz&isVerifyIos=0&code=-2&redirect=https%3A%2F%2Fbiz.airdroid.com'
+const AIRDROID_SIGNIN_URL = 'https://my.airdroid.com/user-center/signin/?type=biz&isVerifyIos=0&code=-2&redirect=https%3A%2F%2Fbiz.airdroid.com'
+const AIRDROID_CONSOLE_URL = 'https://biz.airdroid.com/#/devices/list/-100'
 const AIRDROID_ACCOUNT = 'info@ontarget-egy.com'
 const MAVEN_SUPPLIER_URL = 'https://bo.maven-consulting.co/Supplier'
 
@@ -20,15 +21,15 @@ export default function AirDroid() {
   useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 15_000); return () => window.clearInterval(timer) }, [])
 
   return <PanelShell>
-    <section className="page-head"><div><h2><Smartphone size={24}/> AirDroid Business</h2><p className="page-sub">{t('وصول آمن للأجهزة مع حالة الاتصال الحية من نظام SMS.', 'Secure device access with live connection state from the SMS system.')}</p></div><a className="btn-primary btn-sm" href={AIRDROID_BUSINESS_URL} target="_blank" rel="noreferrer">{t('فتح AirDroid Business', 'Open AirDroid Business')} <ExternalLink size={15}/></a></section>
-    <section className="card airdroid-security"><ShieldCheck size={20}/><div><strong>{t('تسجيل الدخول يبقى لدى AirDroid', 'Authentication stays with AirDroid')}</strong><p>{t('حساب الدخول', 'Sign-in account')}: <span className="mono">{AIRDROID_ACCOUNT}</span> · {t('كلمة المرور لا تُخزن في التطبيق. استخدم مدير كلمات مرور المتصفح.', 'The password is not stored in this app. Use the browser password manager.')}</p></div></section>
+    <section className="page-head"><div><h2><Smartphone size={24}/> AirDroid Business</h2><p className="page-sub">{t('مساحة تحكم الأجهزة داخل التطبيق مع حالة الاتصال الحية من نظام SMS.', 'In-app device workspace with live connection state from the SMS system.')}</p></div><div className="airdroid-console-actions"><a className="btn-ghost btn-sm" href={AIRDROID_SIGNIN_URL} target="_blank" rel="noreferrer">{t('تسجيل الدخول', 'Sign in')} <ExternalLink size={15}/></a><a className="btn-primary btn-sm" href={AIRDROID_CONSOLE_URL} target="_blank" rel="noreferrer">{t('فتح التحكم الكامل', 'Open full control')} <ExternalLink size={15}/></a></div></section>
     <section className="card airdroid-console-card">
-      <div className="recent-head"><div><h3><MonitorSmartphone size={18}/> {t('تسجيل دخول AirDroid Business', 'AirDroid Business sign-in')}</h3><span className="cell-sub">my.airdroid.com → biz.airdroid.com</span></div><div className="airdroid-console-actions"><button className="btn-ghost btn-sm" onClick={()=>setFrameKey((value)=>value+1)}><RefreshCw size={14}/> {t('إعادة تحميل','Reload')}</button><a className="btn-primary btn-sm" href={AIRDROID_BUSINESS_URL} target="_blank" rel="noreferrer">{t('فتح بأمان','Open securely')} <ExternalLink size={14}/></a></div></div>
+      <div className="recent-head"><div><h3><MonitorSmartphone size={18}/> {t('لوحة أجهزة AirDroid المدمجة', 'Embedded AirDroid device console')}</h3><span className="cell-sub">biz.airdroid.com · devices/list/-100</span></div><div className="airdroid-console-actions"><button className="btn-ghost btn-sm" onClick={()=>setFrameKey((value)=>value+1)}><RefreshCw size={14}/> {t('إعادة تحميل','Reload')}</button><a className="btn-primary btn-sm" href={AIRDROID_CONSOLE_URL} target="_blank" rel="noreferrer">{t('فتح في نافذة','Open in window')} <ExternalLink size={14}/></a></div></div>
       <div className="airdroid-frame-wrap">
-        <iframe key={frameKey} className="airdroid-frame" src={AIRDROID_BUSINESS_URL} title={t('لوحة AirDroid Business','AirDroid Business console')} allow="clipboard-read; clipboard-write; fullscreen" referrerPolicy="strict-origin-when-cross-origin"/>
+        <iframe key={frameKey} className="airdroid-frame" src={AIRDROID_CONSOLE_URL} title={t('لوحة AirDroid Business','AirDroid Business console')} allow="clipboard-read; clipboard-write; fullscreen" referrerPolicy="strict-origin-when-cross-origin"/>
         <div className="airdroid-frame-help"><strong>{t('هل الإطار فارغ؟','Blank frame?')}</strong><span>{t('AirDroid يقيّد العرض داخل مواقع أخرى. افتحه في تبويب آمن للتحكم الكامل.','AirDroid restricts display inside other sites. Open it in a secure tab for full control.')}</span></div>
       </div>
     </section>
+    <section className="card airdroid-security"><ShieldCheck size={20}/><div><strong>{t('تسجيل الدخول يبقى لدى AirDroid', 'Authentication stays with AirDroid')}</strong><p>{t('حساب الدخول', 'Sign-in account')}: <span className="mono">{AIRDROID_ACCOUNT}</span> · {t('كلمة المرور لا تُخزن في التطبيق. استخدم مدير كلمات مرور المتصفح.', 'The password is not stored in this app. Use the browser password manager.')}</p></div><a className="btn-ghost btn-sm" href={AIRDROID_SIGNIN_URL} target="_blank" rel="noreferrer">{t('تسجيل الدخول الآمن','Secure sign-in')} <ExternalLink size={14}/></a></section>
     <section className="card airdroid-security maven-frame-blocked">
       <LockKeyhole size={20}/>
       <div>
