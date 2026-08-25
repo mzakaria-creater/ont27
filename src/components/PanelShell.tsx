@@ -36,6 +36,7 @@ interface NavLinkDef {
 // Mirrors ADMIN_ROLES in server/rbac.ts. Kept in sync by hand — the server
 // stays the enforcement point; this only decides whether to draw the link.
 const ADMIN_ROLES = ['owner', 'admin', 'super_admin']
+const TRANSACTION_ADMIN_ROLES = [...ADMIN_ROLES, 'operations_admin']
 // Mirrors the ALLOWED set in server/complaints.ts, which is also role-gated
 // rather than permission-gated — every role holds can_view on 'support', so
 // the key alone would keep showing the link to the 16 roles the API refuses.
@@ -64,7 +65,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/deposits', icon: '💰', labelAr: 'الإيداعات', labelEn: 'Deposits', keys: ['deposits'], group: 'operations' },
   { to: '/payouts', icon: '📤', labelAr: 'السحوبات', labelEn: 'Payouts', keys: ['payouts'], group: 'operations' },
   { to: '/transactions', icon: '📋', labelAr: 'كل المعاملات', labelEn: 'All transactions', keys: ['transactions', 'all_transactions', 'refunds', 'reversals'], group: 'operations' },
-  { to: '/admin-transactions', icon: '🧰', labelAr: 'معاملات الإدارة', labelEn: 'Admin Transactions', keys: ['settings'], roles: ADMIN_ROLES, group: 'operations' },
+  { to: '/admin-transactions', icon: '🧰', labelAr: 'معاملات الإدارة', labelEn: 'Admin Transactions', keys: ['transactions'], roles: TRANSACTION_ADMIN_ROLES, group: 'operations' },
   { to: '/review', icon: '🧐', labelAr: 'مراجعة القرارات', labelEn: 'Decision review', keys: ['review', 'audit_log', 'audit-logs'], group: 'operations' },
   { to: '/mismatch', icon: '🎯', labelAr: 'كشف عدم التطابق', labelEn: 'Mismatch detector', keys: ['review', 'audit_log', 'audit-logs', 'risk', 'risk_audit', 'compliance'], group: 'operations' },
   { to: '/operations-archive', icon: '🗄️', labelAr: 'أرشيف العمليات', labelEn: 'Operations archive', keys: ['audit_log', 'audit-logs', 'transactions'], group: 'operations' },

@@ -6,9 +6,14 @@ import { requireAdminRole, requireAuth, requirePerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 
 export const adminRoutes = new Hono<AuthEnv>()
-adminRoutes.use('*', requireAuth, requireAdminRole)
+adminRoutes.use('*', requireAuth)
+adminRoutes.use('*', async (c, next) => {
+  const isOperatorLedger = c.req.method === 'GET' && c.req.path.endsWith('/admin/transactions') && c.get('actor').role === 'operations_admin'
+  if (isOperatorLedger) return next()
+  return requireAdminRole(c, next)
+})
 
-adminRoutes.get('/transactions', requirePerm('settings', 'can_view'), async (c) => {
+adminRoutes.get('/transactions', requirePerm('transactions', 'can_view'), async (c) => {
   const status = c.req.query('status')?.trim().toUpperCase()
   const q = c.req.query('q')?.trim()
   const from = c.req.query('from')?.trim()
