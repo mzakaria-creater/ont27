@@ -6,6 +6,7 @@ import { ACCESS_COOKIE, verifyAccessToken } from './tokens.js'
 import { repairPaidSmsMatches } from './smsMatcher.js'
 import { produceRiskAlerts } from './riskAlerts.js'
 import { autoLinkWithdrawalSms } from './payoutSmsMatcher.js'
+import { oldDb } from './oldDb.js'
 
 // Pulls new rows from the OLD prod Supabase (where the Maven workers still
 // write) into the panel-v2 DB. Same overlap-window upsert idea as
@@ -77,8 +78,80 @@ const FAST_THROTTLE_MS = 5_000
 // its status. Re-read a bounded recent window on every fast pass so those
 // changes are live too; the wider full pass remains the repair safety net.
 const FAST_UPDATED_LOOKBACK_MS = 10 * 60_000
+// The old auto-decline sweep was repaired at this instant. Never consume its
+// historical backlog: those rows predate the repaired safeguards and require
+// human review. Only fresh decisions created by the repaired sweep may cross
+// into the live provider executor.
+const AUTO_DECLINE_BRIDGE_CUTOFF = '2026-08-25T02:17:31.579426Z'
 let lastFastRunAt = 0
 let activeSync: Promise<Record<string, number | string>> | null = null
+
+async function executeRecordedAutoDeclines(): Promise<{ executed: number; skipped: number; failed: number }> {
+  const old = oldDb()
+  const baseUrl = process.env.SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SECRET_KEY
+  if (!old || !baseUrl || !serviceKey) throw new Error('auto-decline bridge is not configured')
+
+  const { data: jobs, error: jobsErr } = await old.from('browser_jobs')
+    .select('id, tx_id, target_status, state, created_at')
+    .eq('source', 'auto_trigger').eq('state', 'pending').eq('target_status', 'DECLINED')
+    .gte('created_at', AUTO_DECLINE_BRIDGE_CUTOFF).order('created_at', { ascending: true }).limit(3)
+  if (jobsErr) throw new Error(`auto-decline jobs: ${jobsErr.message}`)
+
+  let executed = 0; let skipped = 0; let failed = 0
+  for (const job of jobs ?? []) {
+    // Claim atomically. Another warm lambda cannot execute the same job.
+    const { data: claimed, error: claimErr } = await old.from('browser_jobs').update({
+      state: 'running', locked_at: new Date().toISOString(), locked_by: 'panel-v2-ngpay-bridge',
+      attempts: 1, updated_at: new Date().toISOString(),
+    }).eq('id', job.id).eq('state', 'pending').select('id').maybeSingle()
+    if (claimErr || !claimed) { skipped++; continue }
+
+    try {
+      const [{ data: review }, { data: tx }] = await Promise.all([
+        old.from('review_queue').select('decision, matched_sms_id, decision_reason').eq('tx_id', job.tx_id).maybeSingle(),
+        old.from('maven_transactions').select('tx_id, status, amount, created_utc, to_account_number, gateway').eq('tx_id', job.tx_id).maybeSingle(),
+      ])
+      if (!review || review.decision !== 'auto_declined' || review.matched_sms_id != null || !tx || tx.status !== 'PENDING' || tx.gateway !== 'NagupayP2P') {
+        throw new Error('safety revalidation refused: decision/transaction is no longer eligible')
+      }
+
+      // A late SMS can arrive after the five-minute sweep but before provider
+      // execution. Any unconsumed deposit evidence with the same wallet,
+      // amount and ±5-minute window cancels automation and returns the job to
+      // manual review; it must never be declined underneath fresh evidence.
+      const createdMs = Date.parse(tx.created_utc)
+      if (!Number.isFinite(createdMs)) throw new Error('transaction has no valid created_utc')
+      const { count: lateEvidence, error: smsErr } = await old.from('inbound_sms').select('id', { count: 'exact', head: true })
+        .eq('sms_category', 'deposit').eq('amount', tx.amount).eq('receiver_number', tx.to_account_number)
+        .is('consumed_by_tx_id', null)
+        .gte('received_at', new Date(createdMs - 5 * 60_000).toISOString())
+        .lte('received_at', new Date(createdMs + 5 * 60_000).toISOString())
+      if (smsErr) throw new Error(`late-SMS guard failed: ${smsErr.message}`)
+      if ((lateEvidence ?? 0) > 0) {
+        await old.from('browser_jobs').update({ state: 'cancelled', last_error: 'Late matching SMS evidence arrived; manual review required', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', job.id)
+        await old.from('review_queue').update({ decision: 'pending_review', decision_reason: 'Late matching SMS evidence arrived after auto-decline evaluation — manual review required', decided_at: null }).eq('tx_id', job.tx_id)
+        skipped++
+        continue
+      }
+
+      const response = await fetch(`${baseUrl}/functions/v1/ngpay-approve`, {
+        method: 'POST', signal: AbortSignal.timeout(45_000),
+        headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
+        body: JSON.stringify({ tx_id: Number(job.tx_id), decision: 'DECLINED', actor_name: 'auto_decline_5m', remark: review.decision_reason ?? 'No clean SMS match after 5 minutes' }),
+      })
+      const result = await response.json().catch(() => ({ error: 'worker_invalid_response' })) as Record<string, unknown>
+      if (!response.ok || result.executed_on_provider !== true) throw new Error(String(result.error ?? `ngpay-approve HTTP ${response.status}`))
+
+      await old.from('browser_jobs').update({ state: 'completed', completed_at: new Date().toISOString(), maven_before_status: result.before_status ?? null, maven_after_status: result.after_status ?? 'DECLINED', updated_at: new Date().toISOString(), last_error: null }).eq('id', job.id)
+      executed++
+    } catch (error) {
+      failed++
+      await old.from('browser_jobs').update({ state: 'pending', last_error: error instanceof Error ? error.message.slice(0, 500) : 'execution failed', next_run_at: new Date(Date.now() + 60_000).toISOString(), locked_at: null, locked_by: null, updated_at: new Date().toISOString() }).eq('id', job.id)
+    }
+  }
+  return { executed, skipped, failed }
+}
 
 async function claimDistributedLease(ttlSeconds: number): Promise<boolean> {
   const { data, error } = await db.rpc('claim_provider_sync_lease', {
@@ -343,6 +416,16 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
   } catch (e) {
     results['risk_alerts_sent'] = `error: ${(e as Error).message}`
     console.error('risk alert producers failed:', e)
+  }
+
+  try {
+    const autoDeclines = await executeRecordedAutoDeclines()
+    results['auto_declines_executed'] = autoDeclines.executed
+    results['auto_declines_failed'] = autoDeclines.failed
+    console.info('recorded auto-decline bridge completed', autoDeclines)
+  } catch (e) {
+    results['auto_declines_executed'] = `error: ${(e as Error).message}`
+    console.error('recorded auto-decline bridge failed:', e)
   }
 
   return results
