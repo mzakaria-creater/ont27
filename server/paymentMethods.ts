@@ -41,6 +41,64 @@ paymentMethodRoutes.get('/', requirePerm('payment_methods', 'can_view'), async (
   })
 })
 
+paymentMethodRoutes.post('/generate', requirePerm('payment_methods', 'can_create'), async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const method_code = text(body?.method_code, 60)?.toUpperCase().replace(/[^A-Z0-9_]/g, '_')
+  const method_name = text(body?.method_name)
+  const channel_type = text(body?.channel_type, 60)
+  const country_code = text(body?.country_code, 2)?.toUpperCase()
+  const currency_code = text(body?.currency_code, 3)?.toUpperCase()
+  const merchants = Array.isArray(body?.merchant_hierarchy_ids)
+    ? [...new Set(body.merchant_hierarchy_ids.map(Number).filter(Number.isInteger))] as number[]
+    : []
+  if (!method_code || !method_name || !channel_type || !country_code?.match(/^[A-Z]{2}$/) || !currency_code?.match(/^[A-Z]{3}$/)) {
+    return c.json({ error: 'invalid_method_generator' }, 400)
+  }
+
+  const { data: method, error: methodError } = await db.from('payment_methods').insert({
+    method_code, method_name, channel_type, is_active: body?.is_active !== false,
+    sort_order: Number.isFinite(Number(body?.sort_order)) ? Number(body.sort_order) : 999,
+  }).select(methodColumns).single()
+  if (methodError) return c.json({ error: 'method_create_failed', detail: methodError.message }, 400)
+
+  const rollback = async (detail: string) => {
+    await db.from('payment_methods').delete().eq('id', method.id)
+    return c.json({ error: 'generator_rolled_back', detail }, 400)
+  }
+
+  const { data: country, error: countryError } = await db.from('payment_method_countries').insert({
+    payment_method_id: method.id, country_code, currency_code, is_active: true,
+  }).select(countryColumns).single()
+  if (countryError) return rollback(countryError.message)
+
+  if (merchants.length) {
+    const { error } = await db.from('payment_method_country_merchants').insert(
+      merchants.map((merchant_hierarchy_id) => ({ method_country_id: country.id, merchant_hierarchy_id, is_active: true })),
+    )
+    if (error) return rollback(error.message)
+  }
+
+  const account_number = text(body?.account_number, 100)
+  let account = null
+  if (account_number) {
+    const result = await db.from('payment_accounts').insert({
+      payment_method_id: method.id, account_number, account_name: text(body?.account_name),
+      bank_name: text(body?.bank_name), device_name: text(body?.device_name, 80), label: text(body?.label),
+      currency: currency_code, country_code, is_active: true,
+    }).select(accountColumns).single()
+    if (result.error) return rollback(result.error.message)
+    account = result.data
+  }
+
+  const actor = c.get('actor')
+  await db.from('audit_log').insert({
+    actor_type: 'panel_user', actor_id: actor.sub, actor_name: actor.username,
+    action: 'payment_method.generated', entity: 'payment_methods', entity_id: method.id,
+    after: { method_code, method_name, channel_type, country_code, currency_code, merchant_hierarchy_ids: merchants, account_created: Boolean(account) },
+  })
+  return c.json({ method, country, merchant_assignments: merchants.length, account }, 201)
+})
+
 paymentMethodRoutes.post('/countries', requirePerm('payment_methods', 'can_create'), async (c) => {
   const body = await c.req.json().catch(() => null)
   const payment_method_id = text(body?.payment_method_id, 60)

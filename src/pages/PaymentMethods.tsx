@@ -3,7 +3,7 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
 import { useLocale } from '../lib/locale'
-import { Building2, CreditCard, Globe2, LayoutGrid, Plus, Power, Search, TableProperties, Upload, UsersRound, WalletCards } from 'lucide-react'
+import { Building2, CreditCard, Globe2, LayoutGrid, Plus, Power, Search, Sparkles, TableProperties, Upload, UsersRound, WalletCards, X } from 'lucide-react'
 import MethodLogo from '../components/MethodLogo'
 import { refreshBrandLogos } from '../lib/brandLogos'
 
@@ -25,6 +25,7 @@ type Data = { methods: Method[]; accounts: Account[]; pools: Pool[]; poolMembers
 const emptyAccount = { account_number: '', label: '', device_name: '', bank_name: '' }
 const emptyPool = { pool_name: '', pool_code: '', master_merchant_id: '' }
 const countryPresets = [{ code: 'EG', name: 'Egypt', currency: 'EGP' }, { code: 'AE', name: 'United Arab Emirates', currency: 'AED' }, { code: 'SA', name: 'Saudi Arabia', currency: 'SAR' }, { code: 'KW', name: 'Kuwait', currency: 'KWD' }, { code: 'QA', name: 'Qatar', currency: 'QAR' }, { code: 'BH', name: 'Bahrain', currency: 'BHD' }, { code: 'OM', name: 'Oman', currency: 'OMR' }, { code: 'GB', name: 'United Kingdom', currency: 'GBP' }, { code: 'US', name: 'United States', currency: 'USD' }, { code: 'EU', name: 'European Union', currency: 'EUR' }]
+const emptyGenerator = { method_code: '', method_name: '', channel_type: 'sms_device', country_code: 'EG', currency_code: 'EGP', merchant_hierarchy_ids: [] as number[], account_number: '', account_name: '', bank_name: '', device_name: '', label: '' }
 const methodPresets = [
   { code: 'INSTAPAY', name: 'InstaPay', channel: 'bank_transfer' },
   { code: 'VODAFONE_CASH', name: 'Vodafone Cash', channel: 'sms_device' },
@@ -76,6 +77,9 @@ export default function PaymentMethods() {
   const [accountStatus, setAccountStatus] = useState('all')
   const [accountView, setAccountView] = useState<'table' | 'cards'>(() => localStorage.getItem('payment-account-view') === 'cards' ? 'cards' : 'table')
   const [logoBusy, setLogoBusy] = useState<string | null>(null)
+  const [generatorOpen, setGeneratorOpen] = useState(false)
+  const [generator, setGenerator] = useState(emptyGenerator)
+  const [generatorBusy, setGeneratorBusy] = useState(false)
   const editable = can('payment_methods', 'can_edit')
   const create = can('payment_methods', 'can_create')
   const canUploadLogo = ['owner', 'admin', 'super_admin'].includes(user?.role ?? '') && can('settings', 'can_edit')
@@ -114,6 +118,15 @@ export default function PaymentMethods() {
     } catch (e) { setError(e instanceof ApiError ? e.code : t('تعذر رفع الشعار.', 'Could not upload logo.')) }
     finally { setLogoBusy(null) }
   }
+  const generateMethod = async (e: React.FormEvent) => {
+    e.preventDefault(); setGeneratorBusy(true); setError(null)
+    try {
+      await api('/api/payment-methods/generate', { method: 'POST', body: JSON.stringify(generator) })
+      setGenerator(emptyGenerator); setGeneratorOpen(false); await load()
+    } catch (e) { setError(e instanceof ApiError ? e.code : t('تعذر إنشاء طريقة الدفع.', 'Unable to generate payment method.')) }
+    finally { setGeneratorBusy(false) }
+  }
+  const toggleGeneratorMerchant = (id: number) => setGenerator((current) => ({ ...current, merchant_hierarchy_ids: current.merchant_hierarchy_ids.includes(id) ? current.merchant_hierarchy_ids.filter((x) => x !== id) : [...current.merchant_hierarchy_ids, id] }))
 
   // account → pool → master merchant + the sub-merchants sharing that pool.
   const poolOf = (a: Account) => data?.pools.find((p) => p.id === a.payment_pool_id) ?? null
@@ -146,7 +159,19 @@ export default function PaymentMethods() {
       <section className="page-head payment-page-head">
         <div><h2><CreditCard size={25}/> {t('طرق الدفع والحسابات', 'Payment methods & accounts')}</h2>
         <p className="page-sub">{t('مركز تشغيل الطرق والحسابات والتخصيص وصحة الرصيد.', 'Operations center for methods, accounts, allocation, and balance health.')}</p></div>
+        {create&&<button className="btn-primary method-generator-open" onClick={()=>setGeneratorOpen(true)}><Sparkles size={16}/>{t('مولّد طريقة دفع','Method Generator')}</button>}
       </section>
+
+      {generatorOpen&&data&&<div className="modal-backdrop" role="presentation" onMouseDown={(e)=>{if(e.target===e.currentTarget&&!generatorBusy)setGeneratorOpen(false)}}><section className="method-generator-modal" role="dialog" aria-modal="true" aria-labelledby="method-generator-title">
+        <header><div><h3 id="method-generator-title"><Sparkles size={19}/>{t('مولّد طريقة الدفع','Method Generator')}</h3><p>{t('أنشئ الطريقة والدولة والتجار والحساب في خطوة واحدة آمنة.','Create the method, country, merchants, and optional account in one safe flow.')}</p></div><button type="button" className="icon-action" disabled={generatorBusy} onClick={()=>setGeneratorOpen(false)} aria-label={t('إغلاق','Close')}><X size={17}/></button></header>
+        <form onSubmit={generateMethod}>
+          <fieldset><legend>1 · {t('بيانات الطريقة','Method details')}</legend><div className="method-generator-grid"><label><span>{t('قالب','Preset')}</span><select className="login-input" value="" onChange={(e)=>{const p=methodPresets.find((x)=>x.code===e.target.value);if(p)setGenerator({...generator,method_code:p.code,method_name:p.name,channel_type:p.channel})}}><option value="">{t('مخصص','Custom')}</option>{methodPresets.map((p)=><option key={p.code} value={p.code}>{p.name}</option>)}</select></label><label><span>{t('الكود','Code')}</span><input required className="login-input mono" value={generator.method_code} onChange={(e)=>setGenerator({...generator,method_code:e.target.value.toUpperCase()})}/></label><label><span>{t('الاسم','Name')}</span><input required className="login-input" value={generator.method_name} onChange={(e)=>setGenerator({...generator,method_name:e.target.value})}/></label><label><span>{t('القناة','Channel')}</span><select className="login-input" value={generator.channel_type} onChange={(e)=>setGenerator({...generator,channel_type:e.target.value})}><option value="sms_device">SMS device</option><option value="bank_transfer">Bank transfer</option><option value="other">Other</option></select></label></div></fieldset>
+          <fieldset><legend>2 · {t('الدولة والعملة','Country & currency')}</legend><div className="method-generator-grid two"><label><span>{t('الدولة','Country')}</span><select className="login-input" value={generator.country_code} onChange={(e)=>{const p=countryPresets.find((x)=>x.code===e.target.value);setGenerator({...generator,country_code:e.target.value,currency_code:p?.currency??generator.currency_code})}}>{countryPresets.map((p)=><option key={p.code} value={p.code}>{p.name} ({p.code})</option>)}</select></label><label><span>{t('العملة','Currency')}</span><input required maxLength={3} className="login-input mono" value={generator.currency_code} onChange={(e)=>setGenerator({...generator,currency_code:e.target.value.toUpperCase()})}/></label></div></fieldset>
+          <fieldset><legend>3 · {t('التجار المسموحون','Assigned merchants')}</legend><div className="method-generator-merchants">{data.hierarchy.map((h)=><label key={h.id} className={generator.merchant_hierarchy_ids.includes(h.id)?'selected':''}><input type="checkbox" checked={generator.merchant_hierarchy_ids.includes(h.id)} onChange={()=>toggleGeneratorMerchant(h.id)}/><span>{h.name}</span></label>)}{data.hierarchy.length===0&&<span className="cell-sub">{t('لا يوجد تجار فرعيون.','No sub-merchants available.')}</span>}</div></fieldset>
+          <fieldset><legend>4 · {t('حساب استقبال اختياري','Optional receiving account')}</legend><div className="method-generator-grid"><label><span>{t('رقم الحساب','Account number')}</span><input className="login-input mono" value={generator.account_number} onChange={(e)=>setGenerator({...generator,account_number:e.target.value})}/></label><label><span>{t('اسم الحساب','Account name')}</span><input className="login-input" value={generator.account_name} onChange={(e)=>setGenerator({...generator,account_name:e.target.value})}/></label><label><span>{t('البنك','Bank')}</span><input className="login-input" value={generator.bank_name} onChange={(e)=>setGenerator({...generator,bank_name:e.target.value})}/></label><label><span>{t('الجهاز','Device')}</span><input className="login-input" value={generator.device_name} onChange={(e)=>setGenerator({...generator,device_name:e.target.value})}/></label></div></fieldset>
+          <footer><button type="button" className="btn-ghost" disabled={generatorBusy} onClick={()=>setGeneratorOpen(false)}>{t('إلغاء','Cancel')}</button><button className="btn-primary" disabled={generatorBusy}>{generatorBusy?t('جارٍ الإنشاء…','Generating…'):t('إنشاء طريقة الدفع','Generate payment method')}</button></footer>
+        </form>
+      </section></div>}
 
       {error && <div className="card warn">{error}</div>}
 
