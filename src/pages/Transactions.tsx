@@ -28,6 +28,7 @@ interface TxRow {
   currency?: string | null
   sender_name?: string | null
   sender_number?: string | null
+  sender_account_number?: string | null
   account_name?: string | null
   mobile_no?: string | null
   payment_method?: string | null
@@ -204,6 +205,7 @@ export default function Transactions() {
                   <th>{t('الإثبات', 'Proof')}</th>
                   <th>{t('المبلغ', 'Amount')}</th>
                   <th>{t('الطرف', 'Party')}</th>
+                  <th>{t('حساب المرسل', 'Sender account')}</th>
                   <th>{t('المحفظة', 'Wallet')}</th>
                   <th>{t('التكرار', 'Duplicates')}</th>
                   <th>{t('التاجر', 'Merchant')}</th>
@@ -236,6 +238,7 @@ export default function Transactions() {
                       <td>{proofUrl ? <button type="button" className="proof-thumb-btn" title={t('عرض إثبات الدفع', 'View payment proof')} aria-label={t('عرض إثبات الدفع', 'View payment proof')} onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id) })}><img src={proofUrl} alt="" loading="lazy" /></button> : <span className="cell-sub">{t('بدون', 'None')}</span>}</td>
                       <td className="mono">{money(r.amount, r.currency ?? 'EGP')}</td>
                       <td><SenderIdentity name={party} phone={clientPhone} nameHref={party ? `/transactions?q=${encodeURIComponent(party)}` : undefined} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined} /></td>
+                      <td className="mono">{r.kind === 'deposit' ? (r.sender_account_number ?? r.sender_number ?? '—') : '—'}</td>
                       <td>{wallet ? <Link className="mono transaction-cell-link" to={`/transactions?type=deposit&q=${encodeURIComponent(wallet)}`}>{wallet}</Link> : '—'}</td>
                       <td>{(r.client_transaction_count ?? 1) > 1 ? <Link className="pay-status-badge st-under transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات','transactions')}</Link> : <span className="cell-sub">{t('أول معاملة','First')}</span>}</td>
                       <td><MerchantLogo merchant={r.merchant ?? r.master_merchant} />{r.master_merchant && r.master_merchant !== r.merchant && <div className="cell-sub">{r.master_merchant}</div>}</td>
@@ -295,6 +298,7 @@ export default function Transactions() {
                 <dl>
                   <div><dt>{t('النوع', 'Type')}</dt><dd>{r.kind === 'deposit' ? t('إيداع', 'Deposit') : t('سحب', 'Payout')}</dd></div>
                   <div><dt>{t('الطرف', 'Party')}</dt><dd><SenderIdentity name={party} phone={clientPhone} nameHref={party ? `/transactions?q=${encodeURIComponent(party)}` : undefined} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined} /></dd></div>
+                  <div><dt>{t('حساب المرسل', 'Sender account')}</dt><dd className="mono">{r.kind === 'deposit' ? (r.sender_account_number ?? r.sender_number ?? '—') : '—'}</dd></div>
                   <div><dt>{t('المحفظة', 'Wallet')}</dt><dd className="mono">{wallet ?? '—'}</dd></div>
                   <div><dt>{t('التكرار', 'Duplicates')}</dt><dd>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First')}</dd></div>
                   <div><dt>{t('اعتمد بواسطة', 'Approved by')}</dt><dd>{r.status === 'PENDING' ? '—' : (!r.approved_by || r.approved_by === 'Manual' ? t('النظام (آلي)', 'System (auto)') : r.approved_by)}</dd></div>

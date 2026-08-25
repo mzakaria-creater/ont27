@@ -62,6 +62,11 @@ interface SmsRow {
   matched_payout_id?: number | null
   matched_payout_ref?: string | null
   matched_payout_status?: string | null
+  withdrawal_assignment_type?: 'payout' | 'p2p_usdt' | 'cash_return' | null
+  withdrawal_assignment_reference?: string | null
+  withdrawal_assignment_name?: string | null
+  withdrawal_assigned_by?: string | null
+  withdrawal_assigned_at?: string | null
   provider: string | null
   sms_first_line: string | null
 }
@@ -126,7 +131,10 @@ export default function SmsLive() {
   const category = params.get('category') ?? ''
   const match = params.get('match') ?? ''
   const page = Math.max(Number(params.get('page')) || 1, 1)
+  const from = params.get('from') ?? ''
+  const to = params.get('to') ?? ''
   const [q, setQ] = useState(params.get('q') ?? '')
+  const [amountQ, setAmountQ] = useState(params.get('amount') ?? '')
   const [data, setData] = useState<ListResponse | null>(null)
   const [stats, setStats] = useState<SmsStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -141,6 +149,10 @@ export default function SmsLive() {
   const [metaName, setMetaName] = useState('')
   const [metaNotes, setMetaNotes] = useState('')
   const [metaBusy, setMetaBusy] = useState(false)
+  const [assignmentType, setAssignmentType] = useState<'payout' | 'p2p_usdt' | 'cash_return'>('payout')
+  const [assignmentRef, setAssignmentRef] = useState('')
+  const [assignmentName, setAssignmentName] = useState('')
+  const [assignmentBusy, setAssignmentBusy] = useState(false)
 
   const appliedQ = params.get('q') ?? ''
   const amount = params.get('amount') ?? ''
@@ -155,10 +167,12 @@ export default function SmsLive() {
     if (match) search.set('match', match)
     if (appliedQ) search.set('q', appliedQ)
     if (amount) search.set('amount', amount)
+    if (from) search.set('from', from)
+    if (to) search.set('to', to)
     try {
       const [list, st] = await Promise.all([
         api<ListResponse>(`/api/sms?${search}`),
-        api<SmsStats>('/api/sms/stats'),
+        api<SmsStats>(`/api/sms/stats?${new URLSearchParams(Object.fromEntries(Object.entries({ from, to }).filter(([, value]) => value)))}`),
       ])
       setData((current) => JSON.stringify(current) === JSON.stringify(list) ? current : list)
       setStats(st)
@@ -168,7 +182,7 @@ export default function SmsLive() {
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [category, match, appliedQ, amount, page, pageSize])
+  }, [category, match, appliedQ, amount, from, to, page, pageSize])
 
   useEffect(() => { void load() }, [load])
 
@@ -177,7 +191,7 @@ export default function SmsLive() {
     return () => clearInterval(iv)
   }, [load])
 
-  const setFilter = (next: { category?: string; match?: string; q?: string; page?: number }) => {
+  const setFilter = (next: { category?: string; match?: string; q?: string; amount?: string; from?: string; to?: string; page?: number }) => {
     const p = new URLSearchParams(params)
     const setOrDel = (key: string, v: string | undefined) => {
       if (v === undefined) return
@@ -187,6 +201,9 @@ export default function SmsLive() {
     setOrDel('category', next.category)
     setOrDel('match', next.match)
     setOrDel('q', next.q)
+    setOrDel('amount', next.amount)
+    setOrDel('from', next.from)
+    setOrDel('to', next.to)
     if (next.page !== undefined) {
       if (next.page > 1) p.set('page', String(next.page)); else p.delete('page')
     }
@@ -216,6 +233,7 @@ export default function SmsLive() {
       setSelected(res.sms)
       setMetaName(res.sms.sender_name ?? '')
       setMetaNotes(res.sms.notes ?? '')
+      setAssignmentName(res.sms.sender_name ?? '')
       if (res.sms.sms_category !== 'withdrawal' && !res.sms.matched_tx_id && can('sms_live', 'can_edit')) void loadCandidates(id)
     } catch {
       setErr(t('تعذّر تحميل تفاصيل الرسالة.', 'Failed to load message details.'))
@@ -276,6 +294,23 @@ export default function SmsLive() {
     finally { setMetaBusy(false) }
   }
 
+  const assignWithdrawal = async () => {
+    if (!selected || selected.sms_category !== 'withdrawal' || !assignmentName.trim()) return
+    setAssignmentBusy(true); setLinkErr(null)
+    try {
+      await api(`/api/sms/${selected.id}/withdrawal-assignment`, {
+        method: 'POST',
+        body: JSON.stringify({ assignment_type: assignmentType, target_reference: assignmentRef.trim(), name: assignmentName.trim(), note: metaNotes.trim() }),
+      })
+      await openDetail(selected.id)
+      void load(true)
+    } catch (e) {
+      setLinkErr(e instanceof ApiError && e.code === 'payout_not_found'
+        ? t('لم يتم العثور على معاملة السحب.', 'Payout transaction not found.')
+        : t('فشل تعيين رسالة السحب.', 'Failed to assign withdrawal SMS.'))
+    } finally { setAssignmentBusy(false) }
+  }
+
   const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1
 
   return (
@@ -299,12 +334,12 @@ export default function SmsLive() {
         <div className="stat-card">
           <span className="stat-label">{t('إيداعات', 'Deposits')}</span>
           <span className="stat-value">{stats ? stats.deposits.count.toLocaleString('en-US') : '…'}</span>
-          <span className="stat-sub">{stats ? `${money(stats.deposits.dayVolume, 'EGP')} · ${t('آخر 24س', 'last 24h')}` : ''}</span>
+          <span className="stat-sub">{stats ? `${money(stats.deposits.dayVolume, 'EGP')} · ${from || to ? t('النطاق المحدد', 'selected range') : t('آخر 24س', 'last 24h')}` : ''}</span>
         </div>
         <div className="stat-card">
           <span className="stat-label">{t('سحوبات', 'Withdrawals')}</span>
           <span className="stat-value">{stats ? stats.withdrawals.count.toLocaleString('en-US') : '…'}</span>
-          <span className="stat-sub">{stats ? `${money(stats.withdrawals.dayVolume, 'EGP')} · ${t('آخر 24س', 'last 24h')}` : ''}</span>
+          <span className="stat-sub">{stats ? `${money(stats.withdrawals.dayVolume, 'EGP')} · ${from || to ? t('النطاق المحدد', 'selected range') : t('آخر 24س', 'last 24h')}` : ''}</span>
         </div>
         <div className="stat-card">
           <span className="stat-label">{t('مرتبطة بمعاملة أو محفظة', 'Linked to transaction or wallet')}</span>
@@ -347,13 +382,22 @@ export default function SmsLive() {
         </div>
         <form
           className="search-row"
-          onSubmit={(e) => { e.preventDefault(); setFilter({ q: q.trim() }) }}
+          onSubmit={(e) => { e.preventDefault(); setFilter({ q: q.trim(), amount: amountQ.trim() }) }}
         >
           <input
             className="login-input search-input"
             placeholder={t('بحث: مُرسِل / محفظة / رقم عملية / جهاز…', 'Search: sender / wallet / tx id / device…')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
+          />
+          <input className="login-input" type="date" value={from} onChange={(e) => setFilter({ from: e.target.value })} aria-label={t('من', 'From')} />
+          <input className="login-input" type="date" value={to} onChange={(e) => setFilter({ to: e.target.value })} aria-label={t('إلى', 'To')} />
+          <input
+            className="login-input"
+            inputMode="decimal"
+            placeholder={t('المبلغ الدقيق', 'Exact amount')}
+            value={amountQ}
+            onChange={(e) => setAmountQ(e.target.value.replace(/[^0-9.]/g, ''))}
           />
           <button type="submit" className="btn-primary btn-sm">{t('بحث', 'Search')}</button>
           {appliedQ && (
@@ -365,7 +409,7 @@ export default function SmsLive() {
             <button
               type="button"
               className="chip chip-active"
-              onClick={() => { const p = new URLSearchParams(params); p.delete('amount'); setParams(p) }}
+              onClick={() => { setAmountQ(''); const p = new URLSearchParams(params); p.delete('amount'); setParams(p) }}
             >
               {t('مبلغ', 'Amount')} = {amount} ✕
             </button>
@@ -399,6 +443,7 @@ export default function SmsLive() {
                   const cat = r.sms_category ? CATEGORY_META[r.sms_category] : null
                   const walletLinked = r.sms_category === 'withdrawal' && r.linked_wallet_number != null
                   const payoutLinked = r.sms_category === 'withdrawal' && r.matched_payout_id != null
+                  const manuallyAssigned = r.sms_category === 'withdrawal' && r.withdrawal_assignment_type != null
                   const linked = payoutLinked || r.matched_tx_id != null
                   const mt = linked ? MATCH_META.auto : r.match_status ? MATCH_META[r.match_status] : null
                   return (
@@ -417,7 +462,7 @@ export default function SmsLive() {
                         {r.balance_after != null && <div className="cell-sub mono">{t('رصيد', 'bal')} {money(r.balance_after, 'EGP')}</div>}
                       </td>
                       <td onClick={(event)=>event.stopPropagation()}>
-                        {r.sms_category !== 'withdrawal' ? <span className="cell-sub">—</span> : payoutLinked ? <Link className="transaction-cell-link" to={`/payouts?q=${encodeURIComponent(r.matched_payout_ref ?? String(r.matched_payout_id))}`}><span className="pay-status-badge st-paid">{t('معيّنة','Assigned')}</span><div className="cell-sub mono">WD {r.matched_payout_ref ?? r.matched_payout_id}{r.matched_payout_status ? ` · ${r.matched_payout_status}` : ''}</div></Link> : <span className="pay-status-badge st-declined">{t('غير معيّنة','Unassigned')}</span>}
+                        {r.sms_category !== 'withdrawal' ? <span className="cell-sub">—</span> : payoutLinked ? <Link className="transaction-cell-link" to={`/payouts?q=${encodeURIComponent(r.matched_payout_ref ?? String(r.matched_payout_id))}`}><span className="pay-status-badge st-paid">{t('معيّنة','Assigned')}</span><div className="cell-sub mono">WD {r.matched_payout_ref ?? r.matched_payout_id}{r.matched_payout_status ? ` · ${r.matched_payout_status}` : ''}</div></Link> : manuallyAssigned ? <><span className="pay-status-badge st-paid">{t('معيّنة','Assigned')}</span><div className="cell-sub">{r.withdrawal_assignment_type === 'p2p_usdt' ? 'P2P USDT' : 'Money cash return'} · {r.withdrawal_assignment_name}</div></> : <span className="pay-status-badge st-declined">{t('غير معيّنة','Unassigned')}</span>}
                       </td>
                       <td>
                         {r.sender_name ?? r.sender_number ?? '—'}
@@ -492,6 +537,7 @@ export default function SmsLive() {
                   <dt>{t('رقم العملية (SMS)', 'Tx id (SMS)')}</dt><dd className="mono">{selected.trx_id ?? '—'}</dd>
                   {selected.sms_category !== 'withdrawal' && <><dt>{t('معاملة OnTarget', 'OnTarget tx')}</dt><dd className="mono">{selected.matched_ontarget_ref ?? selected.matched_tx_id ?? '—'}</dd></>}
                   {selected.sms_category === 'withdrawal' && <><dt>{t('معيّنة لسحب','Assigned to WD')}</dt><dd>{selected.matched_payout_id ? <Link className="transaction-cell-link mono" to={`/payouts?q=${encodeURIComponent(selected.matched_payout_ref ?? String(selected.matched_payout_id))}`}>WD {selected.matched_payout_ref ?? selected.matched_payout_id}{selected.matched_payout_status ? ` · ${selected.matched_payout_status}` : ''}</Link> : <span className="pay-status-badge st-declined">{t('غير معيّنة','Unassigned')}</span>}</dd></>}
+                  {selected.withdrawal_assignment_type && <><dt>{t('التعيين اليدوي','Manual assignment')}</dt><dd>{selected.withdrawal_assignment_type === 'payout' ? 'Payout' : selected.withdrawal_assignment_type === 'p2p_usdt' ? 'P2P USDT' : 'Money cash return'} · {selected.withdrawal_assignment_name}{selected.withdrawal_assignment_reference ? ` · ${selected.withdrawal_assignment_reference}` : ''}<div className="cell-sub">{selected.withdrawal_assigned_by ?? '—'}</div></dd></>}
                   <dt>{t('حالة الربط', 'Link status')}</dt><dd className="mono">{selected.sms_category === 'withdrawal' ? selected.matched_payout_id ? t('مرتبطة بمعاملة سحب','Linked to payout') : selected.linked_wallet_number ? t('مرتبطة بالمحفظة فقط','Wallet only') : t('غير مرتبطة','Unlinked') : selected.match_status ?? '—'}{selected.review_required && !selected.matched && selected.sms_category !== 'withdrawal' && <> · ⚠ {t('تحتاج مراجعة', 'needs review')}</>}</dd>
                   <dt>{t('الرصيد بعد العملية', 'Balance after')}</dt><dd className="mono">{money(selected.balance_after, 'EGP')}</dd>
                   {selected.sms_category === 'withdrawal' && <><dt>{t('حساب الرصيد', 'Balance calculation')}</dt><dd className="mono">{selected.wallet_balance_before != null ? money(selected.wallet_balance_before, 'EGP') : '—'} − {money(selected.amount, 'EGP')} = {selected.wallet_balance_after != null ? money(selected.wallet_balance_after, 'EGP') : '—'}</dd></>}
@@ -510,6 +556,11 @@ export default function SmsLive() {
                     <label className="filter-field">{t('الاسم', 'Name')}<input className="login-input" maxLength={160} value={metaName} onChange={(e) => setMetaName(e.target.value)} placeholder={t('اسم صاحب المحفظة أو المستفيد', 'Wallet owner or beneficiary name')}/></label>
                     <label className="filter-field">{t('ملاحظة', 'Note')}<textarea className="login-input" rows={3} maxLength={2000} value={metaNotes} onChange={(e) => setMetaNotes(e.target.value)} placeholder={t('ملاحظة تشغيلية تظهر في تفاصيل SMS', 'Operational note shown in SMS details')}/></label>
                     <button className="btn-primary btn-sm" disabled={metaBusy} onClick={() => void saveWithdrawalMeta()}>{metaBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ الاسم والملاحظة', 'Save name & note')}</button>
+                    <h4>{t('تعيين رسالة السحب', 'Assign withdrawal SMS')}</h4>
+                    <label className="filter-field">{t('نوع التعيين', 'Assignment type')}<select className="login-input" value={assignmentType} onChange={(e) => setAssignmentType(e.target.value as typeof assignmentType)}><option value="payout">Payout</option><option value="p2p_usdt">P2P USDT</option><option value="cash_return">Money cash return</option></select></label>
+                    <label className="filter-field">{t('الاسم', 'Name')}<input className="login-input" maxLength={160} value={assignmentName} onChange={(e) => setAssignmentName(e.target.value)} required /></label>
+                    <label className="filter-field">{assignmentType === 'payout' ? t('رقم معاملة السحب', 'Payout transaction/ref') : t('المرجع', 'Reference')}<input className="login-input" maxLength={160} value={assignmentRef} onChange={(e) => setAssignmentRef(e.target.value)} placeholder={assignmentType === 'payout' ? 'WD ref or Maven ID' : t('مرجع اختياري', 'Optional reference')} /></label>
+                    <button className="btn-primary btn-sm" disabled={assignmentBusy || !assignmentName.trim() || (assignmentType === 'payout' && !assignmentRef.trim())} onClick={() => void assignWithdrawal()}>{assignmentBusy ? t('جارٍ التعيين…', 'Assigning…') : t('تعيين', 'Assign')}</button>
                   </section>
                 )}
 

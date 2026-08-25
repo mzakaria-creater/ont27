@@ -54,7 +54,14 @@ adminRoutes.get('/transactions', requirePerm('transactions', 'can_view'), async 
     else if (state === 'DECLINED') acc.declined += 1
     return acc
   }, { volume: 0, pending: 0, paid: 0, declined: 0 })
-  return c.json({ rows: records.data ?? [], total: records.count ?? 0, summary, limit, offset })
+  const rows = (records.data ?? []).map((row) => {
+    const raw = row.maven_raw_row && typeof row.maven_raw_row === 'object' && !Array.isArray(row.maven_raw_row)
+      ? row.maven_raw_row as Record<string, unknown>
+      : null
+    const account = raw ? Object.entries(raw).find(([key]) => key.replace(/[^a-z0-9]/gi, '').toLowerCase() === 'accountnumber')?.[1] : null
+    return { ...row, sender_account_number: account == null ? row.sender_number : String(account).trim() || row.sender_number }
+  })
+  return c.json({ rows, total: records.count ?? 0, summary, limit, offset })
 })
 
 const userColumns = 'id, username, email, display_name, role, active, last_login_at, failed_login_count, locked_until, created_at'

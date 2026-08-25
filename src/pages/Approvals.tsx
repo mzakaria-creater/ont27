@@ -26,6 +26,7 @@ interface DepRow {
   currency: string | null
   sender_name: string | null
   sender_number: string | null
+  sender_account_number: string | null
   payment_method: string | null
   merchant: string | null
   master_merchant: string | null
@@ -201,7 +202,7 @@ export default function Approvals() {
                       {r.merchant_tx_reference && <div className="cell-sub mono">{r.merchant_tx_reference}</div>}
                     </td>
                     <td className="mono">{money(r.amount, r.currency)}</td>
-                    <td><SenderIdentity name={r.sender_name} phone={r.sender_number} unknown="—" /></td>
+                    <td><SenderIdentity name={r.sender_name} phone={r.sender_number} unknown="—" />{r.sender_account_number&&r.sender_account_number!==r.sender_number&&<div className="cell-sub mono">{t('حساب المرسل','Sender account')}: {r.sender_account_number}</div>}</td>
                     <td>
                       <span className="mono">{r.receiving_wallet ?? r.to_account_number ?? '—'}</span>
                       {(r.to_account_name ?? r.to_bank) && <div className="cell-sub">{r.to_account_name ?? r.to_bank}</div>}
@@ -238,7 +239,7 @@ export default function Approvals() {
                   <span className="pay-status-badge st-pending">{t('معلّقة', 'Pending')}</span>
                 </div>
                 <div className="approval-card-amount">{money(r.amount, r.currency)}</div>
-                <div className="approval-card-party"><SenderIdentity name={r.sender_name} phone={r.sender_number} unknown={t('مرسل غير معروف', 'Unknown sender')} /></div>
+                <div className="approval-card-party"><SenderIdentity name={r.sender_name} phone={r.sender_number} unknown={t('مرسل غير معروف', 'Unknown sender')} />{r.sender_account_number&&r.sender_account_number!==r.sender_number&&<small className="mono">{t('حساب المرسل','Sender account')}: {r.sender_account_number}</small>}</div>
                 <dl className="approval-card-facts">
                   <div><dt>{t('المحفظة', 'Wallet')}</dt><dd className="mono">{r.receiving_wallet ?? r.to_account_number ?? '—'}</dd></div>
                   <div><dt>{t('الطريقة', 'Method')}</dt><dd><MethodLogo method={r.payment_method} /></dd></div>

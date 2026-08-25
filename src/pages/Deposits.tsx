@@ -477,6 +477,7 @@ export default function Deposits() {
                       <td>
                         {r.sender_name ?? '—'}
                         {r.sender_number && <div className="cell-sub mono">{r.sender_number}</div>}
+                        {r.sender_account_number && r.sender_account_number !== r.sender_number && <div className="cell-sub mono">{t('حساب المرسل','Sender account')}: {r.sender_account_number}</div>}
                         <DepositKindBadge row={r} />
                       </td>
                       <td className="mono">

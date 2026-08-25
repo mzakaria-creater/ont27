@@ -34,6 +34,8 @@ export default function WalletReport() {
   const { t } = useLocale()
   const [rows, setRows] = useState<WalletRow[] | null>(null)
   const [days, setDays] = useState(30)
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
   const [query, setQuery] = useState('')
   const [activity, setActivity] = useState('')
   const [sort, setSort] = useState('sms')
@@ -53,13 +55,16 @@ export default function WalletReport() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const next = (await api<{ rows: WalletRow[] }>(`/api/wallet-report?days=${days}`)).rows
+      const search = new URLSearchParams({ days: String(days) })
+      if (from) search.set('from', from)
+      if (to) search.set('to', to)
+      const next = (await api<{ rows: WalletRow[] }>(`/api/wallet-report?${search}`)).rows
       setRows((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next)
       setErr(null)
     }
     catch (e) { setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض تقرير المحافظ.', 'You do not have permission to view the wallet report.') : t('تعذّر تحميل التقرير.', 'Failed to load the report.')) }
     finally { setLoading(false) }
-  }, [days, t])
+  }, [days, from, to, t])
   useEffect(() => { void load() }, [load])
 
   const filteredRows = useMemo(() => {
@@ -101,14 +106,16 @@ export default function WalletReport() {
 
     <div className="filter-bar transaction-filter-toolbar wallet-report-filter-bar">
       <div className="filter-pills">
-        {[7, 30, 90].map((d) => <button key={d} className={`pill${days === d ? ' active' : ''}`} onClick={() => setDays(d)}>{t('آخر', 'Last')} {d} {t('يوم', 'days')}</button>)}
+        {[7, 30, 90].map((d) => <button key={d} className={`pill${days === d && !from && !to ? ' active' : ''}`} onClick={() => { setDays(d); setFrom(''); setTo('') }}>{t('آخر', 'Last')} {d} {t('يوم', 'days')}</button>)}
       </div>
+      <input className="login-input" type="date" value={from} onChange={(e)=>setFrom(e.target.value)} aria-label={t('من','From')}/>
+      <input className="login-input" type="date" value={to} onChange={(e)=>setTo(e.target.value)} aria-label={t('إلى','To')}/>
       <label className="wallet-report-search"><Search size={15}/><input value={query} onChange={(e)=>setQuery(e.target.value)} placeholder={t('بحث: محفظة / جهاز / تاجر…','Search wallet / device / merchant…')}/></label>
       <select className="login-input" value={activity} onChange={(e)=>setActivity(e.target.value)} aria-label={t('نوع النشاط','Activity type')}><option value="">{t('كل النشاط','All activity')}</option><option value="unconfirmed">{t('غير مؤكدة','Unconfirmed')}</option><option value="withdrawals">{t('لديها سحوبات','Has withdrawals')}</option><option value="deposits">{t('لديها إيداعات','Has deposits')}</option><option value="balance">{t('لديها رصيد','Has balance')}</option></select>
       <select className="login-input" value={sort} onChange={(e)=>setSort(e.target.value)} aria-label={t('ترتيب','Sort')}><option value="sms">{t('الأكثر SMS','Most SMS')}</option><option value="balance">{t('الأعلى رصيداً','Highest balance')}</option><option value="withdrawals">{t('الأكثر سحباً','Most withdrawals')}</option><option value="unconfirmed">{t('الأكثر غير مؤكد','Most unconfirmed')}</option></select>
       <span className="automation-filter-count">{filteredRows.length} / {rows?.length ?? 0}</span>
       <button className="btn-ghost btn-sm" disabled={loading} onClick={()=>void load()}><RefreshCw size={14} className={loading?'spin':''}/> {t('تحديث','Refresh')}</button>
-      <button className="btn-ghost btn-sm" onClick={()=>{setQuery('');setActivity('');setSort('sms');setDays(30)}}><RotateCcw size={14}/> {t('إعادة ضبط','Reset')}</button>
+      <button className="btn-ghost btn-sm" onClick={()=>{setQuery('');setActivity('');setSort('sms');setDays(30);setFrom('');setTo('')}}><RotateCcw size={14}/> {t('إعادة ضبط','Reset')}</button>
     </div>
 
     {err && <div className="card warn">{err}</div>}

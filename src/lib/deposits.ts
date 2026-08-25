@@ -12,6 +12,7 @@ export interface DepositRow {
   currency: string | null
   sender_name: string | null
   sender_number: string | null
+  sender_account_number?: string | null
   agent_name: string | null
   email: string | null
   payment_method: string | null

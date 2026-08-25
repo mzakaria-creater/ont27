@@ -43,6 +43,22 @@ async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> 
     row.matched_payout_ref = null
     row.matched_payout_status = null
   }
+  const withdrawalIds = withdrawalRows.map((row) => Number(row.id)).filter(Number.isFinite)
+  if (withdrawalIds.length) {
+    const { data: assignments } = await db.from('sms_withdrawal_assignments')
+      .select('sms_id, assignment_type, target_reference, display_name, note, assigned_by, assigned_at')
+      .in('sms_id', withdrawalIds)
+    const assignmentBySms = new Map((assignments ?? []).map((item) => [Number(item.sms_id), item]))
+    for (const row of withdrawalRows) {
+      const assignment = assignmentBySms.get(Number(row.id))
+      if (!assignment) continue
+      row.withdrawal_assignment_type = assignment.assignment_type
+      row.withdrawal_assignment_reference = assignment.target_reference
+      row.withdrawal_assignment_name = assignment.display_name
+      row.withdrawal_assigned_by = assignment.assigned_by
+      row.withdrawal_assigned_at = assignment.assigned_at
+    }
+  }
   const payoutId = (row: Record<string, unknown>): number | null => {
     const raw = row.consumed_by_tx_id ?? row.matched_transaction_id
     const id = Number(raw)
@@ -98,23 +114,29 @@ async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> 
 
 smsRoutes.get('/stats', requirePerm('sms_live', 'can_view'), async (c) => {
   const day = sinceIso(24)
+  const from = c.req.query('from')?.trim()
+  const to = c.req.query('to')?.trim()
+  const inRange = (q: any) => {
+    if (from) q = q.gte('received_at', `${from}T00:00:00Z`)
+    if (to) q = q.lte('received_at', `${to}T23:59:59.999Z`)
+    return q
+  }
 
   const countWhere = async (apply: (q: any) => any) => {
-    const { count, error } = await apply(
-      db.from('inbound_sms').select('id', { count: 'exact', head: true }),
-    )
+    const { count, error } = await apply(inRange(db.from('inbound_sms').select('id', { count: 'exact', head: true })))
     if (error) throw new Error(error.message)
     return count ?? 0
   }
 
   // Aggregates are disabled on PostgREST — sum the 24h window in JS.
   const volumeSince = async (category: string) => {
-    const { data, error } = await db
+    let query = db
       .from('inbound_sms')
       .select('amount')
       .eq('sms_category', category)
-      .gte('received_at', day)
       .limit(10_000)
+    query = from || to ? inRange(query) : query.gte('received_at', day)
+    const { data, error } = await query
     if (error) throw new Error(error.message)
     return (data ?? []).reduce((s, r) => s + Number(r.amount ?? 0), 0)
   }
@@ -148,6 +170,8 @@ smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
   const category = c.req.query('category')?.toLowerCase()
   const match = c.req.query('match')?.toLowerCase()
   const q = c.req.query('q')?.trim()
+  const from = c.req.query('from')?.trim()
+  const to = c.req.query('to')?.trim()
   const limit = Math.min(Number(c.req.query('limit')) || 25, 100)
   const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
 
@@ -159,6 +183,8 @@ smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
     .range(offset, offset + limit - 1)
 
   if (category) query = query.eq('sms_category', category)
+  if (from) query = query.gte('received_at', `${from}T00:00:00Z`)
+  if (to) query = query.lte('received_at', `${to}T23:59:59.999Z`)
   // Linked means the engine claimed it, which it records in consumed_by_tx_id.
   // Filtering on match_status instead showed only the 171 manually linked rows
   // and 76 from July: 3,888 SMS that ARE consumed still carry
@@ -413,6 +439,53 @@ smsRoutes.patch('/:id/withdrawal-meta', requirePerm('sms_live', 'can_edit'), asy
     before: { sender_name: before.sender_name, notes: before.notes }, after: next,
   })
   return c.json({ ok: true, sms: data })
+})
+
+smsRoutes.post('/:id/withdrawal-assignment', requirePerm('sms_live', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)
+  const body = await c.req.json<Record<string, unknown>>().catch(() => null)
+  const assignmentType = typeof body?.assignment_type === 'string' ? body.assignment_type : ''
+  const targetReference = typeof body?.target_reference === 'string' ? body.target_reference.trim().slice(0, 160) : ''
+  const name = typeof body?.name === 'string' ? body.name.trim().slice(0, 160) : ''
+  const note = typeof body?.note === 'string' ? body.note.trim().slice(0, 2000) : ''
+  if (!['payout', 'p2p_usdt', 'cash_return'].includes(assignmentType)) return c.json({ error: 'invalid_assignment_type' }, 400)
+  if (!name) return c.json({ error: 'name_required' }, 400)
+  const { data: sms, error: smsError } = await db.from('inbound_sms').select('id, sms_category, consumed_by_tx_id').eq('id', id).maybeSingle()
+  if (smsError) return c.json({ error: 'db_error', detail: smsError.message }, 500)
+  if (!sms) return c.json({ error: 'not_found' }, 404)
+  if (sms.sms_category !== 'withdrawal') return c.json({ error: 'withdrawal_only' }, 409)
+
+  let payoutId: number | null = null
+  if (assignmentType === 'payout') {
+    if (!targetReference) return c.json({ error: 'target_reference_required' }, 400)
+    let payoutQuery = db.from('maven_payout_transactions').select('maven_id, ontarget_ref, matched_sms_id')
+    payoutQuery = /^\d+$/.test(targetReference)
+      ? payoutQuery.or(`maven_id.eq.${targetReference},ontarget_ref.eq.${targetReference}`)
+      : payoutQuery.eq('ontarget_ref', targetReference)
+    const { data: payout, error } = await payoutQuery.maybeSingle()
+    if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+    if (!payout) return c.json({ error: 'payout_not_found' }, 404)
+    if (sms.consumed_by_tx_id != null && Number(sms.consumed_by_tx_id) !== Number(payout.maven_id)) return c.json({ error: 'already_linked' }, 409)
+    if (payout.matched_sms_id != null && Number(payout.matched_sms_id) !== Number(id)) return c.json({ error: 'payout_already_linked' }, 409)
+    payoutId = Number(payout.maven_id)
+  }
+
+  const actor = c.get('actor')
+  const assignment = { sms_id: Number(id), assignment_type: assignmentType, target_reference: targetReference || null, display_name: name, note: note || null, assigned_by: actor.username, assigned_by_id: actor.sub, assigned_at: new Date().toISOString() }
+  const { error: assignmentError } = await db.from('sms_withdrawal_assignments').upsert(assignment, { onConflict: 'sms_id' })
+  if (assignmentError) return c.json({ error: 'db_error', detail: assignmentError.message }, 500)
+  if (payoutId != null) {
+    const { error: smsLinkError } = await db.from('inbound_sms').update({ consumed_by_tx_id: payoutId, matched_transaction_id: payoutId, matched: true, match_status: 'manual_payout', sender_name: name, notes: note || null }).eq('id', id)
+    if (smsLinkError) return c.json({ error: 'db_error', detail: smsLinkError.message }, 500)
+    const { error: payoutLinkError } = await db.from('maven_payout_transactions').update({ matched_sms_id: Number(id) }).eq('maven_id', payoutId)
+    if (payoutLinkError) return c.json({ error: 'db_error', detail: payoutLinkError.message }, 500)
+  } else {
+    const { error: metaError } = await db.from('inbound_sms').update({ sender_name: name, notes: note || null, matched: true, match_status: `manual_${assignmentType}` }).eq('id', id)
+    if (metaError) return c.json({ error: 'db_error', detail: metaError.message }, 500)
+  }
+  await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'sms.withdrawal_assigned', entity_type: 'inbound_sms', entity_id: id, after: assignment })
+  return c.json({ ok: true, assignment })
 })
 
 smsRoutes.get('/:id', requirePerm('sms_live', 'can_view'), async (c) => {

@@ -13,9 +13,21 @@ export const extraRoutes = new Hono<AuthEnv>()
 extraRoutes.use('*', requireAuth)
 
 const DEPOSIT_COLS =
-  'tx_id, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, receiving_wallet, to_account_number, payment_method, gateway, merchant, master_merchant, approved_by, proof_image_url, first_seen_at, created_utc'
+  'tx_id, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, receiving_wallet, to_account_number, payment_method, gateway, merchant, master_merchant, approved_by, proof_image_url, first_seen_at, created_utc, maven_raw_row'
 const PAYOUT_COLS =
   'maven_id, ontarget_ref, status, amount, pay_by, merchant, account_name, mobile_no, agent_name, approved_by, image_url, first_seen_at, created_utc'
+
+function withSenderAccount<T extends Record<string, unknown>>(row: T): Omit<T, 'maven_raw_row'> & { sender_account_number: string | null } {
+  const raw = row.maven_raw_row && typeof row.maven_raw_row === 'object' && !Array.isArray(row.maven_raw_row)
+    ? row.maven_raw_row as Record<string, unknown>
+    : null
+  const account = raw
+    ? Object.entries(raw).find(([key]) => key.replace(/[^a-z0-9]/gi, '').toLowerCase() === 'accountnumber')?.[1]
+    : null
+  const { maven_raw_row: _raw, ...safe } = row
+  const fallback = typeof row.sender_number === 'string' ? row.sender_number : null
+  return { ...safe, sender_account_number: account == null ? fallback : String(account).trim() || fallback }
+}
 
 // ---- Unified transactions (deposits + payouts) ----
 extraRoutes.get(
@@ -91,7 +103,7 @@ extraRoutes.get(
     if (pay.error) return c.json({ error: 'db_error', detail: pay.error.message }, 500)
 
     const rows = ([
-      ...((dep.data ?? []) as unknown as Record<string, unknown>[]).map((r) => ({ ...r, kind: 'deposit' })),
+      ...((dep.data ?? []) as unknown as Record<string, unknown>[]).map((r) => ({ ...withSenderAccount(r), kind: 'deposit' })),
       ...((pay.data ?? []) as unknown as Record<string, unknown>[]).map((r) => ({ ...r, kind: 'payout' })),
     ] as Record<string, unknown>[]).sort((a, b) =>
       String(b.ontarget_ref ?? '').localeCompare(String(a.ontarget_ref ?? '')),
@@ -139,7 +151,7 @@ extraRoutes.get(
 // Note: sender_number is the same value the provider sends as raw->>'PhoneNo'
 // (verified: 0 of 801 recent NGPay rows differ), so there is only ONE customer
 // phone here — it is deliberately not rendered twice under two labels.
-const APPROVAL_DEPOSIT_COLS = `${DEPOSIT_COLS}, proof_image_url, to_account_number, to_account_name, receiving_wallet, to_bank`
+const APPROVAL_DEPOSIT_COLS = `${DEPOSIT_COLS}, to_account_name, to_bank`
 
 extraRoutes.get(
   '/approvals',
@@ -161,7 +173,7 @@ extraRoutes.get(
     ])
     if (dep.error) return c.json({ error: 'db_error', detail: dep.error.message }, 500)
     if (pay.error) return c.json({ error: 'db_error', detail: pay.error.message }, 500)
-    const deposits = dep.data ?? []
+    const deposits = (dep.data ?? []).map((row) => withSenderAccount(row))
     const txIds = deposits.map((row) => row.tx_id)
     const smsByTx = new Map<number, Record<string, unknown>>()
     const reasonByTx = new Map<number, Record<string, unknown>>()
@@ -251,9 +263,13 @@ extraRoutes.get(
 // and current balance for each receiving wallet, over a window. ----
 extraRoutes.get('/wallet-report', requireAnyPerm(['sms_live', 'wallets'], 'can_view'), async (c) => {
   const days = Math.min(Math.max(Number(c.req.query('days')) || 30, 1), 365)
-  const { data, error } = await db.rpc('panel_wallet_sms_report', { p_days: days })
+  const from = c.req.query('from')?.trim() || null
+  const to = c.req.query('to')?.trim() || null
+  const { data, error } = from || to
+    ? await db.rpc('panel_wallet_sms_report_range', { p_from: from, p_to: to })
+    : await db.rpc('panel_wallet_sms_report', { p_days: days })
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  return c.json({ rows: data ?? [], days })
+  return c.json({ rows: data ?? [], days, from, to })
 })
 
 // Per-wallet detail: recent SMS for the wallet + transactions that landed on

@@ -21,7 +21,7 @@ depositRoutes.use('*', requireAuth)
 // email <1%) — the card layout hides those lines entirely when empty rather
 // than rendering a dash, so shipping them in the list payload is safe.
 const LIST_COLUMNS =
-  'tx_id, guid, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, agent_name, email, payment_method, gateway, merchant, sub_merchant, master_merchant, manual_entry, approved_by, to_account_number, receiving_wallet, proof_image_url, first_seen_at, last_status_change, created_utc'
+  'tx_id, guid, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, agent_name, email, payment_method, gateway, merchant, sub_merchant, master_merchant, manual_entry, approved_by, to_account_number, receiving_wallet, proof_image_url, first_seen_at, last_status_change, created_utc, maven_raw_row'
 
 const APPROVED_STATUSES = new Set(['PAID', 'APPROVED'])
 const phoneKey = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
@@ -60,6 +60,12 @@ async function attachDepositContext(rows: Record<string, unknown>[]): Promise<vo
   }
 
   for (const row of rows) {
+    const raw = row.maven_raw_row && typeof row.maven_raw_row === 'object' && !Array.isArray(row.maven_raw_row)
+      ? row.maven_raw_row as Record<string, unknown> : null
+    const rawEntries = raw ? Object.entries(raw) : []
+    const accountEntry = rawEntries.find(([key]) => key.replace(/[^a-z0-9]/gi, '').toLowerCase() === 'accountnumber')
+    row.sender_account_number = accountEntry?.[1] == null ? (row.sender_number ?? null) : (String(accountEntry[1]).trim() || row.sender_number || null)
+    delete row.maven_raw_row
     const key = phoneKey(row.sender_number)
     const at = txTime(row)
     const prior = key

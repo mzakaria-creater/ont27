@@ -20,7 +20,7 @@ export interface PaidSmsRepairResult {
   skippedAmbiguous: number
   skippedAlreadyAssigned: number
   errors: string[]
-  diagnostics: { noAmountCandidate: number; noUsableTime: number; outsideTenMinutes: number; missingSenderName: number; senderNameMismatch: number; ambiguousFallback: number }
+  diagnostics: { noAmountCandidate: number; noUsableTime: number; outsideTenMinutes: number; missingSenderName: number; senderNameMismatch: number; ambiguousFallback: number; ownWalletSender: number }
   sample: { sms_id: number; tx_id: number; trx_id: string; sec_diff: number | null }[]
 }
 
@@ -50,6 +50,9 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
   if (smsError) throw new Error(`sms scan: ${smsError.message}`)
   if (txError) throw new Error(`transaction scan: ${txError.message}`)
 
+  const { data: walletRows, error: walletError } = await db.from('wallet_device_map').select('to_account_number')
+  if (walletError) throw new Error(`wallet exclusion lookup: ${walletError.message}`)
+  const ourWallets = new Set((walletRows ?? []).map((row) => phone(row.to_account_number)).filter(Boolean))
   const smsRows = (smsData ?? []) as SmsRow[]
   const txRows = (txData ?? []) as TxRow[]
   const txByRef = new Map<string, TxRow[]>()
@@ -76,8 +79,9 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
   const proposals: { sms: SmsRow; tx: TxRow; secDiff: number | null }[] = []
   let skippedAmbiguous = 0
   let skippedAlreadyAssigned = 0
-  const diagnostics = { noAmountCandidate: 0, noUsableTime: 0, outsideTenMinutes: 0, missingSenderName: 0, senderNameMismatch: 0, ambiguousFallback: 0 }
+  const diagnostics = { noAmountCandidate: 0, noUsableTime: 0, outsideTenMinutes: 0, missingSenderName: 0, senderNameMismatch: 0, ambiguousFallback: 0, ownWalletSender: 0 }
   for (const sms of smsRows) {
+    if (ourWallets.has(phone(sms.sender_number))) { diagnostics.ownWalletSender++; continue }
     let candidates = [...new Map((txByRef.get(ref(sms.trx_id)) ?? []).map((tx) => [tx.tx_id, tx])).values()]
       .filter((tx) => cents(tx.amount) === cents(sms.amount))
       .filter((tx) => {
