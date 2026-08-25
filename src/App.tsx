@@ -53,6 +53,7 @@ const ReplayLab = lazy(() => import('./pages/ReplayLab'))
 const AirDroid = lazy(() => import('./pages/AirDroid'))
 const AdminTransactions = lazy(() => import('./pages/AdminTransactions'))
 const ApiDashboard = lazy(() => import('./pages/ApiDashboard'))
+const InternalChat = lazy(() => import('./pages/InternalChat'))
 
 type Conn = 'wait' | 'ok' | 'bad'
 
@@ -311,6 +312,7 @@ export default function App() {
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/admin/*" element={<AdminPage />} />
             <Route path="/admin-transactions" element={<AdminTransactions />} />
+            <Route path="/chat" element={<InternalChat />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/tv" element={<TvScreen />} />
             <Route path="/complaints" element={<Complaints />} />
