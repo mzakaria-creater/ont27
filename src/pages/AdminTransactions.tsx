@@ -17,18 +17,21 @@ export default function AdminTransactions() {
   const { can } = useAuth()
   const [rows, setRows] = useState<Row[]>([]); const [total, setTotal] = useState(0); const [loading, setLoading] = useState(true)
   const [summary, setSummary] = useState<Summary>({ volume: 0, pending: 0, paid: 0, declined: 0 })
-  const [error, setError] = useState<string | null>(null); const [q, setQ] = useState(''); const [status, setStatus] = useState(''); const [from, setFrom] = useState(''); const [to, setTo] = useState('')
-  const [applied, setApplied] = useState({ q: '', status: '', from: '', to: '' }); const [expanded, setExpanded] = useState<number | null>(null); const [busy, setBusy] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null); const [q, setQ] = useState(''); const [status, setStatus] = useState(''); const [merchant, setMerchant] = useState(''); const [method, setMethod] = useState(''); const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [sort, setSort] = useState('desc')
+  const [applied, setApplied] = useState({ q: '', status: '', merchant: '', method: '', from: '', to: '', sort: 'desc' }); const [expanded, setExpanded] = useState<number | null>(null); const [busy, setBusy] = useState<number | null>(null)
   const load = useCallback(async () => { setLoading(true); try { const p = new URLSearchParams({ limit: '100' }); Object.entries(applied).forEach(([k,v]) => v && p.set(k,v)); const res = await api<{rows: Row[]; total: number; summary: Summary}>(`/api/admin/transactions?${p}`); setRows(res.rows); setTotal(res.total); setSummary(res.summary); setError(null) } catch (e) { setError(e instanceof ApiError ? e.code : 'load_failed') } finally { setLoading(false) } }, [applied])
   useEffect(() => { void load() }, [load])
   const decide = async (row: Row, action: 'approve'|'decline') => { if (!confirm(`${action} #${row.tx_id}?`)) return; setBusy(row.tx_id); try { await api(`/api/deposits/${row.tx_id}/decision`, { method:'POST', body:JSON.stringify({ action, note:`Admin Transactions: ${action}` }) }); setRows((current)=>current.map((item)=>item.tx_id===row.tx_id?{...item,status:action==='approve'?'PAID':'DECLINED'}:item)) } catch(e) { setError(e instanceof ApiError ? e.code : 'decision_failed') } finally { setBusy(null) } }
   return <PanelShell>
     <section className="page-head"><h2>Admin Transactions</h2><p className="page-sub">Expanded administrative ledger · {total.toLocaleString()} records</p></section>
-    <form className="filter-bar admin-trx-filter" onSubmit={(e)=>{e.preventDefault();setApplied({q:q.trim(),status,from,to})}}>
+    <form className="filter-bar admin-trx-filter" onSubmit={(e)=>{e.preventDefault();setApplied({q:q.trim(),status,merchant:merchant.trim(),method,from,to,sort})}}>
       <label className="analytics-filter-search"><Search size={16}/><input value={q} onChange={(e)=>setQ(e.target.value)} placeholder="Transaction ID, reference, phone, or email" /></label>
       <select className="filter-select" value={status} onChange={(e)=>setStatus(e.target.value)}><option value="">All statuses</option>{['PENDING','PAID','APPROVED','DECLINED','EXPIRED','UNDERPAID'].map((v)=><option key={v}>{v}</option>)}</select>
+      <select className="filter-select" value={method} onChange={(e)=>setMethod(e.target.value)}><option value="">All payment types</option>{['Mobile Wallet','Bank Account Transfer','InstaPay','P2P'].map((v)=><option key={v}>{v}</option>)}</select>
+      <input className="login-input" value={merchant} onChange={(e)=>setMerchant(e.target.value)} placeholder="Merchant" aria-label="Merchant"/>
       <input className="login-input" type="date" value={from} onChange={(e)=>setFrom(e.target.value)} aria-label="From"/><input className="login-input" type="date" value={to} onChange={(e)=>setTo(e.target.value)} aria-label="To"/>
-      <button className="btn-primary btn-sm">Apply</button><button type="button" className="btn-ghost btn-sm" onClick={()=>void load()}><RefreshCw size={14}/>Refresh</button>
+      <select className="filter-select" value={sort} onChange={(e)=>setSort(e.target.value)} aria-label="Date order"><option value="desc">Date: newest first</option><option value="asc">Date: oldest first</option></select>
+      <button className="btn-primary btn-sm">Apply</button><button type="button" className="btn-ghost btn-sm" onClick={()=>{setQ('');setStatus('');setMerchant('');setMethod('');setFrom('');setTo('');setSort('desc');setApplied({q:'',status:'',merchant:'',method:'',from:'',to:'',sort:'desc'})}}>Reset</button><button type="button" className="btn-ghost btn-sm" onClick={()=>void load()}><RefreshCw size={14}/>Refresh</button>
     </form>
     <section className="kpi-grid" aria-live="polite">
       <div className="kpi-card"><div className="kpi-value">{loading ? '…' : total.toLocaleString('en-US')}</div><div className="kpi-label">Matching transactions</div><div className="cell-sub">Current filters and search</div></div>
