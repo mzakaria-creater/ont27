@@ -28,6 +28,12 @@ const methodPresets = [
   { code: 'ORANGE_CASH', name: 'Orange Cash', channel: 'sms_device' },
   { code: 'ETISALAT_CASH', name: 'Etisalat Cash', channel: 'sms_device' },
   { code: 'BANK_TRANSFER', name: 'Bank Transfer', channel: 'bank_transfer' },
+  { code: 'FAWRY', name: 'Fawry', channel: 'other' },
+  { code: 'AXIS_PAY', name: 'Axis Pay', channel: 'other' },
+  { code: 'TELDA', name: 'Telda', channel: 'bank_transfer' },
+  { code: 'ALEXBANK', name: 'AlexBank', channel: 'bank_transfer' },
+  { code: 'NBE', name: 'National Bank of Egypt', channel: 'bank_transfer' },
+  { code: 'BANQUE_MISR', name: 'Banque Misr', channel: 'bank_transfer' },
   { code: 'BINANCE_USDT', name: 'Binance USDT', channel: 'other' },
 ]
 

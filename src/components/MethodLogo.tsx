@@ -16,10 +16,12 @@ const MARKS: { test: (m: string) => boolean; label: string; bg: string; fg: stri
   { test: (m) => m.includes('payfuture') || m.includes('pay future'), label: 'PF', bg: '#fff', fg: '#111', title: 'PayFuture', image: 'https://www.igamingtoday.com/wp-content/uploads/2024/10/PayFuture.jpeg' },
   { test: (m) => m.includes('we pay') || m.includes('wepay'), label: 'WE', bg: '#7b2d8b', fg: '#fff', title: 'WE Pay', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0f/We_logo.svg/3840px-We_logo.svg.png' },
   { test: (m) => m.includes('fawry'), label: 'F', bg: '#ffdd00', fg: '#102a56', title: 'Fawry Plus', image: 'https://www.fawry.com/wp-content/uploads/2022/08/Fawry-Plus-english-logo.png' },
+  { test: (m) => m.includes('axis pay') || m.includes('axispay'), label: 'AX', bg: '#fff', fg: '#111', title: 'Axis Pay', image: 'https://images.crunchbase.com/image/upload/c_pad,h_256,w_256,f_auto,q_auto:eco,dpr_1/q_30/i5td9sqomwlhmoglzplb?ik-sanitizeSvg=true' },
+  { test: (m) => m === 'telda' || m.includes('telda pay'), label: 'T', bg: '#fff', fg: '#111', title: 'Telda', image: 'https://techafricanews.com/wp-content/uploads/2025/10/telda.png' },
   { test: (m) => m.includes('alexbank') || m.includes('alex bank') || m.includes('bank of alexandria'), label: 'ALEX', bg: '#fff', fg: '#173d7a', title: 'AlexBank', image: 'https://hapijournal.com/wp-content/uploads/2021/07/ALEX-750x386.png' },
   { test: (m) => m.includes('national bank of egypt') || m === 'nbe' || m.includes('banque misr'), label: 'NBE', bg: '#fff', fg: '#173d7a', title: 'Egyptian bank', image: 'https://www.egypttoday.com/siteimages/Larg/40898.jpg' },
   { test: (m) => m.includes('meeza'), label: 'M', bg: '#0a7a5a', fg: '#fff', title: 'Meeza' },
-  { test: (m) => m.includes('bank'), label: '🏦', bg: 'var(--hover-2)', fg: 'var(--text)', title: 'Bank deposit' },
+  { test: (m) => m.includes('bank') || m.includes('transfer'), label: 'BT', bg: '#fff', fg: '#173d7a', title: 'Bank transfer', image: 'https://cdn-icons-png.flaticon.com/512/349/349229.png' },
   { test: (m) => m.includes('express'), label: '⚡', bg: 'var(--amber-bg)', fg: 'var(--text)', title: 'Express deposit' },
   { test: (m) => m.includes('wallet') || m.includes('mobile'), label: '📱', bg: 'var(--hover-2)', fg: 'var(--text)', title: 'Mobile wallet' },
 ]
