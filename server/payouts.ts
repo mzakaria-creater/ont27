@@ -116,10 +116,15 @@ payoutRoutes.get("/", requirePerm("payouts", "can_view"), async (c) => {
       `ontarget_ref.ilike.${like}`,
       `mobile_no.ilike.${like}`,
       `account_name.ilike.${like}`,
+      `maven_raw_row->>Reference1.ilike.${like}`,
+      `maven_raw_row->>PhoneNo.ilike.${like}`,
+      `maven_raw_row->>AccountNumber.ilike.${like}`,
+      `maven_raw_row->>UserName.ilike.${like}`,
       `merchant.ilike.${like}`,
       `agent_name.ilike.${like}`,
     ];
     if (/^\d+$/.test(q)) ors.push(`maven_id.eq.${q}`);
+    if (/^\d+(\.\d{1,2})?$/.test(q)) ors.push(`amount.eq.${q}`);
     query = query.or(ors.join(","));
   }
 

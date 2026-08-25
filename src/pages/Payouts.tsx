@@ -657,7 +657,7 @@ export default function Payouts() {
           </label>
           <label className="field-label payout-filter-search">
             {t("بحث", "Search")}
-            <input className="login-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("رقم العملية / الهاتف / الاسم", "Transaction / phone / name")} />
+            <input className="login-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("مبلغ / اسم / هاتف / رقم عملية / مرجع تاجر / مستخدم", "Amount / name / phone / transaction / merchant ref / user")} />
           </label>
           <button type="submit" className="btn-primary btn-sm">{t("تطبيق", "Apply")}</button>
           <button

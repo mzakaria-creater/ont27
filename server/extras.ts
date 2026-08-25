@@ -64,8 +64,9 @@ extraRoutes.get(
       if (Number.isFinite(maxAmount)) query = query.lte('amount', maxAmount)
       if (q) {
         const like = `%${q.replaceAll(',', ' ')}%`
-        const ors = [`ontarget_ref.ilike.${like}`, `sender_number.ilike.${like}`, `sender_name.ilike.${like}`, `receiving_wallet.ilike.${like}`, `to_account_number.ilike.${like}`, `merchant.ilike.${like}`]
+        const ors = [`ontarget_ref.ilike.${like}`, `merchant_tx_reference.ilike.${like}`, `sender_number.ilike.${like}`, `sender_name.ilike.${like}`, `maven_raw_row->>AccountNumber.ilike.${like}`, `maven_raw_row->>PhoneNo.ilike.${like}`, `maven_raw_row->>UserName.ilike.${like}`, `receiving_wallet.ilike.${like}`, `to_account_number.ilike.${like}`, `merchant.ilike.${like}`]
         if (/^\d+$/.test(q)) ors.push(`tx_id.eq.${q}`)
+        if (/^\d+(\.\d{1,2})?$/.test(q)) ors.push(`amount.eq.${q}`)
         query = query.or(ors.join(','))
       }
       return query
@@ -88,6 +89,7 @@ extraRoutes.get(
         const like = `%${q.replaceAll(',', ' ')}%`
         const ors = [`ontarget_ref.ilike.${like}`, `mobile_no.ilike.${like}`, `account_name.ilike.${like}`, `merchant.ilike.${like}`]
         if (/^\d+$/.test(q)) ors.push(`maven_id.eq.${q}`)
+        if (/^\d+(\.\d{1,2})?$/.test(q)) ors.push(`amount.eq.${q}`)
         query = query.or(ors.join(','))
       }
       return query

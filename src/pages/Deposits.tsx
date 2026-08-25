@@ -346,7 +346,7 @@ export default function Deposits() {
         >
           <input
             className="login-input search-input"
-            placeholder="بحث: مرجع / رقم مُرسِل / تاجر / tx_id…"
+            placeholder="بحث: مبلغ / اسم أو رقم المرسل / رقم العملية / مرجع التاجر / رقم المستخدم…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />

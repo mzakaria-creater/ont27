@@ -175,7 +175,7 @@ export default function Transactions() {
         </div>
         <form className="search-row transaction-search-row" onSubmit={(e) => { e.preventDefault(); setFilter({ q: q.trim() }) }}>
           <Search size={16} aria-hidden="true" />
-          <input className="login-input search-input" placeholder={t('بحث: مرجع / اسم / موبايل / تاجر…', 'Search: ref / name / phone / merchant…')} value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="login-input search-input" placeholder={t('بحث: مبلغ / مرسل / رقم عملية / مرجع تاجر / مستخدم…', 'Search: amount / sender / transaction / merchant ref / user…')} value={q} onChange={(e) => setQ(e.target.value)} />
           <button type="submit" className="btn-primary btn-sm">{t('بحث', 'Search')}</button>
         </form>
         <div className="transaction-filter-fields">
