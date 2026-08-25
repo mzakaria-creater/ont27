@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
+import { BarChart3, Copy, ExternalLink, Link2, Plus, RefreshCw, Search, ShieldCheck } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
 import { useLocale } from '../lib/locale'
@@ -47,6 +48,7 @@ export default function LinkGenerator() {
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | LinkStatus | 'paid'>('all')
+  const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [form, setForm] = useState({
     title: '', merchant_id: '', amount_mode: 'open', amount: '',
@@ -129,19 +131,27 @@ export default function LinkGenerator() {
     (t, l) => ({ links: t.links + 1, sessions: t.sessions + l.stats.sessions, paid: t.paid + l.stats.paid, amount: t.amount + l.stats.paid_amount }),
     { links: 0, sessions: 0, paid: 0, amount: 0 },
   )
+  const visibleLinks = links.filter((link) => {
+    const matchesStatus = filter === 'all' || (filter === 'paid' ? link.stats.paid > 0 : link.status === filter)
+    const needle = search.trim().toLowerCase()
+    return matchesStatus && (!needle || `${link.short_code} ${link.title ?? ''}`.toLowerCase().includes(needle))
+  })
+  const previewAmount = form.amount_mode === 'fixed' ? (form.amount || '0') : `${form.min_amount || 'Any'} – ${form.max_amount || 'Any'}`
 
   return (
-    <main className="page">
-      <h2>{t('مولد روابط الدفع', 'Payment link generator')}</h2>
-      <div className="kpis">
-        <div className="kpi"><b>{totals.links}</b><span>{t('رابط', 'links')}</span></div>
-        <div className="kpi"><b>{totals.sessions}</b><span>{t('جلسة', 'sessions')}</span></div>
-        <div className="kpi"><b>{totals.paid}</b><span>{t('مدفوعة', 'paid')}</span></div>
-        <div className="kpi"><b className="mono">{totals.amount.toLocaleString()}</b><span>{t('إجمالي مدفوع', 'total paid')}</span></div>
+    <main className="page payment-links-page">
+      <section className="page-head payment-links-head"><div><span className="page-eyebrow"><Link2 size={14}/> Payment collection</span><h2>{t('روابط الدفع', 'Payment Links')}</h2><p className="page-sub">{t('أنشئ روابط آمنة، تابع التحويل، وتحكم في صلاحية كل رابط.', 'Create secure links, monitor conversion, and control every link lifecycle.')}</p></div><button className="btn-ghost btn-sm" onClick={()=>void load()}><RefreshCw size={15}/>{t('تحديث','Refresh')}</button></section>
+      <div className="kpi-grid payment-link-kpis">
+        <div className="kpi-card"><Link2 className="kpi-icon"/><div className="kpi-value">{totals.links}</div><div className="kpi-label">{t('إجمالي الروابط', 'Total links')}</div></div>
+        <div className="kpi-card"><BarChart3 className="kpi-icon"/><div className="kpi-value">{totals.sessions}</div><div className="kpi-label">{t('جلسات الدفع', 'Payment sessions')}</div></div>
+        <div className="kpi-card"><ShieldCheck className="kpi-icon"/><div className="kpi-value">{totals.paid}</div><div className="kpi-label">{t('مدفوعة', 'Paid')}</div></div>
+        <div className="kpi-card"><div className="kpi-value mono">{totals.amount.toLocaleString()}</div><div className="kpi-label">{t('إجمالي مدفوع · EGP', 'Total paid · EGP')}</div></div>
       </div>
 
       {can('checkout-builder', 'can_create') && (
-        <form className="card link-form" onSubmit={create}>
+        <section className="payment-link-builder">
+        <form className="card link-form payment-link-form" onSubmit={create}>
+          <div className="recent-head"><div><h3><Plus size={18}/>{t('إنشاء رابط جديد','Create a new link')}</h3><span className="cell-sub">{t('حدد قواعد التحصيل قبل النشر','Set collection rules before publishing')}</span></div></div>
           <div className="grid-3">
             <label className="field"><span>{t('العنوان', 'Title')}</span>
               <input value={form.title} onChange={set('title')} placeholder={t('مثال: إيداع عميل VIP', 'e.g. VIP client deposit')} /></label>
@@ -172,11 +182,15 @@ export default function LinkGenerator() {
               <input dir="ltr" inputMode="numeric" value={form.max_uses} onChange={set('max_uses')} /></label>
           </div>
           {error && <div className="login-error" role="alert">{error}</div>}
-          <button className="btn-primary" disabled={busy}>{busy ? t('جارٍ الإنشاء…', 'Creating…') : t('إنشاء رابط', 'Create link')}</button>
+          <button className="btn-primary" disabled={busy}><Plus size={16}/>{busy ? t('جارٍ الإنشاء…', 'Creating…') : t('إنشاء رابط الدفع', 'Create payment link')}</button>
         </form>
+        <aside className="card payment-link-preview" aria-label="Payment link preview"><span className="page-eyebrow">Live preview</span><div className="payment-link-preview-mark"><Link2 size={26}/></div><h3>{form.title || t('عنوان الدفع','Payment title')}</h3><strong className="mono">{previewAmount} EGP</strong><p>{merchants.find((m)=>m.id===form.merchant_id)?.name || t('بدون تاجر محدد','No merchant selected')}</p><div><span>{form.amount_mode === 'fixed' ? t('مبلغ ثابت','Fixed amount') : t('مبلغ مفتوح','Open amount')}</span><span>{form.max_uses ? `${form.max_uses} ${t('استخدام','uses')}` : t('استخدام غير محدود','Unlimited uses')}</span></div><button type="button" className="btn-primary" disabled>{t('متابعة الدفع','Continue to payment')}</button></aside>
+        </section>
       )}
 
-      <div className="filter-bar">
+      {error && !can('checkout-builder', 'can_create') && <div className="login-error" role="alert">{error}</div>}
+      <div className="filter-bar payment-link-filter">
+        <label className="analytics-filter-search"><Search size={16}/><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder={t('ابحث بالكود أو العنوان','Search code or title')}/></label>
         {([
           ['all', t('الكل', 'All')],
           ['active', t('نشط', 'Active')],
@@ -196,7 +210,7 @@ export default function LinkGenerator() {
         ))}
       </div>
 
-      <div className="card table-card">
+      <div className="card table-card payment-links-table-card">
         <table className="links-table">
           <thead>
             <tr>
@@ -207,9 +221,7 @@ export default function LinkGenerator() {
             </tr>
           </thead>
           <tbody>
-            {links
-              .filter((l) => filter === 'all' || (filter === 'paid' ? l.stats.paid > 0 : l.status === filter))
-              .map((l) => (
+            {visibleLinks.map((l) => (
               // The key belongs on the fragment: the row and its expanded
               // detail are two siblings of one logical entry, and keying the
               // children instead makes React treat them as unrelated.
@@ -249,7 +261,8 @@ export default function LinkGenerator() {
                     : t('موقوف', 'Disabled')}
                 </td>
                 <td className="row-actions">
-                  <button className="btn-ghost" onClick={() => void copyUrl(l)}>{copied === l.id ? '✓' : t('نسخ', 'Copy')}</button>
+                  <button className="btn-ghost" onClick={() => void copyUrl(l)}><Copy size={14}/>{copied === l.id ? t('تم النسخ','Copied') : t('نسخ', 'Copy')}</button>
+                  <a className="btn-ghost" href={`/payment-checkout?code=${encodeURIComponent(l.short_code)}`} target="_blank" rel="noreferrer"><ExternalLink size={14}/>{t('فتح','Open')}</a>
                   <button className="btn-ghost" onClick={() => setExpanded(expanded === l.id ? null : l.id)}>
                     {expanded === l.id ? t('إخفاء', 'Hide') : t('تحليلات', 'Analytics')}
                   </button>
@@ -309,7 +322,7 @@ export default function LinkGenerator() {
               )}
               </Fragment>
             ))}
-            {!links.length && <tr><td colSpan={9} className="empty">{t('لا توجد روابط بعد', 'No links yet')}</td></tr>}
+            {!visibleLinks.length && <tr><td colSpan={9} className="empty">{t('لا توجد روابط مطابقة', 'No matching links')}</td></tr>}
           </tbody>
         </table>
       </div>
