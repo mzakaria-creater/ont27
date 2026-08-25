@@ -2153,6 +2153,14 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .admin-trx-extra-row dl { display: grid; grid-template-columns: repeat(7,minmax(140px,1fr)); gap: 12px; margin: 0; }
 .admin-trx-extra-row dt { color: var(--text-dim); font-size: 10px; }
 .admin-trx-extra-row dd { margin: 3px 0 0; font-weight: 700; overflow-wrap: anywhere; }
+:root[data-theme='light'] .admin-trx-card { border-color: #cbd5e1; box-shadow: 0 8px 24px rgba(15,23,42,.07); }
+:root[data-theme='light'] .admin-trx-table th { background: #e8eef7; color: #334155; font-weight: 700; border-color: #b8c5d6; }
+:root[data-theme='light'] .admin-trx-table td { border-color: #d7e0eb; }
+:root[data-theme='light'] .admin-trx-table tbody tr:nth-child(4n + 3):not(.admin-trx-extra-row) td { background: #f8fafc; }
+:root[data-theme='light'] .admin-trx-table tbody tr:not(.admin-trx-extra-row):hover td { background: #eaf2ff; }
+:root[data-theme='light'] .admin-trx-table tr.row-pending td { background: #fff8e7; }
+:root[data-theme='light'] .admin-trx-table tr.row-pending:hover td { background: #fff1c7; }
+:root[data-theme='light'] .admin-trx-extra-row td { background: #edf4ff; border-block-end: 2px solid #9db6d8; }
 .airdroid-device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }
 .airdroid-device { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 11px; padding: 13px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .airdroid-device-icon { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 11px; color: var(--text-dim); background: var(--hover-2); }

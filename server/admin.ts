@@ -17,18 +17,31 @@ adminRoutes.get('/transactions', requirePerm('settings', 'can_view'), async (c) 
   const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
   let query = db.from('maven_transactions').select('*', { count: 'exact' })
     .order('tx_id', { ascending: false }).range(offset, offset + limit - 1)
+  let summaryQuery = db.from('maven_transactions').select('status, amount').limit(10_000)
   if (status) query = query.eq('status', status)
+  if (status) summaryQuery = summaryQuery.eq('status', status)
   if (from) query = query.gte('first_seen_at', `${from}T00:00:00Z`)
+  if (from) summaryQuery = summaryQuery.gte('first_seen_at', `${from}T00:00:00Z`)
   if (to) query = query.lte('first_seen_at', `${to}T23:59:59.999Z`)
+  if (to) summaryQuery = summaryQuery.lte('first_seen_at', `${to}T23:59:59.999Z`)
   if (q) {
     const like = `%${q.replaceAll(',', ' ')}%`
     const ors = [`ontarget_ref.ilike.${like}`, `merchant_tx_reference.ilike.${like}`, `sender_number.ilike.${like}`, `email.ilike.${like}`]
     if (/^\d+$/.test(q)) ors.push(`tx_id.eq.${q}`)
     query = query.or(ors.join(','))
+    summaryQuery = summaryQuery.or(ors.join(','))
   }
-  const { data, error, count } = await query
-  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  return c.json({ rows: data ?? [], total: count ?? 0, limit, offset })
+  const [records, summaryRows] = await Promise.all([query, summaryQuery])
+  if (records.error || summaryRows.error) return c.json({ error: 'db_error', detail: (records.error ?? summaryRows.error)?.message }, 500)
+  const summary = (summaryRows.data ?? []).reduce((acc, row) => {
+    const state = String(row.status ?? '').toUpperCase()
+    acc.volume += Number(row.amount ?? 0)
+    if (state === 'PENDING') acc.pending += 1
+    else if (state === 'PAID' || state === 'APPROVED') acc.paid += 1
+    else if (state === 'DECLINED') acc.declined += 1
+    return acc
+  }, { volume: 0, pending: 0, paid: 0, declined: 0 })
+  return c.json({ rows: records.data ?? [], total: records.count ?? 0, summary, limit, offset })
 })
 
 const userColumns = 'id, username, email, display_name, role, active, last_login_at, failed_login_count, locked_until, created_at'

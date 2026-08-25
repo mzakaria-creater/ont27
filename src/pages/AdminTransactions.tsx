@@ -9,15 +9,17 @@ import { money, statusMeta } from '../lib/deposits'
 import { useAuth } from '../auth/AuthContext'
 
 type Row = Record<string, unknown> & { tx_id: number; status: string; amount: number | null; ontarget_ref?: string | null }
+type Summary = { volume: number; pending: number; paid: number; declined: number }
 const text = (row: Row, ...keys: string[]) => { for (const key of keys) if (row[key] != null && row[key] !== '') return String(row[key]); return '—' }
 const rawValue = (row: Row, ...keys: string[]) => { const raw = row.maven_raw_row as Record<string, unknown> | null; for (const key of keys) { if (row[key] != null && row[key] !== '') return String(row[key]); if (raw?.[key] != null && raw[key] !== '') return String(raw[key]) } return '—' }
 
 export default function AdminTransactions() {
   const { can } = useAuth()
   const [rows, setRows] = useState<Row[]>([]); const [total, setTotal] = useState(0); const [loading, setLoading] = useState(true)
+  const [summary, setSummary] = useState<Summary>({ volume: 0, pending: 0, paid: 0, declined: 0 })
   const [error, setError] = useState<string | null>(null); const [q, setQ] = useState(''); const [status, setStatus] = useState(''); const [from, setFrom] = useState(''); const [to, setTo] = useState('')
   const [applied, setApplied] = useState({ q: '', status: '', from: '', to: '' }); const [expanded, setExpanded] = useState<number | null>(null); const [busy, setBusy] = useState<number | null>(null)
-  const load = useCallback(async () => { setLoading(true); try { const p = new URLSearchParams({ limit: '100' }); Object.entries(applied).forEach(([k,v]) => v && p.set(k,v)); const res = await api<{rows: Row[]; total: number}>(`/api/admin/transactions?${p}`); setRows(res.rows); setTotal(res.total); setError(null) } catch (e) { setError(e instanceof ApiError ? e.code : 'load_failed') } finally { setLoading(false) } }, [applied])
+  const load = useCallback(async () => { setLoading(true); try { const p = new URLSearchParams({ limit: '100' }); Object.entries(applied).forEach(([k,v]) => v && p.set(k,v)); const res = await api<{rows: Row[]; total: number; summary: Summary}>(`/api/admin/transactions?${p}`); setRows(res.rows); setTotal(res.total); setSummary(res.summary); setError(null) } catch (e) { setError(e instanceof ApiError ? e.code : 'load_failed') } finally { setLoading(false) } }, [applied])
   useEffect(() => { void load() }, [load])
   const decide = async (row: Row, action: 'approve'|'decline') => { if (!confirm(`${action} #${row.tx_id}?`)) return; setBusy(row.tx_id); try { await api(`/api/deposits/${row.tx_id}/decision`, { method:'POST', body:JSON.stringify({ action, note:`Admin Transactions: ${action}` }) }); setRows((current)=>current.map((item)=>item.tx_id===row.tx_id?{...item,status:action==='approve'?'PAID':'DECLINED'}:item)) } catch(e) { setError(e instanceof ApiError ? e.code : 'decision_failed') } finally { setBusy(null) } }
   return <PanelShell>
@@ -28,6 +30,13 @@ export default function AdminTransactions() {
       <input className="login-input" type="date" value={from} onChange={(e)=>setFrom(e.target.value)} aria-label="From"/><input className="login-input" type="date" value={to} onChange={(e)=>setTo(e.target.value)} aria-label="To"/>
       <button className="btn-primary btn-sm">Apply</button><button type="button" className="btn-ghost btn-sm" onClick={()=>void load()}><RefreshCw size={14}/>Refresh</button>
     </form>
+    <section className="kpi-grid" aria-live="polite">
+      <div className="kpi-card"><div className="kpi-value">{loading ? '…' : total.toLocaleString('en-US')}</div><div className="kpi-label">Matching transactions</div><div className="cell-sub">Current filters and search</div></div>
+      <div className="kpi-card"><div className="kpi-value">{loading ? '…' : money(summary.volume, 'EGP')}</div><div className="kpi-label">Filtered volume</div><div className="cell-sub">Current date range</div></div>
+      <div className="kpi-card amber"><div className="kpi-value">{loading ? '…' : summary.pending.toLocaleString('en-US')}</div><div className="kpi-label">Pending</div><div className="cell-sub">Needs action</div></div>
+      <div className="kpi-card"><div className="kpi-value">{loading ? '…' : summary.paid.toLocaleString('en-US')}</div><div className="kpi-label">Paid / approved</div><div className="cell-sub">Filtered success</div></div>
+      <div className="kpi-card"><div className="kpi-value">{loading ? '…' : summary.declined.toLocaleString('en-US')}</div><div className="kpi-label">Declined</div><div className="cell-sub">Filtered failures</div></div>
+    </section>
     {error&&<div className="card warn">{error}</div>}
     <section className="card recent-card admin-trx-card"><div className="table-wrap"><table className="data-table admin-trx-table"><thead><tr>{['Action','Transaction ID','Status','Payment Type','Amount','User Email','User Phone Number','Sender Account Name','Sender Account Number','Created UTC Date','Modified UTC Date','User Name','Merchant Ref ID','To Account Name','To Account Number','To Bank','Currency'].map((h)=><th key={h}>{h}</th>)}</tr></thead><tbody>
       {rows.map((r)=>{const st=statusMeta(r.status); const open=expanded===r.tx_id; return <Fragment key={r.tx_id}>
