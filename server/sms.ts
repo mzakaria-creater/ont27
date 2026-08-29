@@ -13,7 +13,7 @@ export const smsRoutes = new Hono<AuthEnv>()
 smsRoutes.use('*', requireAuth)
 
 const LIST_COLUMNS =
-  'id, received_at, device_name, sim_slot, sender_number, sender_name, receiver_number, wallet_number, confirmed_wallet_number, amount, balance_after, sms_category, match_status, matched, review_required, trx_id, matched_transaction_id, maven_transaction_id, consumed_by_tx_id, provider, sms_first_line'
+  'id, received_at, device_name, sim_slot, sender_number, sender_name, receiver_number, wallet_number, confirmed_wallet_number, amount, balance_after, sms_category, match_status, matched, review_required, trx_id, matched_transaction_id, maven_transaction_id, consumed_by_tx_id, provider, sms_first_line, raw_sms, message'
 
 function sinceIso(hours: number): string {
   return new Date(Date.now() - hours * 3_600_000).toISOString()
@@ -514,7 +514,7 @@ smsRoutes.get('/:id', requirePerm('sms_live', 'can_view'), async (c) => {
   const { data, error } = await db
     .from('inbound_sms')
     .select(
-      `${LIST_COLUMNS}, message, sms_sender, wallet, notes, assigned_operator, risk_score, risk_reason, is_duplicate, maven_guid, manual_entry, manual_entry_by, manual_entry_note, created_at`,
+      `${LIST_COLUMNS}, sms_sender, wallet, notes, assigned_operator, risk_score, risk_reason, is_duplicate, maven_guid, manual_entry, manual_entry_by, manual_entry_note, created_at`,
     )
     .eq('id', id)
     .maybeSingle()

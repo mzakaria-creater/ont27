@@ -190,6 +190,9 @@ interface RailSms {
   matched_ontarget_ref?: string | null
   linked_wallet_number?: string | null
   wallet_balance_after?: number | null
+  sms_first_line?: string | null
+  raw_sms?: string | null
+  message?: string | null
 }
 
 interface RailDevice {
@@ -210,7 +213,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
       try {
         const sync = syncProviders()
         const [list, dev] = await Promise.all([
-          api<{ rows: RailSms[] }>('/api/sms?limit=8'),
+          api<{ rows: RailSms[] }>('/api/sms?limit=30'),
           api<{ devices: RailDevice[] }>('/api/sms/devices'),
         ])
         if (!alive) return
@@ -218,7 +221,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
         setDevices(dev.devices)
         if (await sync) {
           const [freshList, freshDev] = await Promise.all([
-            api<{ rows: RailSms[] }>('/api/sms?limit=8'),
+            api<{ rows: RailSms[] }>('/api/sms?limit=30'),
             api<{ devices: RailDevice[] }>('/api/sms/devices'),
           ])
           if (!alive) return
@@ -254,6 +257,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
         {rows.map((r) => {
           const walletLinked = r.sms_category === 'withdrawal' && r.linked_wallet_number != null
           const linked = walletLinked || r.matched_tx_id != null
+          const rawText = r.raw_sms ?? r.message ?? r.sms_first_line
           return (
             <Link key={r.id} to="/sms" className={`sms-feed-item${linked ? ' matched' : ''}${r.sms_category === 'withdrawal' ? ' withdrawal' : ''}`}>
               <div className="sms-feed-head">
@@ -261,6 +265,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
                 <span className="sms-feed-time mono">{depositTime({ first_seen_at: r.received_at })}</span>
               </div>
               <div className="sms-feed-body">{r.sms_category === 'withdrawal' ? 'تحويل' : 'استلام'} {money(r.amount, 'EGP')}{' '}{r.sender_name ?? r.sender_number ? `— ${r.sender_name ?? r.sender_number}` : ''}</div>
+              {rawText && <div className="sms-feed-raw" dir="auto">{rawText}</div>}
               {walletLinked && <div className="cell-sub mono">{r.linked_wallet_number} · رصيد {money(r.wallet_balance_after, 'EGP')}</div>}
               <div className={`sms-feed-status ${linked ? 'link' : r.sms_category === 'deposit' || r.sms_category === 'withdrawal' ? 'wait' : 'info'}`}>
                 {walletLinked ? <>👛 محفظة <span className="mono">{r.linked_wallet_number}</span></> : linked ? <>🔗 مرتبطة <span className="mono">{r.matched_ontarget_ref ?? r.matched_tx_id}</span></> : r.sms_category === 'deposit' ? '⏳ بانتظار مطابقة' : r.sms_category === 'withdrawal' ? '⚠ محفظة غير معروفة' : 'غير مالية'}
