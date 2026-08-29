@@ -618,6 +618,9 @@ input[placeholder*="ابحث"]:focus-visible,
   max-width: 100%;
 }
 
+.skip-link { position: fixed; z-index: 120; inset-inline-start: 12px; top: 8px; transform: translateY(-160%); padding: 9px 13px; border-radius: 9px; background: var(--accent); color: #090909; font-weight: 750; text-decoration: none; }
+.skip-link:focus { transform: translateY(0); box-shadow: var(--focus-ring); }
+
 .sidebar {
   inline-size: 68px;
   flex: none;
@@ -631,6 +634,7 @@ input[placeholder*="ابحث"]:focus-visible,
   transition: inline-size .22s var(--ease), box-shadow .22s var(--ease);
 }
 .sidebar:hover, .sidebar:focus-within { inline-size: 240px; box-shadow: var(--shadow-hover); }
+.sidebar.pinned { inline-size: 248px; box-shadow: var(--shadow-hover); }
 
 .sidebar-item {
   display: flex;
@@ -653,12 +657,12 @@ input[placeholder*="ابحث"]:focus-visible,
 }
 
 .sidebar-icon { flex: 0 0 26px; font-size: 15px; line-height: 1; text-align: center; }
-.sidebar:not(:hover):not(:focus-within) .sidebar-item > span:not(.sidebar-icon),
-.sidebar:not(:hover):not(:focus-within) .sidebar-count,
-.sidebar:not(:hover):not(:focus-within) .nav-group-name,
-.sidebar:not(:hover):not(:focus-within) .nav-group-chevron,
-.sidebar:not(:hover):not(:focus-within) .sidebar-hint { display: none; }
-.sidebar:not(:hover):not(:focus-within) .sidebar-item { justify-content: center; padding-inline: 8px; }
+.sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-item > span:not(.sidebar-icon),
+.sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-count,
+.sidebar:not(.pinned):not(:hover):not(:focus-within) .nav-group-name,
+.sidebar:not(.pinned):not(:hover):not(:focus-within) .nav-group-chevron,
+.sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-hint { display: none; }
+.sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-item { justify-content: center; padding-inline: 8px; }
 
 .sidebar-count {
   margin-inline-start: auto;
@@ -1299,12 +1303,25 @@ a.stat-card:hover { border-color: var(--accent); }
 .sidebar::-webkit-scrollbar { width: 7px; }
 .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
 .sidebar::-webkit-scrollbar-track { background: transparent; }
+.sidebar-tools { position: sticky; top: -14px; z-index: 3; display: flex; align-items: center; gap: 7px; margin: -6px -2px 8px; padding: 7px 2px 9px; background: linear-gradient(180deg,var(--surface-raised) 78%,transparent); }
+.sidebar-search-wrap { flex: 1; min-width: 0; height: 36px; display: flex; align-items: center; gap: 7px; padding: 0 9px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb,var(--bg) 72%,transparent); color: var(--text-dim); }
+.sidebar-search-wrap:focus-within { border-color: var(--accent); box-shadow: var(--focus-ring); color: var(--text); }
+.sidebar-search-wrap input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: 500 11.5px/1 system-ui,sans-serif; }
+.sidebar-search-wrap input::placeholder { color: var(--text-muted); }
+.sidebar-search-wrap button, .sidebar-pin { width: 28px; height: 28px; flex: 0 0 28px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--text-dim); cursor: pointer; }
+.sidebar-search-wrap button:hover, .sidebar-pin:hover { background: var(--hover-2); color: var(--text); }
+.sidebar-search-wrap button:focus-visible, .sidebar-pin:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.sidebar-empty { margin: 12px 4px; padding: 14px 10px; border: 1px dashed var(--border); border-radius: 10px; color: var(--text-dim); text-align: center; font-size: 11px; }
+.sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-search-wrap { flex: 0 0 36px; justify-content: center; padding: 0; border-color: transparent; background: transparent; }
+.sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-search-wrap input,
+.sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-search-wrap button,
+.sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-pin { display: none; }
 .nav-group { display: flex; flex-direction: column; gap: 2px; }
 .nav-group-links { display: flex; flex-direction: column; gap: 2px; }
 .nav-group.collapsed .nav-group-links { display: none; }
 .nav-group + .nav-group { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border-soft, var(--border)); }
 .sidebar-item { border-radius: 11px; transition: background 0.2s var(--ease), color 0.2s var(--ease), transform 0.15s var(--ease); }
-.sidebar-item:hover { transform: translateX(-2px); }
+.sidebar-item:hover { background: var(--hover-2); }
 .sidebar-link.active { background: var(--amber-bg); color: var(--accent); font-weight: 600; }
 .sidebar-chat-badge { margin-inline-start:auto;min-width:20px;height:20px;padding:0 6px;border-radius:999px;display:grid;place-items:center;background:#ef4444;color:#fff;font:700 10px/1 ui-monospace,monospace;box-shadow:0 0 0 3px rgba(239,68,68,.12); }
 .nav-group-label {
@@ -1627,12 +1644,17 @@ a.stat-card:hover { border-color: var(--accent); }
     inline-size: min(270px, 80vw);
   }
   .sidebar:hover, .sidebar:focus-within { inline-size: min(270px, 80vw); }
+  .sidebar.pinned { inline-size: min(270px, 80vw); }
   .sidebar:not(:hover):not(:focus-within) .sidebar-item > span:not(.sidebar-icon),
   .sidebar:not(:hover):not(:focus-within) .sidebar-count,
   .sidebar:not(:hover):not(:focus-within) .nav-group-name,
   .sidebar:not(:hover):not(:focus-within) .nav-group-chevron,
   .sidebar:not(:hover):not(:focus-within) .sidebar-hint { display: initial; }
   .sidebar:not(:hover):not(:focus-within) .sidebar-item { justify-content: flex-start; padding-inline: 10px; }
+  .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-search-wrap { flex: 1; justify-content: flex-start; padding: 0 9px; border-color: var(--border); background: color-mix(in srgb,var(--bg) 72%,transparent); }
+  .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-search-wrap input,
+  .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-search-wrap button,
+  .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-pin { display: grid; }
   html[dir="ltr"] .sidebar { transform: translateX(-100%); }
   /* The open state must out-rank the direction rule, not merely follow it.
      `html[dir="ltr"] .sidebar` scores (0,2,1) against `.sidebar.open` at

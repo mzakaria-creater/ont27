@@ -9,7 +9,7 @@ import { depositTime, money } from '../lib/deposits'
 import type { PagePermission } from '../lib/api'
 import { useLocale } from '../lib/locale'
 import { installNotificationAudioUnlock, playNotificationTone } from '../lib/notificationSounds'
-import { BarChart3, Bot, ChevronDown, CircleDollarSign, LayoutDashboard, MessageSquareText, Minimize2, Settings, Users, WalletCards } from 'lucide-react'
+import { BarChart3, Bot, ChevronDown, CircleDollarSign, LayoutDashboard, Menu, MessageSquareText, Minimize2, PanelLeftClose, PanelLeftOpen, Search, Settings, Users, WalletCards, X } from 'lucide-react'
 
 // Shared authed layout ("Live Transaction Monitor" skin): nav rail (real pages
 // first, then the role's remaining permitted modules as "قريباً" placeholders),
@@ -286,6 +286,11 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   const modules = usePermittedModules()
   const permsLoaded = permissions.length > 0
   const [navOpen, setNavOpen] = useState(false)
+  const [navQuery, setNavQuery] = useState('')
+  const [navPinned, setNavPinned] = useState(() => {
+    try { return window.localStorage.getItem('ontarget:nav-pinned') === 'true' }
+    catch { return false }
+  })
   const [smsOpen, setSmsOpen] = useState(() => {
     try { return window.localStorage.getItem('ontarget:sms-widget') === 'expanded' }
     catch { return false }
@@ -326,6 +331,10 @@ export default function PanelShell({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(timer)
   }, [smsOpen])
 
+  useEffect(() => {
+    try { window.localStorage.setItem('ontarget:nav-pinned', String(navPinned)) } catch { /* optional preference */ }
+  }, [navPinned])
+
   // Keep the active category open and collapse the rest. This makes the long
   // operations menu scannable while preserving one-click access to every
   // section through its category header.
@@ -340,9 +349,11 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   const visible = (l: NavLinkDef) =>
     (l.keys.length === 0 || l.keys.some((k) => can(k))) &&
     (!l.roles || l.roles.includes(user?.role ?? ''))
-  const renderLinks = (group: NavGroupId) => BUILT_LINKS.filter((l) => l.group === group && visible(l)).map((l) => (
+  const normalizedNavQuery = navQuery.trim().toLocaleLowerCase()
+  const matchesNavQuery = (link: NavLinkDef) => !normalizedNavQuery || `${link.labelEn} ${link.labelAr} ${link.to}`.toLocaleLowerCase().includes(normalizedNavQuery)
+  const renderLinks = (group: NavGroupId) => BUILT_LINKS.filter((l) => l.group === group && visible(l) && matchesNavQuery(l)).map((l) => (
     <Link key={l.to} to={l.to} title={locale === 'en' ? l.labelEn : l.labelAr} onClick={() => setNavOpen(false)} className={`sidebar-item sidebar-link${pathname === l.to ? ' active' : ''}`}>
-      <span className="sidebar-icon">{l.icon}</span><span>{locale === 'en' ? l.labelEn : l.labelAr}</span>{l.to === '/chat' && chatUnread > 0 && <span className="sidebar-chat-badge" aria-label={`${chatUnread} unread`}>{chatUnread > 99 ? '99+' : chatUnread}</span>}
+      <span className="sidebar-icon" aria-hidden="true">{NAV_GROUP_ICONS[l.group]}</span><span>{locale === 'en' ? l.labelEn : l.labelAr}</span>{l.to === '/chat' && chatUnread > 0 && <span className="sidebar-chat-badge" aria-label={`${chatUnread} unread`}>{chatUnread > 99 ? '99+' : chatUnread}</span>}
     </Link>
   ))
   const toggleGroup = (group: NavGroupId) => setCollapsedGroups((current) => {
@@ -353,9 +364,18 @@ export default function PanelShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="dash-body">
-      <button className="nav-toggle" onClick={() => setNavOpen((o) => !o)} title={t('القائمة', 'Menu')} aria-label={t('القائمة', 'Menu')}>{navOpen ? '✕' : '☰'}</button>
+      <a className="skip-link" href="#main-workspace">{t('تجاوز القائمة', 'Skip navigation')}</a>
+      <button className="nav-toggle" onClick={() => setNavOpen((o) => !o)} title={t('القائمة', 'Menu')} aria-label={t('القائمة', 'Menu')}>{navOpen ? <X size={20} /> : <Menu size={20} />}</button>
       {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
-      <nav className={`sidebar${navOpen ? ' open' : ''}`}>
+      <nav className={`sidebar${navOpen ? ' open' : ''}${navPinned ? ' pinned' : ''}`} aria-label={t('التنقل الرئيسي', 'Main navigation')}>
+        <div className="sidebar-tools">
+          <div className="sidebar-search-wrap">
+            <Search size={15} aria-hidden="true" />
+            <input value={navQuery} onChange={(event) => setNavQuery(event.target.value)} placeholder={t('بحث في الصفحات…', 'Search pages…')} aria-label={t('بحث في الصفحات', 'Search pages')} />
+            {navQuery && <button type="button" onClick={() => setNavQuery('')} aria-label={t('مسح البحث', 'Clear search')}><X size={14} /></button>}
+          </div>
+          <button type="button" className="sidebar-pin" onClick={() => setNavPinned((value) => !value)} aria-pressed={navPinned} title={navPinned ? t('تصغير تلقائي', 'Auto minimize') : t('تثبيت القائمة', 'Pin sidebar')} aria-label={navPinned ? t('تصغير تلقائي', 'Auto minimize') : t('تثبيت القائمة', 'Pin sidebar')}>{navPinned ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}</button>
+        </div>
         {NAV_GROUPS.map((g) => {
           const links = renderLinks(g.id)
           if (links.length === 0) return null
@@ -374,8 +394,9 @@ export default function PanelShell({ children }: { children: ReactNode }) {
           <div className="nav-group-label">{t('قريباً', 'More modules')}</div>
           {modules.map((m) => <div key={m.id} className="sidebar-item soon" title={t('قريباً', 'More modules')}><span className="sidebar-icon">{m.icon}</span><span>{m.label}</span><span className="sidebar-count">{m.pages.length}</span></div>)}
         </div>}
+        {normalizedNavQuery && NAV_GROUPS.every((group) => renderLinks(group.id).length === 0) && <div className="sidebar-empty">{t('لا توجد صفحة مطابقة.', 'No matching page.')}</div>}
       </nav>
-      <main className="dash-main">{children}</main>
+      <main id="main-workspace" className="dash-main">{children}</main>
       {can('sms_live') && !smsOpen && <button type="button" className="sms-widget-launcher" onClick={() => setSmsOpen(true)} aria-expanded="false" aria-controls="live-sms-widget" aria-label={t('إظهار SMS المباشر', 'Show Live SMS')} title={t('إظهار SMS المباشر', 'Show Live SMS')}><span className="sms-widget-pulse" /><MessageSquareText size={20} aria-hidden="true" /><span className="sms-widget-label">Live SMS</span></button>}
       {can('sms_live') && smsOpen && <SmsRail onMinimize={() => setSmsOpen(false)} />}
     </div>
