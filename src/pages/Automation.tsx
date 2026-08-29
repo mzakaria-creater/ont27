@@ -105,6 +105,9 @@ export default function Automation() {
   const { can } = useAuth()
   const li = locale === 'en' ? 1 : 0
   const canControl = can('automation', 'can_edit')
+  const canRulesChange = can('automation_rules','can_edit') || can('automation','can_edit')
+  const canRuleCreate = can('automation_rules','can_create') || can('automation','can_create')
+  const canTemplatesChange = can('automation_templates','can_edit') || canControl
   const [accounts, setAccounts] = useState<PayAccount[] | null>(null)
   const [crons, setCrons] = useState<CronJob[] | null>(null)
   const [tpl, setTpl] = useState<{ templates: AutomationTemplate[]; active_id: string | null; current: Record<string, unknown> | null } | null>(null)
@@ -304,7 +307,7 @@ export default function Automation() {
             <div key={tpl2.id} className="template-card">
               <div className="template-head"><strong>{tpl2.label[li]}</strong></div>
               <p className="template-desc">{tpl2.desc[li]}</p>
-              {canControl && <button className="btn-primary btn-sm" onClick={() => { setNewRule({ ...EMPTY_RULE, ...tpl2.rule }); setRuleConflict(null); setRuleMsg(null) }}>{t('استخدام كنقطة بداية', 'Use as starting point')}</button>}
+              {canRuleCreate && <button className="btn-primary btn-sm" onClick={() => { setNewRule({ ...EMPTY_RULE, ...tpl2.rule }); setRuleConflict(null); setRuleMsg(null) }}>{t('استخدام كنقطة بداية', 'Use as starting point')}</button>}
             </div>
           ))}
         </div>
@@ -312,8 +315,8 @@ export default function Automation() {
 
       <section className="card recent-card">
         <div className="recent-head"><h3>🛠️ {t('تخصيص قاعدة جديدة', 'Customize a new rule')}</h3></div>
-        {!canControl && <p className="sidebar-hint">{t('عرض فقط — إضافة قواعد تتطلب صلاحية تعديل.', 'View only — adding rules needs edit permission.')}</p>}
-        {canControl && (
+        {!canRuleCreate && <p className="sidebar-hint">{t('عرض فقط — إضافة قواعد تتطلب صلاحية إنشاء.', 'View only — adding rules needs create permission.')}</p>}
+        {canRuleCreate && (
           <>
             <div className="control-row">
               <span>{t('النطاق', 'Scope')}</span>
@@ -414,7 +417,7 @@ export default function Automation() {
                     <td className="mono">{r.action_type ?? '—'}</td>
                     <td className="cell-sub">{[r.use_crm_matching && 'CRM', r.use_near_amount && t('تقريبي', 'near'), r.use_unique_amount && t('فريد', 'unique')].filter(Boolean).join(', ') || '—'}</td>
                     <td><span className={`pay-status-badge ${r.enabled ? 'st-paid' : 'st-dim'}`}>{r.enabled ? t('مفعّلة', 'Enabled') : t('موقوفة', 'Disabled')}</span></td>
-                    <td>{canControl && <div className="row-actions">
+                    <td>{canRulesChange && <div className="row-actions">
                       <button className="btn-ghost btn-sm" onClick={() => void toggleRule(r)}>{r.enabled ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>
                       <button className="btn-ghost danger btn-sm" onClick={() => void deleteRule(r)}>{t('حذف', 'Delete')}</button>
                     </div>}</td>
@@ -450,7 +453,7 @@ export default function Automation() {
                   </div>
                   <button
                     className="btn-primary btn-sm"
-                    disabled={active || !canControl || applying !== null}
+                    disabled={active || !canTemplatesChange || applying !== null}
                     aria-label={t(`تطبيق قالب ${copy.label[0]}`, `Apply ${copy.label[1]} template`)}
                     onClick={() => void applyTemplate(row.id)}
                   >
@@ -461,7 +464,7 @@ export default function Automation() {
             })}
           </div>
           {tpl.active_id === null && <p className="sidebar-hint">{t('الإعدادات الحالية لا تطابق أي قالب (تعديل يدوي مخصّص).', 'Current settings match no template (custom manual tuning).')}</p>}
-          {!canControl && <p className="sidebar-hint">{t('العرض فقط — تطبيق القوالب يتطلب صلاحية تعديل.', 'View only — applying templates needs edit permission.')}</p>}
+          {!canTemplatesChange && <p className="sidebar-hint">{t('العرض فقط — تطبيق القوالب يتطلب صلاحية تعديل.', 'View only — applying templates needs edit permission.')}</p>}
         </section>
       )}
 

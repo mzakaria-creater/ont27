@@ -5,7 +5,7 @@ import { db } from './db.js'
 import {
   ACCESS_COOKIE, REFRESH_COOKIE, ACCESS_TTL_SEC, REFRESH_TTL_SEC_REMEMBER,
   signAccessToken, verifyAccessToken, verifyPassword, hashPassword,
-  issueRefreshToken, rotateRefreshToken, revokeRefreshToken,
+  issueRefreshToken, rotateRefreshToken, revokeRefreshToken, sha256Hex,
 } from './tokens.js'
 
 const MAX_FAILED = 5
@@ -68,7 +68,11 @@ authRoutes.post('/login', async (c) => {
   const { data: rows } = await db.rpc('panel_get_user_for_login', { p_username: username })
   const user = Array.isArray(rows) && rows.length === 1 ? rows[0] : null
 
-  if (!user || !user.active) {
+  if (user?.account_status==='frozen'&&user.frozen_until&&new Date(user.frozen_until).getTime()<=Date.now()) {
+    await db.from('panel_users').update({active:true,account_status:'active',frozen_until:null,status_reason:null}).eq('id',user.id)
+    user.active=true;user.account_status='active';user.frozen_until=null
+  }
+  if (!user || !user.active || (user.account_status&&user.account_status!=='active')) {
     await audit(c, 'auth.login_failed', username)
     return c.json({ error: 'invalid_credentials' }, 401)
   }
@@ -106,6 +110,48 @@ authRoutes.post('/login', async (c) => {
   return c.json({
     user: { id: user.id, username: user.username, display_name: user.display_name, role: user.role },
   })
+})
+
+async function validActionToken(raw:string,purpose:'magic_login'|'password_reset'){
+  if(!/^[0-9a-f]{64}$/i.test(raw))return null
+  const {data}=await db.from('panel_user_action_tokens').select('id,user_id,expires_at,used_at,revoked_at').eq('token_hash',sha256Hex(raw)).eq('purpose',purpose).maybeSingle()
+  if(!data||data.used_at||data.revoked_at||new Date(data.expires_at).getTime()<=Date.now())return null
+  return data
+}
+
+authRoutes.get('/action-token/inspect',async(c)=>{
+  const purpose=c.req.query('purpose')==='magic_login'?'magic_login':c.req.query('purpose')==='password_reset'?'password_reset':null
+  const raw=c.req.query('token')??''
+  if(!purpose)return c.json({error:'invalid_purpose'},400)
+  const token=await validActionToken(raw,purpose)
+  return token?c.json({valid:true,purpose,expires_at:token.expires_at}):c.json({error:'invalid_or_expired_link'},410)
+})
+
+authRoutes.post('/magic-login',async(c)=>{
+  const body=await c.req.json().catch(()=>null),raw=typeof body?.token==='string'?body.token:''
+  const token=await validActionToken(raw,'magic_login')
+  if(!token)return c.json({error:'invalid_or_expired_link'},410)
+  const {data:user}=await db.from('panel_users').select('id,username,display_name,role,active,account_status').eq('id',token.user_id).maybeSingle()
+  if(!user||!user.active||user.account_status!=='active')return c.json({error:'account_not_active'},403)
+  const claimed=await db.from('panel_user_action_tokens').update({used_at:new Date().toISOString()}).eq('id',token.id).is('used_at',null).is('revoked_at',null).select('id').maybeSingle()
+  if(!claimed.data)return c.json({error:'link_already_used'},409)
+  const access=await signAccessToken({sub:user.id,username:user.username,role:user.role}),refresh=await issueRefreshToken(user.id,false)
+  setAuthCookies(c,access,refresh,false)
+  await audit(c,'auth.magic_login',user.id,{id:user.id,name:user.username})
+  return c.json({ok:true,user:{id:user.id,username:user.username,display_name:user.display_name,role:user.role}})
+})
+
+authRoutes.post('/password-reset',async(c)=>{
+  const body=await c.req.json().catch(()=>null),raw=typeof body?.token==='string'?body.token:'',password=typeof body?.password==='string'?body.password:''
+  if(password.length<8)return c.json({error:'password_too_short'},400)
+  const token=await validActionToken(raw,'password_reset')
+  if(!token)return c.json({error:'invalid_or_expired_link'},410)
+  const claimed=await db.from('panel_user_action_tokens').update({used_at:new Date().toISOString()}).eq('id',token.id).is('used_at',null).is('revoked_at',null).select('id').maybeSingle()
+  if(!claimed.data)return c.json({error:'link_already_used'},409)
+  await db.from('panel_users').update({password_hash:await hashPassword(password),failed_login_count:0,locked_until:null}).eq('id',token.user_id)
+  await db.from('panel_refresh_tokens').update({revoked_at:new Date().toISOString()}).eq('user_id',token.user_id).is('revoked_at',null)
+  await audit(c,'auth.password_reset',token.user_id,{id:token.user_id})
+  return c.json({ok:true})
 })
 
 authRoutes.post('/refresh', async (c) => {

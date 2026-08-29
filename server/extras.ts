@@ -490,7 +490,7 @@ const RULE_COLS =
 extraRoutes.get(
   '/automation',
   requireAnyPerm(
-    ['telegram_bot', 'binance_p2p', 'treasury', 'allocation_engine', 'capacity_monitor', 'workspace_hub', 'launchpad', 'ai_team'],
+    ['automation', 'automation_rules', 'telegram_bot', 'binance_p2p', 'treasury', 'allocation_engine', 'capacity_monitor', 'workspace_hub', 'launchpad', 'ai_team'],
     'can_view',
   ),
   async (c) => {
@@ -544,7 +544,7 @@ function str(v: unknown, max = 80): string | null {
   return typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null
 }
 
-extraRoutes.post('/automation/rules', requirePerm('automation', 'can_edit'), async (c) => {
+extraRoutes.post('/automation/rules', requireAnyPerm(['automation_rules','automation'], 'can_create'), async (c) => {
   const body = await c.req.json().catch(() => null)
   const actor = c.get('actor')
   const scope_type = str(body?.scope_type, 20) ?? 'global'
@@ -582,7 +582,7 @@ extraRoutes.post('/automation/rules', requirePerm('automation', 'can_edit'), asy
   return c.json({ rule: data }, 201)
 })
 
-extraRoutes.patch('/automation/rules/:id', requirePerm('automation', 'can_edit'), async (c) => {
+extraRoutes.patch('/automation/rules/:id', requireAnyPerm(['automation_rules','automation'], 'can_edit'), async (c) => {
   const id = c.req.param('id')
   const body = await c.req.json().catch(() => null)
   const actor = c.get('actor')
@@ -620,7 +620,7 @@ extraRoutes.patch('/automation/rules/:id', requirePerm('automation', 'can_edit')
   return c.json({ rule: data })
 })
 
-extraRoutes.delete('/automation/rules/:id', requirePerm('automation', 'can_delete'), async (c) => {
+extraRoutes.delete('/automation/rules/:id', requireAnyPerm(['automation_rules','automation'], 'can_delete'), async (c) => {
   const id = c.req.param('id')
   const actor = c.get('actor')
   const { data: before } = await db.from('automation_rules_scoped').select(RULE_COLS).eq('id', id).maybeSingle()

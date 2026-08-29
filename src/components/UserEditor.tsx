@@ -16,7 +16,7 @@ type Action = typeof ACTIONS[number]
 export type PermRow = { page_key: string } & Record<Action, boolean>
 export type UserRow = {
   id: string; username: string; email: string | null; display_name: string | null
-  role: string; active: boolean | null; last_login_at: string | null
+  role: string; active: boolean | null; account_status?:string|null; frozen_until?:string|null; status_reason?:string|null; last_login_at: string | null
 }
 export type UserOverride = { user_id: string } & PermRow & { note?: string | null; granted_by?: string | null }
 
@@ -26,6 +26,9 @@ interface Props {
   rolePermissions: ({ role_key: string } & PermRow)[]
   overrides: UserOverride[]
   pages: string[]
+  accessScopes: { user_id:string; scope_type:string; scope_value:string; access_level:string }[]
+  teams: { id:string; name:string; active:boolean }[]
+  teamMembers: { team_id:string; user_id:string }[]
   onSaved: () => void
   onClose: () => void
 }
@@ -38,7 +41,12 @@ const ERRORS: Record<string, [string, string]> = {
   invalid_email: ['صيغة البريد غير صحيحة.', 'That email address is not valid.'],
 }
 
-export default function UserEditor({ user, roles, rolePermissions, overrides, pages, onSaved, onClose }: Props) {
+const SCOPE_TYPES = [
+  ['country','Country'], ['payment_method','Payment method'], ['merchant','Merchant'],
+  ['deposit_type','Deposit type'],
+] as const
+
+export default function UserEditor({ user, roles, rolePermissions, overrides, pages, accessScopes, teams, teamMembers, onSaved, onClose }: Props) {
   const { t } = useLocale()
   const { user: me } = useAuth()
   const isSelf = me?.id === user.id
@@ -53,6 +61,10 @@ export default function UserEditor({ user, roles, rolePermissions, overrides, pa
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
+  const ownScopes = accessScopes.filter((row)=>row.user_id===user.id)
+  const [scopeDraft,setScopeDraft]=useState<Record<string,string>>(()=>Object.fromEntries(SCOPE_TYPES.map(([type])=>[type,ownScopes.filter((r)=>r.scope_type===type).map((r)=>r.scope_value).join(', ')])))
+  const [scopeLevel,setScopeLevel]=useState<'view'|'edit'|'approve'>(()=>(ownScopes[0]?.access_level as 'view'|'edit'|'approve')??'view')
+  const [selectedTeams,setSelectedTeams]=useState<string[]>(()=>teamMembers.filter((row)=>row.user_id===user.id).map((row)=>row.team_id))
 
   const say = (e: unknown, fallback: string) => {
     const code = e instanceof ApiError ? e.code : undefined
@@ -117,6 +129,16 @@ export default function UserEditor({ user, roles, rolePermissions, overrides, pa
 
   const overriddenPages = new Set(overrides.map((o) => o.page_key))
 
+  const saveScopes = async () => {
+    if(isSelf)return
+    setBusy(true);setErr(null);setDone(null)
+    const scopes=SCOPE_TYPES.flatMap(([scope_type])=>scopeDraft[scope_type].split(',').map((v)=>v.trim()).filter(Boolean).map((scope_value)=>({scope_type,scope_value,access_level:scopeLevel})))
+    try{
+      await api(`/api/admin/users/${user.id}/access-scopes`,{method:'PUT',body:JSON.stringify({scopes,team_ids:selectedTeams})})
+      setDone(t('تم حفظ نطاق البيانات والفريق.','Data scope and team saved.'));onSaved()
+    }catch(e){setErr(say(e,t('تعذّر حفظ نطاق الوصول.','Could not save access scope.')))}finally{setBusy(false)}
+  }
+
   return (
     <div className="drawer-backdrop" onClick={() => !busy && onClose()}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
@@ -165,6 +187,15 @@ export default function UserEditor({ user, roles, rolePermissions, overrides, pa
             {busy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ', 'Save')}
           </button>
           <button className="btn-ghost" disabled={busy} onClick={onClose}>{t('إغلاق', 'Close')}</button>
+        </div>
+
+        <div className="section-label">{t('نطاق البيانات والفريق','Data scope & team')}</div>
+        <p className="drawer-note">{t('اترك كل النطاقات فارغة للسماح بكل البيانات داخل الصفحات الممنوحة. عند إضافة قيم، يُقصر المستخدم على القيم المعيّنة. افصل القيم بفاصلة.','Leave every scope empty for unrestricted data inside granted pages. Adding values restricts the user to those assignments. Separate values with commas.')}</p>
+        <div className="access-scope-editor">
+          <label><span>{t('مستوى النطاق','Scope level')}</span><select className="login-input" value={scopeLevel} disabled={busy||isSelf} onChange={(e)=>setScopeLevel(e.target.value as typeof scopeLevel)}><option value="view">View</option><option value="edit">View + edit</option><option value="approve">View + edit + approve</option></select></label>
+          {SCOPE_TYPES.map(([type,label])=><label key={type}><span>{label}</span><input className="login-input" value={scopeDraft[type]} disabled={busy||isSelf} onChange={(e)=>setScopeDraft({...scopeDraft,[type]:e.target.value})} placeholder={type==='country'?'EG, AE':type==='deposit_type'?'local, p2p':'Comma-separated values'}/></label>)}
+          <fieldset><legend>{t('الفرق المعيّنة','Assigned teams')}</legend>{teams.filter((team)=>team.active).map((team)=><label className="check-label" key={team.id}><input type="checkbox" checked={selectedTeams.includes(team.id)} disabled={busy||isSelf} onChange={(e)=>setSelectedTeams(e.target.checked?[...selectedTeams,team.id]:selectedTeams.filter((id)=>id!==team.id))}/><span>{team.name}</span></label>)}</fieldset>
+          <button className="btn-primary" disabled={busy||isSelf} onClick={()=>void saveScopes()}>{t('حفظ النطاق والفريق','Save scope & team')}</button>
         </div>
 
         <div className="section-label">{t('صلاحيات هذا المستخدم', "This user's permissions")}</div>

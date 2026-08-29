@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { db } from './db.js'
 import { oldDb } from './oldDb.js'
-import { requireAuth } from './rbac.js'
+import { requireAuth, requireAnyPerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 
 // التحكم السريع — the control-room quick actions, executed through the OLD
@@ -15,6 +15,7 @@ controlRoutes.use('*', requireAuth)
 const CONTROL_ROLES = new Set(['owner', 'admin', 'super_admin'])
 
 controlRoutes.use('*', async (c, next) => {
+  if(c.req.method==='GET'&&c.req.path.endsWith('/automation/templates')) return requireAnyPerm(['automation_templates','automation'],'can_view')(c,next)
   if (!CONTROL_ROLES.has(c.get('actor').role)) return c.json({ error: 'forbidden' }, 403)
   await next()
 })
@@ -121,7 +122,7 @@ controlRoutes.get('/automation/templates', async (c) => {
   })
 })
 
-controlRoutes.post('/automation/template', async (c) => {
+controlRoutes.post('/automation/template', requireAnyPerm(['automation_templates','automation'],'can_edit'), async (c) => {
   const body = await c.req.json().catch(() => null)
   const tpl = AUTOMATION_TEMPLATES.find((t) => t.id === body?.id)
   if (!tpl) return c.json({ error: 'unknown_template' }, 400)

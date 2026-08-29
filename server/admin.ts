@@ -4,6 +4,7 @@ import { db } from './db.js'
 import { hashPassword, sha256Hex } from './tokens.js'
 import { requireAdminRole, requireAuth, requirePerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
+import { applyDepositScopes } from './accessScopes.js'
 
 export const adminRoutes = new Hono<AuthEnv>()
 adminRoutes.use('*', requireAuth)
@@ -27,6 +28,8 @@ adminRoutes.get('/transactions', requirePerm('transactions', 'can_view'), async 
     .order('first_seen_at', { ascending, nullsFirst: false })
     .order('tx_id', { ascending }).range(offset, offset + limit - 1)
   let summaryQuery = db.from('maven_transactions').select('status, amount').limit(10_000)
+  query = await applyDepositScopes(query,c.get('actor'),'view')
+  summaryQuery = await applyDepositScopes(summaryQuery,c.get('actor'),'view')
   if (status) query = query.eq('status', status)
   if (status) summaryQuery = summaryQuery.eq('status', status)
   if (merchant) query = query.ilike('merchant', `%${merchant.replaceAll(',', ' ')}%`)
@@ -65,7 +68,7 @@ adminRoutes.get('/transactions', requirePerm('transactions', 'can_view'), async 
   return c.json({ rows, total: records.count ?? 0, summary, limit, offset })
 })
 
-const userColumns = 'id, username, email, display_name, role, active, last_login_at, failed_login_count, locked_until, created_at'
+const userColumns = 'id, username, email, display_name, role, active, account_status, frozen_until, status_reason, status_changed_at, status_changed_by, last_login_at, failed_login_count, locked_until, created_at'
 const permColumns = 'role_key, page_key, can_view, can_create, can_edit, can_delete, can_approve, can_export'
 const keyColumns = 'id, merchant_id, key_name, api_key, environment, is_active, request_count, secret_prefix, last_used_at, revoked_at, expires_at, created_at'
 const BRAND_BUCKET = 'pop'
@@ -84,7 +87,7 @@ async function audit(actor: { sub: string; username: string }, action: string, e
 }
 
 adminRoutes.get('/', requirePerm('settings', 'can_view'), async (c) => {
-  const [users, roles, permissions, keys, merchants, masters, feeDefaults, hierarchy, capacities, accounts, userPerms, methods] = await Promise.all([
+  const [users, roles, permissions, keys, merchants, masters, feeDefaults, hierarchy, capacities, accounts, userPerms, methods, accessScopes, teams, teamMembers, methodCountries] = await Promise.all([
     db.from('panel_users').select(userColumns).order('username'),
     db.from('app_roles').select('role_key, label, active').eq('active', true).order('role_key'),
     db.from('role_page_permissions').select(permColumns).order('page_key').order('role_key'),
@@ -97,10 +100,59 @@ adminRoutes.get('/', requirePerm('settings', 'can_view'), async (c) => {
     db.from('payment_accounts').select('id, account_number, label, device_name, payment_method_id, is_active').order('created_at'),
     db.from('user_page_permissions').select('user_id, page_key, can_view, can_create, can_edit, can_delete, can_approve, can_export, note, granted_by, updated_at'),
     db.from('payment_methods').select('id, method_code, method_name').order('method_name'),
+    db.from('user_access_scopes').select('id,user_id,scope_type,scope_value,access_level,granted_by,created_at').order('scope_type').order('scope_value'),
+    db.from('access_teams').select('id,name,description,active,created_at').order('name'),
+    db.from('access_team_members').select('team_id,user_id,is_lead,created_at'),
+    db.from('payment_method_countries').select('country_code,currency_code').eq('is_active',true).order('country_code'),
   ])
-  const error = [users, roles, permissions, keys, merchants, masters, feeDefaults, hierarchy, capacities, accounts, userPerms, methods].find((x) => x.error)?.error
+  const error = [users, roles, permissions, keys, merchants, masters, feeDefaults, hierarchy, capacities, accounts, userPerms, methods, accessScopes, teams, teamMembers, methodCountries].find((x) => x.error)?.error
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  return c.json({ users: users.data ?? [], roles: roles.data ?? [], permissions: permissions.data ?? [], apiKeys: keys.data ?? [], merchants: merchants.data ?? [], masters: masters.data ?? [], feeDefaults: feeDefaults.data ?? [], hierarchy: hierarchy.data ?? [], capacities: capacities.data ?? [], accounts: accounts.data ?? [], userPermissions: userPerms.data ?? [], methods: methods.data ?? [] })
+  return c.json({ users: users.data ?? [], roles: roles.data ?? [], permissions: permissions.data ?? [], apiKeys: keys.data ?? [], merchants: merchants.data ?? [], masters: masters.data ?? [], feeDefaults: feeDefaults.data ?? [], hierarchy: hierarchy.data ?? [], capacities: capacities.data ?? [], accounts: accounts.data ?? [], userPermissions: userPerms.data ?? [], methods: methods.data ?? [], accessScopes: accessScopes.data ?? [], teams: teams.data ?? [], teamMembers: teamMembers.data ?? [], methodCountries: methodCountries.data ?? [] })
+})
+
+// Replace a user's complete data scope in one audited operation. No rows means
+// unrestricted data inside the pages/actions already granted by RBAC.
+adminRoutes.put('/users/:id/access-scopes', requirePerm('permissions', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  const actor = c.get('actor')
+  if (id === actor.sub) return c.json({ error: 'cannot_change_own_access' }, 400)
+  const body = await c.req.json().catch(() => null) as { scopes?: unknown[]; team_ids?: unknown[] } | null
+  const { data: user } = await db.from('panel_users').select('id').eq('id',id).maybeSingle()
+  if (!user) return c.json({ error: 'not_found' },404)
+  const allowedTypes = new Set(['country','payment_method','merchant','deposit_type','team'])
+  const allowedLevels = new Set(['view','edit','approve'])
+  const parsedScopes = (Array.isArray(body?.scopes) ? body!.scopes : []).map((raw) => {
+    const row = raw as Record<string,unknown>
+    return { scope_type: string(row.scope_type,40), scope_value: string(row.scope_value,160), access_level: string(row.access_level,20) }
+  })
+  if (parsedScopes.some((row) => !row.scope_type || !row.scope_value || !row.access_level || !allowedTypes.has(row.scope_type) || !allowedLevels.has(row.access_level))) return c.json({ error:'invalid_access_scope' },400)
+  const scopes=[...new Map(parsedScopes.map((row)=>[`${row.scope_type}:${String(row.scope_value).toLowerCase()}:${row.access_level}`,row])).values()]
+  const teamIds = [...new Set((Array.isArray(body?.team_ids) ? body!.team_ids : []).map((v)=>String(v)).filter((v)=>/^[0-9a-f-]{36}$/i.test(v)))]
+  const old = await db.from('user_access_scopes').select('scope_type,scope_value,access_level').eq('user_id',id)
+  const clearScopes = await db.from('user_access_scopes').delete().eq('user_id',id)
+  if (clearScopes.error) return c.json({ error:'db_error',detail:clearScopes.error.message },500)
+  if (scopes.length) {
+    const insert = await db.from('user_access_scopes').insert(scopes.map((row)=>({ user_id:id,...row,granted_by:actor.username })))
+    if (insert.error) return c.json({ error:'db_error',detail:insert.error.message },500)
+  }
+  const clearTeams = await db.from('access_team_members').delete().eq('user_id',id)
+  if (clearTeams.error) return c.json({ error:'db_error',detail:clearTeams.error.message },500)
+  if (teamIds.length) {
+    const insertTeams = await db.from('access_team_members').insert(teamIds.map((team_id)=>({team_id,user_id:id})))
+    if (insertTeams.error) return c.json({ error:'db_error',detail:insertTeams.error.message },500)
+  }
+  await audit(actor,'admin.user_access_scopes_set','panel_users',id,{before:old.data??[],after:scopes,team_ids:teamIds})
+  return c.json({ok:true,scopes,team_ids:teamIds})
+})
+
+adminRoutes.post('/teams', requirePerm('permissions','can_edit'), async (c) => {
+  const body = await c.req.json().catch(()=>null)
+  const name = string(body?.name,100)
+  if (!name) return c.json({error:'team_name_required'},400)
+  const {data,error}=await db.from('access_teams').insert({name,description:string(body?.description,300)}).select().single()
+  if(error) return c.json({error:'db_error',detail:error.message},400)
+  await audit(c.get('actor'),'admin.team_created','access_teams',data.id,{name})
+  return c.json({team:data},201)
 })
 
 adminRoutes.post('/branding/logo', requirePerm('settings', 'can_edit'), async (c) => {
@@ -183,7 +235,13 @@ adminRoutes.patch('/users/:id', requirePerm('users', 'can_edit'), async (c) => {
     update.role = role
   }
 
-  if (body?.active !== undefined) update.active = body.active === true
+  if (body?.active !== undefined) {
+    update.active = body.active === true
+    update.account_status = body.active === true ? 'active' : 'inactive'
+    update.frozen_until = null
+    update.status_changed_at = new Date().toISOString()
+    update.status_changed_by = actor.username
+  }
 
   if (body?.password !== undefined && body.password !== '') {
     const password = typeof body.password === 'string' ? body.password : ''
@@ -246,6 +304,52 @@ adminRoutes.post('/users/:id/unblock-login', requirePerm('users', 'can_edit'), a
     after: { failed_login_count: 0, locked_until: null },
   })
   return c.json({ user: data })
+})
+
+const ACCOUNT_STATES=new Set(['active','inactive','frozen','rejected'])
+adminRoutes.post('/users/:id/state',requirePerm('users','can_edit'),async(c)=>{
+  const id=c.req.param('id'),actor=c.get('actor')
+  if(id===actor.sub)return c.json({error:'cannot_change_own_access'},400)
+  const body=await c.req.json().catch(()=>null)
+  const state=string(body?.state,20)
+  if(!state||!ACCOUNT_STATES.has(state))return c.json({error:'invalid_account_state'},400)
+  const reason=string(body?.reason,300)
+  const freezeHours=Math.min(Math.max(Number(body?.freeze_hours)||24,1),24*90)
+  const before=await db.from('panel_users').select(userColumns).eq('id',id).maybeSingle()
+  if(!before.data)return c.json({error:'not_found'},404)
+  const update={account_status:state,active:state==='active',frozen_until:state==='frozen'?new Date(Date.now()+freezeHours*3600000).toISOString():null,status_reason:reason,status_changed_at:new Date().toISOString(),status_changed_by:actor.username,failed_login_count:state==='active'?0:before.data.failed_login_count,locked_until:null}
+  const {data,error}=await db.from('panel_users').update(update).eq('id',id).select(userColumns).single()
+  if(error)return c.json({error:'db_error',detail:error.message},500)
+  if(state!=='active')await db.from('panel_refresh_tokens').update({revoked_at:new Date().toISOString()}).eq('user_id',id).is('revoked_at',null)
+  await audit(actor,`admin.user_${state}`,'panel_users',id,{before:{active:before.data.active,account_status:before.data.account_status},after:update})
+  return c.json({user:data})
+})
+
+async function sendAccountLink(email:string,displayName:string,link:string,purpose:string){
+  const apiKey=process.env.RESEND_API_KEY,from=process.env.EMAIL_FROM
+  if(!apiKey||!from)return {sent:false,reason:'email_not_configured'}
+  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${apiKey}`,'content-type':'application/json'},body:JSON.stringify({from,to:[email],subject:purpose==='magic_login'?'Your secure OnTarget sign-in link':'Reset your OnTarget password',html:`<p>Hello ${displayName},</p><p><a href="${link}">${purpose==='magic_login'?'Sign in securely':'Reset password'}</a></p><p>This one-time link expires in 15 minutes.</p>`})})
+  return response.ok?{sent:true}:{sent:false,reason:'email_provider_failed',status:response.status}
+}
+
+adminRoutes.post('/users/:id/send-link',requirePerm('users','can_edit'),async(c)=>{
+  const id=c.req.param('id'),actor=c.get('actor')
+  const body=await c.req.json().catch(()=>null)
+  const purpose=body?.purpose==='password_reset'?'password_reset':body?.purpose==='magic_login'?'magic_login':null
+  if(!purpose)return c.json({error:'invalid_link_purpose'},400)
+  const {data:user}=await db.from('panel_users').select('id,username,email,display_name,active,account_status').eq('id',id).maybeSingle()
+  if(!user)return c.json({error:'not_found'},404)
+  if(!user.email)return c.json({error:'user_email_required'},409)
+  if(!user.active||user.account_status!=='active')return c.json({error:'account_not_active'},409)
+  const raw=randomBytes(32).toString('hex'),expiresAt=new Date(Date.now()+15*60000).toISOString()
+  await db.from('panel_user_action_tokens').update({revoked_at:new Date().toISOString()}).eq('user_id',id).eq('purpose',purpose).is('used_at',null).is('revoked_at',null)
+  const {error}=await db.from('panel_user_action_tokens').insert({user_id:id,purpose,token_hash:sha256Hex(raw),expires_at:expiresAt,issued_by:actor.username})
+  if(error)return c.json({error:'db_error',detail:error.message},500)
+  const origin=(process.env.APP_URL||new URL(c.req.url).origin).replace(/\/$/,'')
+  const link=`${origin}/account-action?purpose=${purpose}&token=${raw}`
+  const delivery=await sendAccountLink(user.email,user.display_name||user.username,link,purpose)
+  await audit(actor,`admin.user_${purpose}_issued`,'panel_users',id,{email:user.email,expires_at:expiresAt,delivery})
+  return c.json({ok:true,purpose,expires_at:expiresAt,delivery,link})
 })
 
 // Per-user permission override for one page. The body carries the full action
@@ -321,10 +425,18 @@ adminRoutes.put('/permissions/:role/:page', requirePerm('permissions', 'can_edit
   if (!/^[\w-]+$/.test(role_key) || !/^[\w-]+$/.test(page_key) || !fields.every((key) => typeof body?.[key] === 'boolean')) return c.json({ error: 'invalid_permission' }, 400)
   const { data: role } = await db.from('app_roles').select('role_key').eq('role_key', role_key).maybeSingle()
   if (!role) return c.json({ error: 'invalid_role' }, 404)
-  const record = Object.fromEntries(fields.map((key) => [key, body[key]]))
+  const actor = c.get('actor')
+  if ((role_key === 'super_admin' || page_key === 'binance_p2p_config') && actor.role !== 'super_admin') return c.json({error:'super_admin_required'},403)
+  const record = Object.fromEntries(fields.map((key) => [key, body[key]])) as Record<typeof fields[number],boolean>
+  // A hidden page cannot carry ghost action permissions. Conversely, enabling
+  // any action makes the page visible so sidebar, welcome and API agree.
+  const hasAction = record.can_create || record.can_edit || record.can_delete || record.can_approve || record.can_export
+  if (hasAction) record.can_view = true
+  if (!record.can_view) for (const key of fields.slice(1)) record[key] = false
+  if (page_key === 'binance_p2p_config' && role_key !== 'super_admin') for (const key of fields) record[key] = false
   const { data, error } = await db.from('role_page_permissions').upsert({ role_key, page_key, ...record }, { onConflict: 'role_key,page_key' }).select(permColumns).single()
   if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
-  await audit(c.get('actor'), 'admin.permission_updated', 'role_page_permissions', `${role_key}:${page_key}`, record)
+  await audit(actor, 'admin.permission_updated', 'role_page_permissions', `${role_key}:${page_key}`, record)
   return c.json({ permission: data })
 })
 

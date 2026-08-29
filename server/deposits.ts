@@ -3,6 +3,7 @@ import type { Context } from 'hono'
 import { db } from './db.js'
 import { oldDb } from './oldDb.js'
 import { requireAuth, requirePerm } from './rbac.js'
+import { applyDepositScopes, rowAllowed } from './accessScopes.js'
 import type { AuthEnv } from './rbac.js'
 import { MAX_PAGE } from './paging.js'
 import { learnTrustedSmsName } from './clientIdentity.js'
@@ -185,6 +186,7 @@ depositRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
     .order('ontarget_ref', { ascending: false, nullsFirst: false })
     .order('tx_id', { ascending: false })
     .range(offset, offset + limit - 1)
+  query = await applyDepositScopes(query,c.get('actor'),'view')
 
   if (status) query = query.eq('status', status)
   if (master) query = query.ilike('master_merchant', `%${master}%`)
@@ -353,11 +355,12 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
 
   const { data: before, error: readErr } = await db
     .from('maven_transactions')
-    .select('tx_id, status, amount, currency, ontarget_ref, merchant, master_merchant, gateway')
+    .select('tx_id, status, amount, currency, ontarget_ref, merchant, master_merchant, gateway, country, payment_method, request_type')
     .eq('tx_id', txId)
     .maybeSingle()
   if (readErr) return c.json({ error: 'db_error', detail: readErr.message }, 500)
   if (!before) return c.json({ error: 'not_found' }, 404)
+  if (!await rowAllowed(c.get('actor'),before,'approve')) return c.json({error:'outside_assigned_scope'},403)
   if (before.status !== 'PENDING') {
     return c.json({ error: 'not_pending', status: before.status }, 409)
   }

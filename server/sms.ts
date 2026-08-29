@@ -19,6 +19,44 @@ function sinceIso(hours: number): string {
   return new Date(Date.now() - hours * 3_600_000).toISOString()
 }
 
+type SmsFilterInput = {
+  category?: string
+  match?: string
+  q?: string
+  amount?: string
+  from?: string
+  to?: string
+}
+
+// Keep the list and KPI cards on one definition of "filtered SMS". This is
+// deliberately shared: adding a filter to the table without adding it to the
+// cards was the reason their numbers previously looked stale/wrong.
+function applySmsFilters(query: any, filters: SmsFilterInput) {
+  const { category, match, q, amount, from, to } = filters
+  if (category) query = query.eq('sms_category', category)
+  if (from) query = query.gte('received_at', `${from}T00:00:00Z`)
+  if (to) query = query.lte('received_at', `${to}T23:59:59.999Z`)
+  if (match === 'linked') query = query.or('and(sms_category.neq.withdrawal,consumed_by_tx_id.not.is.null),and(sms_category.eq.withdrawal,wallet_number.not.is.null)')
+  else if (match === 'unmatched') query = query.or('and(sms_category.neq.withdrawal,consumed_by_tx_id.is.null),and(sms_category.eq.withdrawal,wallet_number.is.null)')
+  else if (match === 'review') query = query.eq('review_required', true).eq('matched', false)
+
+  if (q) {
+    const like = `%${q.replaceAll(',', ' ')}%`
+    const ors = [
+      `sender_name.ilike.${like}`,
+      `sender_number.ilike.${like}`,
+      `receiver_number.ilike.${like}`,
+      `trx_id.ilike.${like}`,
+      `device_name.ilike.${like}`,
+      `provider.ilike.${like}`,
+    ]
+    if (/^\d+$/.test(q)) ors.push(`id.eq.${q}`)
+    query = query.or(ors.join(','))
+  }
+  if (amount && /^\d+(\.\d+)?$/.test(amount)) query = query.eq('amount', amount)
+  return query
+}
+
 // Resolve each matched SMS to the ontarget_ref of its transaction, so the UI
 // can show the same identifier the deposits/transactions views show instead of
 // a bare tx_id that an operator has to look up by hand.
@@ -114,16 +152,18 @@ async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> 
 
 smsRoutes.get('/stats', requirePerm('sms_live', 'can_view'), async (c) => {
   const day = sinceIso(24)
-  const from = c.req.query('from')?.trim()
-  const to = c.req.query('to')?.trim()
-  const inRange = (q: any) => {
-    if (from) q = q.gte('received_at', `${from}T00:00:00Z`)
-    if (to) q = q.lte('received_at', `${to}T23:59:59.999Z`)
-    return q
+  const filters: SmsFilterInput = {
+    category: c.req.query('category')?.toLowerCase(),
+    match: c.req.query('match')?.toLowerCase(),
+    q: c.req.query('q')?.trim(),
+    amount: c.req.query('amount')?.trim(),
+    from: c.req.query('from')?.trim(),
+    to: c.req.query('to')?.trim(),
   }
 
   const countWhere = async (apply: (q: any) => any) => {
-    const { count, error } = await apply(inRange(db.from('inbound_sms').select('id', { count: 'exact', head: true })))
+    const base = applySmsFilters(db.from('inbound_sms').select('id', { count: 'exact', head: true }), filters)
+    const { count, error } = await apply(base)
     if (error) throw new Error(error.message)
     return count ?? 0
   }
@@ -135,7 +175,8 @@ smsRoutes.get('/stats', requirePerm('sms_live', 'can_view'), async (c) => {
       .select('amount')
       .eq('sms_category', category)
       .limit(10_000)
-    query = from || to ? inRange(query) : query.gte('received_at', day)
+    query = applySmsFilters(query, filters)
+    if (!filters.from && !filters.to) query = query.gte('received_at', day)
     const { data, error } = await query
     if (error) throw new Error(error.message)
     return (data ?? []).reduce((s, r) => s + Number(r.amount ?? 0), 0)
@@ -182,37 +223,14 @@ smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
     .order('id', { ascending: false })
     .range(offset, offset + limit - 1)
 
-  if (category) query = query.eq('sms_category', category)
-  if (from) query = query.gte('received_at', `${from}T00:00:00Z`)
-  if (to) query = query.lte('received_at', `${to}T23:59:59.999Z`)
   // Linked means the engine claimed it, which it records in consumed_by_tx_id.
   // Filtering on match_status instead showed only the 171 manually linked rows
   // and 76 from July: 3,888 SMS that ARE consumed still carry
   // match_status='unmatched', because nothing has maintained that column since
   // 2026-07-11. On the live TV wall that made a busy matching engine look
   // stalled for hours at a time.
-  if (match === 'linked') query = query.or('and(sms_category.neq.withdrawal,consumed_by_tx_id.not.is.null),and(sms_category.eq.withdrawal,wallet_number.not.is.null)')
-  else if (match === 'unmatched') query = query.or('and(sms_category.neq.withdrawal,consumed_by_tx_id.is.null),and(sms_category.eq.withdrawal,wallet_number.is.null)')
-  else if (match === 'review') query = query.eq('review_required', true).eq('matched', false)
-
-  if (q) {
-    const like = `%${q.replaceAll(',', ' ')}%`
-    const ors = [
-      `sender_name.ilike.${like}`,
-      `sender_number.ilike.${like}`,
-      `receiver_number.ilike.${like}`,
-      `trx_id.ilike.${like}`,
-      `device_name.ilike.${like}`,
-      `provider.ilike.${like}`,
-    ]
-    if (/^\d+$/.test(q)) ors.push(`id.eq.${q}`)
-    query = query.or(ors.join(','))
-  }
-
-  // Exact-amount lookup (used by the deposits 🔎 "find SMS" shortcut) —
-  // kept separate from q so numeric id searches stay precise.
   const amount = c.req.query('amount')?.trim()
-  if (amount && /^\d+(\.\d+)?$/.test(amount)) query = query.eq('amount', amount)
+  query = applySmsFilters(query, { category, match, q, amount, from, to })
 
   const { data, count, error } = await query
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
@@ -419,24 +437,26 @@ smsRoutes.post('/:id/unlink', requirePerm('sms_live', 'can_edit'), async (c) => 
 smsRoutes.patch('/:id/withdrawal-meta', requirePerm('sms_live', 'can_edit'), async (c) => {
   const id = c.req.param('id')
   if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)
-  const body = await c.req.json<{ sender_name?: unknown; notes?: unknown }>().catch(() => null)
+  const body = await c.req.json<{ sender_name?: unknown; notes?: unknown; wallet_number?: unknown }>().catch(() => null)
   if (!body) return c.json({ error: 'invalid_body' }, 400)
   const senderName = typeof body.sender_name === 'string' ? body.sender_name.trim().slice(0, 160) : ''
   const notes = typeof body.notes === 'string' ? body.notes.trim().slice(0, 2000) : ''
+  const walletNumber = typeof body.wallet_number === 'string' ? body.wallet_number.replace(/\D/g, '').slice(0, 20) : ''
+  if (!/^\d{8,20}$/.test(walletNumber)) return c.json({ error: 'invalid_wallet_number' }, 400)
   const { data: before, error: readError } = await db.from('inbound_sms')
-    .select('id, sms_category, sender_name, notes').eq('id', id).maybeSingle()
+    .select('id, sms_category, sender_name, notes, wallet_number, confirmed_wallet_number').eq('id', id).maybeSingle()
   if (readError) return c.json({ error: 'db_error', detail: readError.message }, 500)
   if (!before) return c.json({ error: 'not_found' }, 404)
   if (before.sms_category !== 'withdrawal') return c.json({ error: 'withdrawal_only' }, 409)
-  const next = { sender_name: senderName || null, notes: notes || null }
+  const next = { sender_name: senderName || null, notes: notes || null, confirmed_wallet_number: walletNumber }
   const { data, error } = await db.from('inbound_sms').update(next).eq('id', id).eq('sms_category', 'withdrawal')
-    .select('id, sender_name, notes').single()
+    .select('id, sender_name, notes, confirmed_wallet_number').single()
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   const actor = c.get('actor')
   await db.from('audit_log').insert({
     actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
     action: 'sms.withdrawal_meta_updated', entity_type: 'inbound_sms', entity_id: id,
-    before: { sender_name: before.sender_name, notes: before.notes }, after: next,
+    before: { sender_name: before.sender_name, notes: before.notes, confirmed_wallet_number: before.confirmed_wallet_number, extracted_wallet_number: before.wallet_number }, after: next,
   })
   return c.json({ ok: true, sms: data })
 })

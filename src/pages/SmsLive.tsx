@@ -148,6 +148,7 @@ export default function SmsLive() {
   const [linkErr, setLinkErr] = useState<string | null>(null)
   const [metaName, setMetaName] = useState('')
   const [metaNotes, setMetaNotes] = useState('')
+  const [metaWallet, setMetaWallet] = useState('')
   const [metaBusy, setMetaBusy] = useState(false)
   const [assignmentType, setAssignmentType] = useState<'payout' | 'p2p_usdt' | 'cash_return'>('payout')
   const [assignmentRef, setAssignmentRef] = useState('')
@@ -172,7 +173,7 @@ export default function SmsLive() {
     try {
       const [list, st] = await Promise.all([
         api<ListResponse>(`/api/sms?${search}`),
-        api<SmsStats>(`/api/sms/stats?${new URLSearchParams(Object.fromEntries(Object.entries({ from, to }).filter(([, value]) => value)))}`),
+        api<SmsStats>(`/api/sms/stats?${search}`),
       ])
       setData((current) => JSON.stringify(current) === JSON.stringify(list) ? current : list)
       setStats(st)
@@ -233,6 +234,7 @@ export default function SmsLive() {
       setSelected(res.sms)
       setMetaName(res.sms.sender_name ?? '')
       setMetaNotes(res.sms.notes ?? '')
+      setMetaWallet(res.sms.confirmed_wallet_number ?? res.sms.wallet_number ?? '')
       setAssignmentName(res.sms.sender_name ?? '')
       if (res.sms.sms_category !== 'withdrawal' && !res.sms.matched_tx_id && can('sms_live', 'can_edit')) void loadCandidates(id)
     } catch {
@@ -285,12 +287,16 @@ export default function SmsLive() {
     if (!selected || selected.sms_category !== 'withdrawal') return
     setMetaBusy(true); setLinkErr(null)
     try {
-      const res = await api<{ sms: { sender_name: string | null; notes: string | null } }>(`/api/sms/${selected.id}/withdrawal-meta`, {
-        method: 'PATCH', body: JSON.stringify({ sender_name: metaName, notes: metaNotes }),
+      const res = await api<{ sms: { sender_name: string | null; notes: string | null; confirmed_wallet_number: string | null } }>(`/api/sms/${selected.id}/withdrawal-meta`, {
+        method: 'PATCH', body: JSON.stringify({ sender_name: metaName, notes: metaNotes, wallet_number: metaWallet }),
       })
-      setSelected({ ...selected, ...res.sms })
+      setSelected({ ...selected, ...res.sms, linked_wallet_number: res.sms.confirmed_wallet_number ?? selected.wallet_number })
       void load(true)
-    } catch { setLinkErr(t('فشل حفظ الاسم أو الملاحظة.', 'Failed to save name or note.')) }
+    } catch (e) {
+      setLinkErr(e instanceof ApiError && e.code === 'invalid_wallet_number'
+        ? t('أدخل رقم محفظة صحيحاً من 8 إلى 20 رقماً.', 'Enter a valid wallet number containing 8 to 20 digits.')
+        : t('فشل حفظ بيانات السحب.', 'Failed to save withdrawal details.'))
+    }
     finally { setMetaBusy(false) }
   }
 
@@ -461,9 +467,6 @@ export default function SmsLive() {
                         {money(r.amount, 'EGP')}
                         {r.balance_after != null && <div className="cell-sub mono">{t('رصيد', 'bal')} {money(r.balance_after, 'EGP')}</div>}
                       </td>
-                      <td onClick={(event)=>event.stopPropagation()}>
-                        {r.sms_category !== 'withdrawal' ? <span className="cell-sub">—</span> : payoutLinked ? <Link className="transaction-cell-link" to={`/payouts?q=${encodeURIComponent(r.matched_payout_ref ?? String(r.matched_payout_id))}`}><span className="pay-status-badge st-paid">{t('معيّنة','Assigned')}</span><div className="cell-sub mono">WD {r.matched_payout_ref ?? r.matched_payout_id}{r.matched_payout_status ? ` · ${r.matched_payout_status}` : ''}</div></Link> : manuallyAssigned ? <><span className="pay-status-badge st-paid">{t('معيّنة','Assigned')}</span><div className="cell-sub">{r.withdrawal_assignment_type === 'p2p_usdt' ? 'P2P USDT' : 'Money cash return'} · {r.withdrawal_assignment_name}</div></> : <span className="pay-status-badge st-declined">{t('غير معيّنة','Unassigned')}</span>}
-                      </td>
                       <td>
                         {r.sender_name ?? r.sender_number ?? '—'}
                         <div className="cell-sub mono">← {r.receiver_number ?? '—'}</div>
@@ -476,6 +479,9 @@ export default function SmsLive() {
                         {walletLinked ? r.linked_wallet_number : r.trx_id ?? '—'}
                         {walletLinked && <div className="cell-sub mono">{r.wallet_balance_before != null ? money(r.wallet_balance_before, 'EGP') : '—'} − {money(r.amount, 'EGP')} = {r.wallet_balance_after != null ? money(r.wallet_balance_after, 'EGP') : '—'}</div>}
                         {!walletLinked && linked && <div className="cell-sub mono">OnTarget {r.matched_ontarget_ref ?? r.matched_tx_id}</div>}
+                      </td>
+                      <td onClick={(event)=>event.stopPropagation()}>
+                        {r.sms_category !== 'withdrawal' ? <span className="cell-sub">—</span> : payoutLinked ? <Link className="transaction-cell-link" to={`/payouts?q=${encodeURIComponent(r.matched_payout_ref ?? String(r.matched_payout_id))}`}><span className="pay-status-badge st-paid">{t('معيّنة','Assigned')}</span><div className="cell-sub mono">WD {r.matched_payout_ref ?? r.matched_payout_id}{r.matched_payout_status ? ` · ${r.matched_payout_status}` : ''}</div></Link> : manuallyAssigned ? <><span className="pay-status-badge st-paid">{t('معيّنة','Assigned')}</span><div className="cell-sub">{r.withdrawal_assignment_type === 'p2p_usdt' ? 'P2P USDT' : 'Money cash return'} · {r.withdrawal_assignment_name}</div></> : <span className="pay-status-badge st-declined">{t('غير معيّنة','Unassigned')}</span>}
                       </td>
                       <td>
                         {mt
@@ -553,9 +559,10 @@ export default function SmsLive() {
                 {selected.sms_category === 'withdrawal' && can('sms_live', 'can_edit') && (
                   <section className="link-section withdrawal-meta-editor">
                     <h4>{t('بيانات السحب التشغيلية', 'Withdrawal operational details')}</h4>
+                    <label className="filter-field">{t('رقم محفظتنا', 'Our wallet number')}<input className="login-input mono" inputMode="numeric" maxLength={20} value={metaWallet} onChange={(e) => setMetaWallet(e.target.value.replace(/\D/g, ''))} placeholder="01XXXXXXXXX"/></label>
                     <label className="filter-field">{t('الاسم', 'Name')}<input className="login-input" maxLength={160} value={metaName} onChange={(e) => setMetaName(e.target.value)} placeholder={t('اسم صاحب المحفظة أو المستفيد', 'Wallet owner or beneficiary name')}/></label>
                     <label className="filter-field">{t('ملاحظة', 'Note')}<textarea className="login-input" rows={3} maxLength={2000} value={metaNotes} onChange={(e) => setMetaNotes(e.target.value)} placeholder={t('ملاحظة تشغيلية تظهر في تفاصيل SMS', 'Operational note shown in SMS details')}/></label>
-                    <button className="btn-primary btn-sm" disabled={metaBusy} onClick={() => void saveWithdrawalMeta()}>{metaBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ الاسم والملاحظة', 'Save name & note')}</button>
+                    <button className="btn-primary btn-sm" disabled={metaBusy || !/^\d{8,20}$/.test(metaWallet)} onClick={() => void saveWithdrawalMeta()}>{metaBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ بيانات السحب', 'Save withdrawal details')}</button>
                     <h4>{t('تعيين رسالة السحب', 'Assign withdrawal SMS')}</h4>
                     <label className="filter-field">{t('نوع التعيين', 'Assignment type')}<select className="login-input" value={assignmentType} onChange={(e) => setAssignmentType(e.target.value as typeof assignmentType)}><option value="payout">Payout</option><option value="p2p_usdt">P2P USDT</option><option value="cash_return">Money cash return</option></select></label>
                     <label className="filter-field">{t('الاسم', 'Name')}<input className="login-input" maxLength={160} value={assignmentName} onChange={(e) => setAssignmentName(e.target.value)} required /></label>

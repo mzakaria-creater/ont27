@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
 import { useAuth } from './auth/AuthContext'
 import ProtectedRoute from './auth/ProtectedRoute'
+import PageGate from './auth/PageGate'
 import LoginPage from './auth/LoginPage'
 import type { NotifData } from './pages/Notifications'
 import { api } from './lib/api'
@@ -55,6 +56,9 @@ const AdminTransactions = lazy(() => import('./pages/AdminTransactions'))
 const ApiDashboard = lazy(() => import('./pages/ApiDashboard'))
 const InternalChat = lazy(() => import('./pages/InternalChat'))
 const IntegrationGuide = lazy(() => import('./pages/IntegrationGuide'))
+const RevenueCenter = lazy(() => import('./pages/RevenueCenter'))
+const Welcome = lazy(() => import('./pages/Welcome'))
+const AccountAction = lazy(() => import('./pages/AccountAction'))
 
 type Conn = 'wait' | 'ok' | 'bad'
 
@@ -292,8 +296,10 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/payment-checkout" element={<PaymentCheckout />} />
           <Route path="/payment-status" element={<PaymentStatus />} />
+          <Route path="/account-action" element={<AccountAction />} />
           <Route element={<ProtectedRoute />}>
-            <Route path="/" element={<AnalyticsDashboard />} />
+            <Route path="/" element={<PageGate keys={['dashboard']}><AnalyticsDashboard /></PageGate>} />
+            <Route path="/welcome" element={<Welcome />} />
             <Route path="/control-room" element={<Dashboard />} />
             <Route path="/monitor" element={<Monitor />} />
             <Route path="/api-dashboard" element={<ApiDashboard />} />
@@ -301,22 +307,23 @@ export default function App() {
             <Route path="/analytics-dashboard" element={<AnalyticsDashboard />} />
             <Route path="/system-health" element={<SystemHealth />} />
             <Route path="/performance" element={<Performance />} />
+            <Route path="/revenue" element={<RevenueCenter />} />
             <Route path="/wallet-movements" element={<WalletMovements />} />
             <Route path="/client" element={<ClientProfile />} />
             <Route path="/client/:phone" element={<ClientProfile />} />
-            <Route path="/deposits" element={<Deposits />} />
-            <Route path="/payouts" element={<Payouts />} />
-            <Route path="/transactions" element={<Transactions />} />
-            <Route path="/transactions/:ref" element={<TransactionDetail />} />
-            <Route path="/approvals" element={<Approvals />} />
+            <Route path="/deposits" element={<PageGate keys={['deposits']}><Deposits /></PageGate>} />
+            <Route path="/payouts" element={<PageGate keys={['payouts']}><Payouts /></PageGate>} />
+            <Route path="/transactions" element={<PageGate keys={['transactions','all_transactions']}><Transactions /></PageGate>} />
+            <Route path="/transactions/:ref" element={<PageGate keys={['transactions','all_transactions','deposits']}><TransactionDetail /></PageGate>} />
+            <Route path="/approvals" element={<PageGate keys={['approvals','approval-queue']}><Approvals /></PageGate>} />
             <Route path="/merchants" element={<Merchants />} />
             <Route path="/wallets" element={<Wallets />} />
             <Route path="/sms" element={<SmsLive />} />
             <Route path="/settlements" element={<Settlements />} />
             <Route path="/crm" element={<Crm />} />
             <Route path="/risk" element={<Risk />} />
-            <Route path="/automation" element={<Automation />} />
-            <Route path="/automation-control" element={<Automation />} />
+            <Route path="/automation" element={<PageGate keys={['automation','automation_rules']}><Automation /></PageGate>} />
+            <Route path="/automation-control" element={<PageGate keys={['automation','automation_rules']}><Automation /></PageGate>} />
             <Route path="/integration-guide" element={<IntegrationGuide />} />
             <Route path="/audit" element={<Audit />} />
             <Route path="/reports" element={<Reports />} />
@@ -327,8 +334,8 @@ export default function App() {
             <Route path="/operations-archive" element={<OperationsArchive />} />
             <Route path="/wallet-report" element={<WalletReport />} />
             <Route path="/withdrawal-sms-report" element={<WithdrawalSmsReport />} />
-            <Route path="/admin" element={<AdminPage />} />
-            <Route path="/admin/*" element={<AdminPage />} />
+            <Route path="/admin" element={<PageGate keys={['settings','users','permissions']}><AdminPage /></PageGate>} />
+            <Route path="/admin/*" element={<PageGate keys={['settings','users','permissions']}><AdminPage /></PageGate>} />
             <Route path="/admin-transactions" element={<AdminTransactions />} />
             <Route path="/chat" element={<InternalChat />} />
             <Route path="/notifications" element={<Notifications />} />

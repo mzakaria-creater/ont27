@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { db } from "./db.js";
 import { requireAuth, requirePerm, requireSuperAdmin } from "./rbac.js";
+import { applyPayoutScopes, rowAllowed } from "./accessScopes.js";
 import type { AuthEnv } from "./rbac.js";
 import { MAX_PAGE } from "./paging.js";
 import { autoLinkWithdrawalSms } from "./payoutSmsMatcher.js";
@@ -102,6 +103,7 @@ payoutRoutes.get("/", requirePerm("payouts", "can_view"), async (c) => {
     .order("ontarget_ref", { ascending: false, nullsFirst: false })
     .order("maven_id", { ascending: false })
     .range(offset, offset + limit - 1);
+  query = await applyPayoutScopes(query,c.get("actor"),"view");
 
   if (status) query = query.eq("status", status);
   if (from && /^\d{4}-\d{2}-\d{2}$/.test(from))
@@ -426,13 +428,14 @@ payoutRoutes.post(
     const { data: before, error: readErr } = await db
       .from("maven_payout_transactions")
       .select(
-        "maven_id, status, amount, ontarget_ref, merchant, matched_sms_id",
+        "maven_id, status, amount, ontarget_ref, merchant, pay_by, matched_sms_id",
       )
       .eq("maven_id", mavenId)
       .maybeSingle();
     if (readErr)
       return c.json({ error: "db_error", detail: readErr.message }, 500);
     if (!before) return c.json({ error: "not_found" }, 404);
+    if (!await rowAllowed(c.get("actor"),before,"approve")) return c.json({error:"outside_assigned_scope"},403);
     const { data: linkedSms } = before.matched_sms_id
       ? await db
           .from("inbound_sms")

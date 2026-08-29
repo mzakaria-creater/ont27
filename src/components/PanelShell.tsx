@@ -75,6 +75,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/analytics-dashboard', icon: '◫', labelAr: 'لوحة التحليلات', labelEn: 'Analytics Dashboard', keys: ['dashboard', 'reports', 'advanced_analysis', 'wallets'], group: 'insights' },
   { to: '/system-health', icon: '♥', labelAr: 'حالة النظام', labelEn: 'System Health', keys: ['dashboard', 'automation', 'audit'], group: 'admin' },
   { to: '/performance', icon: '📈', labelAr: 'أداء المزوّدين والتجار', labelEn: 'Provider & merchant performance', keys: ['reports', 'analytics', 'dashboard', 'transactions', 'merchants'], group: 'insights' },
+  { to: '/revenue', icon: '◈', labelAr: 'الإيرادات والعمولات', labelEn: 'Revenue & Commission', keys: ['revenue_center'], group: 'insights' },
   // Operations — the daily transaction workflow
   { to: '/approvals', icon: '✅', labelAr: 'طابور الموافقات', labelEn: 'Approval queue', keys: ['approvals', 'approval-queue', 'my-queue', 'my-tasks', 'assigned_to_me'], group: 'transactions' },
   { to: '/deposits', icon: '💰', labelAr: 'الإيداعات', labelEn: 'Deposits', keys: ['deposits'], group: 'transactions' },
@@ -132,6 +133,7 @@ const BUILT_PAGE_KEYS = new Set([
   'deposits', 'deposit-queue', 'pending_deposits',
   'payouts', 'pending_payouts',
   'transactions', 'all_transactions', 'refunds', 'reversals',
+  'revenue_center',
   'approvals', 'approval-queue', 'my-queue', 'my-tasks', 'assigned_to_me',
   'settlements', 'settlements_list', 'settlement_recon', 'fees',
   'merchants', 'merchant_detail', 'merchant-dashboard', 'master_merchants', 'sub_merchants', 'sub-merchants', 'agents',

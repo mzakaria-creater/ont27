@@ -81,6 +81,9 @@ export const PAGE_CATALOG: Record<string, { category: string; label: string }> =
   compliance: { category: 'risk', label: 'الامتثال' },
 
   telegram_bot: { category: 'automation', label: 'بوت تيليجرام' },
+  automation: { category: 'automation', label: 'مركز الأتمتة' },
+  automation_rules: { category: 'automation', label: 'قواعد الأتمتة' },
+  automation_templates: { category: 'automation', label: 'قوالب الأتمتة' },
   binance_p2p: { category: 'automation', label: 'Binance P2P' },
   treasury: { category: 'automation', label: 'الخزينة' },
   allocation_engine: { category: 'automation', label: 'محرّك التوزيع' },
@@ -103,6 +106,7 @@ export const PAGE_CATALOG: Record<string, { category: string; label: string }> =
 
   reports: { category: 'reports', label: 'التقارير' },
   advanced_analysis: { category: 'reports', label: 'تحليلات متقدمة' },
+  revenue_center: { category: 'reports', label: 'الإيرادات والعمولات' },
 
   support: { category: 'support', label: 'الدعم الفني' },
   notifications: { category: 'support', label: 'الإشعارات' },
