@@ -9,7 +9,7 @@ import { depositTime, money } from '../lib/deposits'
 import type { PagePermission } from '../lib/api'
 import { useLocale } from '../lib/locale'
 import { installNotificationAudioUnlock, playNotificationTone } from '../lib/notificationSounds'
-import { BarChart3, Bot, CircleDollarSign, LayoutDashboard, Settings, Users, WalletCards } from 'lucide-react'
+import { BarChart3, Bot, ChevronDown, CircleDollarSign, LayoutDashboard, MessageSquareText, Minimize2, Settings, Users, WalletCards } from 'lucide-react'
 
 // Shared authed layout ("Live Transaction Monitor" skin): nav rail (real pages
 // first, then the role's remaining permitted modules as "قريباً" placeholders),
@@ -200,7 +200,7 @@ interface RailDevice {
   last_seen_at: string | null
 }
 
-function SmsRail() {
+function SmsRail({ onMinimize }: { onMinimize: () => void }) {
   const [rows, setRows] = useState<RailSms[]>([])
   const [devices, setDevices] = useState<RailDevice[]>([])
 
@@ -235,10 +235,10 @@ function SmsRail() {
   }, [])
 
   return (
-    <aside className="sms-rail">
+    <aside id="live-sms-widget" className="sms-rail" aria-label="Live SMS" onPointerDown={(event) => event.stopPropagation()}>
       <div className="sms-rail-head">
-        <span className="sms-rail-title">📨 SMS مباشر</span>
-        <span className="live-dot"><span className="ld" />حي</span>
+        <span className="sms-rail-title"><MessageSquareText size={16} aria-hidden="true" />SMS مباشر</span>
+        <span className="sms-rail-head-actions"><span className="live-dot"><span className="ld" />حي</span><button type="button" className="sms-widget-icon-btn" onClick={onMinimize} aria-label="Minimize Live SMS" title="Minimize"><Minimize2 size={15} /></button></span>
       </div>
       {devices.length > 0 && (
         <div className="device-chips">
@@ -281,7 +281,10 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   const modules = usePermittedModules()
   const permsLoaded = permissions.length > 0
   const [navOpen, setNavOpen] = useState(false)
-  const [smsOpen, setSmsOpen] = useState(true)
+  const [smsOpen, setSmsOpen] = useState(() => {
+    try { return window.localStorage.getItem('ontarget:sms-widget') === 'expanded' }
+    catch { return false }
+  })
   const [chatUnread, setChatUnread] = useState(0)
   const chatSeenRef = useRef<number | null>(null)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<NavGroupId>>(() => new Set(NAV_GROUPS.map((group) => group.id).filter((id) => id !== activeGroup)))
@@ -305,12 +308,18 @@ export default function PanelShell({ children }: { children: ReactNode }) {
     return () => clearInterval(timer)
   }, [pathname])
 
-  // The unified transactions table has many operational columns. Give it the
-  // full available width by collapsing the optional 290px SMS rail whenever
-  // the user enters that page; the floating control can still reopen it.
+  // The feed is a floating widget, compact by default. It auto-minimizes after
+  // a short idle period so dense operations tables always retain full width.
   useEffect(() => {
-    if (pathname === '/transactions' || pathname === '/airdroid') setSmsOpen(false)
+    setSmsOpen(false)
   }, [pathname])
+
+  useEffect(() => {
+    try { window.localStorage.setItem('ontarget:sms-widget', smsOpen ? 'expanded' : 'compact') } catch { /* optional preference */ }
+    if (!smsOpen) return
+    const timer = window.setTimeout(() => setSmsOpen(false), 30_000)
+    return () => window.clearTimeout(timer)
+  }, [smsOpen])
 
   // Keep the active category open and collapse the rest. This makes the long
   // operations menu scannable while preserving one-click access to every
@@ -349,7 +358,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
           return (
             <div className={`nav-group${collapsed ? ' collapsed' : ''}`} key={g.id}>
               <button type="button" className="nav-group-label" onClick={() => toggleGroup(g.id)} aria-expanded={!collapsed} title={locale === 'en' ? g.en : g.ar}>
-                <span className="nav-group-title"><span className="nav-group-icon" aria-hidden="true">{NAV_GROUP_ICONS[g.id]}</span><span className="nav-group-name">{locale === 'en' ? g.en : g.ar}</span></span><span className="nav-group-chevron" aria-hidden="true">⌄</span>
+                <span className="nav-group-title"><span className="nav-group-icon" aria-hidden="true">{NAV_GROUP_ICONS[g.id]}</span><span className="nav-group-name">{locale === 'en' ? g.en : g.ar}</span></span><ChevronDown className="nav-group-chevron" size={15} aria-hidden="true" />
               </button>
               <div className="nav-group-links">{links}</div>
             </div>
@@ -362,8 +371,8 @@ export default function PanelShell({ children }: { children: ReactNode }) {
         </div>}
       </nav>
       <main className="dash-main">{children}</main>
-      {can('sms_live') && <button type="button" className="btn-ghost btn-sm sms-rail-toggle" onClick={() => setSmsOpen((open) => !open)} aria-pressed={smsOpen}>{smsOpen ? t('إخفاء SMS المباشر', 'Hide Live SMS') : t('إظهار SMS المباشر', 'Show Live SMS')}</button>}
-      {can('sms_live') && smsOpen && <SmsRail />}
+      {can('sms_live') && !smsOpen && <button type="button" className="sms-widget-launcher" onClick={() => setSmsOpen(true)} aria-expanded="false" aria-controls="live-sms-widget" aria-label={t('إظهار SMS المباشر', 'Show Live SMS')} title={t('إظهار SMS المباشر', 'Show Live SMS')}><span className="sms-widget-pulse" /><MessageSquareText size={20} aria-hidden="true" /><span className="sms-widget-label">Live SMS</span></button>}
+      {can('sms_live') && smsOpen && <SmsRail onMinimize={() => setSmsOpen(false)} />}
     </div>
   )
 }
