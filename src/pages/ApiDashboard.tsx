@@ -8,6 +8,7 @@ import { money } from '../lib/deposits'
 type Provider = { count24h: number; pending: number; lastChange: string | null }
 type Tx = { tx_id: number; ontarget_ref: string | null; status: string; amount: number | null; currency: string | null; merchant: string | null; gateway: string | null; first_seen_at: string | null }
 type Data = { generatedAt: string; lastSync: string | null; api: { ok: boolean; latencyMs: number }; supabase: { ok: boolean; latencyMs: number; failedSources: string[] }; queues: { pendingDeposits: number | null; pendingPayouts: number | null; editRequests: number | null }; providers: Record<string, Provider>; transactions: Tx[]; devices: { online: boolean | null }[] }
+type RailwayStatus = { connected: boolean; baseUrl: string; docsUrl: string; version: string | null; remoteTimestamp: string | null; latencyMs: number | null; apiKeyConfigured: boolean; protectedAccess: boolean | null }
 
 const modules = [
   ['/admin-transactions', 'Transactions', 'Full administrative transaction ledger'], ['/approvals', 'Approvals', 'Pending deposit decisions'],
@@ -22,7 +23,8 @@ export default function ApiDashboard() {
   const [data, setData] = useState<Data | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
-  const load = useCallback(async () => { setLoading(true); try { setData(await api<Data>('/api/monitoring')); setError(false) } catch { setError(true) } finally { setLoading(false) } }, [])
+  const [railway, setRailway] = useState<RailwayStatus | null>(null)
+  const load = useCallback(async () => { setLoading(true); try { const [monitoring, railwayStatus] = await Promise.all([api<Data>('/api/monitoring'), api<RailwayStatus>('/api/railway/status')]); setData(monitoring); setRailway(railwayStatus); setError(false) } catch { setError(true) } finally { setLoading(false) } }, [])
   useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 15_000); return () => window.clearInterval(timer) }, [load])
   const stats = useMemo(() => {
     const rows = data?.transactions ?? []
@@ -58,6 +60,13 @@ export default function ApiDashboard() {
       <article className="api-health-card"><Database/><div><small>Supabase DB</small><strong className={data?.supabase.ok?'ok':'bad'}>{data?.supabase.ok?'Healthy':'Degraded'}</strong><span>{data ? `${data.supabase.latencyMs} ms` : 'Checking…'}</span></div></article>
       <article className="api-health-card"><Activity/><div><small>Provider sync</small><strong className="ok">Live</strong><span>{when(data?.lastSync ?? null)}</span></div></article>
       <article className="api-health-card"><WalletCards/><div><small>Device coverage</small><strong>{online}/{data?.devices.length ?? 0}</strong><span>devices online</span></div></article>
+    </section>
+
+    <section className="card api-provider-strip">
+      <div><span>Railway API</span><strong className={railway?.connected?'ok':'bad'}>{railway?.connected?'Connected':'Unavailable'}</strong><small>{railway?.latencyMs == null?'Checking…':`${railway.latencyMs} ms · v${railway.version??'—'}`}</small></div>
+      <div><span>Protected API access</span><strong className={railway?.protectedAccess?'ok':railway?.apiKeyConfigured?'bad':'gold'}>{railway?.protectedAccess?'Authorized':railway?.apiKeyConfigured?'Invalid key':'Key required'}</strong><small>Server-side credential only</small></div>
+      <div><span>API base</span><strong className="api-generated">api.ontarget-egy.com</strong><small>{railway?.remoteTimestamp?`Checked ${when(railway.remoteTimestamp)}`:'Live Railway service'}</small></div>
+      <div><span>Documentation</span><a className="pay-status-link" href={railway?.docsUrl??'https://api.ontarget-egy.com/docs'} target="_blank" rel="noreferrer">Open Swagger <ExternalLink size={13}/></a><small>Live OpenAPI specification</small></div>
     </section>
 
     <section className="api-metric-grid">
