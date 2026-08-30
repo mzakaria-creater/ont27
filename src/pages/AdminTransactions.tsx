@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronDown, ChevronUp, RefreshCw, Search } from 'lucide-react'
+import { ChevronDown, ChevronUp, RefreshCw, Search, X } from 'lucide-react'
 import PanelShell from '../components/PanelShell'
 import MethodLogo from '../components/MethodLogo'
 import SenderIdentity from '../components/SenderIdentity'
@@ -35,7 +35,7 @@ export default function AdminTransactions() {
   return <PanelShell>
     <section className="page-head"><h2>Admin Transactions</h2><p className="page-sub">Expanded administrative ledger · {total.toLocaleString()} records</p></section>
     <form className="filter-bar admin-trx-filter" onSubmit={(e)=>{e.preventDefault();setApplied({q:q.trim(),status,merchant:merchant.trim(),method,from,to,sort})}}>
-      <label className="analytics-filter-search"><Search size={16}/><input value={q} onChange={(e)=>setQ(e.target.value)} placeholder="Amount, sender, phone, transaction, merchant ref, or user" /></label>
+      <label className="analytics-filter-search trx-search-bar"><Search size={16}/><input type="search" value={q} onChange={(e)=>setQ(e.target.value)} aria-label="Search admin transactions" placeholder="Amount, sender, phone, transaction, merchant ref, or user" />{q&&<button type="button" className="trx-search-clear" onClick={()=>setQ('')} aria-label="Clear search"><X size={15}/></button>}</label>
       <select className="filter-select" value={status} onChange={(e)=>setStatus(e.target.value)}><option value="">All statuses</option>{['PENDING','PAID','APPROVED','DECLINED','EXPIRED','UNDERPAID'].map((v)=><option key={v}>{v}</option>)}</select>
       <select className="filter-select" value={method} onChange={(e)=>setMethod(e.target.value)}><option value="">All payment types</option>{['Mobile Wallet','Bank Account Transfer','InstaPay','P2P'].map((v)=><option key={v}>{v}</option>)}</select>
       <input className="login-input" value={merchant} onChange={(e)=>setMerchant(e.target.value)} placeholder="Merchant" aria-label="Merchant"/>

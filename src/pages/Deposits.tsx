@@ -16,6 +16,7 @@ import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
 import DepositKindBadge from '../components/DepositKindBadge'
 import { syncProviders } from '../lib/providerSync'
+import { Search, X } from 'lucide-react'
 
 const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
 const MASTER_PILLS = [
@@ -77,6 +78,7 @@ export default function Deposits() {
   const [decisionErr, setDecisionErr] = useState<string | null>(null)
 
   const appliedQ = params.get('q') ?? ''
+  useEffect(() => setQ(appliedQ), [appliedQ])
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -341,21 +343,21 @@ export default function Deposits() {
           ))}
         </div>
         <form
-          className="search-row"
+          className="search-row trx-search-bar"
+          role="search"
           onSubmit={(e) => { e.preventDefault(); setFilter({ q: q.trim() }) }}
         >
+          <Search size={16} aria-hidden="true" />
           <input
+            type="search"
             className="login-input search-input"
+            aria-label={t('بحث الإيداعات', 'Search deposits')}
             placeholder="بحث: مبلغ / اسم أو رقم المرسل / رقم العملية / مرجع التاجر / رقم المستخدم…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
           <button type="submit" className="btn-primary btn-sm">بحث</button>
-          {appliedQ && (
-            <button type="button" className="btn-ghost btn-sm" onClick={() => { setQ(''); setFilter({ q: '' }) }}>
-              مسح
-            </button>
-          )}
+          {(q || appliedQ) && <button type="button" className="trx-search-clear" onClick={() => { setQ(''); setFilter({ q: '' }) }} aria-label={t('مسح البحث', 'Clear search')}><X size={15}/></button>}
         </form>
         <div className="view-toggle" role="group" aria-label={t('طريقة العرض', 'View mode')}>
           <button

@@ -11,7 +11,7 @@ import PageSizeSelect from '../components/PageSizeSelect'
 import ProofModal from '../components/ProofModal'
 import SenderIdentity from '../components/SenderIdentity'
 import { useAuth } from '../auth/AuthContext'
-import { ChevronDown, ChevronRight, Eye, Image, LayoutGrid, Pencil, Search, TableProperties } from 'lucide-react'
+import { ChevronDown, ChevronRight, Eye, Image, LayoutGrid, Pencil, Search, TableProperties, X } from 'lucide-react'
 
 // All transactions — deposits + payouts merged, sorted by our ref.
 
@@ -78,6 +78,8 @@ export default function Transactions() {
   const [actionBusy, setActionBusy] = useState<string | null>(null)
   const [proof, setProof] = useState<{ url: string; ref: string } | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+
+  useEffect(() => setQ(appliedQ), [appliedQ])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -181,9 +183,10 @@ export default function Transactions() {
             </button>
           ))}
         </div>
-        <form className="search-row transaction-search-row" onSubmit={(e) => { e.preventDefault(); setFilter({ q: q.trim() }) }}>
+        <form className="search-row transaction-search-row trx-search-bar" role="search" onSubmit={(e) => { e.preventDefault(); setFilter({ q: q.trim() }) }}>
           <Search size={16} aria-hidden="true" />
-          <input className="login-input search-input" placeholder={t('بحث: مبلغ / مرسل / رقم عملية / مرجع تاجر / مستخدم…', 'Search: amount / sender / transaction / merchant ref / user…')} value={q} onChange={(e) => setQ(e.target.value)} />
+          <input type="search" className="login-input search-input" aria-label={t('بحث المعاملات', 'Search transactions')} placeholder={t('بحث: مبلغ / مرسل / رقم عملية / مرجع تاجر / مستخدم…', 'Search: amount / sender / transaction / merchant ref / user…')} value={q} onChange={(e) => setQ(e.target.value)} />
+          {(q || appliedQ) && <button type="button" className="trx-search-clear" onClick={() => { setQ(''); setFilter({ q: '' }) }} aria-label={t('مسح البحث', 'Clear search')}><X size={15}/></button>}
           <button type="submit" className="btn-primary btn-sm">{t('بحث', 'Search')}</button>
         </form>
         <div className="transaction-filter-fields">

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Eye, MessageSquare, Pencil, Save, X } from "lucide-react";
+import { Eye, MessageSquare, Pencil, Save, Search, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import PanelShell from "../components/PanelShell";
 import MerchantLogo from "../components/MerchantLogo";
@@ -140,6 +140,7 @@ export default function Payouts() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const appliedQ = params.get("q") ?? "";
+  useEffect(() => setQ(appliedQ), [appliedQ]);
   const appliedFrom = params.get("from") ?? "";
   const appliedTo = params.get("to") ?? "";
   const appliedMerchant = params.get("merchant") ?? "";
@@ -655,9 +656,9 @@ export default function Payouts() {
             {t("طريقة الدفع", "Payment method")}
             <input className="login-input" value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)} placeholder={t("كل الطرق", "All methods")} />
           </label>
-          <label className="field-label payout-filter-search">
+          <label className="field-label payout-filter-search trx-search-label">
             {t("بحث", "Search")}
-            <input className="login-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("مبلغ / اسم / هاتف / رقم عملية / مرجع تاجر / مستخدم", "Amount / name / phone / transaction / merchant ref / user")} />
+            <span className="trx-search-control"><Search size={16} aria-hidden="true"/><input type="search" className="login-input" value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("بحث السحوبات", "Search payouts")} placeholder={t("مبلغ / اسم / هاتف / رقم عملية / مرجع تاجر / مستخدم", "Amount / name / phone / transaction / merchant ref / user")} />{q && <button type="button" className="trx-search-clear" onClick={() => setQ("")} aria-label={t("مسح البحث", "Clear search")}><X size={15}/></button>}</span>
           </label>
           <button type="submit" className="btn-primary btn-sm">{t("تطبيق", "Apply")}</button>
           <button

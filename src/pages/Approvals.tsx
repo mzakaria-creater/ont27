@@ -9,7 +9,7 @@ import { depositTime, money } from '../lib/deposits'
 import { useBulk } from '../lib/useBulk'
 import { useLocale } from '../lib/locale'
 import { syncProviders } from '../lib/providerSync'
-import { LayoutGrid, TableProperties } from 'lucide-react'
+import { LayoutGrid, Search, TableProperties, X } from 'lucide-react'
 import MerchantLogo from '../components/MerchantLogo'
 import MethodLogo from '../components/MethodLogo'
 import SenderIdentity from '../components/SenderIdentity'
@@ -63,6 +63,7 @@ export default function Approvals() {
   const [rowBusy, setRowBusy] = useState<string | null>(null)
   const [proof, setProof] = useState<{ url: string; ref: string } | null>(null)
   const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => localStorage.getItem('approval-queue-view') === 'cards' ? 'cards' : 'table')
+  const [searchQuery, setSearchQuery] = useState('')
 
   const changeView = (mode: 'table' | 'cards') => {
     setViewMode(mode)
@@ -110,6 +111,9 @@ export default function Approvals() {
   }
 
   const canDep = can('deposits', 'can_approve')
+  const normalizedSearch = searchQuery.trim().toLocaleLowerCase()
+  const visibleDeposits = deposits?.filter((row) => !normalizedSearch || [row.tx_id, row.ontarget_ref, row.merchant_tx_reference, row.amount, row.sender_name, row.sender_number, row.sender_account_number, row.receiving_wallet, row.to_account_number, row.merchant, row.master_merchant].some((value) => String(value ?? '').toLocaleLowerCase().includes(normalizedSearch))) ?? []
+  const visiblePayouts = payouts?.filter((row) => !normalizedSearch || [row.maven_id, row.ontarget_ref, row.amount, row.account_name, row.mobile_no, row.pay_by, row.merchant].some((value) => String(value ?? '').toLocaleLowerCase().includes(normalizedSearch))) ?? []
 
   return (
     <PanelShell>
@@ -129,12 +133,19 @@ export default function Approvals() {
 
       <EditRequestQueue />
 
+      <form className="filter-bar approval-search-bar trx-search-bar" role="search" onSubmit={(event) => event.preventDefault()}>
+        <Search size={17} aria-hidden="true"/>
+        <input type="search" className="login-input search-input" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} aria-label={t('بحث طابور الموافقات', 'Search approval queue')} placeholder={t('بحث: رقم العملية / المبلغ / العميل / الهاتف / المحفظة / التاجر…', 'Search: transaction / amount / customer / phone / wallet / merchant…')}/>
+        {searchQuery && <button type="button" className="trx-search-clear" onClick={() => setSearchQuery('')} aria-label={t('مسح البحث', 'Clear search')}><X size={15}/></button>}
+        <span className="approval-search-count mono">{visibleDeposits.length + visiblePayouts.length}</span>
+      </form>
+
       {err && <div className="card warn">{err}</div>}
 
       {/* deposits */}
       <section className="card recent-card">
         <div className="recent-head">
-          <h3>💰 {t('إيداعات معلّقة', 'Pending deposits')} {deposits && <span className="mono">({deposits.length})</span>}</h3>
+          <h3>💰 {t('إيداعات معلّقة', 'Pending deposits')} {deposits && <span className="mono">({visibleDeposits.length})</span>}</h3>
           <Link to="/deposits?status=PENDING" className="pay-status-link">{t('فتح صفحة الإيداعات ←', 'Open deposits page →')}</Link>
         </div>
         {depBulk.progress && <div className="card bulk-progress">{depBulk.progress}</div>}
@@ -146,8 +157,8 @@ export default function Approvals() {
           </div>
         )}
         {!deposits && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
-        {deposits && deposits.length === 0 && <p>{t('لا توجد إيداعات معلّقة 🎉', 'No pending deposits 🎉')}</p>}
-        {deposits && deposits.length > 0 && viewMode === 'table' && (
+        {deposits && visibleDeposits.length === 0 && <p>{normalizedSearch ? t('لا توجد نتائج مطابقة.', 'No matching deposits.') : t('لا توجد إيداعات معلّقة 🎉', 'No pending deposits 🎉')}</p>}
+        {deposits && visibleDeposits.length > 0 && viewMode === 'table' && (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -156,8 +167,8 @@ export default function Approvals() {
                     <th className="check-col">
                       <input
                         type="checkbox"
-                        checked={deposits.length > 0 && deposits.every((r) => depBulk.selected.has(r.tx_id))}
-                        onChange={() => depBulk.toggleAll(deposits.map((r) => r.tx_id))}
+                        checked={visibleDeposits.length > 0 && visibleDeposits.every((r) => depBulk.selected.has(r.tx_id))}
+                        onChange={() => depBulk.toggleAll(visibleDeposits.map((r) => r.tx_id))}
                       />
                     </th>
                   )}
@@ -175,7 +186,7 @@ export default function Approvals() {
                 </tr>
               </thead>
               <tbody>
-                {deposits.map((r) => (
+                {visibleDeposits.map((r) => (
                   <tr key={r.tx_id} className="row-pending">
                     {canDep && (
                       <td className="check-col">
@@ -230,9 +241,9 @@ export default function Approvals() {
             </table>
           </div>
         )}
-        {deposits && deposits.length > 0 && viewMode === 'cards' && (
+        {deposits && visibleDeposits.length > 0 && viewMode === 'cards' && (
           <div className="approval-card-grid">
-            {deposits.map((r) => (
+            {visibleDeposits.map((r) => (
               <article className="approval-item-card" key={r.tx_id}>
                 <div className="approval-card-head">
                   <div>{canDep && <input type="checkbox" aria-label={t('تحديد المعاملة', 'Select transaction')} checked={depBulk.selected.has(r.tx_id)} onChange={() => depBulk.toggle(r.tx_id)} />}<Link to={`/transactions/${encodeURIComponent(r.ontarget_ref ?? String(r.tx_id))}`} className="mono approval-card-ref">{r.ontarget_ref ?? r.tx_id}</Link></div>
@@ -262,13 +273,13 @@ export default function Approvals() {
       {/* payouts */}
       <section className="card recent-card">
         <div className="recent-head">
-          <h3>📤 {t('سحوبات معلّقة', 'Pending payouts')} {payouts && <span className="mono">({payouts.length})</span>}</h3>
+          <h3>📤 {t('سحوبات معلّقة', 'Pending payouts')} {payouts && <span className="mono">({visiblePayouts.length})</span>}</h3>
           <Link to="/payouts?status=PENDING" className="pay-status-link">{t('فتح صفحة السحوبات ←', 'Open payouts page →')}</Link>
         </div>
         <p className="drawer-note">{t('تسجيل قرارات السحب يتم من صفحة السحوبات فقط، حيث يلزم رفع إثبات للمقبول ويظهر بوضوح أن تنفيذ المزود يدوي.', 'Payout decisions are recorded from the payouts page only, where a proof upload is required for approvals and provider execution is clearly manual.')}</p>
         {!payouts && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
-        {payouts && payouts.length === 0 && <p>{t('لا توجد سحوبات معلّقة 🎉', 'No pending payouts 🎉')}</p>}
-        {payouts && payouts.length > 0 && viewMode === 'table' && (
+        {payouts && visiblePayouts.length === 0 && <p>{normalizedSearch ? t('لا توجد نتائج مطابقة.', 'No matching payouts.') : t('لا توجد سحوبات معلّقة 🎉', 'No pending payouts 🎉')}</p>}
+        {payouts && visiblePayouts.length > 0 && viewMode === 'table' && (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -283,7 +294,7 @@ export default function Approvals() {
                 </tr>
               </thead>
               <tbody>
-                {payouts.map((r) => (
+                {visiblePayouts.map((r) => (
                   <tr key={r.maven_id} className="row-pending">
                     <td className="mono">{r.ontarget_ref ?? r.maven_id}<div className="cell-sub mono">{r.maven_id}</div></td>
                     <td className="mono">{money(r.amount, 'EGP')}</td>
@@ -298,9 +309,9 @@ export default function Approvals() {
             </table>
           </div>
         )}
-        {payouts && payouts.length > 0 && viewMode === 'cards' && (
+        {payouts && visiblePayouts.length > 0 && viewMode === 'cards' && (
           <div className="approval-card-grid payout-card-grid">
-            {payouts.map((r) => <article className="approval-item-card" key={r.maven_id}>
+            {visiblePayouts.map((r) => <article className="approval-item-card" key={r.maven_id}>
               <div className="approval-card-head"><span className="mono approval-card-ref">{r.ontarget_ref ?? r.maven_id}</span><span className="pay-status-badge st-pending">{t('سحب معلّق', 'Pending payout')}</span></div>
               <div className="approval-card-amount">{money(r.amount, 'EGP')}</div>
               <div className="approval-card-party"><strong>{r.account_name ?? t('مستفيد غير معروف', 'Unknown beneficiary')}</strong><span className="mono">{r.mobile_no ?? '—'}</span></div>
