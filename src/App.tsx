@@ -10,6 +10,7 @@ import { merchantChipCls, money } from './lib/deposits'
 import { SUPABASE_URL, SUPABASE_KEY } from './lib/supabase'
 import { LocaleProvider, useLocale } from './lib/locale'
 import { installNotificationAudioUnlock, playNotificationTone } from './lib/notificationSounds'
+import WrongfulDeclineRealtimePopup from './components/WrongfulDeclineRealtimePopup'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Monitor = lazy(() => import('./pages/Monitor'))
@@ -294,6 +295,7 @@ export default function App() {
       <LocaleProvider>
         <div className="shell">
           <Topbar />
+          <WrongfulDeclineRealtimePopup />
         <Suspense fallback={<div className="route-loading" role="status"><span className="ld" /> Loading…</div>}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />

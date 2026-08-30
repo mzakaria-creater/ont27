@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import type { Context } from 'hono'
 import { db } from './db.js'
+import { createClient } from '@supabase/supabase-js'
 import {
   ACCESS_COOKIE, REFRESH_COOKIE, ACCESS_TTL_SEC, REFRESH_TTL_SEC_REMEMBER,
   signAccessToken, verifyAccessToken, verifyPassword, hashPassword,
@@ -189,6 +190,34 @@ authRoutes.post('/logout', async (c) => {
   }
   clearAuthCookies(c)
   return c.json({ ok: true })
+})
+
+// Bridge the panel's httpOnly-cookie session to a short-lived Supabase Auth
+// token used only by Realtime. This keeps telegram_alerts behind its existing
+// authenticated RLS policy; the publishable key never receives anon access.
+authRoutes.get('/realtime-token', async (c) => {
+  const raw = getCookie(c, ACCESS_COOKIE)
+  const actor = raw ? await verifyAccessToken(raw) : null
+  if (!actor) return c.json({ error: 'unauthenticated' }, 401)
+  const url = process.env.SUPABASE_URL
+  const secret = process.env.SUPABASE_SECRET_KEY
+  if (!url || !secret) return c.json({ error: 'realtime_not_configured' }, 503)
+  const email = `panel-${actor.sub}@realtime.ontarget.invalid`
+  const generated = await db.auth.admin.generateLink({ type: 'magiclink', email })
+  if (generated.error || !generated.data?.properties?.hashed_token || !generated.data.user) {
+    return c.json({ error: 'realtime_identity_failed' }, 503)
+  }
+  const user = generated.data.user
+  const currentRole = user.app_metadata?.app_role
+  if (currentRole !== actor.role) {
+    const updated = await db.auth.admin.updateUserById(user.id, { app_metadata: { ...user.app_metadata, app_role: actor.role, panel_user_id: actor.sub } })
+    if (updated.error) return c.json({ error: 'realtime_role_failed' }, 503)
+  }
+  const verifier = createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } })
+  const verified = await verifier.auth.verifyOtp({ token_hash: generated.data.properties.hashed_token, type: 'magiclink' })
+  const token = verified.data.session?.access_token
+  if (verified.error || !token) return c.json({ error: 'realtime_token_failed' }, 503)
+  return c.json({ access_token: token, expires_in: verified.data.session?.expires_in ?? 3600 })
 })
 
 // --- 2FA enrollment (optional, from an authenticated session) ---
