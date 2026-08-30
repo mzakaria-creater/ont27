@@ -206,6 +206,33 @@ interface RailDevice {
   last_seen_at: string | null
 }
 
+interface RailTelegramAlert { id: number; alert_type: string; chat_id: string | null; message: string | null; ok: boolean | null; error: string | null; created_at: string | null }
+
+const telegramPlainText = (value: string | null) => (value ?? '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/?(?:b|code|strong|em)>/gi, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim()
+const telegramTxRef = (value: string | null) => telegramPlainText(value).match(/(?:^|\n)TRX\s*:\s*([0-9]+)/i)?.[1] ?? null
+
+function TelegramRail({ onMinimize }: { onMinimize: () => void }) {
+  const { t } = useLocale()
+  const [rows, setRows] = useState<RailTelegramAlert[]>([])
+  useEffect(() => {
+    let alive = true
+    const load = () => void api<{ alerts: RailTelegramAlert[] }>('/api/telegram').then((result) => { if (alive) setRows(result.alerts ?? []) }).catch(() => {})
+    load(); const timer = window.setInterval(load, 10_000)
+    return () => { alive = false; window.clearInterval(timer) }
+  }, [])
+  return <aside id="live-telegram-widget" className="sms-rail telegram-rail" aria-label="Telegram Live" onPointerDown={(event) => event.stopPropagation()}>
+    <div className="sms-rail-head"><span className="sms-rail-title telegram-live-title"><Send size={16}/>Telegram Live</span><span className="sms-rail-head-actions"><span className="live-dot"><span className="ld"/>{t('حي','Live')}</span><button type="button" className="sms-widget-icon-btn" onClick={onMinimize} aria-label={t('تصغير Telegram','Minimize Telegram')}><Minimize2 size={15}/></button></span></div>
+    <div className="telegram-feed">
+      {!rows.length && <span className="sidebar-hint">{t('لا توجد تنبيهات بعد.','No alerts yet.')}</span>}
+      {rows.map((row) => {
+        const ref = telegramTxRef(row.message)
+        const body = <><div className="sms-feed-head"><span className="telegram-alert-type">{row.alert_type.replaceAll('_',' ')}</span><span className="sms-feed-time mono">{depositTime({ first_seen_at: row.created_at })}</span></div><div className="telegram-alert-message" dir="auto">{telegramPlainText(row.message) || '—'}</div><div className={`sms-feed-status ${row.ok ? 'link' : 'wait'}`}>{row.ok ? `✓ ${t('تم التسليم','Delivered')}` : `⚠ ${row.error ?? t('فشل التسليم','Delivery failed')}`}{row.chat_id && <span className="mono"> · {row.chat_id}</span>}</div></>
+        return ref ? <Link key={row.id} to={`/transactions/${ref}`} className={`sms-feed-item telegram-feed-item${row.ok ? ' matched' : ''}`}>{body}</Link> : <article key={row.id} className={`sms-feed-item telegram-feed-item${row.ok ? ' matched' : ''}`}>{body}</article>
+      })}
+    </div>
+  </aside>
+}
+
 function SmsRail({ onMinimize }: { onMinimize: () => void }) {
   const [rows, setRows] = useState<RailSms[]>([])
   const [devices, setDevices] = useState<RailDevice[]>([])
@@ -298,6 +325,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
     try { return window.localStorage.getItem('ontarget:sms-widget') === 'expanded' }
     catch { return false }
   })
+  const [telegramOpen, setTelegramOpen] = useState(false)
   const [chatUnread, setChatUnread] = useState(0)
   const chatSeenRef = useRef<number | null>(null)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<NavGroupId>>(() => new Set(NAV_GROUPS.map((group) => group.id).filter((id) => id !== activeGroup)))
@@ -325,6 +353,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   // a short idle period so dense operations tables always retain full width.
   useEffect(() => {
     setSmsOpen(false)
+    setTelegramOpen(false)
   }, [pathname])
 
   useEffect(() => {
@@ -400,9 +429,10 @@ export default function PanelShell({ children }: { children: ReactNode }) {
         {normalizedNavQuery && NAV_GROUPS.every((group) => renderLinks(group.id).length === 0) && <div className="sidebar-empty">{t('لا توجد صفحة مطابقة.', 'No matching page.')}</div>}
       </nav>
       <main id="main-workspace" className="dash-main">{children}</main>
-      {can('telegram_bot') && <Link to="/telegram" className="telegram-widget-launcher" aria-label={t('فتح Telegram المباشر', 'Open Telegram Live')} title={t('فتح Telegram المباشر', 'Open Telegram Live')}><span className="telegram-widget-pulse"/><Send size={19} aria-hidden="true"/><span className="sms-widget-label">Telegram Live</span></Link>}
-      {can('sms_live') && !smsOpen && <button type="button" className="sms-widget-launcher" onClick={() => setSmsOpen(true)} aria-expanded="false" aria-controls="live-sms-widget" aria-label={t('إظهار SMS المباشر', 'Show Live SMS')} title={t('إظهار SMS المباشر', 'Show Live SMS')}><span className="sms-widget-pulse" /><MessageSquareText size={20} aria-hidden="true" /><span className="sms-widget-label">Live SMS</span></button>}
+      {can('telegram_bot') && !telegramOpen && <button type="button" className="telegram-widget-launcher" onClick={() => { setTelegramOpen(true); setSmsOpen(false) }} aria-expanded="false" aria-controls="live-telegram-widget" aria-label={t('إظهار Telegram المباشر', 'Show Telegram Live')} title={t('إظهار Telegram المباشر', 'Show Telegram Live')}><span className="telegram-widget-pulse"/><Send size={19} aria-hidden="true"/><span className="sms-widget-label">Telegram Live</span></button>}
+      {can('sms_live') && !smsOpen && <button type="button" className="sms-widget-launcher" onClick={() => { setSmsOpen(true); setTelegramOpen(false) }} aria-expanded="false" aria-controls="live-sms-widget" aria-label={t('إظهار SMS المباشر', 'Show Live SMS')} title={t('إظهار SMS المباشر', 'Show Live SMS')}><span className="sms-widget-pulse" /><MessageSquareText size={20} aria-hidden="true" /><span className="sms-widget-label">Live SMS</span></button>}
       {can('sms_live') && smsOpen && <SmsRail onMinimize={() => setSmsOpen(false)} />}
+      {can('telegram_bot') && telegramOpen && <TelegramRail onMinimize={() => setTelegramOpen(false)} />}
     </div>
   )
 }

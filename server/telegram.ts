@@ -19,7 +19,7 @@ telegramRoutes.get('/', requireAnyPerm(TG_KEYS, 'can_view'), async (c) => {
     db.from('maven_runtime_config').select('value').eq('name', 'TELEGRAM_BOT_TOKEN').eq('owner_name', 'global').maybeSingle(),
     db.from('telegram_chats').select('id, chat_id, label, is_active, created_at, receives_daily_report').order('created_at'),
     db.from('telegram_alert_gates').select('alert_type, label, enabled, updated_at').order('alert_type'),
-    db.from('telegram_alerts').select('id, alert_type, chat_id, ok, error, created_at').order('created_at', { ascending: false }).limit(30),
+    db.from('telegram_alerts').select('id, alert_type, chat_id, message, ok, error, created_at').order('created_at', { ascending: false }).limit(30),
   ])
   // Bot identity (mirrors @ontargetEGBot into the panel) + whether its updates
   // are bound to an external webhook (e.g. n8n) — in which case live message
