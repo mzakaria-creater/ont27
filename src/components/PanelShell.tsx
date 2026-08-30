@@ -9,7 +9,7 @@ import { depositTime, money } from '../lib/deposits'
 import type { PagePermission } from '../lib/api'
 import { useLocale } from '../lib/locale'
 import { installNotificationAudioUnlock, playNotificationTone } from '../lib/notificationSounds'
-import { BarChart3, Bot, ChevronDown, CircleDollarSign, LayoutDashboard, Menu, MessageSquareText, Minimize2, PanelLeftClose, PanelLeftOpen, Search, Settings, Users, WalletCards, X } from 'lucide-react'
+import { BarChart3, Bot, ChevronDown, CircleDollarSign, LayoutDashboard, Menu, MessageSquareText, Minimize2, PanelLeftClose, PanelLeftOpen, Search, Send, Settings, Users, WalletCards, X } from 'lucide-react'
 
 // Shared authed layout ("Live Transaction Monitor" skin): nav rail (real pages
 // first, then the role's remaining permitted modules as "قريباً" placeholders),
@@ -109,7 +109,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/automation-control', icon: '⚙️', labelAr: 'لوحة تحكم الأتمتة', labelEn: 'Automation control', keys: ['automation'], group: 'automation' },
   { to: '/replay-lab', icon: '🧪', labelAr: 'مختبر Replay', labelEn: 'Replay lab', keys: ['automation', 'sms_live', 'webhooks'], group: 'automation' },
   { to: '/webhooks', icon: '↗', labelAr: 'مركز Webhooks', labelEn: 'Webhook Center', keys: ['webhooks', 'developers'], group: 'admin' },
-  { to: '/telegram', icon: '📨', labelAr: 'تنبيهات Telegram', labelEn: 'Telegram alerts', keys: ['telegram_bot', 'automation'], group: 'automation' },
+  { to: '/telegram', icon: '✈️', labelAr: 'Telegram مباشر', labelEn: 'Telegram Live', keys: ['telegram_bot', 'automation'], group: 'automation' },
   { to: '/binance', icon: '🪙', labelAr: 'Binance P2P', labelEn: 'Binance P2P', keys: ['binance_p2p_config', 'binance_p2p', 'treasury'], group: 'automation' },
   { to: '/binance/p2p-ads', icon: '📣', labelAr: 'إعلانات P2P', labelEn: 'P2P Live Ads', keys: ['binance_p2p', 'treasury'], group: 'automation' },
   { to: '/binance/p2p-history', icon: '🧾', labelAr: 'سجل P2P', labelEn: 'P2P History', keys: ['binance_p2p', 'treasury'], group: 'automation' },
@@ -356,7 +356,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   const matchesNavQuery = (link: NavLinkDef) => !normalizedNavQuery || `${link.labelEn} ${link.labelAr} ${link.to}`.toLocaleLowerCase().includes(normalizedNavQuery)
   const renderLinks = (group: NavGroupId) => BUILT_LINKS.filter((l) => l.group === group && visible(l) && matchesNavQuery(l)).map((l) => (
     <Link key={l.to} to={l.to} title={locale === 'en' ? l.labelEn : l.labelAr} onClick={() => setNavOpen(false)} className={`sidebar-item sidebar-link${pathname === l.to ? ' active' : ''}`}>
-      <span className="sidebar-icon" aria-hidden="true">{NAV_GROUP_ICONS[l.group]}</span><span>{locale === 'en' ? l.labelEn : l.labelAr}</span>{l.to === '/chat' && chatUnread > 0 && <span className="sidebar-chat-badge" aria-label={`${chatUnread} unread`}>{chatUnread > 99 ? '99+' : chatUnread}</span>}
+      <span className="sidebar-icon" aria-hidden="true">{l.icon}</span><span>{locale === 'en' ? l.labelEn : l.labelAr}</span>{l.to === '/chat' && chatUnread > 0 && <span className="sidebar-chat-badge" aria-label={`${chatUnread} unread`}>{chatUnread > 99 ? '99+' : chatUnread}</span>}
     </Link>
   ))
   const toggleGroup = (group: NavGroupId) => setCollapsedGroups((current) => {
@@ -400,6 +400,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
         {normalizedNavQuery && NAV_GROUPS.every((group) => renderLinks(group.id).length === 0) && <div className="sidebar-empty">{t('لا توجد صفحة مطابقة.', 'No matching page.')}</div>}
       </nav>
       <main id="main-workspace" className="dash-main">{children}</main>
+      {can('telegram_bot') && <Link to="/telegram" className="telegram-widget-launcher" aria-label={t('فتح Telegram المباشر', 'Open Telegram Live')} title={t('فتح Telegram المباشر', 'Open Telegram Live')}><span className="telegram-widget-pulse"/><Send size={19} aria-hidden="true"/><span className="sms-widget-label">Telegram Live</span></Link>}
       {can('sms_live') && !smsOpen && <button type="button" className="sms-widget-launcher" onClick={() => setSmsOpen(true)} aria-expanded="false" aria-controls="live-sms-widget" aria-label={t('إظهار SMS المباشر', 'Show Live SMS')} title={t('إظهار SMS المباشر', 'Show Live SMS')}><span className="sms-widget-pulse" /><MessageSquareText size={20} aria-hidden="true" /><span className="sms-widget-label">Live SMS</span></button>}
       {can('sms_live') && smsOpen && <SmsRail onMinimize={() => setSmsOpen(false)} />}
     </div>
