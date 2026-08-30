@@ -59,6 +59,7 @@ const IntegrationGuide = lazy(() => import('./pages/IntegrationGuide'))
 const RevenueCenter = lazy(() => import('./pages/RevenueCenter'))
 const Welcome = lazy(() => import('./pages/Welcome'))
 const AccountAction = lazy(() => import('./pages/AccountAction'))
+const WebhookCenter = lazy(() => import('./pages/WebhookCenter'))
 
 type Conn = 'wait' | 'ok' | 'bad'
 
@@ -345,6 +346,7 @@ export default function App() {
             <Route path="/payment-methods" element={<PaymentMethods />} />
             <Route path="/known-recipients" element={<KnownRecipients />} />
             <Route path="/replay-lab" element={<ReplayLab />} />
+            <Route path="/webhooks" element={<PageGate keys={['webhooks','developers']}><WebhookCenter /></PageGate>} />
             <Route path="/airdroid" element={<AirDroid />} />
             <Route path="/ontarget-hub" element={<TreasuryHub />} />
             <Route path="/hub" element={<TreasuryHub />} />
