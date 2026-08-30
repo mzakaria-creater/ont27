@@ -125,6 +125,83 @@ complaintRoutes.post('/investigate', async (c) => {
   return c.json({ ok: true, result: data })
 })
 
+// Bulk merchant-reference investigation. Reference1 is the only merchant
+// reference; merchant_tx_reference mirrors tx_id and must never be used here.
+complaintRoutes.post('/batch-investigate', async (c) => {
+  const old = oldDb()
+  if (!old) return c.json({ error: 'old_db_not_configured' }, 500)
+  const body = await c.req.json().catch(() => null)
+  const references = Array.isArray(body?.references)
+    ? [...new Set(body.references.map((value: unknown) => String(value).trim()).filter((value: string) => /^\d{11}$/.test(value)))].slice(0, 500)
+    : []
+  const master = body?.master_merchant === 'PayFuture' ? 'PayFuture' : 'NGPay'
+  if (!references.length) return c.json({ error: 'no_valid_references' }, 400)
+  const { data, error } = await old.rpc('investigate_merchant_complaints', {
+    p_references: references,
+    p_master_merchant: master,
+  })
+  if (error) return c.json({ error: 'investigation_failed', detail: error.message }, 500)
+  return c.json(data ?? { masterMerchant: master, generatedAt: new Date().toISOString(), rows: [] })
+})
+
+const INVESTIGATION_ACTIONS = new Set(['approve_paid', 'link_sms', 'reject_complaint'])
+
+complaintRoutes.post('/investigation-action', async (c) => {
+  const old = oldDb()
+  if (!old) return c.json({ error: 'old_db_not_configured' }, 500)
+  const body = await c.req.json().catch(() => null)
+  const txId = Number(body?.tx_id)
+  const smsId = body?.sms_id == null ? null : Number(body.sms_id)
+  const action = String(body?.action ?? '')
+  const note = typeof body?.note === 'string' ? body.note.trim().slice(0, 1000) : null
+  if (!Number.isInteger(txId) || !INVESTIGATION_ACTIONS.has(action)) return c.json({ error: 'bad_request' }, 400)
+  if (action === 'link_sms' && !Number.isInteger(smsId)) return c.json({ error: 'sms_required' }, 400)
+
+  const actor = c.get('actor')
+  const { data: tx, error: txError } = await old.from('maven_transactions')
+    .select('tx_id, status, amount, sender_number, receiving_wallet, to_account_number, created_utc, first_seen_at, raw')
+    .eq('tx_id', txId).maybeSingle()
+  if (txError || !tx) return c.json({ error: 'transaction_not_found' }, 404)
+
+  if (action === 'link_sms') {
+    const { data: sms, error: smsError } = await old.from('inbound_sms')
+      .select('id, amount, sender_number, receiver_number, received_at, consumed_by_tx_id')
+      .eq('id', smsId).maybeSingle()
+    if (smsError || !sms) return c.json({ error: 'sms_not_found' }, 404)
+    if (sms.consumed_by_tx_id != null && Number(sms.consumed_by_tx_id) !== txId) return c.json({ error: 'sms_already_consumed' }, 409)
+    const wallet = tx.receiving_wallet || tx.to_account_number
+    const createdAt = new Date(tx.created_utc || tx.first_seen_at).getTime()
+    const receivedAt = new Date(sms.received_at).getTime()
+    const safe = Number(sms.amount) === Number(tx.amount)
+      && Boolean(wallet) && sms.receiver_number === wallet
+      && Number.isFinite(createdAt) && Number.isFinite(receivedAt)
+      && receivedAt >= createdAt - 15 * 60_000 && receivedAt <= createdAt + 90 * 60_000
+      && (sms.sender_number == null || sms.sender_number === tx.sender_number)
+    if (!safe) return c.json({ error: 'sms_match_rules_failed' }, 409)
+    const { error } = await old.from('inbound_sms').update({
+      consumed_by_tx_id: txId, matched_transaction_id: txId, matched: true,
+      match_status: 'manual', review_required: false, processed_at: new Date().toISOString(),
+    }).eq('id', smsId).is('consumed_by_tx_id', null)
+    if (error) return c.json({ error: 'link_failed', detail: error.message }, 500)
+  } else if (action === 'approve_paid') {
+    // This existing production RPC writes PAID and creates the provider-sync job.
+    const { data, error } = await old.rpc('complaint_approve', {
+      p_tx_id: txId, p_complaint_id: null, p_admin_note: note, p_target_status: 'PAID',
+    })
+    if (error) return c.json({ error: 'approve_failed', detail: error.message }, 500)
+    await old.from('maven_transactions').update({ approved_by: actor.username }).eq('tx_id', txId)
+    await db.from('maven_transactions').update({ status: 'PAID', approved_by: actor.username }).eq('tx_id', txId)
+    void data
+  }
+
+  const reference = String((tx.raw as Record<string, unknown> | null)?.Reference1 ?? '')
+  await audit(actor, `complaint.investigation.${action}`, String(txId), {
+    merchant_reference: reference, sms_id: smsId, note, previous_status: tx.status,
+    target_status: action === 'approve_paid' ? 'PAID' : tx.status,
+  })
+  return c.json({ ok: true, tx_id: txId, action, actor: actor.username, recorded_at: new Date().toISOString() })
+})
+
 const DECISIONS: Record<string, string> = {
   approve: 'complaint_approve',
   decline: 'complaint_decline',

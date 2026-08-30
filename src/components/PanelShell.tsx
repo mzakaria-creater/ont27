@@ -111,6 +111,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/webhooks', icon: '↗', labelAr: 'مركز Webhooks', labelEn: 'Webhook Center', keys: ['webhooks', 'developers'], group: 'admin' },
   { to: '/telegram', icon: '📨', labelAr: 'تنبيهات Telegram', labelEn: 'Telegram alerts', keys: ['telegram_bot', 'automation'], group: 'automation' },
   { to: '/binance', icon: '🪙', labelAr: 'Binance P2P', labelEn: 'Binance P2P', keys: ['binance_p2p_config', 'binance_p2p', 'treasury'], group: 'automation' },
+  { to: '/binance/p2p-egp', icon: '🇪🇬', labelAr: 'P2P EGP · فودافون', labelEn: 'P2P EGP · Vodafone', keys: ['binance_p2p', 'treasury'], group: 'automation' },
   // System — reporting, audit, admin
   { to: '/reports', icon: '📊', labelAr: 'التقارير الشاملة', labelEn: 'Full reports', keys: ['reports', 'advanced_analysis'], group: 'insights' },
   { to: '/audit', icon: '🕵️', labelAr: 'سجل التدقيق', labelEn: 'Audit log', keys: ['audit_log', 'audit-logs'], group: 'admin' },
