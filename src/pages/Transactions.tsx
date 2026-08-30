@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import PanelShell from '../components/PanelShell'
 import MerchantLogo from '../components/MerchantLogo'
@@ -11,7 +11,7 @@ import PageSizeSelect from '../components/PageSizeSelect'
 import ProofModal from '../components/ProofModal'
 import SenderIdentity from '../components/SenderIdentity'
 import { useAuth } from '../auth/AuthContext'
-import { LayoutGrid, Search, TableProperties } from 'lucide-react'
+import { ChevronDown, ChevronRight, Eye, Image, LayoutGrid, Pencil, Search, TableProperties } from 'lucide-react'
 
 // All transactions — deposits + payouts merged, sorted by our ref.
 
@@ -29,6 +29,8 @@ interface TxRow {
   sender_name?: string | null
   sender_number?: string | null
   sender_account_number?: string | null
+  sender_account_name?: string | null
+  user_email?: string | null
   account_name?: string | null
   mobile_no?: string | null
   payment_method?: string | null
@@ -75,6 +77,7 @@ export default function Transactions() {
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [actionBusy, setActionBusy] = useState<string | null>(null)
   const [proof, setProof] = useState<{ url: string; ref: string } | null>(null)
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -123,6 +126,11 @@ export default function Transactions() {
   }
 
   const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1
+  const toggleExpanded = (key: string) => setExpanded((current) => {
+    const next = new Set(current)
+    if (next.has(key)) next.delete(key); else next.add(key)
+    return next
+  })
 
   const decide = async (row: TxRow, action: 'approve' | 'decline') => {
     const id = row.kind === 'deposit' ? row.tx_id : row.maven_id
@@ -192,28 +200,25 @@ export default function Transactions() {
 
       {err && <div className="card warn">{err}</div>}
 
-      <section className="card recent-card">
+      <section className="card recent-card portal-transactions-card">
         {loading && !data && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
         {data && data.rows.length === 0 && <p>{t('لا توجد نتائج مطابقة.', 'No matching results.')}</p>}
         {data && data.rows.length > 0 && view === 'table' && (
-          <div className="table-wrap">
-            <table className="data-table all-transactions-table">
+          <div className="table-wrap portal-table-wrap">
+            <table className="data-table all-transactions-table portal-transaction-grid">
               <thead>
                 <tr>
-                  <th>{t('رقم العملية', 'Ref')}</th>
-                  <th>{t('النوع', 'Type')}</th>
-                  <th>{t('الإثبات', 'Proof')}</th>
-                  <th>{t('المبلغ', 'Amount')}</th>
-                  <th>{t('الطرف', 'Party')}</th>
-                  <th>{t('حساب المرسل', 'Sender account')}</th>
-                  <th>{t('المحفظة', 'Wallet')}</th>
-                  <th>{t('التكرار', 'Duplicates')}</th>
-                  <th>{t('التاجر', 'Merchant')}</th>
-                  <th>{t('الطريقة', 'Method')}</th>
+                  <th aria-label={t('توسيع', 'Expand')} />
+                  <th>{t('الإجراء', 'Action')}</th>
+                  <th>{t('رقم المعاملة', 'Transaction ID')}</th>
                   <th>{t('الحالة', 'Status')}</th>
-                  <th>{t('اعتمد بواسطة', 'Approved by')}</th>
-                  <th>{t('الوقت', 'Time')}</th>
-                  <th>{t('إجراء', 'Action')}</th>
+                  <th>{t('نوع الدفع', 'Payment Type')}</th>
+                  <th>{t('المبلغ', 'Amount')}</th>
+                  <th>{t('بريد المستخدم', 'User Email')}</th>
+                  <th>{t('هاتف المستخدم', 'User Phone Number')}</th>
+                  <th>{t('اسم حساب المرسل', 'Sender Account Name')}</th>
+                  <th>{t('رقم حساب المرسل', 'Sender Account Number')}</th>
+                  <th>{t('تاريخ الإنشاء UTC', 'Created UTC Date')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -224,56 +229,35 @@ export default function Transactions() {
                   const clientPhone = r.kind === 'deposit' ? r.sender_number : r.mobile_no
                   const wallet = r.kind === 'deposit' ? (r.receiving_wallet ?? r.to_account_number) : null
                   const proofUrl = r.kind === 'deposit' ? r.proof_image_url : r.image_url
+                  const rowKey = `${r.kind}-${id}`
+                  const isExpanded = expanded.has(rowKey)
+                  const details = r.kind === 'deposit' && r.ontarget_ref ? `/transactions/${encodeURIComponent(r.ontarget_ref)}` : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`
+                  const senderAccountName = r.kind === 'deposit' ? (r.sender_account_name ?? r.payment_method ?? party) : (r.account_name ?? party)
                   return (
-                    <tr key={`${r.kind}-${id}`} className={r.status === 'PENDING' ? 'row-pending' : undefined}>
-                      <td className="mono">
-                        <Link className="transaction-cell-link" to={r.kind === 'deposit' && r.ontarget_ref ? `/transactions/${encodeURIComponent(r.ontarget_ref)}` : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{r.ontarget_ref ?? id}</Link>
-                        {r.merchant_tx_reference && <div className="cell-sub mono">{r.merchant_tx_reference}</div>}
-                      </td>
-                      <td>
-                        <span className={`pay-status-badge ${r.kind === 'deposit' ? 'st-paid' : 'st-under'}`}>
-                          {r.kind === 'deposit' ? `💰 ${t('إيداع', 'Deposit')}` : `📤 ${t('سحب', 'Payout')}`}
-                        </span>
-                      </td>
-                      <td>{proofUrl ? <button type="button" className="proof-thumb-btn" title={t('عرض إثبات الدفع', 'View payment proof')} aria-label={t('عرض إثبات الدفع', 'View payment proof')} onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id) })}><img src={proofUrl} alt="" loading="lazy" /></button> : <span className="cell-sub">{t('بدون', 'None')}</span>}</td>
-                      <td className="mono">{money(r.amount, r.currency ?? 'EGP')}</td>
-                      <td><SenderIdentity name={party} phone={clientPhone} nameHref={party ? `/transactions?q=${encodeURIComponent(party)}` : undefined} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined} /></td>
-                      <td className="mono">{r.kind === 'deposit' ? (r.sender_account_number ?? r.sender_number ?? '—') : '—'}</td>
-                      <td>{wallet ? <Link className="mono transaction-cell-link" to={`/transactions?type=deposit&q=${encodeURIComponent(wallet)}`}>{wallet}</Link> : '—'}</td>
-                      <td>{(r.client_transaction_count ?? 1) > 1 ? <Link className="pay-status-badge st-under transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات','transactions')}</Link> : <span className="cell-sub">{t('أول معاملة','First')}</span>}</td>
-                      <td><MerchantLogo merchant={r.merchant ?? r.master_merchant} />{r.master_merchant && r.master_merchant !== r.merchant && <div className="cell-sub">{r.master_merchant}</div>}</td>
-                      <td><MethodLogo method={r.kind === 'deposit' ? r.payment_method : r.pay_by} /></td>
-                      <td>
-                        <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
-                        {r.kind === 'deposit' && r.gateway === 'NagupayP2P' && (
-                          <div className={`provider-row-status ${st.cls}`} title={t('الحالة القادمة من NagoPay', 'Status received from NagoPay')}>
-                            NagoPay · {r.status}
-                          </div>
-                        )}
-                      </td>
-                      <td>{r.status === 'PENDING' ? '—' : (!r.approved_by || r.approved_by === 'Manual' ? t('النظام (آلي)', 'System (auto)') : r.approved_by)}</td>
-                      <td className="mono">{depositTime(r)}</td>
-                      <td>
-                        <div className="transaction-action-buttons">
-                        {r.status === 'PENDING' && r.kind === 'deposit' && can('deposits', 'can_approve') && <>
-                          <button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r, 'approve')}>{t('اعتماد', 'Approve')}</button>
-                          <button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r, 'decline')}>{t('رفض', 'Reject')}</button>
-                        </>}
-                        {r.status === 'PENDING' && r.kind === 'payout' && can('payouts', 'can_approve') && <>
-                          <Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('رفع إثبات ودفع', 'Proof & Pay')}</Link>
-                          <button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r, 'decline')}>{t('رفض', 'Reject')}</button>
-                        </>}
-                        <Link
-                          className="btn-ghost btn-sm"
-                          to={r.kind === 'deposit' && r.ontarget_ref
-                            ? `/transactions/${encodeURIComponent(r.ontarget_ref)}`
-                            : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}
-                        >
-                          👁 {t('تفاصيل', 'Details')}
-                        </Link>
-                        </div>
-                      </td>
-                    </tr>
+                    <Fragment key={rowKey}>
+                      <tr key={rowKey} className={r.status === 'PENDING' ? 'row-pending' : undefined}>
+                        <td><button type="button" className="tx-expand-btn" onClick={() => toggleExpanded(rowKey)} aria-expanded={isExpanded} aria-label={isExpanded ? t('إغلاق التفاصيل', 'Collapse details') : t('فتح التفاصيل', 'Expand details')}>{isExpanded ? <ChevronDown size={15}/> : <ChevronRight size={15}/>}</button></td>
+                        <td><div className="portal-row-actions"><Link className="tx-action-primary" to={details}>{r.status === 'PENDING' ? <Pencil size={13}/> : <Eye size={13}/>}<span>{r.status === 'PENDING' ? t('تعديل', 'Edit') : t('عرض', 'View')}</span></Link>{proofUrl && <button type="button" className="tx-proof-icon" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id) })} aria-label={t('عرض الإثبات', 'View proof')} title={t('عرض الإثبات', 'View proof')}><Image size={15}/></button>}</div></td>
+                        <td className="mono"><Link className="transaction-cell-link" to={details}>{id}</Link>{r.ontarget_ref && String(r.ontarget_ref) !== String(id) && <div className="cell-sub mono">{r.ontarget_ref}</div>}{r.merchant_tx_reference && <div className="cell-sub mono">{r.merchant_tx_reference}</div>}</td>
+                        <td><span className={`portal-status-tag ${st.cls}`}>{st.label}</span></td>
+                        <td><div className="portal-method-cell"><MethodLogo method={r.kind === 'deposit' ? r.payment_method : r.pay_by}/><span>{r.kind === 'deposit' ? (r.payment_method ?? t('إيداع', 'Deposit')) : (r.pay_by ?? t('سحب', 'Payout'))}</span></div></td>
+                        <td className="mono portal-amount-cell">{money(r.amount, r.currency ?? 'EGP')}</td>
+                        <td>{r.user_email ? <a href={`mailto:${r.user_email}`} className="transaction-cell-link">{r.user_email}</a> : '—'}</td>
+                        <td><SenderIdentity name={null} phone={clientPhone} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined}/></td>
+                        <td>{senderAccountName ?? '—'}</td>
+                        <td className="mono"><Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(r.sender_account_number ?? clientPhone ?? '')}`}>{r.sender_account_number ?? clientPhone ?? '—'}</Link></td>
+                        <td className="mono">{depositTime(r)}</td>
+                      </tr>
+                      {isExpanded && <tr key={`${rowKey}-details`} className="tx-expanded-row"><td colSpan={11}><div className="tx-expanded-grid">
+                        <div><span>{t('الطرف', 'Party')}</span><SenderIdentity name={party} phone={clientPhone} nameHref={party ? `/transactions?q=${encodeURIComponent(party)}` : undefined} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined}/></div>
+                        <div><span>{t('المحفظة المستلمة', 'Receiving wallet')}</span>{wallet ? <Link className="mono transaction-cell-link" to={`/transactions?type=deposit&q=${encodeURIComponent(wallet)}`}>{wallet}</Link> : '—'}</div>
+                        <div><span>{t('التاجر', 'Merchant')}</span><MerchantLogo merchant={r.merchant ?? r.master_merchant}/></div>
+                        <div><span>{t('البوابة', 'Gateway')}</span><strong>{r.gateway ?? '—'}</strong></div>
+                        <div><span>{t('التكرار', 'Duplicates')}</span>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First transaction')}</div>
+                        <div><span>{t('اعتمد بواسطة', 'Approved by')}</span><strong>{r.status === 'PENDING' ? '—' : (!r.approved_by || r.approved_by === 'Manual' ? t('النظام (آلي)', 'System (auto)') : r.approved_by)}</strong></div>
+                        <div className="tx-expanded-actions">{r.status === 'PENDING' && r.kind === 'deposit' && can('deposits','can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r,'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.status === 'PENDING' && r.kind === 'payout' && can('payouts','can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}</div>
+                      </div></td></tr>}
+                    </Fragment>
                   )
                 })}
               </tbody>

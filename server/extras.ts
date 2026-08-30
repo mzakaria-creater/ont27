@@ -17,16 +17,24 @@ const DEPOSIT_COLS =
 const PAYOUT_COLS =
   'maven_id, ontarget_ref, status, amount, pay_by, merchant, account_name, mobile_no, agent_name, approved_by, image_url, first_seen_at, created_utc'
 
-function withSenderAccount<T extends Record<string, unknown>>(row: T): Omit<T, 'maven_raw_row'> & { sender_account_number: string | null } {
+function withSenderAccount<T extends Record<string, unknown>>(row: T): Omit<T, 'maven_raw_row'> & { sender_account_number: string | null; sender_account_name: string | null; user_email: string | null } {
   const raw = row.maven_raw_row && typeof row.maven_raw_row === 'object' && !Array.isArray(row.maven_raw_row)
     ? row.maven_raw_row as Record<string, unknown>
     : null
-  const account = raw
-    ? Object.entries(raw).find(([key]) => key.replace(/[^a-z0-9]/gi, '').toLowerCase() === 'accountnumber')?.[1]
+  const rawValue = (wanted: string[]) => raw
+    ? Object.entries(raw).find(([key]) => wanted.includes(key.replace(/[^a-z0-9]/gi, '').toLowerCase()))?.[1]
     : null
+  const account = rawValue(['accountnumber', 'senderaccountnumber', 'bankaccountnumber'])
+  const accountName = rawValue(['accountname', 'senderaccountname', 'bankaccountname'])
+  const email = rawValue(['emailaddress', 'useremail', 'email'])
   const { maven_raw_row: _raw, ...safe } = row
   const fallback = typeof row.sender_number === 'string' ? row.sender_number : null
-  return { ...safe, sender_account_number: account == null ? fallback : String(account).trim() || fallback }
+  return {
+    ...safe,
+    sender_account_number: account == null ? fallback : String(account).trim() || fallback,
+    sender_account_name: accountName == null ? null : String(accountName).trim() || null,
+    user_email: email == null ? null : String(email).trim() || null,
+  }
 }
 
 // ---- Unified transactions (deposits + payouts) ----
@@ -52,7 +60,7 @@ extraRoutes.get(
       let query = db
         .from('maven_transactions')
         .select(DEPOSIT_COLS, { count: 'exact' })
-        .order('ontarget_ref', { ascending: false, nullsFirst: false })
+        .order('created_utc', { ascending: false, nullsFirst: false })
         .range(0, fetchTo - 1)
       if (status) query = query.eq('status', status)
       if (from) query = query.gte('first_seen_at', `${from}T00:00:00Z`)
@@ -75,7 +83,7 @@ extraRoutes.get(
       let query = db
         .from('maven_payout_transactions')
         .select(PAYOUT_COLS, { count: 'exact' })
-        .order('ontarget_ref', { ascending: false, nullsFirst: false })
+        .order('created_utc', { ascending: false, nullsFirst: false })
         .range(0, fetchTo - 1)
       if (status) query = query.eq('status', status)
       if (from) query = query.gte('first_seen_at', `${from}T00:00:00Z`)
@@ -108,7 +116,7 @@ extraRoutes.get(
       ...((dep.data ?? []) as unknown as Record<string, unknown>[]).map((r) => ({ ...withSenderAccount(r), kind: 'deposit' })),
       ...((pay.data ?? []) as unknown as Record<string, unknown>[]).map((r) => ({ ...r, kind: 'payout' })),
     ] as Record<string, unknown>[]).sort((a, b) =>
-      String(b.ontarget_ref ?? '').localeCompare(String(a.ontarget_ref ?? '')),
+      new Date(String(b.created_utc ?? b.first_seen_at ?? 0)).getTime() - new Date(String(a.created_utc ?? a.first_seen_at ?? 0)).getTime(),
     )
 
     const pageRows = rows.slice(offset, offset + limit)
