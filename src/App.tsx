@@ -162,7 +162,7 @@ function Bell() {
             </Link>
             {(data.recentMatches ?? []).length === 0 && <div className="alert-empty">{t('لا توجد مطابقات حديثة', 'No recent matches')}</div>}
             {(data.recentMatches ?? []).map((s) => (
-              <Link key={s.id} to="/sms" className="alert-row" onClick={() => setOpen(false)}>
+              <Link key={s.id} to={`/sms?sms_id=${s.id}`} className="alert-row" onClick={() => setOpen(false)}>
                 <span className="mono">{s.device_name ?? '—'}</span>
                 <span className="alert-row-mid">{s.sender_name ?? '—'}</span>
                 <span className="mono">{money(s.amount, 'EGP')}</span>

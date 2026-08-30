@@ -157,6 +157,7 @@ export default function SmsLive() {
 
   const appliedQ = params.get('q') ?? ''
   const amount = params.get('amount') ?? ''
+  const requestedSmsId = Number(params.get('sms_id'))
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -242,6 +243,19 @@ export default function SmsLive() {
     } finally {
       setDetailLoading(false)
     }
+  }
+
+  useEffect(() => {
+    if (Number.isInteger(requestedSmsId) && requestedSmsId > 0 && selected?.id !== requestedSmsId && !detailLoading) {
+      void openDetail(requestedSmsId)
+    }
+  }, [requestedSmsId])
+
+  const closeDetail = () => {
+    setSelected(null)
+    const next = new URLSearchParams(params)
+    next.delete('sms_id')
+    setParams(next, { replace: true })
   }
 
   const link = async (txId: number) => {
@@ -512,14 +526,14 @@ export default function SmsLive() {
       </section>
 
       {(selected || detailLoading) && (
-        <div className="drawer-backdrop" onClick={() => setSelected(null)}>
+        <div className="drawer-backdrop" onClick={closeDetail}>
           <aside className="drawer" onClick={(e) => e.stopPropagation()}>
             {detailLoading && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
             {selected && (
               <>
                 <div className="drawer-head">
                   <h3 className="mono">SMS #{selected.id}</h3>
-                  <button className="btn-ghost btn-sm" onClick={() => setSelected(null)}>✕</button>
+                  <button className="btn-ghost btn-sm" onClick={closeDetail}>✕</button>
                 </div>
 
                 <div className="drawer-amount">

@@ -260,7 +260,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
           const linked = walletLinked || r.matched_tx_id != null
           const rawText = r.raw_sms ?? r.message ?? r.sms_first_line
           return (
-            <Link key={r.id} to="/sms" className={`sms-feed-item${linked ? ' matched' : ''}${r.sms_category === 'withdrawal' ? ' withdrawal' : ''}`}>
+            <Link key={r.id} to={`/sms?sms_id=${r.id}`} className={`sms-feed-item${linked ? ' matched' : ''}${r.sms_category === 'withdrawal' ? ' withdrawal' : ''}`}>
               <div className="sms-feed-head">
                 <span className="sms-feed-device">{r.device_name ?? '—'}{r.sim_slot != null && <> · SIM{r.sim_slot}</>}</span>
                 <span className="sms-feed-time mono">{depositTime({ first_seen_at: r.received_at })}</span>
