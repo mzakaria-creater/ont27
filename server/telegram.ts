@@ -11,8 +11,20 @@ export const telegramRoutes = new Hono<AuthEnv>()
 telegramRoutes.use('*', requireAuth)
 
 const TG_KEYS = ['telegram_bot', 'automation']
+const LIVE_ALERT_ROLES = new Set(['owner', 'admin', 'super_admin', 'operator', 'operations_admin'])
 const audit = (actor: { sub: string; username: string }, action: string, entityId: string, after: Record<string, unknown>) =>
   db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action, entity: 'telegram', entity_id: entityId, after })
+
+// Read-only operational feed used by the floating launcher and missed-popup
+// recovery. It deliberately excludes bot credentials, chats and alert gates.
+telegramRoutes.get('/live', async (c) => {
+  if (!LIVE_ALERT_ROLES.has(c.get('actor').role)) return c.json({ error: 'forbidden' }, 403)
+  const { data, error } = await db.from('telegram_alerts')
+    .select('id, alert_type, chat_id, message, ok, error, created_at')
+    .order('created_at', { ascending: false }).limit(50)
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  return c.json({ alerts: data ?? [] })
+})
 
 telegramRoutes.get('/', requireAnyPerm(TG_KEYS, 'can_view'), async (c) => {
   const [token, chats, gates, alerts] = await Promise.all([

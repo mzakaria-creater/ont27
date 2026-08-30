@@ -216,7 +216,7 @@ function TelegramRail({ onMinimize }: { onMinimize: () => void }) {
   const [rows, setRows] = useState<RailTelegramAlert[]>([])
   useEffect(() => {
     let alive = true
-    const load = () => void api<{ alerts: RailTelegramAlert[] }>('/api/telegram').then((result) => { if (alive) setRows(result.alerts ?? []) }).catch(() => {})
+    const load = () => void api<{ alerts: RailTelegramAlert[] }>('/api/telegram/live').then((result) => { if (alive) setRows(result.alerts ?? []) }).catch(() => {})
     load(); const timer = window.setInterval(load, 10_000)
     return () => { alive = false; window.clearInterval(timer) }
   }, [])
@@ -326,6 +326,10 @@ export default function PanelShell({ children }: { children: ReactNode }) {
     catch { return false }
   })
   const [telegramOpen, setTelegramOpen] = useState(false)
+  const [smsUnread, setSmsUnread] = useState(0)
+  const [telegramUnread, setTelegramUnread] = useState(0)
+  const smsLatestRef = useRef(0)
+  const telegramLatestRef = useRef(0)
   const [chatUnread, setChatUnread] = useState(0)
   const chatSeenRef = useRef<number | null>(null)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<NavGroupId>>(() => new Set(NAV_GROUPS.map((group) => group.id).filter((id) => id !== activeGroup)))
@@ -348,6 +352,47 @@ export default function PanelShell({ children }: { children: ReactNode }) {
     check(); const timer = setInterval(check, 6000)
     return () => clearInterval(timer)
   }, [pathname])
+
+  const canTelegramLive = COMPLAINT_ROLES.includes(user?.role ?? '')
+
+  // Persistent unread markers make alerts visible even if they land while a
+  // floating rail is minimized. The first successful read establishes a
+  // baseline; opening the rail marks everything currently visible as seen.
+  useEffect(() => {
+    if (!user?.id) return
+    let alive = true
+    const smsKey = `ontarget:${user.id}:sms-last-seen`
+    const telegramKey = `ontarget:${user.id}:telegram-last-seen`
+    const update = async () => {
+      const jobs: Promise<void>[] = []
+      if (can('sms_live')) jobs.push(api<{ rows?: RailSms[] }>('/api/sms?limit=30').then(({ rows = [] }) => {
+        if (!alive) return
+        const latest = Math.max(0, ...rows.map((row) => Number(row.id) || 0)); smsLatestRef.current = latest
+        const stored = localStorage.getItem(smsKey)
+        if (stored == null) { localStorage.setItem(smsKey, String(latest)); setSmsUnread(0) }
+        else setSmsUnread(rows.filter((row) => Number(row.id) > Number(stored)).length)
+      }).catch(() => {}))
+      if (canTelegramLive) jobs.push(api<{ alerts?: RailTelegramAlert[] }>('/api/telegram/live').then(({ alerts = [] }) => {
+        if (!alive) return
+        const latest = Math.max(0, ...alerts.map((row) => Number(row.id) || 0)); telegramLatestRef.current = latest
+        const stored = localStorage.getItem(telegramKey)
+        if (stored == null) { localStorage.setItem(telegramKey, String(latest)); setTelegramUnread(0) }
+        else setTelegramUnread(alerts.filter((row) => Number(row.id) > Number(stored)).length)
+      }).catch(() => {}))
+      await Promise.all(jobs)
+    }
+    void update(); const timer = window.setInterval(update, 6_000)
+    return () => { alive = false; window.clearInterval(timer) }
+  }, [can, canTelegramLive, user?.id])
+
+  const openSms = () => {
+    if (user?.id) localStorage.setItem(`ontarget:${user.id}:sms-last-seen`, String(smsLatestRef.current))
+    setSmsUnread(0); setSmsOpen(true); setTelegramOpen(false)
+  }
+  const openTelegram = () => {
+    if (user?.id) localStorage.setItem(`ontarget:${user.id}:telegram-last-seen`, String(telegramLatestRef.current))
+    setTelegramUnread(0); setTelegramOpen(true); setSmsOpen(false)
+  }
 
   // The feed is a floating widget, compact by default. It auto-minimizes after
   // a short idle period so dense operations tables always retain full width.
@@ -429,10 +474,10 @@ export default function PanelShell({ children }: { children: ReactNode }) {
         {normalizedNavQuery && NAV_GROUPS.every((group) => renderLinks(group.id).length === 0) && <div className="sidebar-empty">{t('لا توجد صفحة مطابقة.', 'No matching page.')}</div>}
       </nav>
       <main id="main-workspace" className="dash-main">{children}</main>
-      {can('telegram_bot') && !telegramOpen && <button type="button" className="telegram-widget-launcher" onClick={() => { setTelegramOpen(true); setSmsOpen(false) }} aria-expanded="false" aria-controls="live-telegram-widget" aria-label={t('إظهار Telegram المباشر', 'Show Telegram Live')} title={t('إظهار Telegram المباشر', 'Show Telegram Live')}><span className="telegram-widget-pulse"/><Send size={19} aria-hidden="true"/><span className="sms-widget-label">Telegram Live</span></button>}
-      {can('sms_live') && !smsOpen && <button type="button" className="sms-widget-launcher" onClick={() => { setSmsOpen(true); setTelegramOpen(false) }} aria-expanded="false" aria-controls="live-sms-widget" aria-label={t('إظهار SMS المباشر', 'Show Live SMS')} title={t('إظهار SMS المباشر', 'Show Live SMS')}><span className="sms-widget-pulse" /><MessageSquareText size={20} aria-hidden="true" /><span className="sms-widget-label">Live SMS</span></button>}
+      {canTelegramLive && !telegramOpen && <button type="button" className={`telegram-widget-launcher${telegramUnread ? ' has-unread' : ''}`} onClick={openTelegram} aria-expanded="false" aria-controls="live-telegram-widget" aria-label={t('إظهار Telegram المباشر', 'Show Telegram Live')} title={t('إظهار Telegram المباشر', 'Show Telegram Live')}><span className="telegram-widget-pulse"/><Send size={19} aria-hidden="true"/><span className="sms-widget-label">Telegram Live</span>{telegramUnread > 0 && <span className="live-widget-badge">{telegramUnread > 99 ? '99+' : telegramUnread}</span>}</button>}
+      {can('sms_live') && !smsOpen && <button type="button" className={`sms-widget-launcher${smsUnread ? ' has-unread' : ''}`} onClick={openSms} aria-expanded="false" aria-controls="live-sms-widget" aria-label={t('إظهار SMS المباشر', 'Show Live SMS')} title={t('إظهار SMS المباشر', 'Show Live SMS')}><span className="sms-widget-pulse" /><MessageSquareText size={20} aria-hidden="true" /><span className="sms-widget-label">Live SMS</span>{smsUnread > 0 && <span className="live-widget-badge">{smsUnread > 99 ? '99+' : smsUnread}</span>}</button>}
       {can('sms_live') && smsOpen && <SmsRail onMinimize={() => setSmsOpen(false)} />}
-      {can('telegram_bot') && telegramOpen && <TelegramRail onMinimize={() => setTelegramOpen(false)} />}
+      {canTelegramLive && telegramOpen && <TelegramRail onMinimize={() => setTelegramOpen(false)} />}
     </div>
   )
 }
