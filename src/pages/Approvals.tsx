@@ -70,12 +70,12 @@ export default function Approvals() {
     localStorage.setItem('approval-queue-view', mode)
   }
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (syncProvider = true) => {
     try {
       // Never block the visible queue behind the provider pull. Read the local
       // live copy immediately, then refresh once more only if this tab really
       // completed a sync (the shared pump/DB lease prevents duplicate pulls).
-      const sync = syncProviders()
+      const sync = syncProvider ? syncProviders() : Promise.resolve(false)
       const res = await api<{ deposits: DepRow[]; payouts: PayRow[] }>('/api/approvals')
       setDeposits((current) => JSON.stringify(current) === JSON.stringify(res.deposits) ? current : res.deposits)
       setPayouts((current) => JSON.stringify(current) === JSON.stringify(res.payouts) ? current : res.payouts)
@@ -96,13 +96,15 @@ export default function Approvals() {
     return () => clearInterval(iv)
   }, [load])
 
-  const depBulk = useBulk((id) => `/api/deposits/${id}/decision`, () => void load())
+  const depBulk = useBulk((id) => `/api/deposits/${id}/decision`, () => void load(false))
   const quick = async (id: number, action: 'approve' | 'decline') => {
     setRowBusy(`deposits-${id}`)
     try {
       await api(`/api/deposits/${id}/decision`, { method: 'POST', body: JSON.stringify({ action }) })
       setDeposits((current) => current?.filter((row) => row.tx_id !== id) ?? current)
-      void load()
+      // The decision endpoint already updated the local live row. Refresh the
+      // queue only; do not start another provider-wide sync after every click.
+      void load(false)
     } catch {
       setErr(t('فشل تنفيذ القرار — أعد المحاولة.', 'Failed to apply the decision — try again.'))
     } finally {

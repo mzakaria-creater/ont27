@@ -344,6 +344,7 @@ async function depositDetail(c: Context<AuthEnv>, txId: string) {
 }
 
 depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), async (c) => {
+  const requestStartedAt = performance.now()
   const txId = c.req.param('txId')
   if (!/^\d+$/.test(txId)) return c.json({ error: 'bad_tx_id' }, 400)
 
@@ -376,6 +377,7 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
     const baseUrl = process.env.SUPABASE_URL
     const serviceKey = process.env.SUPABASE_SECRET_KEY
     if (!baseUrl || !serviceKey) return c.json({ error: 'worker_not_configured' }, 500)
+    const workerStartedAt = performance.now()
     const workerResponse = await fetch(`${baseUrl}/functions/v1/ngpay-approve`, {
       method: 'POST',
       headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
@@ -383,28 +385,45 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
     })
     const workerResult = await workerResponse.json().catch(() => ({ error: 'worker_invalid_response' })) as Record<string, unknown>
     const executed = workerResponse.ok && workerResult.executed_on_provider === true
-    const { error: auditErr2 } = await db.from('audit_log').insert({
-      actor_type: 'manual_panel',
-      actor_id: actor.sub,
-      actor_name: actor.username,
-      action: `deposit.${action}`,
-      entity: 'maven_transactions',
-      entity_id: txId,
-      before: { status: before.status },
-      after: { status: target, note, provider_execution: 'ngpay-approve', executed_on_provider: executed, worker: workerResponse.ok ? undefined : workerResult },
-    })
+    const workerMs = Math.round(performance.now() - workerStartedAt)
     if (!workerResponse.ok) {
+      // Failure auditing remains in the response path so a failed provider
+      // attempt can never disappear from the operational record.
+      await db.from('audit_log').insert({
+        actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
+        action: `deposit.${action}`, entity: 'maven_transactions', entity_id: txId,
+        before: { status: before.status },
+        after: { status: target, note, provider_execution: 'ngpay-approve', executed_on_provider: false, worker: workerResult, worker_ms: workerMs },
+      })
       return c.json({ error: 'worker_failed', worker: workerResult }, workerResponse.status as 400 | 401 | 404 | 409 | 500)
     }
-    const learnedIdentity = action === 'approve' && executed
-      ? await learnTrustedSmsName(Number(txId))
-      : { learned: false, reason: 'not_an_executed_approval' }
-    if (learnedIdentity.learned) await db.from('audit_log').insert({
-      actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
-      action: 'crm.sms_name_learned', entity: 'maven_transactions', entity_id: txId,
-      after: { purpose: 'retention_matching' },
-    })
-    return c.json({ ok: true, status: target, executed_on_provider: executed, learned_sms_name: learnedIdentity, audit_error: auditErr2?.message })
+
+    // The worker has now verified the live provider result. Audit mirroring and
+    // CRM identity learning are important, but neither may delay the operator's
+    // confirmed response. Vercel's execution context keeps this promise alive.
+    const postProcessing = (async () => {
+      const { error: auditErr } = await db.from('audit_log').insert({
+        actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
+        action: `deposit.${action}`, entity: 'maven_transactions', entity_id: txId,
+        before: { status: before.status },
+        after: { status: target, note, provider_execution: 'ngpay-approve', executed_on_provider: executed, worker_ms: workerMs },
+      })
+      if (auditErr) console.error('deposit decision audit mirror failed', { txId, error: auditErr.message })
+      if (action !== 'approve' || !executed) return
+      const learnedIdentity = await learnTrustedSmsName(Number(txId))
+      if (learnedIdentity.learned) await db.from('audit_log').insert({
+        actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
+        action: 'crm.sms_name_learned', entity: 'maven_transactions', entity_id: txId,
+        after: { purpose: 'retention_matching' },
+      })
+    })()
+    postProcessing.catch((error) => console.error('deposit decision post-processing failed', { txId, error }))
+    try { c.executionCtx.waitUntil(postProcessing) } catch { /* Node/Railway keeps active promises alive itself. */ }
+
+    const totalMs = Math.round(performance.now() - requestStartedAt)
+    console.info('deposit decision executed', { txId, action, actor: actor.username, worker_ms: workerMs, total_ms: totalMs })
+    c.header('Server-Timing', `provider;dur=${workerMs}, total;dur=${totalMs}`)
+    return c.json({ ok: true, status: target, executed_on_provider: executed, post_processing: 'scheduled', timings_ms: { provider: workerMs, total: totalMs } })
   }
   const nowIso = new Date().toISOString()
   // .eq('status','PENDING') keeps the transition atomic against races.
