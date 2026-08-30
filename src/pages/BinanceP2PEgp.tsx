@@ -40,7 +40,7 @@ export default function BinanceP2PEgp() {
 
   return <PanelShell>
     <section className="page-head binance-egp-head">
-      <div><span className="guide-eyebrow">BINANCE P2P · EGP</span><h2>🪙 {t('Binance P2P — فودافون كاش', 'Binance P2P — Vodafone Cash')}</h2><p className="page-sub">{t('عرض تشغيلي لطلبات EGP مع مسار دفع فودافون كاش وتنفيذ بشري فقط.', 'Operational EGP order view for Vodafone Cash with human-only execution.')}</p></div>
+      <div><span className="guide-eyebrow">BINANCE C2C · ACCOUNT DATA</span><h2>🧾 {t('سجل Binance P2P', 'Binance P2P History')}</h2><p className="page-sub">{t('سجل طلبات حسابك الموثق لـ EGP مع مسار فودافون كاش.', 'Authenticated EGP account-order history for the Vodafone Cash workflow.')}</p></div>
       <button className="btn-ghost btn-sm" disabled={loading} onClick={() => void load()}><RefreshCw size={15} className={loading ? 'spin' : ''}/> {t('تحديث', 'Refresh')}</button>
     </section>
 

@@ -33,6 +33,7 @@ const Mismatch = lazy(() => import('./pages/Mismatch'))
 const Telegram = lazy(() => import('./pages/Telegram'))
 const Binance = lazy(() => import('./pages/Binance'))
 const BinanceP2PEgp = lazy(() => import('./pages/BinanceP2PEgp'))
+const BinanceP2PAds = lazy(() => import('./pages/BinanceP2PAds'))
 const OperationsArchive = lazy(() => import('./pages/OperationsArchive'))
 const WalletReport = lazy(() => import('./pages/WalletReport'))
 const WithdrawalSmsReport = lazy(() => import('./pages/WithdrawalSmsReport'))
@@ -334,6 +335,8 @@ export default function App() {
             <Route path="/telegram" element={<Telegram />} />
             <Route path="/binance" element={<Binance />} />
             <Route path="/binance/p2p-egp" element={<BinanceP2PEgp />} />
+            <Route path="/binance/p2p-history" element={<BinanceP2PEgp />} />
+            <Route path="/binance/p2p-ads" element={<BinanceP2PAds />} />
             <Route path="/operations-archive" element={<OperationsArchive />} />
             <Route path="/wallet-report" element={<WalletReport />} />
             <Route path="/withdrawal-sms-report" element={<WithdrawalSmsReport />} />
