@@ -12,7 +12,7 @@ type Tx = { tx_id: number; ontarget_ref: string | null; status: string; amount: 
 type Tg = { id: number; alert_type: string; chat_id: string | null; ok: boolean; error: string | null; created_at: string | null }
 type Integration = { id: number; action: string; entity: string; entity_id: string | null; actor_name: string | null; after: { status?: number | null; latency_ms?: number; destination_host?: string; error?: string } | null; created_at: string | null }
 type Device = { device: string; sim_slot: number | null; online: boolean | null; battery: number | null; charging: boolean | null; net_type: string | null; last_seen_at: string | null }
-type ProviderState = { count24h: number; pending: number; lastChange: string | null }
+type ProviderState = { count24h: number; pending: number; lastChange: string | null; latestTransaction: string | null; stale: boolean }
 type MonitorData = { generatedAt: string; lastSync: string | null; api: { ok: boolean; latencyMs: number }; supabase: { ok: boolean; latencyMs: number; failedSources: string[] }; queues: { pendingDeposits: number | null; pendingPayouts: number | null; editRequests: number | null }; providers: { nagopay: ProviderState; payfuture: ProviderState }; sources: Record<string, Source>; sms: Sms[]; transactions: Tx[]; telegram: Tg[]; email: Integration[]; webhooks: Integration[]; devices: Device[] }
 
 const POLL_MS = 15_000
@@ -67,7 +67,7 @@ export default function Monitor() {
     </div>
 
     <section className="card recent-card"><div className="recent-head"><h3>{t('مزامنة المزوّدين', 'Provider live sync')}</h3><span className="live-dot"><span className="ld" />{t('كل 15 ثانية', 'every 15 seconds')}</span></div><div className="stat-grid">
-      {data && Object.entries(data.providers).map(([name, state]) => <div className="stat-card" key={name}><span className="stat-label">{name === 'nagopay' ? 'NagoPay / NGPay' : 'PayFuture'}</span><span className="stat-value">{state.count24h}</span><span className="stat-sub">{state.pending} {t('معلقة', 'pending')} · {t('آخر تغيير', 'last change')} {when(state.lastChange)}</span></div>)}
+      {data && Object.entries(data.providers).map(([name, state]) => <div className={`stat-card${state.stale ? ' stat-pending' : ''}`} key={name}><span className="stat-label">{name === 'nagopay' ? 'NagoPay / NGPay' : 'PayFuture'} {state.stale ? '⚠' : '●'}</span><span className="stat-value">{state.count24h}</span><span className="stat-sub">{state.pending} {t('معلقة', 'pending')} · {t('آخر تغيير', 'last change')} {when(state.lastChange)} · {t('آخر معاملة', 'latest transaction')} {when(state.latestTransaction)}</span></div>)}
       {!data && <div className="stat-card"><span className="stat-label">NagoPay / PayFuture</span><span className="stat-value">…</span></div>}
     </div></section>
 

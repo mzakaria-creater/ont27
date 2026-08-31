@@ -5,7 +5,7 @@ import PanelShell from '../components/PanelShell'
 import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 
-type Provider = { count24h: number; pending: number; lastChange: string | null }
+type Provider = { count24h: number; pending: number; lastChange: string | null; latestTransaction?: string | null; stale?: boolean }
 type Tx = { tx_id: number; ontarget_ref: string | null; status: string; amount: number | null; currency: string | null; merchant: string | null; gateway: string | null; first_seen_at: string | null }
 type Data = { generatedAt: string; lastSync: string | null; api: { ok: boolean; latencyMs: number }; supabase: { ok: boolean; latencyMs: number; failedSources: string[] }; queues: { pendingDeposits: number | null; pendingPayouts: number | null; editRequests: number | null }; providers: Record<string, Provider>; transactions: Tx[]; devices: { online: boolean | null }[] }
 type RailwayStatus = { connected: boolean; baseUrl: string; docsUrl: string; version: string | null; remoteTimestamp: string | null; latencyMs: number | null; apiKeyConfigured: boolean; protectedAccess: boolean | null }
@@ -81,6 +81,6 @@ export default function ApiDashboard() {
       <aside className="card api-module-card"><div className="recent-head"><div><h3>Platform modules</h3><span className="cell-sub">Merged from the supplied API console</span></div></div><div className="api-module-list">{modules.map(([to,title,description])=><Link key={to} to={to}><div><strong>{title}</strong><span>{description}</span></div><ExternalLink size={14}/></Link>)}</div></aside>
     </div>
 
-    <section className="card api-provider-strip"><div><span>NagoPay / NGPay</span><strong>{data?.providers.nagopay?.count24h??'—'}</strong><small>{data?.providers.nagopay?.pending??'—'} pending · 24h</small></div><div><span>PayFuture</span><strong>{data?.providers.payfuture?.count24h??'—'}</strong><small>{data?.providers.payfuture?.pending??'—'} pending · 24h</small></div><div><span>Edit requests</span><strong>{data?.queues.editRequests??'—'}</strong><small>awaiting review</small></div><div><span>Generated</span><strong className="api-generated"><Clock3 size={15}/>{when(data?.generatedAt??null)}</strong><small>auto-refresh every 15 seconds</small></div></section>
+    <section className="card api-provider-strip"><div><span>NagoPay / NGPay</span><strong>{data?.providers.nagopay?.count24h??'—'}</strong><small>{data?.providers.nagopay?.pending??'—'} pending · 24h</small></div><div><span>PayFuture {data?.providers.payfuture?.stale ? '⚠ stale' : '● live'}</span><strong>{data?.providers.payfuture?.count24h??'—'}</strong><small>{data?.providers.payfuture?.pending??'—'} pending · 24h · last {when(data?.providers.payfuture?.latestTransaction ?? null)}</small></div><div><span>Edit requests</span><strong>{data?.queues.editRequests??'—'}</strong><small>awaiting review</small></div><div><span>Generated</span><strong className="api-generated"><Clock3 size={15}/>{when(data?.generatedAt??null)}</strong><small>auto-refresh every 15 seconds</small></div></section>
   </PanelShell>
 }

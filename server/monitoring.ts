@@ -62,7 +62,7 @@ monitoringRoutes.get('/', async (c) => {
   const deviceDb = oldDb() ?? db
   const started = Date.now()
 
-  const [sms, transactions, telegram, devices, integrations, pendingDeposits, pendingPayouts, editRequests, todayTransactions] = await Promise.all([
+  const [sms, transactions, telegram, devices, integrations, pendingDeposits, pendingPayouts, editRequests, todayTransactions, providerTransactions] = await Promise.all([
     db.from('inbound_sms')
       .select('id, received_at, device_name, sender_name, sender_number, receiver_number, amount, sms_category, trx_id, consumed_by_tx_id, matched_transaction_id, maven_transaction_id')
       .gte('received_at', since).order('received_at', { ascending: false }).limit(30),
@@ -83,6 +83,7 @@ monitoringRoutes.get('/', async (c) => {
     db.from('maven_payout_transactions').select('maven_id', { count: 'exact', head: true }).eq('status', 'PENDING'),
     db.from('transaction_edit_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
     db.from('maven_transactions').select('status, amount').gte('first_seen_at', todayStart.toISOString()).limit(10000),
+    db.from('maven_transactions').select('status, gateway, master_merchant, first_seen_at, last_status_change').order('first_seen_at', { ascending: false }).limit(10000),
   ])
 
   const sources = {
@@ -100,6 +101,7 @@ monitoringRoutes.get('/', async (c) => {
   const deviceRows = devices.data ?? []
   const integrationRows = integrations.data ?? []
   const todayRows = todayTransactions.data ?? []
+  const providerRows = providerTransactions.data ?? []
   const todaySummary = todayRows.reduce((summary, row) => {
     summary.total += 1
     summary.amount += Number(row.amount ?? 0)
@@ -109,14 +111,16 @@ monitoringRoutes.get('/', async (c) => {
     return summary
   }, { total: 0, amount: 0, paidAmount: 0, approved: 0, rejected: 0, processing: 0 })
   const providerSummary = (name: 'nagopay' | 'payfuture') => {
-    const rows = txRows.filter((row) => {
+    const rows = providerRows.filter((row) => {
       const identity = `${row.gateway ?? ''} ${row.master_merchant ?? ''}`.toLowerCase()
       return name === 'nagopay'
         ? identity.includes('nagupay') || identity.includes('ngpay')
         : identity.includes('payfuture') || identity.includes('avadapay') || /(^|\s)rsc($|\s)/.test(identity)
     })
-    return { count24h: rows.length, pending: rows.filter((row) => row.status === 'PENDING').length,
-      lastChange: latest(rows.map((row) => row.last_status_change ?? row.first_seen_at)) }
+    const rows24h = rows.filter((row) => row.first_seen_at && Date.parse(row.first_seen_at) >= Date.parse(since))
+    const lastChange = latest(rows.map((row) => row.last_status_change ?? row.first_seen_at))
+    return { count24h: rows24h.length, pending: rows.filter((row) => row.status === 'PENDING').length,
+      lastChange, latestTransaction: latest(rows.map((row) => row.first_seen_at)), stale: !lastChange || Date.now() - Date.parse(lastChange) > 15 * 60_000 }
   }
 
   return c.json({
