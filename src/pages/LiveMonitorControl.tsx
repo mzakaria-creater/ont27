@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase'
 type Tx = { tx_id: number; ontarget_ref: string | null; status: string; amount: number | null; currency: string | null; merchant: string | null; master_merchant: string | null; gateway: string | null; first_seen_at: string | null; last_status_change: string | null }
 type Sms = { id: number; received_at: string | null; sms_category: string | null; amount: number | null; assigned_tx_id: number | string | null }
 type MonitorData = { generatedAt: string; lastSync: string | null; api: { ok: boolean; latencyMs: number }; supabase: { ok: boolean; latencyMs: number }; queues: { pendingDeposits: number | null; pendingPayouts: number | null; editRequests: number | null }; sources: Record<string, { ok: boolean; error: string | null }>; sms: Sms[]; transactions: Tx[]; telegram: Array<{ id: number; alert_type: string; ok: boolean; error: string | null; created_at: string | null }>; devices: Array<{ device: string; online: boolean | null; last_seen_at: string | null }> }
+type MarketPrices = { xauUsd: number | null; usdtEgp: number | null; updatedAt: string; latencyMs: number }
 
 const when = (value: string | null | undefined) => value ? new Date(value).toLocaleString() : '—'
 const statusClass = (status: string) => status === 'PAID' || status === 'APPROVED' ? 'success' : status === 'DECLINED' || status === 'FAILED' ? 'error' : 'processing'
@@ -21,6 +22,7 @@ export default function LiveMonitorControl() {
   const [connection, setConnection] = useState<'connecting' | 'live' | 'fallback'>('connecting')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [prices, setPrices] = useState<MarketPrices | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -33,17 +35,23 @@ export default function LiveMonitorControl() {
     } finally { setLoading(false) }
   }, [t])
 
+  const loadPrices = useCallback(async () => {
+    try { setPrices(await api<MarketPrices>('/api/monitoring/market-prices')) } catch { /* unavailable state is rendered as — */ }
+  }, [])
+
   useEffect(() => {
     if (!monitoring) return
     void load()
+    void loadPrices()
     const interval = setInterval(() => void load(), 5_000)
+    const priceInterval = setInterval(() => void loadPrices(), 30_000)
     const channel = supabase.channel('ontarget-control-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'maven_transactions' }, () => void load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'inbound_sms' }, () => void load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'telegram_alerts' }, () => void load())
       .subscribe((status) => setConnection(status === 'SUBSCRIBED' ? 'live' : status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' ? 'fallback' : 'connecting'))
-    return () => { clearInterval(interval); void supabase.removeChannel(channel) }
-  }, [load, monitoring])
+    return () => { clearInterval(interval); clearInterval(priceInterval); void supabase.removeChannel(channel) }
+  }, [load, loadPrices, monitoring])
 
   const stats = useMemo(() => {
     const today = new Date().toLocaleDateString()
@@ -93,6 +101,10 @@ export default function LiveMonitorControl() {
 
       {error && <div className="card warn">{error}</div>}
       <section className="live-stat-grid">{statCards.map(({ label, value, icon: Icon, tone }) => <article className={`live-stat-card ${tone}`} key={label}><span><Icon size={18}/>{label}</span><strong>{value}</strong><small>{t('من بداية اليوم', 'Since start of today')}</small></article>)}</section>
+      <section className="live-market-grid" aria-label={t('أسعار السوق الحية', 'Live market prices')}>
+        <article className="live-market-card gold"><div><span className="live-market-icon">XAU</span><div><strong>XAU / USD</strong><small>{t('الذهب الفوري · أونصة', 'Gold spot · per troy ounce')}</small></div></div><strong className="mono">{prices?.xauUsd != null ? `$${prices.xauUsd.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '—'}</strong><small>{prices?.updatedAt ? `${t('محدّث', 'Updated')} ${new Date(prices.updatedAt).toLocaleTimeString()}` : t('جاري التحميل…', 'Loading…')}</small></article>
+        <article className="live-market-card usdt"><div><span className="live-market-icon">₮</span><div><strong>USDT / EGP</strong><small>{t('سعر مرجعي للدولار', 'USD reference rate')}</small></div></div><strong className="mono">{prices?.usdtEgp != null ? `${prices.usdtEgp.toLocaleString('en-US', { maximumFractionDigits: 2 })} EGP` : '—'}</strong><small>{prices?.updatedAt ? `${t('محدّث', 'Updated')} ${new Date(prices.updatedAt).toLocaleTimeString()}` : t('جاري التحميل…', 'Loading…')}</small></article>
+      </section>
 
       <div className="live-control-grid">
         <main className="live-control-main">

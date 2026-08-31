@@ -7,6 +7,22 @@ import type { AuthEnv } from './rbac.js'
 export const monitoringRoutes = new Hono<AuthEnv>()
 monitoringRoutes.use('*', requireAuth)
 
+monitoringRoutes.get('/market-prices', async (c) => {
+  const started = Date.now()
+  const [goldResponse, fxResponse] = await Promise.all([
+    fetch('https://api.gold-api.com/price/XAU', { signal: AbortSignal.timeout(4_000) }).catch(() => null),
+    fetch('https://open.er-api.com/v6/latest/USD', { signal: AbortSignal.timeout(4_000) }).catch(() => null),
+  ])
+  const gold: any = goldResponse?.ok ? await goldResponse.json().catch(() => null) : null
+  const fx: any = fxResponse?.ok ? await fxResponse.json().catch(() => null) : null
+  return c.json({
+    xauUsd: typeof gold?.price === 'number' ? gold.price : null,
+    usdtEgp: typeof fx?.rates?.EGP === 'number' ? fx.rates.EGP : null,
+    updatedAt: new Date().toISOString(), latencyMs: Date.now() - started,
+    sources: { xauUsd: 'gold-api.com', usdtEgp: 'exchangerate-api.com' },
+  })
+})
+
 const latest = (values: Array<string | null | undefined>) =>
   values.filter((v): v is string => Boolean(v)).sort().at(-1) ?? null
 
