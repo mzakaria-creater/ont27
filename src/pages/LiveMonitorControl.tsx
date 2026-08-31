@@ -46,7 +46,11 @@ export default function LiveMonitorControl() {
   }, [load, monitoring])
 
   const stats = useMemo(() => {
-    const rows = data?.transactions ?? []
+    const today = new Date().toLocaleDateString()
+    const rows = (data?.transactions ?? []).filter((row) => {
+      const timestamp = row.last_status_change ?? row.first_seen_at
+      return timestamp ? new Date(timestamp).toLocaleDateString() === today : false
+    })
     const approved = rows.filter((row) => ['PAID', 'APPROVED'].includes(row.status)).length
     const rejected = rows.filter((row) => ['DECLINED', 'FAILED'].includes(row.status)).length
     const processing = rows.filter((row) => row.status === 'PENDING').length
@@ -64,12 +68,12 @@ export default function LiveMonitorControl() {
   ].sort((a, b) => String(b.at ?? '').localeCompare(String(a.at ?? ''))).slice(0, 50) : [], [data, t])
 
   const statCards = [
-    { label: t('معاملات جديدة', 'New transactions'), value: stats.newCount, icon: Zap, tone: 'blue' },
+      { label: t('معاملات اليوم', 'Today transactions'), value: stats.newCount, icon: Zap, tone: 'blue' },
     { label: t('قيد المعالجة', 'Processing'), value: stats.processing, icon: Clock3, tone: 'amber' },
     { label: t('تم التأكيد', 'Approved'), value: stats.approved, icon: CheckCircle2, tone: 'green' },
     { label: t('تم الرفض', 'Rejected'), value: stats.rejected, icon: XCircle, tone: 'red' },
-    { label: t('حجم المدفوع', 'Paid volume'), value: money(stats.total, 'EGP'), icon: CircleDollarSign, tone: 'yellow' },
-    { label: t('معدل النجاح', 'Success rate'), value: `${stats.success.toFixed(1)}%`, icon: Activity, tone: 'violet' },
+      { label: t('حجم المدفوع اليوم', 'Today paid volume'), value: money(stats.total, 'EGP'), icon: CircleDollarSign, tone: 'yellow' },
+      { label: t('معدل نجاح اليوم', 'Today success rate'), value: `${stats.success.toFixed(1)}%`, icon: Activity, tone: 'violet' },
   ]
 
   return <PanelShell>
@@ -88,7 +92,7 @@ export default function LiveMonitorControl() {
       </section>
 
       {error && <div className="card warn">{error}</div>}
-      <section className="live-stat-grid">{statCards.map(({ label, value, icon: Icon, tone }) => <article className={`live-stat-card ${tone}`} key={label}><span><Icon size={18}/>{label}</span><strong>{value}</strong><small>{t('آخر 24 ساعة', 'Last 24 hours')}</small></article>)}</section>
+      <section className="live-stat-grid">{statCards.map(({ label, value, icon: Icon, tone }) => <article className={`live-stat-card ${tone}`} key={label}><span><Icon size={18}/>{label}</span><strong>{value}</strong><small>{t('من بداية اليوم', 'Since start of today')}</small></article>)}</section>
 
       <div className="live-control-grid">
         <main className="live-control-main">
