@@ -330,20 +330,28 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
   const txId = Number(body?.tx_id)
   if (!Number.isInteger(txId) || txId <= 0) return c.json({ error: 'bad_tx_id' }, 400)
 
-  const [{ data: sms, error: smsErr }, { data: tx, error: txErr }] = await Promise.all([
+  const [{ data: sms, error: smsErr }, { data: tx, error: txErr }, { data: existingTxLinks, error: linkErr }] = await Promise.all([
     db.from('inbound_sms').select('id, matched, match_status, sms_category, amount, received_at, receiver_number, sender_name, sender_number, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').eq('id', id).maybeSingle(),
     db.from('maven_transactions').select('tx_id, amount, status, sender_number, first_seen_at, ontarget_ref').eq('tx_id', txId).maybeSingle(),
+    db.from('sms_maven_matches').select('sms_id').eq('tx_id', txId).limit(2),
   ])
   if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
   if (txErr) return c.json({ error: 'db_error', detail: txErr.message }, 500)
+  if (linkErr) return c.json({ error: 'db_error', detail: linkErr.message }, 500)
   if (!sms) return c.json({ error: 'not_found' }, 404)
   if (sms.sms_category === 'withdrawal') return c.json({ error: 'withdrawal_links_to_wallet' }, 409)
   if (!tx) return c.json({ error: 'tx_not_found' }, 404)
   if (sms.matched || sms.consumed_by_tx_id != null || sms.matched_transaction_id != null || sms.maven_transaction_id != null) {
     return c.json({ error: 'already_linked' }, 409)
   }
+  // A transaction may have exactly one deposit SMS. This check complements
+  // the database guard below and gives operators a clear response instead of
+  // silently replacing an existing evidence link.
+  if ((existingTxLinks ?? []).some((link) => Number(link.sms_id) !== Number(id))) {
+    return c.json({ error: 'transaction_already_linked' }, 409)
+  }
 
-  const { error: updErr } = await db
+  const { data: claimedSms, error: updErr } = await db
     .from('inbound_sms')
     .update({
       matched: true,
@@ -355,7 +363,13 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
       processed_at: new Date().toISOString(),
     })
     .eq('id', id)
+    .is('consumed_by_tx_id', null)
+    .is('matched_transaction_id', null)
+    .is('maven_transaction_id', null)
+    .select('id')
+    .maybeSingle()
   if (updErr) return c.json({ error: 'db_error', detail: updErr.message }, 500)
+  if (!claimedSms) return c.json({ error: 'already_linked' }, 409)
 
   // A matched SMS is the authoritative evidence of the wallet that received
   // the funds.  Do not overwrite to_account_number: it records the original
@@ -503,10 +517,17 @@ smsRoutes.post('/:id/withdrawal-assignment', requirePerm('sms_live', 'can_edit')
   const note = typeof body?.note === 'string' ? body.note.trim().slice(0, 2000) : ''
   if (!['payout', 'p2p_usdt', 'cash_return'].includes(assignmentType)) return c.json({ error: 'invalid_assignment_type' }, 400)
   if (!name) return c.json({ error: 'name_required' }, 400)
-  const { data: sms, error: smsError } = await db.from('inbound_sms').select('id, sms_category, consumed_by_tx_id').eq('id', id).maybeSingle()
+  const [{ data: sms, error: smsError }, { data: existingAssignment, error: assignmentLookupError }] = await Promise.all([
+    db.from('inbound_sms').select('id, sms_category, consumed_by_tx_id, matched_transaction_id, maven_transaction_id, matched').eq('id', id).maybeSingle(),
+    db.from('sms_withdrawal_assignments').select('sms_id').eq('sms_id', Number(id)).maybeSingle(),
+  ])
   if (smsError) return c.json({ error: 'db_error', detail: smsError.message }, 500)
+  if (assignmentLookupError) return c.json({ error: 'db_error', detail: assignmentLookupError.message }, 500)
   if (!sms) return c.json({ error: 'not_found' }, 404)
   if (sms.sms_category !== 'withdrawal') return c.json({ error: 'withdrawal_only' }, 409)
+  if (sms.consumed_by_tx_id != null || sms.matched_transaction_id != null || sms.maven_transaction_id != null || sms.matched || existingAssignment) {
+    return c.json({ error: 'already_linked' }, 409)
+  }
 
   let payoutId: number | null = null
   if (assignmentType === 'payout') {
@@ -518,7 +539,6 @@ smsRoutes.post('/:id/withdrawal-assignment', requirePerm('sms_live', 'can_edit')
     const { data: payout, error } = await payoutQuery.maybeSingle()
     if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
     if (!payout) return c.json({ error: 'payout_not_found' }, 404)
-    if (sms.consumed_by_tx_id != null && Number(sms.consumed_by_tx_id) !== Number(payout.maven_id)) return c.json({ error: 'already_linked' }, 409)
     if (payout.matched_sms_id != null && Number(payout.matched_sms_id) !== Number(id)) return c.json({ error: 'payout_already_linked' }, 409)
     payoutId = Number(payout.maven_id)
   }
