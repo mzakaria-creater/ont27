@@ -239,6 +239,12 @@ txEditRoutes.post('/:txId/edit', async (c) => {
 
   const parsed = readEdit(await c.req.json().catch(() => null))
   if ('error' in parsed) return c.json({ error: parsed.error }, 400)
+  // Amount corrections are materially higher risk than a status decision.
+  // Keep them restricted to the stewardship roles even when an operator can
+  // edit a status directly from the complaint or transactions page.
+  if (parsed.amount != null && !new Set(['super_admin', 'owner', 'admin']).has(actor.role)) {
+    return c.json({ error: 'amount_edit_requires_admin' }, 403)
+  }
 
   const tx = await loadTx(txId)
   if (!tx) return c.json({ error: 'not_found' }, 404)

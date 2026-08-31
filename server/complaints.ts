@@ -77,7 +77,12 @@ complaintRoutes.get('/', async (c) => {
   if (txId) query = query.eq('tx_id', txId)
   const { data, count, error } = await query
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  return c.json({ rows: data ?? [], total: count ?? 0 })
+  const complaintRows = data ?? []
+  const txIds = [...new Set(complaintRows.map((row) => row.tx_id).filter((id): id is number => Number.isInteger(id)))]
+  const txStatuses = txIds.length ? await old.from('maven_transactions').select('tx_id, status, gateway').in('tx_id', txIds) : { data: [] as { tx_id: number; status: string; gateway: string | null }[] }
+  const statusByTx = new Map((txStatuses.data ?? []).map((row) => [Number(row.tx_id), row.status]))
+  const gatewayByTx = new Map((txStatuses.data ?? []).map((row) => [Number(row.tx_id), row.gateway]))
+  return c.json({ rows: complaintRows.map((row) => ({ ...row, tx_status: row.tx_id == null ? null : statusByTx.get(Number(row.tx_id)) ?? null, tx_gateway: row.tx_id == null ? null : gatewayByTx.get(Number(row.tx_id)) ?? null })), total: count ?? 0 })
 })
 
 complaintRoutes.post('/log', async (c) => {

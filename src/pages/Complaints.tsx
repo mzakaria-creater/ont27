@@ -4,6 +4,7 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import TransactionEditDialog from '../components/TransactionEditDialog'
 
 // الشكاوى — tx_complaints on the old prod DB, with the control room's
 // investigate / approve / decline / close actions.
@@ -19,6 +20,8 @@ interface ComplaintRow {
   created_at: string | null
   resolved_at: string | null
   admin_note: string | null
+  tx_status?: string | null
+  tx_gateway?: string | null
 }
 interface TicketRow { id:number; ticket_no:string|null; tx_id:number|null; customer_phone:string|null; subject:string|null; description:string|null; priority:string|null; ticket_status:string; created_at:string|null }
 
@@ -291,6 +294,7 @@ export default function Complaints() {
               <button className="btn-ghost" disabled={busy || !selected.tx_id} onClick={() => void decide('close')}>
                 🔒 {t('إغلاق', 'Close')}
               </button>
+              {selected.tx_id && <TransactionEditDialog txId={selected.tx_id} status={selected.tx_status ?? 'PENDING'} amount={selected.amount} currency="EGP" gateway={selected.tx_gateway} onDone={() => { void load(); setSelected(null) }} />}
             </div>
           </aside>
         </div>
