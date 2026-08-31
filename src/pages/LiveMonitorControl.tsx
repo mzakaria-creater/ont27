@@ -101,6 +101,16 @@ export default function LiveMonitorControl() {
                   <div><span>{t('معاملة جديدة', 'New transaction')}</span><Link to={`/transactions/${encodeURIComponent(activeTx.ontarget_ref ?? String(activeTx.tx_id))}`} className="mono">{activeTx.ontarget_ref ?? activeTx.tx_id}</Link><small>{t('جاري فحصها بواسطة محرك OnTarget', 'Being checked by the OnTarget engine')}</small></div>
                   <div className="live-active-money"><strong>{money(activeTx.amount, activeTx.currency)}</strong><small>{activeTx.gateway ?? activeTx.merchant ?? 'P2P'}</small></div>
                 </div>
+                <div className="live-active-details" aria-label={t('تفاصيل المعاملة المفحوصة', 'Checked transaction details')}>
+                  <div><small>{t('رقم المعاملة', 'Transaction ID')}</small><strong className="mono">{activeTx.tx_id}</strong></div>
+                  <div><small>{t('المرجع', 'Merchant reference')}</small><strong className="mono">{activeTx.ontarget_ref ?? '—'}</strong></div>
+                  <div><small>{t('الحالة الحالية', 'Current status')}</small><strong><span className="pay-status-badge st-pending">{activeTx.status}</span></strong></div>
+                  <div><small>{t('التاجر', 'Merchant')}</small><strong>{activeTx.merchant ?? activeTx.master_merchant ?? '—'}</strong></div>
+                  <div><small>{t('البوابة', 'Gateway')}</small><strong>{activeTx.gateway ?? '—'}</strong></div>
+                  <div><small>{t('وقت الإنشاء', 'Created')}</small><strong className="mono">{when(activeTx.first_seen_at)}</strong></div>
+                  <div><small>{t('آخر تغيير', 'Last status change')}</small><strong className="mono">{when(activeTx.last_status_change)}</strong></div>
+                  <div><small>{t('فحص SMS', 'SMS check')}</small><strong className={activeSms ? 'detail-ok' : 'detail-wait'}>{activeSms ? `✓ #${activeSms.id}` : t('بانتظار المطابقة', 'Awaiting match')}</strong></div>
+                </div>
                 <div className="live-pipeline">
                   <div className="live-pipeline-step complete"><span><CheckCircle2 size={18}/></span><div><strong>{t('1. استخراج بيانات المعاملة', '1. Extract transaction data')}</strong><small>{t('تم الاستلام من المصدر الحي', 'Received from the live provider source')}</small></div></div>
                   <div className={`live-pipeline-step ${activeSms ? 'complete' : 'waiting'}`}><span>{activeSms ? <CheckCircle2 size={18}/> : <FileSearch size={18}/>}</span><div><strong>{t('2. فحص دليل الدفع و SMS', '2. Scan payment proof and SMS')}</strong><small>{activeSms ? `${t('SMS مرتبطة', 'Linked SMS')} #${activeSms.id} · ${money(activeSms.amount, 'EGP')}` : t('بانتظار دليل موثوق أو SMS مرتبطة', 'Waiting for trusted proof or a linked SMS')}</small></div></div>
