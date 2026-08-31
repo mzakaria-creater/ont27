@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
@@ -13,6 +13,7 @@ import { LayoutGrid, Search, TableProperties, X } from 'lucide-react'
 import MerchantLogo from '../components/MerchantLogo'
 import MethodLogo from '../components/MethodLogo'
 import SenderIdentity from '../components/SenderIdentity'
+import { supabase } from '../lib/supabase'
 
 // Approvals queue — every PENDING deposit and payout in one screen with
 // quick + bulk actions.
@@ -64,27 +65,21 @@ export default function Approvals() {
   const [proof, setProof] = useState<{ url: string; ref: string } | null>(null)
   const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => localStorage.getItem('approval-queue-view') === 'cards' ? 'cards' : 'table')
   const [searchQuery, setSearchQuery] = useState('')
+  const refreshTimer = useRef<number | null>(null)
 
   const changeView = (mode: 'table' | 'cards') => {
     setViewMode(mode)
     localStorage.setItem('approval-queue-view', mode)
   }
 
-  const load = useCallback(async (syncProvider = true) => {
+  const load = useCallback(async () => {
     try {
-      // Never block the visible queue behind the provider pull. Read the local
-      // live copy immediately, then refresh once more only if this tab really
-      // completed a sync (the shared pump/DB lease prevents duplicate pulls).
-      const sync = syncProvider ? syncProviders() : Promise.resolve(false)
+      // The queue is served from the local mirror. Never wait for a provider
+      // pull before painting it; provider sync runs independently below.
       const res = await api<{ deposits: DepRow[]; payouts: PayRow[] }>('/api/approvals')
       setDeposits((current) => JSON.stringify(current) === JSON.stringify(res.deposits) ? current : res.deposits)
       setPayouts((current) => JSON.stringify(current) === JSON.stringify(res.payouts) ? current : res.payouts)
       setErr(null)
-      if (await sync) {
-        const fresh = await api<{ deposits: DepRow[]; payouts: PayRow[] }>('/api/approvals')
-        setDeposits((current) => JSON.stringify(current) === JSON.stringify(fresh.deposits) ? current : fresh.deposits)
-        setPayouts((current) => JSON.stringify(current) === JSON.stringify(fresh.payouts) ? current : fresh.payouts)
-      }
     } catch (e) {
       setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض طابور الموافقات.', 'You do not have permission to view the approval queue.') : t('تعذّر تحميل الطابور.', 'Failed to load the queue.'))
     }
@@ -92,11 +87,29 @@ export default function Approvals() {
 
   useEffect(() => {
     void load()
-    const iv = setInterval(() => void load(), 8_000)
-    return () => clearInterval(iv)
+    // Realtime changes update the queue without a full provider sync or a
+    // polling storm. A tiny debounce coalesces transaction + SMS changes.
+    const schedule = () => {
+      if (refreshTimer.current != null) window.clearTimeout(refreshTimer.current)
+      refreshTimer.current = window.setTimeout(() => { refreshTimer.current = null; void load() }, 120)
+    }
+    const channel = supabase.channel('approval-queue-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'maven_transactions' }, schedule)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inbound_sms' }, schedule)
+      .subscribe()
+    const syncIv = window.setInterval(() => {
+      void syncProviders().then((changed) => { if (changed) schedule() })
+    }, 15_000)
+    const fallbackIv = window.setInterval(() => void load(), 30_000)
+    return () => {
+      window.clearInterval(syncIv)
+      window.clearInterval(fallbackIv)
+      if (refreshTimer.current != null) window.clearTimeout(refreshTimer.current)
+      void supabase.removeChannel(channel)
+    }
   }, [load])
 
-  const depBulk = useBulk((id) => `/api/deposits/${id}/decision`, () => void load(false))
+  const depBulk = useBulk((id) => `/api/deposits/${id}/decision`, () => void load())
   const quick = async (id: number, action: 'approve' | 'decline') => {
     setRowBusy(`deposits-${id}`)
     try {
@@ -104,7 +117,7 @@ export default function Approvals() {
       setDeposits((current) => current?.filter((row) => row.tx_id !== id) ?? current)
       // The decision endpoint already updated the local live row. Refresh the
       // queue only; do not start another provider-wide sync after every click.
-      void load(false)
+      void load()
     } catch {
       setErr(t('فشل تنفيذ القرار — أعد المحاولة.', 'Failed to apply the decision — try again.'))
     } finally {
