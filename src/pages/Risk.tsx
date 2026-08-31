@@ -32,6 +32,7 @@ export default function Risk() {
   const [vel, setVel] = useState<{ offenders: Offender[]; min_txns: number; window_days: number } | null>(null)
   const [minTxns, setMinTxns] = useState(20); const [windowDays, setWindowDays] = useState(30)
   const [err, setErr] = useState<string | null>(null)
+  const [blockValue, setBlockValue] = useState(''); const [blockType, setBlockType] = useState<'phone'|'country'|'city'>('phone'); const [blockReason, setBlockReason] = useState('')
   const canEdit = can('risk', 'can_edit')
 
   const loadRisk = useCallback(() => {
@@ -52,6 +53,12 @@ export default function Risk() {
       loadVelocity(); loadRisk()
     } catch { setErr(t('تعذّر الإضافة للقائمة السوداء.', 'Failed to add to the blacklist.')) }
   }
+  const addBlock = async () => {
+    if (!blockValue.trim() || !canEdit) return
+    try { await api('/api/risk/blacklist', { method:'POST', body: JSON.stringify({ type: blockType, value: blockValue.trim(), reason: blockReason.trim() || `Manual ${blockType} block` }) }); setBlockValue(''); setBlockReason(''); loadRisk() }
+    catch (e) { setErr(e instanceof ApiError && e.status === 409 ? t('القيمة محظورة بالفعل.', 'Already blocked.') : t('تعذّرت إضافة الحظر.', 'Could not add block.')) }
+  }
+  const removeBlock = async (id: string) => { if (!canEdit || !window.confirm(t('إزالة الحظر؟','Remove this block?'))) return; try { await api(`/api/risk/blacklist/${id}`, { method:'DELETE' }); loadRisk() } catch { setErr(t('تعذّرت إزالة الحظر.','Could not remove block.')) } }
 
   return (
     <PanelShell>
@@ -159,19 +166,23 @@ export default function Risk() {
       {data && (
         <>
           <section className="card recent-card">
-            <div className="recent-head"><h3>🚫 {t('القائمة السوداء', 'Blacklist')}</h3></div>
+            <div className="recent-head"><h3>🚫 {t('حظر رقم محفظة','Block wallet number')}</h3><span className="cell-sub">{t('أي معاملة من الرقم المحظور تُرفض فوراً بدون مطابقة SMS.','Transactions from a blocked number are declined immediately without SMS matching.')}</span></div>
+            <div className="filter-bar"><select className="filter-select" value={blockType} onChange={e => setBlockType(e.target.value as typeof blockType)} disabled={!canEdit}><option value="phone">Wallet / phone</option><option value="country">Country</option><option value="city">City</option></select><input className="login-input" value={blockValue} onChange={e=>setBlockValue(e.target.value)} placeholder={blockType === 'phone' ? '01xxxxxxxxx' : blockType === 'country' ? 'EG' : 'City'} disabled={!canEdit}/><input className="login-input" value={blockReason} onChange={e=>setBlockReason(e.target.value)} placeholder="Reason" disabled={!canEdit}/><button className="btn-primary btn-sm" onClick={()=>void addBlock()} disabled={!canEdit || !blockValue.trim()}>🚫 {t('حظر فوري','Block now')}</button></div>
+          </section>
+          <section className="card recent-card">
+            <div className="recent-head"><h3>📋 {t('الأرقام والقيم المحظورة', 'Blocked numbers and values')}</h3><button className="btn-ghost btn-sm" onClick={loadRisk}>🔄 {t('تحديث','Refresh')}</button></div>
             {data.blacklist.length === 0 && <p>{t('القائمة فارغة.', 'The list is empty.')}</p>}
             {data.blacklist.length > 0 && (
               <div className="table-wrap">
                 <table className="data-table">
-                  <thead><tr><th>{t('النوع', 'Type')}</th><th>{t('القيمة', 'Value')}</th><th>{t('السبب', 'Reason')}</th><th>{t('أضيفت', 'Added')}</th></tr></thead>
+                  <thead><tr><th>{t('النوع', 'Type')}</th><th>{t('القيمة', 'Value')}</th><th>{t('السبب', 'Reason')}</th><th>{t('أضيفت', 'Added')}</th><th>{t('إجراء','Action')}</th></tr></thead>
                   <tbody>
                     {data.blacklist.map((r) => (
                       <tr key={r.id}>
                         <td><span className="pay-status-badge st-declined">{r.type ?? '—'}</span></td>
                         <td className="mono">{r.value ?? '—'}</td>
                         <td>{r.reason ?? '—'}</td>
-                        <td className="mono">{depositTime({ first_seen_at: r.created_at })}</td>
+                        <td className="mono">{depositTime({ first_seen_at: r.created_at })}</td><td>{canEdit && <button className="btn-ghost danger btn-sm" onClick={()=>void removeBlock(r.id)}>{t('إلغاء الحظر','Unblock')}</button>}</td>
                       </tr>
                     ))}
                   </tbody>

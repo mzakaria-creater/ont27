@@ -491,6 +491,15 @@ extraRoutes.post(
   },
 )
 
+extraRoutes.delete('/risk/blacklist/:id', requireAnyPerm(['risk', 'risk_audit', 'flagged', 'velocity', 'compliance'], 'can_edit'), async (c) => {
+  const id = c.req.param('id'); const actor = c.get('actor')
+  const { data, error } = await db.from('api_risk_blacklist').delete().eq('id', id).select('id, type, value').maybeSingle()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  if (!data) return c.json({ error: 'not_found' }, 404)
+  await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'risk.blacklist_remove', entity: 'api_risk_blacklist', entity_id: String(id), before: data })
+  return c.json({ ok: true, removed: data })
+})
+
 // ---- Automation: settings + rules + worker jobs + treasury ----
 const RULE_COLS =
   'id, scope_type, master_merchant, merchant, sub_merchant, account_wallet, payment_method, provider, enabled, min_amount, max_amount, time_window_minutes, action_type, priority, use_crm_matching, use_near_amount, use_unique_amount, created_at, updated_at'
