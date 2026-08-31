@@ -207,6 +207,23 @@ smsRoutes.get('/stats', requirePerm('sms_live', 'can_view'), async (c) => {
   }
 })
 
+// Latest reported balance per wallet, sourced only from SMS balance_after.
+smsRoutes.get('/balances', requirePerm('sms_live', 'can_view'), async (c) => {
+  const { data, error } = await db.from('inbound_sms')
+    .select('receiver_number, wallet_number, confirmed_wallet_number, balance_after, received_at')
+    .not('balance_after', 'is', null)
+    .order('received_at', { ascending: false }).limit(10_000)
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  const latest = new Map<string, { wallet_number: string; balance: number; received_at: string | null }>()
+  for (const row of data ?? []) {
+    const wallet = String(row.confirmed_wallet_number ?? row.receiver_number ?? row.wallet_number ?? '').trim()
+    if (!wallet || latest.has(wallet)) continue
+    const balance = Number(row.balance_after)
+    if (Number.isFinite(balance)) latest.set(wallet, { wallet_number: wallet, balance, received_at: row.received_at })
+  }
+  return c.json({ balances: [...latest.values()] })
+})
+
 smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
   const category = c.req.query('category')?.toLowerCase()
   const match = c.req.query('match')?.toLowerCase()

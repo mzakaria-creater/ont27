@@ -41,8 +41,6 @@ interface TvPayout {
   created_utc: string | null
 }
 interface TvTelegram { id: number; alert_type: string; message: string | null; ok: boolean; created_at: string | null }
-interface TvWallet { balance: number | null; current_balance?: number | null; is_active?: boolean; device?: string | null; sim_slot?: number | null }
-interface TvWalletDevice { device: string; sim_slot: number | null; balance: number | null; online: boolean | null }
 
 interface ControlStats {
   stats: Record<string, unknown> | null
@@ -80,7 +78,7 @@ export default function TvScreen() {
       api<{ rows: TvPayout[] }>('/api/payouts?limit=6'),
       api<ControlStats>('/api/control/status'),
       api<{ alerts: TvTelegram[] }>(`/api/telegram/live?limit=500&since=${encodeURIComponent(new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString())}`),
-      api<{ wallets: TvWallet[]; devices: TvWalletDevice[] }>('/api/wallets'),
+      api<{ balances: { balance: number }[] }>('/api/sms/balances'),
     ])
     if (results[0].status === 'fulfilled') setStats(results[0].value)
     if (results[1].status === 'fulfilled') setPendingDeposits(results[1].value.rows)
@@ -89,11 +87,7 @@ export default function TvScreen() {
     if (results[4].status === 'fulfilled') setPayouts(results[4].value.rows)
     if (results[5].status === 'fulfilled') setControl(results[5].value)
     if (results[6].status === 'fulfilled') setTelegram(results[6].value.alerts)
-    if (results[7].status === 'fulfilled') {
-      const { wallets, devices } = results[7].value
-      const deviceBalances = new Map(devices.map((d) => [`${d.device}#${d.sim_slot ?? 0}`, Number(d.balance ?? 0)]))
-      setWalletBalance(wallets.filter((w) => w.is_active !== false).reduce((sum, w) => sum + Number(w.current_balance ?? w.balance ?? deviceBalances.get(`${w.device ?? ''}#${w.sim_slot ?? 0}`) ?? 0), 0))
-    }
+    if (results[7].status === 'fulfilled') setWalletBalance(results[7].value.balances.reduce((sum, row) => sum + Number(row.balance ?? 0), 0))
   }, [])
 
   useEffect(() => {
