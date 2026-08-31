@@ -306,59 +306,59 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<PageGate keys={['dashboard']}><AnalyticsDashboard /></PageGate>} />
             <Route path="/welcome" element={<Welcome />} />
-            <Route path="/control-room" element={<Dashboard />} />
-            <Route path="/monitor" element={<Monitor />} />
+            <Route path="/control-room" element={<PageGate keys={['dashboard']}><Dashboard /></PageGate>} />
+            <Route path="/monitor" element={<PageGate keys={['dashboard']}><Monitor /></PageGate>} />
             <Route path="/live-monitor" element={<PageGate keys={['dashboard']}><LiveMonitorControl /></PageGate>} />
-            <Route path="/api-dashboard" element={<ApiDashboard />} />
-            <Route path="/executive-dashboard" element={<ExecutiveDashboard />} />
-            <Route path="/analytics-dashboard" element={<AnalyticsDashboard />} />
-            <Route path="/system-health" element={<SystemHealth />} />
-            <Route path="/performance" element={<Performance />} />
-            <Route path="/revenue" element={<RevenueCenter />} />
-            <Route path="/wallet-movements" element={<WalletMovements />} />
-            <Route path="/client" element={<ClientProfile />} />
-            <Route path="/client/:phone" element={<ClientProfile />} />
+            <Route path="/api-dashboard" element={<PageGate keys={['dashboard']}><ApiDashboard /></PageGate>} />
+            <Route path="/executive-dashboard" element={<PageGate keys={['dashboard','reports','advanced_analysis','treasury','wallets']}><ExecutiveDashboard /></PageGate>} />
+            <Route path="/analytics-dashboard" element={<PageGate keys={['dashboard','reports','advanced_analysis','wallets']}><AnalyticsDashboard /></PageGate>} />
+            <Route path="/system-health" element={<PageGate keys={['dashboard','automation','audit_log']}><SystemHealth /></PageGate>} />
+            <Route path="/performance" element={<PageGate keys={['reports','analytics','dashboard','transactions','merchants']}><Performance /></PageGate>} />
+            <Route path="/revenue" element={<PageGate keys={['revenue_center']}><RevenueCenter /></PageGate>} />
+            <Route path="/wallet-movements" element={<PageGate keys={['wallets','treasury','reports','sms_live']}><WalletMovements /></PageGate>} />
+            <Route path="/client" element={<PageGate keys={['client_crm']}><ClientProfile /></PageGate>} />
+            <Route path="/client/:phone" element={<PageGate keys={['client_crm']}><ClientProfile /></PageGate>} />
             <Route path="/deposits" element={<PageGate keys={['deposits']}><Deposits /></PageGate>} />
             <Route path="/payouts" element={<PageGate keys={['payouts']}><Payouts /></PageGate>} />
             <Route path="/transactions" element={<PageGate keys={['transactions','all_transactions']}><Transactions /></PageGate>} />
             <Route path="/transactions/:ref" element={<PageGate keys={['transactions','all_transactions','deposits']}><TransactionDetail /></PageGate>} />
             <Route path="/approvals" element={<PageGate keys={['approvals','approval-queue']}><Approvals /></PageGate>} />
-            <Route path="/merchants" element={<Merchants />} />
-            <Route path="/wallets" element={<Wallets />} />
-            <Route path="/sms" element={<SmsLive />} />
-            <Route path="/settlements" element={<Settlements />} />
-            <Route path="/crm" element={<Crm />} />
-            <Route path="/risk" element={<Risk />} />
+            <Route path="/merchants" element={<PageGate keys={['merchants']}><Merchants /></PageGate>} />
+            <Route path="/wallets" element={<PageGate keys={['wallets']}><Wallets /></PageGate>} />
+            <Route path="/sms" element={<PageGate keys={['sms_live']}><SmsLive /></PageGate>} />
+            <Route path="/settlements" element={<PageGate keys={['settlements','settlements_list','settlement_recon','fees']}><Settlements /></PageGate>} />
+            <Route path="/crm" element={<PageGate keys={['client_crm']}><Crm /></PageGate>} />
+            <Route path="/risk" element={<PageGate keys={['risk','risk_audit','flagged','exceptions','manual_review','velocity','compliance']}><Risk /></PageGate>} />
             <Route path="/automation" element={<PageGate keys={['automation','automation_rules']}><Automation /></PageGate>} />
             <Route path="/automation-control" element={<PageGate keys={['automation','automation_rules']}><Automation /></PageGate>} />
-            <Route path="/integration-guide" element={<IntegrationGuide />} />
-            <Route path="/audit" element={<Audit />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/review" element={<Review />} />
-            <Route path="/mismatch" element={<Mismatch />} />
-            <Route path="/telegram" element={<Telegram />} />
-            <Route path="/binance" element={<Binance />} />
-            <Route path="/binance/p2p-egp" element={<BinanceP2PEgp />} />
-            <Route path="/binance/p2p-history" element={<BinanceP2PEgp />} />
-            <Route path="/binance/p2p-ads" element={<BinanceP2PAds />} />
-            <Route path="/operations-archive" element={<OperationsArchive />} />
-            <Route path="/wallet-report" element={<WalletReport />} />
-            <Route path="/withdrawal-sms-report" element={<WithdrawalSmsReport />} />
+            <Route path="/integration-guide" element={<PageGate keys={['api-keys','settings','merchants']}><IntegrationGuide /></PageGate>} />
+            <Route path="/audit" element={<PageGate keys={['audit_log','audit-logs']}><Audit /></PageGate>} />
+            <Route path="/reports" element={<PageGate keys={['reports','advanced_analysis']}><Reports /></PageGate>} />
+            <Route path="/review" element={<PageGate keys={['review','audit_log','audit-logs']}><Review /></PageGate>} />
+            <Route path="/mismatch" element={<PageGate keys={['review','audit_log','audit-logs','risk','risk_audit','compliance']}><Mismatch /></PageGate>} />
+            <Route path="/telegram" element={<PageGate keys={['telegram_bot','automation']}><Telegram /></PageGate>} />
+            <Route path="/binance" element={<PageGate keys={['binance_p2p_config','binance_p2p','treasury']}><Binance /></PageGate>} />
+            <Route path="/binance/p2p-egp" element={<PageGate keys={['binance_p2p','treasury']}><BinanceP2PEgp /></PageGate>} />
+            <Route path="/binance/p2p-history" element={<PageGate keys={['binance_p2p','treasury']}><BinanceP2PEgp /></PageGate>} />
+            <Route path="/binance/p2p-ads" element={<PageGate keys={['binance_p2p','treasury']}><BinanceP2PAds /></PageGate>} />
+            <Route path="/operations-archive" element={<PageGate keys={['audit_log','audit-logs','transactions']}><OperationsArchive /></PageGate>} />
+            <Route path="/wallet-report" element={<PageGate keys={['sms_live','wallets']}><WalletReport /></PageGate>} />
+            <Route path="/withdrawal-sms-report" element={<PageGate keys={['reports','advanced_analysis','sms_live']}><WithdrawalSmsReport /></PageGate>} />
             <Route path="/admin" element={<PageGate keys={['settings','users','permissions']}><AdminPage /></PageGate>} />
             <Route path="/admin/*" element={<PageGate keys={['settings','users','permissions']}><AdminPage /></PageGate>} />
-            <Route path="/admin-transactions" element={<AdminTransactions />} />
+            <Route path="/admin-transactions" element={<PageGate keys={['transactions']}><AdminTransactions /></PageGate>} />
             <Route path="/chat" element={<InternalChat />} />
-            <Route path="/notifications" element={<Notifications />} />
-            <Route path="/tv" element={<TvScreen />} />
-            <Route path="/complaints" element={<Complaints />} />
-            <Route path="/merchant-link-generator" element={<LinkGenerator />} />
-            <Route path="/payment-methods" element={<PaymentMethods />} />
-            <Route path="/known-recipients" element={<KnownRecipients />} />
-            <Route path="/replay-lab" element={<ReplayLab />} />
+            <Route path="/notifications" element={<PageGate keys={['notifications']}><Notifications /></PageGate>} />
+            <Route path="/tv" element={<PageGate keys={['sms_live']}><TvScreen /></PageGate>} />
+            <Route path="/complaints" element={<PageGate keys={['support']}><Complaints /></PageGate>} />
+            <Route path="/merchant-link-generator" element={<PageGate keys={['checkout-builder']}><LinkGenerator /></PageGate>} />
+            <Route path="/payment-methods" element={<PageGate keys={['wallets','payment_methods']}><PaymentMethods /></PageGate>} />
+            <Route path="/known-recipients" element={<PageGate keys={['wallets','payouts']}><KnownRecipients /></PageGate>} />
+            <Route path="/replay-lab" element={<PageGate keys={['automation','sms_live','webhooks']}><ReplayLab /></PageGate>} />
             <Route path="/webhooks" element={<PageGate keys={['webhooks','developers']}><WebhookCenter /></PageGate>} />
-            <Route path="/airdroid" element={<AirDroid />} />
-            <Route path="/ontarget-hub" element={<TreasuryHub />} />
-            <Route path="/hub" element={<TreasuryHub />} />
+            <Route path="/airdroid" element={<PageGate keys={['sms_live','wallets']}><AirDroid /></PageGate>} />
+            <Route path="/ontarget-hub" element={<PageGate keys={['wallets','payouts','sms_live','treasury']}><TreasuryHub /></PageGate>} />
+            <Route path="/hub" element={<PageGate keys={['wallets','payouts','sms_live','treasury']}><TreasuryHub /></PageGate>} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
