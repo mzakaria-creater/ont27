@@ -20,6 +20,7 @@ interface ComplaintRow {
   resolved_at: string | null
   admin_note: string | null
 }
+interface TicketRow { id:number; ticket_no:string|null; tx_id:number|null; customer_phone:string|null; subject:string|null; description:string|null; priority:string|null; ticket_status:string; created_at:string|null }
 
 const STATUS_META: Record<string, { ar: string; en: string; cls: string }> = {
   open: { ar: 'مفتوحة', en: 'Open', cls: 'st-pending' },
@@ -49,6 +50,7 @@ export default function Complaints() {
   const [caseResult, setCaseResult] = useState<unknown | null>(null)
   const [caseBusy, setCaseBusy] = useState(false)
   const [caseMessage, setCaseMessage] = useState<string | null>(null)
+  const [tickets, setTickets] = useState<TicketRow[]>([])
 
   const load = useCallback(async () => {
     const params = new URLSearchParams()
@@ -66,6 +68,9 @@ export default function Complaints() {
   }, [status, txId])
 
   useEffect(() => { void load() }, [load])
+  const loadTickets = useCallback(async () => { try { const res = await api<{ rows: TicketRow[] }>('/api/tickets?limit=50'); setTickets(res.rows) } catch { setTickets([]) } }, [])
+  useEffect(() => { void loadTickets() }, [loadTickets])
+  const updateTicket = async (id: number, next: string) => { try { await api(`/api/tickets/${id}/status`, { method:'PATCH', body: JSON.stringify({ status: next }) }); await loadTickets() } catch { setErr(t('تعذّر تحديث التذكرة.', 'Could not update ticket.')) } }
 
   const open = (r: ComplaintRow) => {
     setSelected(r)
@@ -155,6 +160,14 @@ export default function Complaints() {
         <div className="complaint-kpi amber"><span>{t('مفتوحة','Open')}</span><strong>{counts.open}</strong><small>{t('تحتاج فحصاً','require investigation')}</small></div>
         <div className="complaint-kpi green"><span>{t('محلولة','Resolved')}</span><strong>{counts.resolved}</strong><small>{t('تمت الموافقة أو الحل','approved or resolved')}</small></div>
         <div className="complaint-kpi red"><span>{t('مرفوضة','Declined')}</span><strong>{counts.declined}</strong><small>{t('قرار رفض مسجل','decline recorded')}</small></div>
+      </section>
+
+      <section className="card recent-card complaint-ledger" style={{ marginBottom: 16 }}>
+        <div className="recent-head"><div><h3>🎫 {t('تذاكر الدعم','Support tickets')}</h3><span className="cell-sub">{tickets.length} {t('تذكرة مرتبطة بالشكاوى والمعاملات','tickets linked to complaints and transactions')}</span></div></div>
+        <div className="table-wrap"><table className="data-table"><thead><tr><th>Ticket</th><th>TRX</th><th>{t('الموضوع','Subject')}</th><th>{t('الأولوية','Priority')}</th><th>{t('الحالة','Status')}</th><th>{t('الإجراء','Action')}</th></tr></thead><tbody>
+          {tickets.map(ticket => <tr key={ticket.id}><td className="mono">{ticket.ticket_no ?? `TKT-${ticket.id}`}</td><td className="mono">{ticket.tx_id ?? '—'}</td><td>{ticket.subject ?? 'Transaction issue'}<div className="cell-sub">{ticket.description ?? ticket.customer_phone ?? ''}</div></td><td><span className={`pay-status-badge ${ticket.priority === 'high' ? 'st-declined' : ticket.priority === 'medium' ? 'st-pending' : 'st-dim'}`}>{ticket.priority ?? 'normal'}</span></td><td><span className="pay-status-badge st-pending">{ticket.ticket_status}</span></td><td><select className="filter-select" value={ticket.ticket_status} onChange={e => void updateTicket(ticket.id, e.target.value)}><option value="open">Open</option><option value="in_progress">In progress</option><option value="resolved">Resolved</option><option value="closed">Closed</option></select></td></tr>)}
+          {tickets.length === 0 && <tr><td colSpan={6} className="sidebar-hint">{t('لا توجد تذاكر بعد. تسجيل شكوى جديدة ينشئ تذكرة تلقائياً.','No tickets yet. Filing a complaint creates one automatically.')}</td></tr>}
+        </tbody></table></div>
       </section>
 
       <section className="card complaint-investigator">

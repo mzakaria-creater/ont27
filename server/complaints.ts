@@ -99,6 +99,18 @@ complaintRoutes.post('/log', async (c) => {
   const actor = c.get('actor')
   await audit(actor, 'complaint.log', String(txId ?? phone), { phone, amount, note })
 
+  // Keep a first-class support ticket in the panel database for every complaint.
+  // The legacy complaint RPC remains the source of the complaint record; this
+  // ticket is the operational queue and is intentionally best-effort.
+  const complaintId = Number((data as Record<string, unknown> | null)?.id ?? (data as Record<string, unknown> | null)?.complaint_id)
+  const priority = /urgent|asap|critical|failed|emergency/i.test(note ?? '') ? 'high' : txId ? 'medium' : 'normal'
+  await db.from('support_tickets').insert({
+    ticket_no: `TKT-${Date.now()}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
+    complaint_id: Number.isFinite(complaintId) ? complaintId : null,
+    tx_id: txId, customer_phone: phone, amount, subject: txId ? `Transaction issue #${txId}` : 'Customer complaint',
+    description: note, message_body: note, priority, opened_by: actor.username,
+  })
+
   const tg = await notifySupport('complaint_filed', [
     '📣 <b>شكوى جديدة</b>',
     txId ? `المعاملة: <code>${esc(txId)}</code>` : null,

@@ -26,6 +26,7 @@ import { chatRoutes } from './chat.js'
 import { revenueRoutes } from './revenue.js'
 import { webhookRoutes } from './webhooks.js'
 import { railwayApiRoutes } from './railwayApi.js'
+import { ticketRoutes } from './tickets.js'
 
 export const app = new Hono().basePath('/api')
 
@@ -41,6 +42,7 @@ app.route('/sms', smsRoutes)
 app.route('/cron', deltaSyncRoutes)
 app.route('/control', controlRoutes)
 app.route('/complaints', complaintRoutes)
+app.route('/tickets', ticketRoutes)
 // These routes intentionally precede the legacy aggregate endpoints in
 // extras.ts: they are the authenticated CRUD surfaces for the new neutral
 // payment catalogue and operational administration.
