@@ -118,8 +118,14 @@ export default function Approvals() {
       // The decision endpoint already updated the local live row. Refresh the
       // queue only; do not start another provider-wide sync after every click.
       void load()
-    } catch {
-      setErr(t('فشل تنفيذ القرار — أعد المحاولة.', 'Failed to apply the decision — try again.'))
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'outside_assigned_scope') {
+        setErr(t('المعاملة خارج نطاق تعيين هذا المشغّل (الصلاحية أو نوع الطلب/التاجر). راجع نطاقات المستخدم.', 'This transaction is outside the operator assignment scope (permission or request type/merchant). Review the user scopes.'))
+      } else if (e instanceof ApiError && e.code === 'not_pending') {
+        setErr(t('المعاملة لم تعد معلّقة — تم تحديثها من مصدر آخر.', 'This transaction is no longer pending — it was updated elsewhere.'))
+      } else {
+        setErr(t('فشل تنفيذ القرار — أعد المحاولة.', 'Failed to apply the decision — try again.'))
+      }
     } finally {
       setRowBusy(null)
     }
@@ -136,7 +142,7 @@ export default function Approvals() {
         <div>
           <h2>✅ {t('طابور الموافقات', 'Approval queue')}</h2>
         <p className="page-sub">
-          {t('كل المعلّق في مكان واحد · تحديث تلقائي كل 8 ثوانٍ', 'Everything pending in one place · auto-refresh every 8s')}
+          {t('كل المعلّق في مكان واحد · تحديث لحظي مع مزامنة المزود', 'Everything pending in one place · realtime updates with provider sync')}
           {deposits && payouts && <> · {deposits.length + payouts.length} {t('بانتظار قرار', 'awaiting decision')}</>}
         </p>
         </div>
