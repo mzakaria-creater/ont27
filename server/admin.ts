@@ -326,7 +326,10 @@ adminRoutes.post('/users/:id/state',requirePerm('users','can_edit'),async(c)=>{
 })
 
 async function sendAccountLink(email:string,displayName:string,link:string,purpose:string){
-  const apiKey=process.env.RESEND_API_KEY,from=process.env.EMAIL_FROM
+  const apiKey=process.env.RESEND_API_KEY
+  // Use the product mailbox when EMAIL_FROM is not explicitly set. The
+  // domain still must be verified in the configured mail provider.
+  const from=process.env.EMAIL_FROM || 'OnTarget <info@ontarget-egy.com>'
   if(!apiKey||!from)return {sent:false,reason:'email_not_configured'}
   const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${apiKey}`,'content-type':'application/json'},body:JSON.stringify({from,to:[email],subject:purpose==='magic_login'?'Your secure OnTarget sign-in link':'Reset your OnTarget password',html:`<p>Hello ${displayName},</p><p><a href="${link}">${purpose==='magic_login'?'Sign in securely':'Reset password'}</a></p><p>This one-time link expires in 15 minutes.</p>`})})
   return response.ok?{sent:true}:{sent:false,reason:'email_provider_failed',status:response.status}
