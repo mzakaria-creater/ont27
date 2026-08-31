@@ -80,6 +80,12 @@ async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> 
     row.matched_payout_id = null
     row.matched_payout_ref = null
     row.matched_payout_status = null
+    row.matched_currency = null
+    row.matched_sub_merchant = null
+    row.matched_master_merchant = null
+    row.matched_gateway = null
+    row.matched_receiving_wallet = null
+    row.wallet_match = null
   }
   const withdrawalIds = withdrawalRows.map((row) => Number(row.id)).filter(Number.isFinite)
   if (withdrawalIds.length) {
@@ -135,7 +141,7 @@ async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> 
 
   const txIds = [...new Set(depositRows.map(resolveTx).filter((v): v is number => v != null))]
   if (!txIds.length) return
-  const { data: txs } = await db.from('maven_transactions').select('tx_id, ontarget_ref').in('tx_id', txIds)
+  const { data: txs } = await db.from('maven_transactions').select('tx_id, ontarget_ref, currency, sub_merchant, master_merchant, gateway, receiving_wallet, to_account_number').in('tx_id', txIds)
   const refByTx = new Map((txs ?? []).map((t) => [t.tx_id, t.ontarget_ref]))
 
   for (const r of depositRows) {
@@ -147,6 +153,15 @@ async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> 
     if (!r.match_status || r.match_status === 'unmatched') r.match_status = 'auto'
     r.matched_tx_id = txId
     r.matched_ontarget_ref = refByTx.get(txId) ?? null
+    const tx = (txs ?? []).find((item) => Number(item.tx_id) === txId)
+    r.matched_currency = tx?.currency ?? null
+    r.matched_sub_merchant = tx?.sub_merchant ?? null
+    r.matched_master_merchant = tx?.master_merchant ?? null
+    r.matched_gateway = tx?.gateway ?? null
+    r.matched_receiving_wallet = tx?.receiving_wallet ?? tx?.to_account_number ?? null
+    const smsWallet = String(r.confirmed_wallet_number ?? r.receiver_number ?? r.wallet_number ?? '').replace(/\D/g, '').slice(-11)
+    const txWallet = String(r.matched_receiving_wallet ?? '').replace(/\D/g, '').slice(-11)
+    r.wallet_match = Boolean(smsWallet && txWallet && smsWallet === txWallet)
   }
 }
 
@@ -284,7 +299,7 @@ smsRoutes.get('/:id/candidates', requirePerm('sms_live', 'can_view'), async (c) 
 
   let query = db
     .from('maven_transactions')
-    .select('tx_id, ontarget_ref, status, amount, currency, sender_name, sender_number, merchant, first_seen_at')
+    .select('tx_id, ontarget_ref, status, amount, currency, sender_name, sender_number, merchant, sub_merchant, master_merchant, gateway, receiving_wallet, to_account_number, first_seen_at')
     .order('first_seen_at', { ascending: false, nullsFirst: false })
     .limit(10)
 

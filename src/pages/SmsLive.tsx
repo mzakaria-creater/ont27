@@ -62,6 +62,12 @@ interface SmsRow {
   matched_payout_id?: number | null
   matched_payout_ref?: string | null
   matched_payout_status?: string | null
+  matched_currency?: string | null
+  matched_sub_merchant?: string | null
+  matched_master_merchant?: string | null
+  matched_gateway?: string | null
+  matched_receiving_wallet?: string | null
+  wallet_match?: boolean | null
   withdrawal_assignment_type?: 'payout' | 'p2p_usdt' | 'cash_return' | null
   withdrawal_assignment_reference?: string | null
   withdrawal_assignment_name?: string | null
@@ -111,6 +117,11 @@ interface CandidateTx {
   sender_name: string | null
   sender_number: string | null
   merchant: string | null
+  sub_merchant?: string | null
+  master_merchant?: string | null
+  gateway?: string | null
+  receiving_wallet?: string | null
+  to_account_number?: string | null
   first_seen_at: string | null
 }
 
@@ -465,6 +476,8 @@ export default function SmsLive() {
                   const payoutLinked = r.sms_category === 'withdrawal' && r.matched_payout_id != null
                   const manuallyAssigned = r.sms_category === 'withdrawal' && r.withdrawal_assignment_type != null
                   const linked = payoutLinked || r.matched_tx_id != null
+                  const displayWallet = r.confirmed_wallet_number ?? r.receiver_number ?? r.wallet_number
+                  const txWallet = r.matched_receiving_wallet
                   const mt = linked ? MATCH_META.auto : r.match_status ? MATCH_META[r.match_status] : null
                   return (
                     <tr key={r.id} onClick={() => void openDetail(r.id)}>
@@ -483,7 +496,8 @@ export default function SmsLive() {
                       </td>
                       <td>
                         {r.sender_name ?? r.sender_number ?? '—'}
-                        <div className="cell-sub mono">← {r.receiver_number ?? '—'}</div>
+                        <div className="cell-sub mono">← {displayWallet ?? '—'}</div>
+                        {r.receiver_number && displayWallet && r.receiver_number !== displayWallet && <div className="cell-sub mono">SMS receiver {r.receiver_number}</div>}
                       </td>
                       <td className="mono">
                         {r.device_name ?? '—'}
@@ -492,7 +506,11 @@ export default function SmsLive() {
                       <td className="mono">
                         {walletLinked ? r.linked_wallet_number : r.trx_id ?? '—'}
                         {walletLinked && <div className="cell-sub mono">{r.wallet_balance_before != null ? money(r.wallet_balance_before, 'EGP') : '—'} − {money(r.amount, 'EGP')} = {r.wallet_balance_after != null ? money(r.wallet_balance_after, 'EGP') : '—'}</div>}
-                        {!walletLinked && linked && <div className="cell-sub mono">OnTarget {r.matched_ontarget_ref ?? r.matched_tx_id}</div>}
+                        {!walletLinked && linked && <>
+                          <div className="cell-sub mono">OnTarget {r.matched_ontarget_ref ?? r.matched_tx_id} · {r.matched_currency ?? 'TRX currency —'}</div>
+                          {txWallet && <div className="cell-sub mono">TRX wallet {txWallet} {r.wallet_match === false ? '· ⚠ wallet mismatch' : r.wallet_match ? '· ✓ wallet matched' : ''}</div>}
+                          {r.matched_master_merchant?.toLowerCase() === 'payfuture' && <div className="cell-sub">PayFuture · {r.matched_sub_merchant ?? 'sub-merchant not set'}</div>}
+                        </>}
                       </td>
                       <td onClick={(event)=>event.stopPropagation()}>
                         {r.sms_category !== 'withdrawal' ? <span className="cell-sub">—</span> : payoutLinked ? <Link className="transaction-cell-link" to={`/payouts?q=${encodeURIComponent(r.matched_payout_ref ?? String(r.matched_payout_id))}`}><span className="pay-status-badge st-paid">{t('معيّنة','Assigned')}</span><div className="cell-sub mono">WD {r.matched_payout_ref ?? r.matched_payout_id}{r.matched_payout_status ? ` · ${r.matched_payout_status}` : ''}</div></Link> : manuallyAssigned ? <><span className="pay-status-badge st-paid">{t('معيّنة','Assigned')}</span><div className="cell-sub">{r.withdrawal_assignment_type === 'p2p_usdt' ? 'P2P USDT' : 'Money cash return'} · {r.withdrawal_assignment_name}</div></> : <span className="pay-status-badge st-declined">{t('غير معيّنة','Unassigned')}</span>}
@@ -551,11 +569,16 @@ export default function SmsLive() {
 
                 <dl className="detail-grid">
                   <dt>{t('المُرسِل', 'Sender')}</dt><dd>{selected.sender_name ?? '—'} {selected.sender_number && <span className="mono">({selected.sender_number})</span>}</dd>
-                  <dt>{selected.sms_category === 'withdrawal' ? t('المحفظة الدافعة', 'Paying wallet') : t('المحفظة المستقبِلة', 'Receiving wallet')}</dt><dd className="mono">{selected.sms_category === 'withdrawal' ? selected.linked_wallet_number ?? selected.wallet_number ?? '—' : selected.receiver_number ?? selected.wallet ?? '—'}</dd>
+                  <dt>{selected.sms_category === 'withdrawal' ? t('المحفظة الدافعة', 'Paying wallet') : t('المحفظة المستقبِلة', 'Receiving wallet')}</dt><dd className="mono">{selected.sms_category === 'withdrawal' ? selected.linked_wallet_number ?? selected.wallet_number ?? '—' : selected.confirmed_wallet_number ?? selected.receiver_number ?? selected.wallet_number ?? selected.wallet ?? '—'}{selected.sms_category !== 'withdrawal' && selected.receiver_number && (selected.confirmed_wallet_number ?? selected.receiver_number) !== selected.receiver_number && <div className="cell-sub">SMS receiver {selected.receiver_number}</div>}</dd>
                   <dt>{t('المزوّد', 'Provider')}</dt><dd>{selected.provider ?? '—'} · <span className="mono">{selected.sms_sender ?? '—'}</span></dd>
                   <dt>{t('الجهاز', 'Device')}</dt><dd className="mono">{selected.device_name ?? '—'}{selected.sim_slot != null && <> · SIM {selected.sim_slot}</>}</dd>
                   <dt>{t('رقم العملية (SMS)', 'Tx id (SMS)')}</dt><dd className="mono">{selected.trx_id ?? '—'}</dd>
                   {selected.sms_category !== 'withdrawal' && <><dt>{t('معاملة OnTarget', 'OnTarget tx')}</dt><dd className="mono">{selected.matched_ontarget_ref ?? selected.matched_tx_id ?? '—'}</dd></>}
+                  {selected.sms_category !== 'withdrawal' && selected.matched_tx_id != null && <>
+                    <dt>{t('محفظة المعاملة', 'Transaction wallet')}</dt><dd className="mono">{selected.matched_receiving_wallet ?? '—'} {selected.wallet_match === false ? '⚠ mismatch' : selected.wallet_match ? '✓ matched' : ''}</dd>
+                    <dt>{t('عملة المعاملة', 'Transaction currency')}</dt><dd className="mono">{selected.matched_currency ?? '—'}</dd>
+                    <dt>{t('التاجر الفرعي', 'Sub-merchant')}</dt><dd>{selected.matched_master_merchant?.toLowerCase() === 'payfuture' ? `PayFuture · ${selected.matched_sub_merchant ?? 'not set'}` : selected.matched_sub_merchant ?? '—'}</dd>
+                  </>}
                   {selected.sms_category === 'withdrawal' && <><dt>{t('معيّنة لسحب','Assigned to WD')}</dt><dd>{selected.matched_payout_id ? <Link className="transaction-cell-link mono" to={`/payouts?q=${encodeURIComponent(selected.matched_payout_ref ?? String(selected.matched_payout_id))}`}>WD {selected.matched_payout_ref ?? selected.matched_payout_id}{selected.matched_payout_status ? ` · ${selected.matched_payout_status}` : ''}</Link> : <span className="pay-status-badge st-declined">{t('غير معيّنة','Unassigned')}</span>}</dd></>}
                   {selected.withdrawal_assignment_type && <><dt>{t('التعيين اليدوي','Manual assignment')}</dt><dd>{selected.withdrawal_assignment_type === 'payout' ? 'Payout' : selected.withdrawal_assignment_type === 'p2p_usdt' ? 'P2P USDT' : 'Money cash return'} · {selected.withdrawal_assignment_name}{selected.withdrawal_assignment_reference ? ` · ${selected.withdrawal_assignment_reference}` : ''}<div className="cell-sub">{selected.withdrawal_assigned_by ?? '—'}</div></dd></>}
                   <dt>{t('حالة الربط', 'Link status')}</dt><dd className="mono">{selected.sms_category === 'withdrawal' ? selected.matched_payout_id ? t('مرتبطة بمعاملة سحب','Linked to payout') : selected.linked_wallet_number ? t('مرتبطة بالمحفظة فقط','Wallet only') : t('غير مرتبطة','Unlinked') : selected.match_status ?? '—'}{selected.review_required && !selected.matched && selected.sms_category !== 'withdrawal' && <> · ⚠ {t('تحتاج مراجعة', 'needs review')}</>}</dd>
@@ -625,6 +648,8 @@ export default function SmsLive() {
                                 <span className="mono">{money(cand.amount, cand.currency)}</span>
                                 {' · '}{cand.sender_name ?? cand.sender_number ?? '—'}
                                 {' · '}{cand.merchant ?? '—'}
+                                {cand.master_merchant?.toLowerCase() === 'payfuture' && <><br /><span>PayFuture · {cand.sub_merchant ?? 'sub-merchant not set'}</span></>}
+                                {cand.receiving_wallet ?? cand.to_account_number ? <><br /><span className="mono">Wallet {cand.receiving_wallet ?? cand.to_account_number} · {cand.currency ?? '—'}</span></> : null}
                                 {' · '}<span className="mono">{depositTime({ first_seen_at: cand.first_seen_at })}</span>
                               </div>
                             </div>
