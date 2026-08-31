@@ -6,6 +6,7 @@ import type { DepositRow, DepositStats } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { syncProviders } from '../lib/providerSync'
 import { useAuth } from '../auth/AuthContext'
+import { supabase } from '../lib/supabase'
 import { Check, ExternalLink, X } from 'lucide-react'
 
 // 🖥️ شاشة TV — full-screen live operations wall (from the control room's
@@ -39,6 +40,7 @@ interface TvPayout {
   first_seen_at: string | null
   created_utc: string | null
 }
+interface TvTelegram { id: number; alert_type: string; message: string | null; ok: boolean; created_at: string | null }
 
 interface ControlStats {
   stats: Record<string, unknown> | null
@@ -55,6 +57,7 @@ export default function TvScreen() {
   const [sms, setSms] = useState<TvSms[]>([])
   const [matched, setMatched] = useState<TvSms[]>([])
   const [payouts, setPayouts] = useState<TvPayout[]>([])
+  const [telegram, setTelegram] = useState<TvTelegram[]>([])
   const [now, setNow] = useState(new Date())
   const [actionBusy, setActionBusy] = useState<number | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
@@ -73,6 +76,7 @@ export default function TvScreen() {
       api<{ rows: TvSms[] }>('/api/sms?match=linked&limit=9'),
       api<{ rows: TvPayout[] }>('/api/payouts?limit=6'),
       api<ControlStats>('/api/control/status'),
+      api<{ alerts: TvTelegram[] }>('/api/telegram/live'),
     ])
     if (results[0].status === 'fulfilled') setStats(results[0].value)
     if (results[1].status === 'fulfilled') setPendingDeposits(results[1].value.rows)
@@ -80,13 +84,18 @@ export default function TvScreen() {
     if (results[3].status === 'fulfilled') setMatched(results[3].value.rows)
     if (results[4].status === 'fulfilled') setPayouts(results[4].value.rows)
     if (results[5].status === 'fulfilled') setControl(results[5].value)
+    if (results[6].status === 'fulfilled') setTelegram(results[6].value.alerts)
   }, [])
 
   useEffect(() => {
     void load()
     const iv = setInterval(() => void load(), REFRESH_MS)
     const clock = setInterval(() => setNow(new Date()), 1000)
-    return () => { clearInterval(iv); clearInterval(clock) }
+    const channel = supabase.channel('tv-live-events')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'inbound_sms' }, () => void load())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'telegram_alerts' }, () => void load())
+      .subscribe()
+    return () => { clearInterval(iv); clearInterval(clock); void supabase.removeChannel(channel) }
   }, [load])
 
   const decide = async (row: DepositRow, action: 'approve' | 'decline') => {
@@ -179,6 +188,19 @@ export default function TvScreen() {
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section className="tv-col">
+          <h3>✈️ {t('تنبيهات Telegram حية', 'Live Telegram')}</h3>
+          <div className="tv-feed">
+            {telegram.map((a) => (
+              <div key={a.id} className={`tv-item${a.ok ? ' ok' : ' warn'}`}>
+                <div className="tv-item-head"><span className="mono">#{a.id} · {a.alert_type}</span><span className="mono dim">{depositTime({ first_seen_at: a.created_at })}</span></div>
+                <div className="tv-item-main"><b>{a.ok ? '✅' : '⚠️'}</b> {a.message ? a.message.replace(/<[^>]+>/g, '').slice(0, 180) : a.alert_type}</div>
+              </div>
+            ))}
+            {telegram.length === 0 && <p className="dim">{t('لا توجد تنبيهات بعد.', 'No Telegram alerts yet.')}</p>}
           </div>
         </section>
 
