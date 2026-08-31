@@ -58,10 +58,11 @@ monitoringRoutes.post('/client-error', async (c) => {
 
 monitoringRoutes.get('/', async (c) => {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
   const deviceDb = oldDb() ?? db
   const started = Date.now()
 
-  const [sms, transactions, telegram, devices, integrations, pendingDeposits, pendingPayouts, editRequests] = await Promise.all([
+  const [sms, transactions, telegram, devices, integrations, pendingDeposits, pendingPayouts, editRequests, todayTransactions] = await Promise.all([
     db.from('inbound_sms')
       .select('id, received_at, device_name, sender_name, sender_number, receiver_number, amount, sms_category, trx_id, consumed_by_tx_id, matched_transaction_id, maven_transaction_id')
       .gte('received_at', since).order('received_at', { ascending: false }).limit(30),
@@ -81,6 +82,7 @@ monitoringRoutes.get('/', async (c) => {
     db.from('maven_transactions').select('tx_id', { count: 'exact', head: true }).eq('status', 'PENDING'),
     db.from('maven_payout_transactions').select('maven_id', { count: 'exact', head: true }).eq('status', 'PENDING'),
     db.from('transaction_edit_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    db.from('maven_transactions').select('status, amount').gte('first_seen_at', todayStart.toISOString()).limit(10000),
   ])
 
   const sources = {
@@ -97,6 +99,15 @@ monitoringRoutes.get('/', async (c) => {
   const telegramRows = telegram.data ?? []
   const deviceRows = devices.data ?? []
   const integrationRows = integrations.data ?? []
+  const todayRows = todayTransactions.data ?? []
+  const todaySummary = todayRows.reduce((summary, row) => {
+    summary.total += 1
+    summary.amount += Number(row.amount ?? 0)
+    if (['PAID', 'APPROVED'].includes(row.status)) { summary.approved += 1; summary.paidAmount += Number(row.amount ?? 0) }
+    else if (['DECLINED', 'FAILED'].includes(row.status)) summary.rejected += 1
+    else if (row.status === 'PENDING') summary.processing += 1
+    return summary
+  }, { total: 0, amount: 0, paidAmount: 0, approved: 0, rejected: 0, processing: 0 })
   const providerSummary = (name: 'nagopay' | 'payfuture') => {
     const rows = txRows.filter((row) => {
       const identity = `${row.gateway ?? ''} ${row.master_merchant ?? ''}`.toLowerCase()
@@ -121,6 +132,7 @@ monitoringRoutes.get('/', async (c) => {
       pendingPayouts: pendingPayouts.count ?? null,
       editRequests: editRequests.count ?? null,
     },
+    todaySummary,
     providers: { nagopay: providerSummary('nagopay'), payfuture: providerSummary('payfuture') },
     lastSync: latest([
       ...smsRows.map((r) => r.received_at),

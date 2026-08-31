@@ -9,7 +9,7 @@ import { supabase } from '../lib/supabase'
 
 type Tx = { tx_id: number; ontarget_ref: string | null; status: string; amount: number | null; currency: string | null; merchant: string | null; master_merchant: string | null; gateway: string | null; first_seen_at: string | null; last_status_change: string | null }
 type Sms = { id: number; received_at: string | null; sms_category: string | null; amount: number | null; assigned_tx_id: number | string | null }
-type MonitorData = { generatedAt: string; lastSync: string | null; api: { ok: boolean; latencyMs: number }; supabase: { ok: boolean; latencyMs: number }; queues: { pendingDeposits: number | null; pendingPayouts: number | null; editRequests: number | null }; sources: Record<string, { ok: boolean; error: string | null }>; sms: Sms[]; transactions: Tx[]; telegram: Array<{ id: number; alert_type: string; ok: boolean; error: string | null; created_at: string | null }>; devices: Array<{ device: string; online: boolean | null; last_seen_at: string | null }> }
+type MonitorData = { generatedAt: string; lastSync: string | null; api: { ok: boolean; latencyMs: number }; supabase: { ok: boolean; latencyMs: number }; queues: { pendingDeposits: number | null; pendingPayouts: number | null; editRequests: number | null }; todaySummary?: { total: number; amount: number; paidAmount: number; approved: number; rejected: number; processing: number }; sources: Record<string, { ok: boolean; error: string | null }>; sms: Sms[]; transactions: Tx[]; telegram: Array<{ id: number; alert_type: string; ok: boolean; error: string | null; created_at: string | null }>; devices: Array<{ device: string; online: boolean | null; last_seen_at: string | null }> }
 type MarketPrices = { xauUsd: number | null; usdtEgp: number | null; usdtBuyEgp?: number | null; usdtSellEgp?: number | null; updatedAt: string; latencyMs: number }
 
 const when = (value: string | null | undefined) => value ? new Date(value).toLocaleString() : '—'
@@ -54,6 +54,7 @@ export default function LiveMonitorControl() {
   }, [load, loadPrices, monitoring])
 
   const stats = useMemo(() => {
+    if (data?.todaySummary) return { newCount: data.todaySummary.total, processing: data.todaySummary.processing, approved: data.todaySummary.approved, rejected: data.todaySummary.rejected, total: data.todaySummary.paidAmount, success: data.todaySummary.approved + data.todaySummary.rejected ? data.todaySummary.approved / (data.todaySummary.approved + data.todaySummary.rejected) * 100 : 0 }
     const today = new Date().toLocaleDateString()
     const rows = (data?.transactions ?? []).filter((row) => {
       const timestamp = row.last_status_change ?? row.first_seen_at
