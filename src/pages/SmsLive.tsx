@@ -48,6 +48,10 @@ interface SmsRow {
   match_status: string | null
   matched: boolean | null
   review_required: boolean | null
+  is_blocked: boolean | null
+  block_reason: string | null
+  blocked_at: string | null
+  blocked_by: string | null
   trx_id: string | null
   matched_transaction_id: number | null
   maven_transaction_id: string | null
@@ -165,6 +169,8 @@ export default function SmsLive() {
   const [assignmentRef, setAssignmentRef] = useState('')
   const [assignmentName, setAssignmentName] = useState('')
   const [assignmentBusy, setAssignmentBusy] = useState(false)
+  const [expenseComment, setExpenseComment] = useState('')
+  const [expenseBusy, setExpenseBusy] = useState(false)
 
   const appliedQ = params.get('q') ?? ''
   const amount = params.get('amount') ?? ''
@@ -248,6 +254,7 @@ export default function SmsLive() {
       setMetaNotes(res.sms.notes ?? '')
       setMetaWallet(res.sms.confirmed_wallet_number ?? res.sms.wallet_number ?? '')
       setAssignmentName(res.sms.sender_name ?? '')
+      setExpenseComment('')
       if (res.sms.sms_category !== 'withdrawal' && !res.sms.matched_tx_id && can('sms_live', 'can_edit')) void loadCandidates(id)
     } catch {
       setErr(t('تعذّر تحميل تفاصيل الرسالة.', 'Failed to load message details.'))
@@ -283,6 +290,8 @@ export default function SmsLive() {
     } catch (e) {
       if (e instanceof ApiError && e.code === 'already_linked') {
         setLinkErr(t('الرسالة مرتبطة بالفعل — أعد الفتح.', 'Message already linked — reopen.'))
+      } else if (e instanceof ApiError && e.code === 'transaction_already_linked') {
+        setLinkErr(t('هذه المعاملة مرتبطة برسالة أخرى بالفعل.', 'This transaction is already linked to another SMS.'))
       } else if (e instanceof ApiError && e.status === 403) {
         setLinkErr(t('لا تملك صلاحية الربط (can_edit غير ممنوحة لدورك).', 'You lack link permission (can_edit not granted to your role).'))
       } else {
@@ -306,6 +315,36 @@ export default function SmsLive() {
     } finally {
       setLinkBusy(false)
     }
+  }
+
+  const blockSms = async () => {
+    if (!selected || selected.is_blocked || selected.matched_tx_id != null || selected.consumed_by_tx_id != null) return
+    const reason = window.prompt(t('سبب حظر الرسالة (اختياري)', 'Reason for blocking this SMS (optional)'), t('رسالة غير مرتبطة/غير صالحة', 'Unlinked or invalid SMS'))
+    if (reason === null) return
+    setLinkBusy(true); setLinkErr(null)
+    try {
+      await api(`/api/sms/${selected.id}/block`, { method: 'POST', body: JSON.stringify({ reason }) })
+      await openDetail(selected.id)
+      void load(true)
+    } catch (e) {
+      setLinkErr(e instanceof ApiError && e.code === 'sms_must_be_unlinked'
+        ? t('لا يمكن حظر رسالة مرتبطة بمعاملة.', 'A linked SMS cannot be blocked.')
+        : t('فشل حظر الرسالة.', 'Failed to block SMS.'))
+    } finally { setLinkBusy(false) }
+  }
+
+  const recordExpense = async () => {
+    if (!selected || selected.sms_category !== 'withdrawal' || !expenseComment.trim()) return
+    setExpenseBusy(true); setLinkErr(null)
+    try {
+      await api(`/api/sms/${selected.id}/expense`, { method: 'POST', body: JSON.stringify({ comment: expenseComment.trim() }) })
+      setLinkErr(t('تم تسجيل SMS السحب كمصروف في الدفتر.', 'Withdrawal SMS recorded as an expense in the financial book.'))
+      setExpenseComment('')
+    } catch (e) {
+      setLinkErr(e instanceof ApiError && e.code === 'expense_already_recorded'
+        ? t('تم تسجيل هذا SMS كمصروف من قبل.', 'This SMS was already recorded as an expense.')
+        : t('فشل تسجيل المصروف.', 'Failed to record expense.'))
+    } finally { setExpenseBusy(false) }
   }
 
   const saveWithdrawalMeta = async () => {
@@ -338,6 +377,8 @@ export default function SmsLive() {
     } catch (e) {
       setLinkErr(e instanceof ApiError && e.code === 'payout_not_found'
         ? t('لم يتم العثور على معاملة السحب.', 'Payout transaction not found.')
+        : e instanceof ApiError && e.code === 'already_linked'
+          ? t('رسالة السحب مرتبطة بالفعل ولا يمكن إعادة تعيينها.', 'This withdrawal SMS is already linked and cannot be reassigned.')
         : t('فشل تعيين رسالة السحب.', 'Failed to assign withdrawal SMS.'))
     } finally { setAssignmentBusy(false) }
   }
@@ -520,6 +561,7 @@ export default function SmsLive() {
                           ? <span className={`pay-status-badge ${mt.cls}`}>{t(mt.ar, mt.en)}</span>
                           : <span className="mono">{r.match_status ?? '—'}</span>}
                         {r.review_required && !linked && <div className="cell-sub">⚠ {t('مراجعة', 'review')}</div>}
+                        {r.is_blocked && <div className="cell-sub danger-text">🚫 {t('محظورة', 'Blocked')}</div>}
                       </td>
                       <td className="mono">{depositTime({ first_seen_at: r.received_at })}</td>
                     </tr>
@@ -582,6 +624,7 @@ export default function SmsLive() {
                   {selected.sms_category === 'withdrawal' && <><dt>{t('معيّنة لسحب','Assigned to WD')}</dt><dd>{selected.matched_payout_id ? <Link className="transaction-cell-link mono" to={`/payouts?q=${encodeURIComponent(selected.matched_payout_ref ?? String(selected.matched_payout_id))}`}>WD {selected.matched_payout_ref ?? selected.matched_payout_id}{selected.matched_payout_status ? ` · ${selected.matched_payout_status}` : ''}</Link> : <span className="pay-status-badge st-declined">{t('غير معيّنة','Unassigned')}</span>}</dd></>}
                   {selected.withdrawal_assignment_type && <><dt>{t('التعيين اليدوي','Manual assignment')}</dt><dd>{selected.withdrawal_assignment_type === 'payout' ? 'Payout' : selected.withdrawal_assignment_type === 'p2p_usdt' ? 'P2P USDT' : 'Money cash return'} · {selected.withdrawal_assignment_name}{selected.withdrawal_assignment_reference ? ` · ${selected.withdrawal_assignment_reference}` : ''}<div className="cell-sub">{selected.withdrawal_assigned_by ?? '—'}</div></dd></>}
                   <dt>{t('حالة الربط', 'Link status')}</dt><dd className="mono">{selected.sms_category === 'withdrawal' ? selected.matched_payout_id ? t('مرتبطة بمعاملة سحب','Linked to payout') : selected.linked_wallet_number ? t('مرتبطة بالمحفظة فقط','Wallet only') : t('غير مرتبطة','Unlinked') : selected.match_status ?? '—'}{selected.review_required && !selected.matched && selected.sms_category !== 'withdrawal' && <> · ⚠ {t('تحتاج مراجعة', 'needs review')}</>}</dd>
+                  {selected.is_blocked && <><dt>{t('حظر SMS', 'SMS block')}</dt><dd className="danger-text">🚫 {selected.block_reason ?? t('محظورة يدوياً', 'Blocked manually')} · {selected.blocked_by ?? '—'}</dd></>}
                   <dt>{t('الرصيد بعد العملية', 'Balance after')}</dt><dd className="mono">{money(selected.balance_after, 'EGP')}</dd>
                   {selected.sms_category === 'withdrawal' && <><dt>{t('حساب الرصيد', 'Balance calculation')}</dt><dd className="mono">{selected.wallet_balance_before != null ? money(selected.wallet_balance_before, 'EGP') : '—'} − {money(selected.amount, 'EGP')} = {selected.wallet_balance_after != null ? money(selected.wallet_balance_after, 'EGP') : '—'}</dd></>}
                   {selected.risk_score != null && selected.risk_score > 0 && (
@@ -605,6 +648,9 @@ export default function SmsLive() {
                     <label className="filter-field">{t('الاسم', 'Name')}<input className="login-input" maxLength={160} value={assignmentName} onChange={(e) => setAssignmentName(e.target.value)} required /></label>
                     <label className="filter-field">{assignmentType === 'payout' ? t('رقم معاملة السحب', 'Payout transaction/ref') : t('المرجع', 'Reference')}<input className="login-input" maxLength={160} value={assignmentRef} onChange={(e) => setAssignmentRef(e.target.value)} placeholder={assignmentType === 'payout' ? 'WD ref or Maven ID' : t('مرجع اختياري', 'Optional reference')} /></label>
                     <button className="btn-primary btn-sm" disabled={assignmentBusy || !assignmentName.trim() || (assignmentType === 'payout' && !assignmentRef.trim())} onClick={() => void assignWithdrawal()}>{assignmentBusy ? t('جارٍ التعيين…', 'Assigning…') : t('تعيين', 'Assign')}</button>
+                    <h4>{t('تسجيل SMS السحب كمصروف', 'Record withdrawal SMS as expense')}</h4>
+                    <label className="filter-field">{t('تعليق المصروف', 'Expense comment')}<textarea className="login-input" rows={3} maxLength={500} value={expenseComment} onChange={(e) => setExpenseComment(e.target.value)} placeholder={t('مثال: سحب نقدي من محفظة ont3', 'Example: Cash withdrawal from ont3 wallet')} /></label>
+                    <button className="btn-ghost btn-sm" disabled={expenseBusy || !expenseComment.trim()} onClick={() => void recordExpense()}>{expenseBusy ? t('جارٍ التسجيل…', 'Recording…') : t('إضافة كمصروف', 'Add as expense')}</button>
                   </section>
                 )}
 
@@ -618,7 +664,7 @@ export default function SmsLive() {
                   </div>
                 )}
 
-                {selected.sms_category !== 'withdrawal' && selected.matched_tx_id == null && can('sms_live', 'can_edit') && (
+                {selected.sms_category !== 'withdrawal' && selected.matched_tx_id == null && !selected.is_blocked && can('sms_live', 'can_edit') && (
                   <div className="link-section">
                     <h4>🔗 {t('ربط بمعاملة', 'Link to a transaction')}</h4>
                     <form
@@ -664,6 +710,14 @@ export default function SmsLive() {
                         ))}
                       </ul>
                     )}
+                  </div>
+                )}
+
+                {selected.sms_category !== 'withdrawal' && selected.matched_tx_id == null && selected.consumed_by_tx_id == null && !selected.is_blocked && can('sms_live', 'can_edit') && (
+                  <div className="drawer-actions">
+                    <button className="btn-ghost danger" disabled={linkBusy} onClick={() => void blockSms()}>
+                      🚫 {t('حظر SMS غير المرتبطة', 'Block unlinked SMS')}
+                    </button>
                   </div>
                 )}
               </>

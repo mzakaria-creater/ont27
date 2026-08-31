@@ -1,6 +1,6 @@
 import { db } from './db.js'
 
-type SmsRow = { id: number; trx_id: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; received_at: string | null; receiver_number: string | null }
+type SmsRow = { id: number; trx_id: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; received_at: string | null; receiver_number: string | null; is_blocked?: boolean | null }
 type TxRow = { tx_id: number; guid: string | null; ontarget_ref: string | null; merchant_tx_reference: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; receiving_wallet: string | null; to_account_number: string | null; first_seen_at: string | null }
 
 const PAGE = 1000
@@ -38,6 +38,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
       .select('id, trx_id, amount, sender_name, sender_number, received_at, receiver_number')
       .eq('sms_category', 'deposit')
       .is('consumed_by_tx_id', null)
+      .eq('is_blocked', false)
       .not('trx_id', 'is', null)
       .order('received_at', { ascending: false, nullsFirst: false })
       .limit(limit),

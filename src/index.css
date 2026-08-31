@@ -2331,6 +2331,7 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .maven-frame-blocked > div { flex: 1 1 auto; }
 .maven-frame-blocked > .btn-primary { flex: 0 0 auto; }
 @media (max-width: 640px) { .maven-frame-blocked { align-items: stretch; flex-direction: column; } .maven-frame-blocked > .btn-primary { justify-content: center; } }
+.danger-text { color: var(--status-declined, #ef4444); }
 .admin-trx-filter { justify-content: flex-start; }
 .admin-trx-filter .analytics-filter-search { min-width: min(100%, 320px); }
 .admin-trx-card { padding: 0; overflow: hidden; }

@@ -13,7 +13,7 @@ export const smsRoutes = new Hono<AuthEnv>()
 smsRoutes.use('*', requireAuth)
 
 const LIST_COLUMNS =
-  'id, received_at, device_name, sim_slot, sender_number, sender_name, receiver_number, wallet_number, confirmed_wallet_number, amount, balance_after, sms_category, match_status, matched, review_required, trx_id, matched_transaction_id, maven_transaction_id, consumed_by_tx_id, provider, sms_first_line, raw_sms, message'
+  'id, received_at, device_name, sim_slot, sender_number, sender_name, receiver_number, wallet_number, confirmed_wallet_number, amount, balance_after, sms_category, match_status, matched, review_required, is_blocked, block_reason, blocked_at, blocked_by, trx_id, matched_transaction_id, maven_transaction_id, consumed_by_tx_id, provider, sms_first_line, raw_sms, message'
 
 function sinceIso(hours: number): string {
   return new Date(Date.now() - hours * 3_600_000).toISOString()
@@ -475,6 +475,71 @@ smsRoutes.post('/:id/unlink', requirePerm('sms_live', 'can_edit'), async (c) => 
   })
 
   return c.json({ ok: true })
+})
+
+// Block an unlinked SMS as bad/irrelevant evidence. A blocked row is excluded
+// from future automatic matching and cannot be assigned until an operator
+// explicitly unblocks it from the database tooling.
+smsRoutes.post('/:id/block', requirePerm('sms_live', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)
+  const body = await c.req.json().catch(() => null)
+  const reason = typeof body?.reason === 'string' ? body.reason.trim().slice(0, 500) : ''
+  const { data: before, error: readError } = await db.from('inbound_sms')
+    .select('id, sms_category, matched, consumed_by_tx_id, matched_transaction_id, maven_transaction_id, is_blocked, block_reason')
+    .eq('id', id).maybeSingle()
+  if (readError) return c.json({ error: 'db_error', detail: readError.message }, 500)
+  if (!before) return c.json({ error: 'not_found' }, 404)
+  if (before.matched || before.consumed_by_tx_id != null || before.matched_transaction_id != null || before.maven_transaction_id != null) {
+    return c.json({ error: 'sms_must_be_unlinked' }, 409)
+  }
+  if (before.is_blocked) return c.json({ error: 'already_blocked' }, 409)
+  const actor = c.get('actor')
+  const { data, error } = await db.from('inbound_sms').update({
+    is_blocked: true,
+    block_reason: reason || 'Manually blocked by operator',
+    blocked_at: new Date().toISOString(),
+    blocked_by: actor.username,
+    review_required: false,
+  }).eq('id', id).is('consumed_by_tx_id', null).is('matched_transaction_id', null).is('maven_transaction_id', null)
+    .select('id, is_blocked, block_reason, blocked_at, blocked_by').maybeSingle()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  if (!data) return c.json({ error: 'sms_must_be_unlinked' }, 409)
+  await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'sms.blocked', entity_type: 'inbound_sms', entity_id: id, before, after: data })
+  return c.json({ ok: true, sms: data })
+})
+
+// Post a withdrawal SMS as an expense in the financial book, with an
+// operator-supplied comment. The SMS id is an idempotency key so refreshes or
+// double-clicks cannot create duplicate expense rows.
+smsRoutes.post('/:id/expense', requirePerm('sms_live', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)
+  const body = await c.req.json().catch(() => null)
+  const comment = typeof body?.comment === 'string' ? body.comment.trim().slice(0, 500) : ''
+  if (!comment) return c.json({ error: 'comment_required' }, 400)
+  const { data: sms, error: smsError } = await db.from('inbound_sms').select('id, sms_category, amount, confirmed_wallet_number, receiver_number, wallet_number, received_at').eq('id', id).maybeSingle()
+  if (smsError) return c.json({ error: 'db_error', detail: smsError.message }, 500)
+  if (!sms) return c.json({ error: 'not_found' }, 404)
+  if (sms.sms_category !== 'withdrawal') return c.json({ error: 'withdrawal_only' }, 409)
+  const reference = `SMS:${id}`
+  const { data: existing, error: existingError } = await db.from('financial_ledger_entries').select('id, amount, description, reference').eq('reference', reference).neq('status', 'void').maybeSingle()
+  if (existingError) return c.json({ error: 'db_error', detail: existingError.message }, 500)
+  if (existing) return c.json({ error: 'expense_already_recorded', entry: existing }, 409)
+  const actor = c.get('actor')
+  const amount = Number(sms.amount)
+  if (!Number.isFinite(amount) || amount <= 0) return c.json({ error: 'invalid_amount' }, 422)
+  const wallet = sms.confirmed_wallet_number ?? sms.receiver_number ?? sms.wallet_number ?? 'unknown wallet'
+  const record = {
+    entry_date: sms.received_at ? new Date(sms.received_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+    entry_type: 'expense', category: 'withdrawal_sms',
+    description: comment, amount, currency: 'EGP', beneficiary: wallet,
+    reference, status: 'posted', created_by: actor.sub, created_by_name: actor.username,
+  }
+  const { data: entry, error } = await db.from('financial_ledger_entries').insert(record).select().single()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'sms.withdrawal_expense_recorded', entity_type: 'financial_ledger_entries', entity_id: entry.id, after: { ...record, sms_id: Number(id) } })
+  return c.json({ ok: true, entry }, 201)
 })
 
 // Operational annotations for withdrawal SMS. These fields already belong to
