@@ -9,17 +9,25 @@ monitoringRoutes.use('*', requireAuth)
 
 monitoringRoutes.get('/market-prices', async (c) => {
   const started = Date.now()
-  const [goldResponse, fxResponse] = await Promise.all([
+  const p2pBody = (tradeType: 'BUY' | 'SELL') => JSON.stringify({ fiat: 'EGP', page: 1, rows: 10, tradeType, asset: 'USDT', countries: [], proMerchantAds: false, publisherType: null, payTypes: [] })
+  const [goldResponse, buyResponse, sellResponse] = await Promise.all([
     fetch('https://api.gold-api.com/price/XAU', { signal: AbortSignal.timeout(4_000) }).catch(() => null),
-    fetch('https://open.er-api.com/v6/latest/USD', { signal: AbortSignal.timeout(4_000) }).catch(() => null),
+    fetch('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: p2pBody('BUY'), signal: AbortSignal.timeout(5_000) }).catch(() => null),
+    fetch('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: p2pBody('SELL'), signal: AbortSignal.timeout(5_000) }).catch(() => null),
   ])
   const gold: any = goldResponse?.ok ? await goldResponse.json().catch(() => null) : null
-  const fx: any = fxResponse?.ok ? await fxResponse.json().catch(() => null) : null
+  const buy: any = buyResponse?.ok ? await buyResponse.json().catch(() => null) : null
+  const sell: any = sellResponse?.ok ? await sellResponse.json().catch(() => null) : null
+  const buyPrices = (buy?.data ?? []).map((row: any) => Number(row?.adv?.price)).filter((value: number) => Number.isFinite(value) && value > 0)
+  const sellPrices = (sell?.data ?? []).map((row: any) => Number(row?.adv?.price)).filter((value: number) => Number.isFinite(value) && value > 0)
+  const usdtBuy = buyPrices.length ? Math.min(...buyPrices) : null
+  const usdtSell = sellPrices.length ? Math.max(...sellPrices) : null
   return c.json({
     xauUsd: typeof gold?.price === 'number' ? gold.price : null,
-    usdtEgp: typeof fx?.rates?.EGP === 'number' ? fx.rates.EGP : null,
+    usdtEgp: usdtBuy != null && usdtSell != null ? (usdtBuy + usdtSell) / 2 : usdtBuy ?? usdtSell,
+    usdtBuyEgp: usdtBuy, usdtSellEgp: usdtSell,
     updatedAt: new Date().toISOString(), latencyMs: Date.now() - started,
-    sources: { xauUsd: 'gold-api.com', usdtEgp: 'exchangerate-api.com' },
+    sources: { xauUsd: 'gold-api.com', usdtEgp: 'Binance P2P USDT/EGP' },
   })
 })
 
