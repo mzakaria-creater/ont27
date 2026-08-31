@@ -30,7 +30,7 @@ export const txEditRoutes = new Hono<AuthEnv>()
 txEditRoutes.use('*', requireAuth)
 
 // "Operator admin" is stored as operations_admin in panel_users.
-const STEWARD_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin'])
+const STEWARD_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin', 'operator_admin', 'operation_admin'])
 const EDITABLE_STATUSES = ['PENDING', 'PAID', 'DECLINED', 'EXPIRED', 'EXPIRED_LOCAL', 'UNDERPAID', 'APPROVED']
 
 // Mina and Eslam, by label in telegram_chats. Resolved at send time rather

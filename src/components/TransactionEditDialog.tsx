@@ -4,7 +4,9 @@ import { api, ApiError } from '../lib/api'
 import { STATUS_META, money, statusMeta } from '../lib/deposits'
 import { useAuth } from '../auth/AuthContext'
 
-const STEWARD_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin'])
+// Keep the role aliases used by older operator accounts. These roles may apply
+// a direct audited edit from the unified transactions table.
+const STEWARD_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin', 'operator_admin', 'operation_admin'])
 const STATUSES = Object.keys(STATUS_META)
 
 export default function TransactionEditDialog({ txId, ontargetRef, status, amount, currency, gateway, onDone }: {
