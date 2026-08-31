@@ -72,11 +72,11 @@ export default function TvScreen() {
     const results = await Promise.allSettled([
       api<DepositStats>('/api/deposits/stats'),
       api<{ rows: DepositRow[] }>('/api/deposits?status=PENDING&limit=12'),
-      api<{ rows: TvSms[] }>('/api/sms?limit=9'),
-      api<{ rows: TvSms[] }>('/api/sms?match=linked&limit=9'),
+      api<{ rows: TvSms[] }>(`/api/sms?from=${new Date().toISOString().slice(0, 10)}&to=${new Date().toISOString().slice(0, 10)}&limit=100`),
+      api<{ rows: TvSms[] }>(`/api/sms?match=linked&from=${new Date().toISOString().slice(0, 10)}&to=${new Date().toISOString().slice(0, 10)}&limit=100`),
       api<{ rows: TvPayout[] }>('/api/payouts?limit=6'),
       api<ControlStats>('/api/control/status'),
-      api<{ alerts: TvTelegram[] }>('/api/telegram/live'),
+      api<{ alerts: TvTelegram[] }>(`/api/telegram/live?limit=500&since=${encodeURIComponent(new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString())}`),
     ])
     if (results[0].status === 'fulfilled') setStats(results[0].value)
     if (results[1].status === 'fulfilled') setPendingDeposits(results[1].value.rows)
@@ -191,8 +191,8 @@ export default function TvScreen() {
           </div>
         </section>
 
-        <section className="tv-col">
-          <h3>✈️ {t('تنبيهات Telegram حية', 'Live Telegram')}</h3>
+        <section className="tv-col telegram-feed">
+          <h3><span className="telegram-brand-mark">✈</span> {t('تنبيهات Telegram حية', 'Live Telegram')}</h3>
           <div className="tv-feed">
             {telegram.map((a) => (
               <div key={a.id} className={`tv-item${a.ok ? ' ok' : ' warn'}`}>

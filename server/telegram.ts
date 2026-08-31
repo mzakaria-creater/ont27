@@ -19,9 +19,12 @@ const audit = (actor: { sub: string; username: string }, action: string, entityI
 // recovery. It deliberately excludes bot credentials, chats and alert gates.
 telegramRoutes.get('/live', async (c) => {
   if (!LIVE_ALERT_ROLES.has(c.get('actor').role)) return c.json({ error: 'forbidden' }, 403)
+  const limit = Math.min(Math.max(Number(c.req.query('limit')) || 100, 1), 500)
+  const since = c.req.query('since')?.trim()
   const { data, error } = await db.from('telegram_alerts')
     .select('id, alert_type, chat_id, message, ok, error, created_at')
-    .order('created_at', { ascending: false }).limit(50)
+    .gte('created_at', since && !Number.isNaN(Date.parse(since)) ? since : new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString())
+    .order('created_at', { ascending: false }).limit(limit)
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   return c.json({ alerts: data ?? [] })
 })

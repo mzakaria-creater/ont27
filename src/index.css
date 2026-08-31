@@ -1923,9 +1923,10 @@ a.command-metric:hover { border-color: var(--accent); transform: translateY(-1px
 .tv-kpi.red .tv-kpi-value { color: var(--status-declined); }
 .tv-kpi-label { font-size: 11.5px; color: var(--text-dim); }
 @keyframes tvpulsecard { 0%,100% { transform: scale(1); } 50% { transform: scale(1.01); } }
-.tv-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; flex: 1; min-height: 0; }
+.tv-cols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; flex: 1; min-height: 0; }
 .tv-col { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; min-height: 0; }
 .tv-col h3 { margin: 0 0 10px; font-size: 14.5px; }
+.telegram-brand-mark { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: #fff; background: linear-gradient(135deg, #2aabee, #5865f2); box-shadow: 0 0 12px rgba(42,171,238,.45); font-size: 14px; }
 .tv-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .tv-pending-count { padding: 4px 7px; border: 1px solid var(--amber-border); border-radius: 999px; color: var(--status-pending); background: var(--amber-bg); font-size: 9.5px; white-space: nowrap; }
 .tv-feed { display: flex; flex-direction: column; gap: 7px; overflow-y: auto; }
@@ -1935,6 +1936,7 @@ a.command-metric:hover { border-color: var(--accent); transform: translateY(-1px
 }
 .tv-item.ok { background: var(--green-bg); border-color: var(--green-border); }
 .tv-item.warn { background: var(--amber-bg); border-color: var(--amber-border); }
+.tv-col.telegram-feed { border-color: #5865f2; box-shadow: 0 0 0 1px rgba(88,101,242,.18), 0 0 24px rgba(88,101,242,.12); }
 @keyframes tvSlideIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 .tv-item-head { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-dim); margin-bottom: 3px; }
 .tv-item-main { font-size: 13px; }
