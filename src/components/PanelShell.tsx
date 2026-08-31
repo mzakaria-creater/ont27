@@ -70,6 +70,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/', icon: '🏠', labelAr: 'لوحة التحكم', labelEn: 'Dashboard', keys: ['dashboard'], group: 'overview' },
   { to: '/control-room', icon: '🎛️', labelAr: 'غرفة التحكم', labelEn: 'Control room', keys: ['dashboard'], group: 'overview' },
   { to: '/monitor', icon: '📡', labelAr: 'المراقبة المباشرة', labelEn: 'Live Monitor', keys: ['dashboard'], group: 'overview' },
+  { to: '/live-monitor', icon: '🔴', labelAr: 'مراقبة العمليات', labelEn: 'Operations Monitor', keys: ['dashboard'], group: 'overview' },
   { to: '/api-dashboard', icon: '◆', labelAr: 'لوحة API', labelEn: 'API Dashboard', keys: ['dashboard'], group: 'overview' },
   { to: '/executive-dashboard', icon: '▦', labelAr: 'لوحة الإدارة التنفيذية', labelEn: 'Executive Dashboard', keys: ['dashboard', 'reports', 'advanced_analysis', 'treasury', 'wallets'], group: 'insights' },
   { to: '/analytics-dashboard', icon: '◫', labelAr: 'لوحة التحليلات', labelEn: 'Analytics Dashboard', keys: ['dashboard', 'reports', 'advanced_analysis', 'wallets'], group: 'insights' },

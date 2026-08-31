@@ -14,6 +14,7 @@ import WrongfulDeclineRealtimePopup from './components/WrongfulDeclineRealtimePo
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Monitor = lazy(() => import('./pages/Monitor'))
+const LiveMonitorControl = lazy(() => import('./pages/LiveMonitorControl'))
 const Deposits = lazy(() => import('./pages/Deposits'))
 const Payouts = lazy(() => import('./pages/Payouts'))
 const Merchants = lazy(() => import('./pages/Merchants'))
@@ -307,6 +308,7 @@ export default function App() {
             <Route path="/welcome" element={<Welcome />} />
             <Route path="/control-room" element={<Dashboard />} />
             <Route path="/monitor" element={<Monitor />} />
+            <Route path="/live-monitor" element={<PageGate keys={['dashboard']}><LiveMonitorControl /></PageGate>} />
             <Route path="/api-dashboard" element={<ApiDashboard />} />
             <Route path="/executive-dashboard" element={<ExecutiveDashboard />} />
             <Route path="/analytics-dashboard" element={<AnalyticsDashboard />} />
