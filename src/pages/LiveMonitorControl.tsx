@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, CheckCircle2, CircleDollarSign, Clock3, Pause, Play, Radio, RefreshCw, Server, Smartphone, XCircle, Zap } from 'lucide-react'
+import { Activity, CheckCircle2, CircleDollarSign, Clock3, FileSearch, Pause, Play, Radio, RefreshCw, Scale, Server, ShieldCheck, Smartphone, XCircle, Zap } from 'lucide-react'
 import PanelShell from '../components/PanelShell'
 import { api } from '../lib/api'
 import { money } from '../lib/deposits'
@@ -55,6 +55,8 @@ export default function LiveMonitorControl() {
   }, [data])
 
   const pending = useMemo(() => (data?.transactions ?? []).filter((row) => row.status === 'PENDING').slice(0, 4), [data])
+  const activeTx = pending[0] ?? null
+  const activeSms = useMemo(() => activeTx ? (data?.sms ?? []).find((row) => String(row.assigned_tx_id ?? '') === String(activeTx.tx_id)) ?? null : null, [activeTx, data])
   const logs = useMemo(() => data ? [
     ...data.transactions.map((row) => ({ key: `tx-${row.tx_id}`, at: row.last_status_change ?? row.first_seen_at, kind: statusClass(row.status), title: `${row.status} · ${row.ontarget_ref ?? row.tx_id}`, detail: `${money(row.amount, row.currency)} · ${row.merchant ?? row.gateway ?? 'OnTarget'}` })),
     ...data.sms.map((row) => ({ key: `sms-${row.id}`, at: row.received_at, kind: row.assigned_tx_id ? 'success' : 'warning', title: `SMS #${row.id}`, detail: `${money(row.amount, 'EGP')} · ${row.assigned_tx_id ? `TX ${row.assigned_tx_id}` : t('غير مرتبطة', 'Unlinked')}` })),
@@ -93,8 +95,21 @@ export default function LiveMonitorControl() {
           <section className="live-monitor-card">
             <header><div><span className="live-section-icon"><Zap size={18}/></span><div><h3>{t('المعالجة الحالية', 'Current processing')}</h3><small>{data?.queues.pendingDeposits ?? '—'} {t('إيداع معلق في الطابور', 'pending deposits in queue')}</small></div></div><Link to="/approvals" className="pay-status-link">{t('فتح طابور الموافقات', 'Open approval queue')} →</Link></header>
             <div className="live-processing-list">
-              {pending.map((row) => <Link to={`/transactions/${encodeURIComponent(row.ontarget_ref ?? String(row.tx_id))}`} className="live-processing-row" key={row.tx_id}><span className="live-processing-pulse"><Activity size={17}/></span><div className="live-processing-copy"><strong className="mono">{row.ontarget_ref ?? row.tx_id}</strong><span>{row.merchant ?? row.master_merchant ?? row.gateway ?? 'OnTarget'}</span></div><strong className="mono live-processing-amount">{money(row.amount, row.currency)}</strong><span className="pay-status-badge st-pending">PENDING</span></Link>)}
-              {data && pending.length === 0 && <div className="live-empty"><CheckCircle2 size={34}/><strong>{t('لا توجد معالجة معلقة', 'No pending processing')}</strong><span>{t('جميع المعاملات الحية لديها قرار.', 'All live transactions have a decision.')}</span></div>}
+              {activeTx && <div className="live-active-process">
+                <div className="live-active-summary">
+                  <span className="live-active-bolt"><Zap size={23}/></span>
+                  <div><span>{t('معاملة جديدة', 'New transaction')}</span><Link to={`/transactions/${encodeURIComponent(activeTx.ontarget_ref ?? String(activeTx.tx_id))}`} className="mono">{activeTx.ontarget_ref ?? activeTx.tx_id}</Link><small>{t('جاري فحصها بواسطة محرك OnTarget', 'Being checked by the OnTarget engine')}</small></div>
+                  <div className="live-active-money"><strong>{money(activeTx.amount, activeTx.currency)}</strong><small>{activeTx.gateway ?? activeTx.merchant ?? 'P2P'}</small></div>
+                </div>
+                <div className="live-pipeline">
+                  <div className="live-pipeline-step complete"><span><CheckCircle2 size={18}/></span><div><strong>{t('1. استخراج بيانات المعاملة', '1. Extract transaction data')}</strong><small>{t('تم الاستلام من المصدر الحي', 'Received from the live provider source')}</small></div></div>
+                  <div className={`live-pipeline-step ${activeSms ? 'complete' : 'waiting'}`}><span>{activeSms ? <CheckCircle2 size={18}/> : <FileSearch size={18}/>}</span><div><strong>{t('2. فحص دليل الدفع و SMS', '2. Scan payment proof and SMS')}</strong><small>{activeSms ? `${t('SMS مرتبطة', 'Linked SMS')} #${activeSms.id} · ${money(activeSms.amount, 'EGP')}` : t('بانتظار دليل موثوق أو SMS مرتبطة', 'Waiting for trusted proof or a linked SMS')}</small></div></div>
+                  <div className={`live-pipeline-step ${activeSms ? 'complete' : 'waiting'}`}><span>{activeSms ? <CheckCircle2 size={18}/> : <Scale size={18}/>}</span><div><strong>{t('3. مقارنة البيانات', '3. Compare evidence')}</strong><small>{activeSms ? t('تم ربط الدليل بنفس رقم المعاملة', 'Evidence is linked to this transaction') : t('لا توجد مطابقة مؤكدة بعد', 'No confirmed match yet')}</small></div></div>
+                  <div className="live-pipeline-step processing"><span><ShieldCheck size={18}/></span><div><strong>{t('4. اتخاذ القرار', '4. Apply decision')}</strong><small>{t('بانتظار قرار الأتمتة الآمن أو موافقة بشرية', 'Waiting for a safe automation decision or human approval')}</small></div><Link to="/approvals" className="btn-primary btn-sm">{t('اتخاذ إجراء', 'Take action')}</Link></div>
+                </div>
+                {pending.length > 1 && <div className="live-pending-more">+{pending.length - 1} {t('معاملات أخرى ظاهرة في الطابور', 'more transactions visible in the queue')}</div>}
+              </div>}
+              {data && !activeTx && <div className="live-empty"><CheckCircle2 size={34}/><strong>{t('في انتظار معاملة جديدة…', 'Waiting for a new transaction…')}</strong><span>{t('يتم فحص القناة كل 5 ثوانٍ وعبر Realtime.', 'The channel is checked every 5 seconds and through Realtime.')}</span></div>}
               {!data && <div className="live-empty"><Activity size={34}/><strong>{t('جارٍ الاتصال بالمصادر…', 'Connecting to live sources…')}</strong></div>}
             </div>
           </section>
