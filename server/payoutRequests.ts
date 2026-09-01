@@ -20,7 +20,7 @@ payoutRequestRoutes.post('/', requirePerm('payouts', 'can_create'), async (c) =>
   const wallet = String(body?.wallet_number ?? '').replace(/\D/g, '')
   const amount = Number(body?.amount)
   const device = String(body?.device ?? '')
-  if (!/^01[0-2,5]\d{8}$/.test(wallet) || !Number.isFinite(amount) || amount <= 0 || amount > 100_000 || !/^ont[1-7]$/.test(device)) return c.json({ error: 'invalid_request' }, 422)
+  if (!/^01[0125]\d{8}$/.test(wallet) || !Number.isFinite(amount) || amount <= 0 || amount > 100_000 || !/^ont[1-7]$/.test(device)) return c.json({ error: 'invalid_request' }, 422)
   const { data: deviceRow } = await db.from('device_macrodroid_urls').select('active').eq('device', device).maybeSingle()
   if (!deviceRow?.active) return c.json({ error: 'device_inactive' }, 422)
   const actor = c.get('actor')
