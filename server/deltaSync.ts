@@ -84,7 +84,10 @@ const FAST_UPDATED_LOOKBACK_MS = 10 * 60_000
 // into the live provider executor.
 const AUTO_DECLINE_BRIDGE_CUTOFF = '2026-08-25T02:17:31.579426Z'
 let lastFastRunAt = 0
-let activeSync: Promise<Record<string, number | string>> | null = null
+// Fast provider pulls must never wait behind the full repair pass. They touch
+// the same idempotent mirror with status/timestamp guards, so concurrent runs
+// are safe and keep new Maven transactions visible while a full scan runs.
+const activeSync: { fast: Promise<Record<string, number | string>> | null; full: Promise<Record<string, number | string>> | null } = { fast: null, full: null }
 
 async function executeRecordedAutoDeclines(): Promise<{ executed: number; skipped: number; failed: number }> {
   const old = oldDb()
@@ -432,9 +435,9 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
 }
 
 function syncOnce(mode: 'fast' | 'full'): Promise<Record<string, number | string>> {
-  if (activeSync) return activeSync
-  activeSync = runSync(mode).finally(() => { activeSync = null })
-  return activeSync
+  if (activeSync[mode]) return activeSync[mode]!
+  activeSync[mode] = runSync(mode).finally(() => { activeSync[mode] = null })
+  return activeSync[mode]!
 }
 
 function resultOk(results: Record<string, number | string>): boolean {
