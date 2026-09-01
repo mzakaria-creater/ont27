@@ -520,6 +520,21 @@ smsRoutes.post('/:id/block', requirePerm('sms_live', 'can_edit'), async (c) => {
   return c.json({ ok: true, sms: data })
 })
 
+smsRoutes.post('/:id/unblock', requirePerm('sms_live', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)
+  const { data: before, error: readError } = await db.from('inbound_sms').select('id, is_blocked, block_reason, blocked_at, blocked_by, matched, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').eq('id', id).maybeSingle()
+  if (readError) return c.json({ error: 'db_error', detail: readError.message }, 500)
+  if (!before) return c.json({ error: 'not_found' }, 404)
+  if (!before.is_blocked) return c.json({ error: 'not_blocked' }, 409)
+  if (before.matched || before.consumed_by_tx_id != null || before.matched_transaction_id != null || before.maven_transaction_id != null) return c.json({ error: 'sms_must_be_unlinked' }, 409)
+  const { data, error } = await db.from('inbound_sms').update({ is_blocked: false, block_reason: null, blocked_at: null, blocked_by: null, review_required: true, match_status: 'unmatched' }).eq('id', id).select('id, is_blocked, block_reason, blocked_at, blocked_by, review_required, match_status').single()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  const actor = c.get('actor')
+  await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'sms.unblocked', entity_type: 'inbound_sms', entity_id: id, before, after: data })
+  return c.json({ ok: true, sms: data })
+})
+
 // Post a withdrawal SMS as an expense in the financial book, with an
 // operator-supplied comment. The SMS id is an idempotency key so refreshes or
 // double-clicks cannot create duplicate expense rows.

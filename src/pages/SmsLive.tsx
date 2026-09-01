@@ -335,6 +335,18 @@ export default function SmsLive() {
     } finally { setLinkBusy(false) }
   }
 
+  const unblockSms = async () => {
+    if (!selected?.is_blocked) return
+    setLinkBusy(true); setLinkErr(null)
+    try {
+      await api(`/api/sms/${selected.id}/unblock`, { method: 'POST' })
+      await openDetail(selected.id)
+      void load(true)
+    } catch (e) {
+      setLinkErr(e instanceof ApiError && e.code === 'sms_must_be_unlinked' ? t('لا يمكن فك حظر رسالة مرتبطة.', 'A linked SMS cannot be unblocked.') : t('فشل فك حظر الرسالة.', 'Failed to unblock SMS.'))
+    } finally { setLinkBusy(false) }
+  }
+
   const recordExpense = async () => {
     if (!selected || selected.sms_category !== 'withdrawal' || !expenseComment.trim()) return
     setExpenseBusy(true); setLinkErr(null)
@@ -681,6 +693,14 @@ export default function SmsLive() {
                     <label className="filter-field">{t('ملاحظة المشغّل', 'Operator note')}<textarea className="login-input" rows={3} maxLength={2000} value={metaNotes} onChange={(e) => setMetaNotes(e.target.value)} placeholder={t('مثال: 700 EGP أموال إضافية', 'Example: 700 EGP extra fund')} /></label>
                     <button className="btn-primary btn-sm" disabled={metaBusy || (!metaCategory.trim() && !metaNotes.trim())} onClick={() => void saveUnlinkedAnnotation()}>{metaBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ التصنيف والملاحظة', 'Save category and note')}</button>
                   </section>
+                )}
+
+                {selected.is_blocked && selected.matched_tx_id == null && selected.consumed_by_tx_id == null && can('sms_live', 'can_edit') && (
+                  <div className="drawer-actions">
+                    <button className="btn-primary btn-sm" disabled={linkBusy} onClick={() => void unblockSms()}>
+                      🔓 {t('فك الحظر والسماح بالتعيين', 'Unblock and allow assignment')}
+                    </button>
+                  </div>
                 )}
 
                 {selected.sms_category === 'withdrawal' && can('sms_live', 'can_edit') && (
