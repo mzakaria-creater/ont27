@@ -38,7 +38,14 @@ const EDITABLE_STATUSES = ['PENDING', 'PAID', 'DECLINED', 'EXPIRED', 'EXPIRED_LO
 // than hard-coding chat ids, so moving an account only touches that table.
 const APPROVER_LABEL_PREFIXES = ['Mina', 'Eslam']
 
-const TX_COLS = 'tx_id, ontarget_ref, status, amount, currency, gateway, master_merchant, sender_name'
+const TX_COLS = 'tx_id, ontarget_ref, status, amount, currency, gateway, master_merchant, sender_name, maven_raw_row'
+
+function isNgPayGateway(tx: Record<string, unknown>): boolean {
+  const raw = tx.maven_raw_row && typeof tx.maven_raw_row === 'object' && !Array.isArray(tx.maven_raw_row)
+    ? tx.maven_raw_row as Record<string, unknown> : null
+  const gateway = String(tx.gateway ?? raw?.Gateway ?? raw?.gateway ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+  return gateway === 'nagupayp2p' || gateway === 'nagopayp2p' || gateway.includes('nagupay') || gateway.includes('nagopay')
+}
 
 interface EditInput {
   status: string | null
@@ -175,8 +182,8 @@ async function applyEdit(
   // A status change that IS the deposit decision goes through the real worker.
   const isProviderDecision =
     edit.status != null &&
-    tx.gateway === 'NagupayP2P' &&
-    tx.status === 'PENDING' &&
+    isNgPayGateway(tx) &&
+    String(tx.status ?? '').toUpperCase() === 'PENDING' &&
     (edit.status === 'PAID' || edit.status === 'DECLINED')
 
   if (isProviderDecision) {
