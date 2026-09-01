@@ -491,6 +491,29 @@ export default function SmsLive() {
 
       {err && <div className="card warn">{err}</div>}
 
+      {data && (() => {
+        const unlinked = data.rows.filter((row) => row.matched_tx_id == null && row.consumed_by_tx_id == null && !row.is_blocked)
+        if (!unlinked.length) return null
+        return (
+          <section className="sms-unlinked-alert" aria-live="polite">
+            <div className="sms-unlinked-alert-head">
+              <div><span className="sms-live-beacon" aria-hidden="true" /> <strong>{t('SMS غير المرتبطة الآن', 'Unlinked SMS now')}</strong><span className="sms-unlinked-count">{unlinked.length}</span></div>
+              <span>{t('اضغط لفتح الرسالة وتعيينها', 'Click a message to open and assign it')}</span>
+            </div>
+            <div className="sms-unlinked-strip">
+              {unlinked.map((row) => (
+                <button type="button" className="sms-unlinked-item" key={row.id} onClick={() => void openDetail(row.id)}>
+                  <span className="sms-unlinked-item-top"><b>SMS #{row.id}</b><time>{depositTime({ first_seen_at: row.received_at })}</time></span>
+                  <strong>{money(row.amount, 'EGP')}</strong>
+                  <span>{row.sender_name ?? row.sender_number ?? t('مرسل غير معروف', 'Unknown sender')}</span>
+                  <small className="mono">← {row.confirmed_wallet_number ?? row.receiver_number ?? row.wallet_number ?? '—'}</small>
+                </button>
+              ))}
+            </div>
+          </section>
+        )
+      })()}
+
       <section className="card recent-card">
         {loading && !data && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
         {data && data.rows.length === 0 && <p>{t('لا توجد نتائج مطابقة.', 'No matching results.')}</p>}

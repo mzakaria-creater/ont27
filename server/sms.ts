@@ -320,7 +320,18 @@ smsRoutes.get('/:id/candidates', requirePerm('sms_live', 'can_view'), async (c) 
 
   const { data, error } = await query
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  return c.json({ candidates: data ?? [] })
+  // Only offer transactions that do not already have an SMS assigned. This
+  // prevents re-linking a new message onto a transaction that is already
+  // reconciled and keeps the one-SMS-per-transaction rule visible to agents.
+  const candidateIds = (data ?? []).map((row) => Number(row.tx_id)).filter(Number.isFinite)
+  let linkedIds = new Set<number>()
+  if (candidateIds.length) {
+    const { data: linkedRows } = await db.from('inbound_sms')
+      .select('consumed_by_tx_id')
+      .in('consumed_by_tx_id', candidateIds)
+    linkedIds = new Set((linkedRows ?? []).map((row) => Number(row.consumed_by_tx_id)).filter(Number.isFinite))
+  }
+  return c.json({ candidates: (data ?? []).filter((row) => !linkedIds.has(Number(row.tx_id))) })
 })
 
 smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
