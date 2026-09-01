@@ -153,9 +153,9 @@ async function executeRecordedAutoDeclines(): Promise<{ executed: number; skippe
   return { executed, skipped, failed }
 }
 
-async function claimDistributedLease(ttlSeconds: number): Promise<boolean> {
+async function claimDistributedLease(ttlSeconds: number, leaseName = 'provider_delta_sync'): Promise<boolean> {
   const { data, error } = await db.rpc('claim_provider_sync_lease', {
-    p_lease_name: 'provider_delta_sync', p_ttl_seconds: ttlSeconds,
+    p_lease_name: leaseName, p_ttl_seconds: ttlSeconds,
   })
   if (error) {
     console.error('provider sync lease failed:', error.message)
@@ -448,7 +448,7 @@ deltaSyncRoutes.get('/delta-sync', async (c) => {
   if (!secret || auth !== `Bearer ${secret}`) {
     return c.json({ error: 'unauthorized' }, 401)
   }
-  if (!(await claimDistributedLease(240))) return c.json({ ok: true, skipped: 'distributed_lease' })
+  if (!(await claimDistributedLease(240, 'provider_delta_sync_full'))) return c.json({ ok: true, skipped: 'distributed_lease' })
   const results = await syncOnce('full').catch((e) => ({ error: `error: ${(e as Error).message}` }))
   return c.json({ ok: resultOk(results), mode: 'full', results, at: new Date().toISOString() }, resultOk(results) ? 200 : 502)
 })
@@ -474,7 +474,11 @@ deltaSyncRoutes.post('/delta-sync', async (c) => {
   const wantFast = now - lastFastRunAt >= FAST_THROTTLE_MS
   if (!wantFast) return c.json({ ok: true, skipped: 'throttled' })
 
-  if (!(await claimDistributedLease(10))) return c.json({ ok: true, skipped: 'distributed_lease' })
+  // Keep the fast browser pump independent from the long full-repair lease.
+  // The full cron can legitimately hold its lease for several minutes while
+  // walking status changes; sharing that lease made every fast request return
+  // `distributed_lease` and left fresh provider rows invisible until cron ran.
+  if (!(await claimDistributedLease(10, 'provider_delta_sync_fast'))) return c.json({ ok: true, skipped: 'distributed_lease' })
 
   const mode = 'fast'
   lastFastRunAt = now
