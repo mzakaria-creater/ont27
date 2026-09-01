@@ -17,7 +17,7 @@ function text(value: unknown, max = 120): string | null {
 }
 
 paymentMethodRoutes.get('/', requirePerm('payment_methods', 'can_view'), async (c) => {
-  const [methods, accounts, pools, poolMembers, hierarchy, masters, methodCountries, countryMerchants] = await Promise.all([
+  const [methods, accounts, pools, poolMembers, hierarchy, masters, methodCountries, countryMerchants, wallets] = await Promise.all([
     db.from('payment_methods').select(methodColumns).order('sort_order').order('method_name'),
     db.from('payment_accounts').select(accountColumns).order('created_at'),
     db.from('payment_pools').select(poolColumns).order('pool_name'),
@@ -26,8 +26,9 @@ paymentMethodRoutes.get('/', requirePerm('payment_methods', 'can_view'), async (
     db.from('master_merchants').select('id, name, code'),
     db.from('payment_method_countries').select(countryColumns).order('country_code'),
     db.from('payment_method_country_merchants').select(countryMerchantColumns).order('created_at'),
+    db.from('wallet_device_map').select('to_account_number, provider, device, merchant').order('to_account_number'),
   ])
-  const firstError = methods.error ?? accounts.error ?? pools.error ?? poolMembers.error ?? hierarchy.error ?? masters.error ?? methodCountries.error ?? countryMerchants.error
+  const firstError = methods.error ?? accounts.error ?? pools.error ?? poolMembers.error ?? hierarchy.error ?? masters.error ?? methodCountries.error ?? countryMerchants.error ?? wallets.error
   if (firstError) return c.json({ error: 'db_error', detail: firstError.message }, 500)
   return c.json({
     methods: methods.data ?? [],
@@ -38,6 +39,7 @@ paymentMethodRoutes.get('/', requirePerm('payment_methods', 'can_view'), async (
     masters: masters.data ?? [],
     methodCountries: methodCountries.data ?? [],
     countryMerchants: countryMerchants.data ?? [],
+    wallets: wallets.data ?? [],
   })
 })
 

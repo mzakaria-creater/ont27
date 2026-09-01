@@ -20,7 +20,8 @@ interface HierarchyRow { id: number; name: string; payin_commission_pct: number 
 interface Master { id: string; name: string; code: string }
 interface MethodCountry { id: string; payment_method_id: string; country_code: string; currency_code: string; is_active: boolean }
 interface CountryMerchant { id: string; method_country_id: string; merchant_hierarchy_id: number; is_active: boolean }
-type Data = { methods: Method[]; accounts: Account[]; pools: Pool[]; poolMembers: PoolMember[]; hierarchy: HierarchyRow[]; masters: Master[]; methodCountries: MethodCountry[]; countryMerchants: CountryMerchant[] }
+interface WalletOption { to_account_number: string; provider: string | null; device: string | null; merchant: string | null }
+type Data = { methods: Method[]; accounts: Account[]; pools: Pool[]; poolMembers: PoolMember[]; hierarchy: HierarchyRow[]; masters: Master[]; methodCountries: MethodCountry[]; countryMerchants: CountryMerchant[]; wallets: WalletOption[] }
 
 const emptyAccount = { account_number: '', label: '', device_name: '', bank_name: '' }
 const emptyPool = { pool_name: '', pool_code: '', master_merchant_id: '' }
@@ -253,7 +254,10 @@ export default function PaymentMethods() {
               </tr>
                 {open === method.id && (
                   <tr className="payment-method-inline-row"><td colSpan={6}><form className="control-row" onSubmit={addAccount}>
-                    <input required className="login-input" placeholder={t('رقم الحساب', 'Account number')} value={account.account_number} onChange={(e) => setAccount({ ...account, account_number: e.target.value })} />
+                    <select required className="login-input" value={account.account_number} onChange={(e) => setAccount({ ...account, account_number: e.target.value })}>
+                      <option value="">{t('اختر محفظة من محافظنا', 'Choose one of our wallets')}</option>
+                      {data.wallets.map((wallet) => <option key={wallet.to_account_number} value={wallet.to_account_number}>{wallet.to_account_number} · {wallet.provider ?? 'Mobile Wallet'}{wallet.device ? ` · ${wallet.device}` : ''}</option>)}
+                    </select>
                     <input className="login-input" placeholder={t('تسمية', 'Label')} value={account.label} onChange={(e) => setAccount({ ...account, label: e.target.value })} />
                     <input className="login-input" placeholder={t('الجهاز', 'Device')} value={account.device_name} onChange={(e) => setAccount({ ...account, device_name: e.target.value })} />
                     <button className="btn-primary btn-sm">{t('حفظ', 'Save')}</button>
