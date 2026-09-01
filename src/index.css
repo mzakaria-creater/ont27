@@ -1012,7 +1012,8 @@ a.stat-card:hover { border-color: var(--accent); }
 .table-wrap { overflow-x: auto; }
 .data-table { border-collapse: collapse; inline-size: 100%; font-size: 13px; }
 .data-table th, .data-table td { padding: 10px 12px; text-align: start; white-space: nowrap; }
-.data-table thead th { color: var(--text-dim); font-weight: 500; border-block-end: 1px solid var(--border); }
+.data-table thead { position: sticky; top: 0; z-index: 4; }
+.data-table thead th { position: sticky; top: 0; z-index: 4; color: var(--text-dim); font-weight: 500; border-block-end: 1px solid var(--border); background: var(--surface); }
 .data-table tbody tr + tr td { border-block-start: 1px solid var(--border); }
 .data-table.clickable tbody tr { cursor: pointer; }
 .data-table.clickable tbody tr:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
