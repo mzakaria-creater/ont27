@@ -1408,6 +1408,9 @@ a.stat-card:hover { border-color: var(--accent); }
 }
 .sms-feed-item:hover { border-color: var(--text-muted); background: var(--hover-2); }
 .sms-feed-item.matched { background: var(--green-bg); border-color: var(--green-border); }
+.sms-feed-item.unlinked { border: 2px solid #eab308; background: rgba(234,179,8,.09); box-shadow: inset 3px 0 0 #eab308, 0 0 12px rgba(234,179,8,.16); }
+.sms-widget-launcher.has-unlinked { border-color: #eab308; box-shadow: var(--shadow-panel), 0 0 0 3px rgba(234,179,8,.2), 0 0 24px rgba(234,179,8,.34); }
+.unlinked-badge { background: #ca8a04; box-shadow: 0 0 18px rgba(234,179,8,.72); }
 .sms-feed-item.withdrawal, .sms-feed-item.withdrawal.matched { border: 2px solid #ef4444; background: rgba(239,68,68,.09); box-shadow: inset 3px 0 0 #ef4444; }
 .sms-feed-item.withdrawal .sms-feed-device { color: #f87171; }
 .sms-feed-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }

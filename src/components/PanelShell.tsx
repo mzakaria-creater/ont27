@@ -291,7 +291,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
           const linked = walletLinked || r.matched_tx_id != null
           const rawText = r.raw_sms ?? r.message ?? r.sms_first_line
           return (
-            <Link key={r.id} to={`/sms?sms_id=${r.id}`} className={`sms-feed-item${linked ? ' matched' : ''}${r.sms_category === 'withdrawal' ? ' withdrawal' : ''}`}>
+            <Link key={r.id} to={`/sms?sms_id=${r.id}`} className={`sms-feed-item${linked ? ' matched' : ''}${!linked && (r.sms_category === 'deposit' || r.sms_category === 'withdrawal') ? ' unlinked' : ''}${r.sms_category === 'withdrawal' ? ' withdrawal' : ''}`}>
               <div className="sms-feed-head">
                 <span className="sms-feed-device">{r.device_name ?? '—'}{r.sim_slot != null && <> · SIM{r.sim_slot}</>}</span>
                 <span className="sms-feed-time mono">{depositTime({ first_seen_at: r.received_at })}</span>
@@ -329,6 +329,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   })
   const [telegramOpen, setTelegramOpen] = useState(false)
   const [smsUnread, setSmsUnread] = useState(0)
+  const [smsUnlinked, setSmsUnlinked] = useState(0)
   const [telegramUnread, setTelegramUnread] = useState(0)
   const smsLatestRef = useRef(0)
   const telegramLatestRef = useRef(0)
@@ -367,12 +368,14 @@ export default function PanelShell({ children }: { children: ReactNode }) {
     const telegramKey = `ontarget:${user.id}:telegram-last-seen`
     const update = async () => {
       const jobs: Promise<void>[] = []
-      if (can('sms_live')) jobs.push(api<{ rows?: RailSms[] }>('/api/sms?limit=30').then(({ rows = [] }) => {
+      if (can('sms_live')) jobs.push(api<{ rows?: RailSms[] }>('/api/sms?limit=30').then(({ rows: responseRows = [] }) => {
         if (!alive) return
+        const rows = Array.isArray(responseRows) ? responseRows : []
         const latest = Math.max(0, ...rows.map((row) => Number(row.id) || 0)); smsLatestRef.current = latest
         const stored = localStorage.getItem(smsKey)
         if (stored == null) { localStorage.setItem(smsKey, String(latest)); setSmsUnread(0) }
         else setSmsUnread(rows.filter((row) => Number(row.id) > Number(stored)).length)
+        setSmsUnlinked(rows.filter((row) => row.sms_category === 'deposit' && row.matched_tx_id == null).length)
       }).catch(() => {}))
       if (canTelegramLive) jobs.push(api<{ alerts?: RailTelegramAlert[] }>('/api/telegram/live').then(({ alerts = [] }) => {
         if (!alive) return
@@ -477,7 +480,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
       </nav>
       <main id="main-workspace" className="dash-main">{children}</main>
       {canTelegramLive && !telegramOpen && <button type="button" className={`telegram-widget-launcher${telegramUnread ? ' has-unread' : ''}`} onClick={openTelegram} aria-expanded="false" aria-controls="live-telegram-widget" aria-label={t('إظهار Telegram المباشر', 'Show Telegram Live')} title={t('إظهار Telegram المباشر', 'Show Telegram Live')}><span className="telegram-widget-pulse"/><Send size={19} aria-hidden="true"/><span className="sms-widget-label">Telegram Live</span>{telegramUnread > 0 && <span className="live-widget-badge">{telegramUnread > 99 ? '99+' : telegramUnread}</span>}</button>}
-      {can('sms_live') && !smsOpen && <button type="button" className={`sms-widget-launcher${smsUnread ? ' has-unread' : ''}`} onClick={openSms} aria-expanded="false" aria-controls="live-sms-widget" aria-label={t('إظهار SMS المباشر', 'Show Live SMS')} title={t('إظهار SMS المباشر', 'Show Live SMS')}><span className="sms-widget-pulse" /><MessageSquareText size={20} aria-hidden="true" /><span className="sms-widget-label">Live SMS</span>{smsUnread > 0 && <span className="live-widget-badge">{smsUnread > 99 ? '99+' : smsUnread}</span>}</button>}
+      {can('sms_live') && !smsOpen && <button type="button" className={`sms-widget-launcher${smsUnread ? ' has-unread' : ''}${smsUnlinked ? ' has-unlinked' : ''}`} onClick={openSms} aria-expanded="false" aria-controls="live-sms-widget" aria-label={t('إظهار SMS المباشر', 'Show Live SMS')} title={t('إظهار SMS المباشر', 'Show Live SMS')}><span className="sms-widget-pulse" /><MessageSquareText size={20} aria-hidden="true" /><span className="sms-widget-label">Live SMS</span>{(smsUnread > 0 || smsUnlinked > 0) && <span className={`live-widget-badge${smsUnlinked ? ' unlinked-badge' : ''}`}>{smsUnlinked > 99 ? '99+' : smsUnlinked || smsUnread}</span>}</button>}
       {can('sms_live') && smsOpen && <SmsRail onMinimize={() => setSmsOpen(false)} />}
       {canTelegramLive && telegramOpen && <TelegramRail onMinimize={() => setTelegramOpen(false)} />}
     </div>
