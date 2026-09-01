@@ -6,13 +6,13 @@ import { useAuth } from '../auth/AuthContext'
 
 // Keep the role aliases used by older operator accounts. These roles may apply
 // a direct audited edit from the unified transactions table.
-const STEWARD_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin', 'operator_admin', 'operation_admin'])
+const DIRECT_STATUS_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin', 'operator_admin', 'operation_admin', 'operator'])
 const STATUSES = Object.keys(STATUS_META)
 
 export default function TransactionEditDialog({ txId, ontargetRef, status, amount, currency, gateway, onDone }: {
   txId: number; ontargetRef?: string | null; status: string; amount?: number | null; currency?: string | null; gateway?: string | null; onDone?: () => void
 }) {
-  const { user } = useAuth(); const steward = STEWARD_ROLES.has(user?.role ?? ''); const canEditAmount = new Set(['super_admin', 'owner', 'admin']).has(user?.role ?? '')
+  const { user } = useAuth(); const steward = DIRECT_STATUS_ROLES.has(user?.role ?? ''); const canEditAmount = new Set(['super_admin', 'owner', 'admin']).has(user?.role ?? '')
   const [open, setOpen] = useState(false); const [nextStatus, setNextStatus] = useState(''); const [nextAmount, setNextAmount] = useState(''); const [reason, setReason] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [done, setDone] = useState<string | null>(null)
   const changing = (nextStatus !== '' && nextStatus !== status) || (nextAmount !== '' && Number(nextAmount) !== Number(amount ?? 0))
   const provider = changing && gateway === 'NagupayP2P' && status === 'PENDING' && (nextStatus === 'PAID' || nextStatus === 'DECLINED')

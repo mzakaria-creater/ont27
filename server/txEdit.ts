@@ -5,9 +5,9 @@ import type { AuthEnv } from './rbac.js'
 
 // Transaction edits: status and amount.
 //
-// Stewards (super_admin / owner / admin / operations_admin) edit directly. Everyone else — an
-// operator — can only raise a request, which goes to Mina and Eslam on
-// Telegram and is applied to the transaction only when one of them approves.
+// Privileged admins can edit amounts directly. Operators can now edit status
+// directly as well; this is deliberately limited to status so a routine
+// approve/decline never becomes an amount re-pricing action.
 //
 // Two things about a "status edit" that the UI has to keep honest:
 //
@@ -30,7 +30,8 @@ export const txEditRoutes = new Hono<AuthEnv>()
 txEditRoutes.use('*', requireAuth)
 
 // "Operator admin" is stored as operations_admin in panel_users.
-const STEWARD_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin', 'operator_admin', 'operation_admin'])
+const DIRECT_STATUS_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin', 'operator_admin', 'operation_admin', 'operator'])
+const AMOUNT_EDIT_ROLES = new Set(['super_admin', 'owner', 'admin'])
 const EDITABLE_STATUSES = ['PENDING', 'PAID', 'DECLINED', 'EXPIRED', 'EXPIRED_LOCAL', 'UNDERPAID', 'APPROVED']
 
 // Mina and Eslam, by label in telegram_chats. Resolved at send time rather
@@ -229,10 +230,10 @@ async function applyEdit(
   return { ok: true, localOnly, executed }
 }
 
-// ---- Direct edit (stewards only) ----
+// ---- Direct edit (admins and operators for status; admins for amount) ----
 txEditRoutes.post('/:txId/edit', async (c) => {
   const actor = c.get('actor')
-  if (!STEWARD_ROLES.has(actor.role)) return c.json({ error: 'steward_role_required', role: actor.role }, 403)
+  if (!DIRECT_STATUS_ROLES.has(actor.role)) return c.json({ error: 'direct_edit_role_required', role: actor.role }, 403)
 
   const txId = Number(c.req.param('txId'))
   if (!Number.isFinite(txId)) return c.json({ error: 'invalid_tx_id' }, 400)
@@ -242,7 +243,7 @@ txEditRoutes.post('/:txId/edit', async (c) => {
   // Amount corrections are materially higher risk than a status decision.
   // Keep them restricted to the stewardship roles even when an operator can
   // edit a status directly from the complaint or transactions page.
-  if (parsed.amount != null && !new Set(['super_admin', 'owner', 'admin']).has(actor.role)) {
+  if (parsed.amount != null && !AMOUNT_EDIT_ROLES.has(actor.role)) {
     return c.json({ error: 'amount_edit_requires_admin' }, 403)
   }
 
@@ -331,13 +332,13 @@ txEditRoutes.get('/edit-requests', async (c) => {
   if (status) q = q.eq('status', status)
   const { data, error } = await q
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  return c.json({ rows: data ?? [], canDecide: STEWARD_ROLES.has(c.get('actor').role) })
+  return c.json({ rows: data ?? [], canDecide: DIRECT_STATUS_ROLES.has(c.get('actor').role) })
 })
 
 // ---- Approve / reject a request ----
 txEditRoutes.post('/edit-requests/:id/decision', async (c) => {
   const actor = c.get('actor')
-  if (!STEWARD_ROLES.has(actor.role)) return c.json({ error: 'steward_role_required', role: actor.role }, 403)
+  if (!DIRECT_STATUS_ROLES.has(actor.role)) return c.json({ error: 'steward_role_required', role: actor.role }, 403)
 
   const id = Number(c.req.param('id'))
   const body = await c.req.json().catch(() => null) as Record<string, unknown> | null
