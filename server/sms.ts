@@ -50,11 +50,20 @@ function applySmsFilters(query: any, filters: SmsFilterInput) {
       `sender_name.ilike.${like}`,
       `sender_number.ilike.${like}`,
       `receiver_number.ilike.${like}`,
+      `wallet_number.ilike.${like}`,
+      `confirmed_wallet_number.ilike.${like}`,
       `trx_id.ilike.${like}`,
       `device_name.ilike.${like}`,
       `provider.ilike.${like}`,
+      `sms_first_line.ilike.${like}`,
+      `raw_sms.ilike.${like}`,
+      `message.ilike.${like}`,
     ]
-    if (/^\d+$/.test(q)) ors.push(`id.eq.${q}`)
+    if (/^\d+$/.test(q)) {
+      ors.push(`id.eq.${q}`)
+      ors.push(`matched_transaction_id.eq.${q}`)
+      ors.push(`consumed_by_tx_id.eq.${q}`)
+    }
     query = query.or(ors.join(','))
   }
   if (amount && /^\d+(\.\d+)?$/.test(amount)) query = query.eq('amount', amount)

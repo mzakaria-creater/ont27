@@ -555,71 +555,47 @@ export default function SmsLive() {
             <table className="data-table clickable">
               <thead>
                 <tr>
-                  <th>{t('الرسالة', 'Message')}</th>
-                  <th>{t('النوع', 'Type')}</th>
                   <th>{t('المبلغ', 'Amount')}</th>
-                  <th>{t('مُرسِل ← مستقبِل', 'Sender ← receiver')}</th>
+                  <th>{t('المرسل', 'Sender')}</th>
+                  <th>{t('المستقبل', 'Receiver')}</th>
+                  <th>{t('وقت الاستلام', 'Received time')}</th>
                   <th>{t('الجهاز', 'Device')}</th>
-                  <th>{t('المحفظة / العملية', 'Wallet / Tx')}</th>
-                  <th>{t('معيّنة لسحب', 'Assigned to WD')}</th>
-                  <th>{t('الربط', 'Link')}</th>
-                  <th>{t('الوقت', 'Time')}</th>
+                  <th>{t('كود SMS', 'SMS code')}</th>
+                  <th>{t('المعاملة المرتبطة', 'Linked transaction')}</th>
+                  <th>{t('حالة الربط', 'Link status')}</th>
+                  <th>{t('وقت الربط / النص الخام', 'Link time / raw SMS')}</th>
                 </tr>
               </thead>
               <tbody>
                 {data.rows.map((r) => {
-                  const cat = r.sms_category ? CATEGORY_META[r.sms_category] : null
-                  const walletLinked = r.sms_category === 'withdrawal' && r.linked_wallet_number != null
                   const payoutLinked = r.sms_category === 'withdrawal' && r.matched_payout_id != null
-                  const manuallyAssigned = r.sms_category === 'withdrawal' && r.withdrawal_assignment_type != null
                   const linked = payoutLinked || r.matched_tx_id != null
                   const displayWallet = r.confirmed_wallet_number ?? r.receiver_number ?? r.wallet_number
-                  const txWallet = r.matched_receiving_wallet
                   const mt = linked ? MATCH_META.auto : r.match_status ? MATCH_META[r.match_status] : null
+                  const linkedAt = r.withdrawal_assigned_at
                   return (
                     <tr key={r.id} onClick={() => void openDetail(r.id)}>
-                      <td className="sms-cell">
-                        {firstLine(r)}
-                        <div className="cell-sub mono">#{r.id} · {r.provider ?? '—'}</div>
-                      </td>
-                      <td>
-                        {cat
-                          ? <span className={`pay-status-badge ${cat.cls}`}>{t(cat.ar, cat.en)}</span>
-                          : <span className="mono">—</span>}
-                      </td>
                       <td className="mono">
                         {money(r.amount, 'EGP')}
                         {r.balance_after != null && <div className="cell-sub mono">{t('رصيد', 'bal')} {money(r.balance_after, 'EGP')}</div>}
                       </td>
-                      <td>
-                        {r.sender_name ?? r.sender_number ?? '—'}
-                        <div className="cell-sub mono">← {displayWallet ?? '—'}</div>
-                        {r.receiver_number && displayWallet && r.receiver_number !== displayWallet && <div className="cell-sub mono">SMS receiver {r.receiver_number}</div>}
-                      </td>
+                      <td>{r.sender_name ?? '—'}<div className="cell-sub mono">{r.sender_number ?? t('رقم غير معروف', 'Number unknown')}</div></td>
+                      <td className="mono">{displayWallet ?? '—'}{r.receiver_number && displayWallet && r.receiver_number !== displayWallet && <div className="cell-sub">SMS: {r.receiver_number}</div>}</td>
+                      <td className="mono">{depositTime({ first_seen_at: r.received_at })}<div className="cell-sub">{r.sms_category ? (CATEGORY_META[r.sms_category] ? t(CATEGORY_META[r.sms_category].ar, CATEGORY_META[r.sms_category].en) : r.sms_category) : '—'}</div></td>
                       <td className="mono">
                         {r.device_name ?? '—'}
                         {r.sim_slot != null && <div className="cell-sub mono">SIM {r.sim_slot}</div>}
                       </td>
-                      <td className="mono">
-                        {walletLinked ? r.linked_wallet_number : r.trx_id ?? '—'}
-                        {walletLinked && <div className="cell-sub mono">{r.wallet_balance_before != null ? money(r.wallet_balance_before, 'EGP') : '—'} − {money(r.amount, 'EGP')} = {r.wallet_balance_after != null ? money(r.wallet_balance_after, 'EGP') : '—'}</div>}
-                        {!walletLinked && linked && <>
-                          <div className="cell-sub mono">OnTarget {r.matched_ontarget_ref ?? r.matched_tx_id} · {r.matched_currency ?? 'TRX currency —'}</div>
-                          {txWallet && <div className="cell-sub mono">TRX wallet {txWallet} {r.wallet_match === false ? '· ⚠ wallet mismatch' : r.wallet_match ? '· ✓ wallet matched' : ''}</div>}
-                          {r.matched_master_merchant?.toLowerCase() === 'payfuture' && <div className="cell-sub">PayFuture · {r.matched_sub_merchant ?? 'sub-merchant not set'}</div>}
-                        </>}
-                      </td>
-                      <td onClick={(event)=>event.stopPropagation()}>
-                        {r.sms_category !== 'withdrawal' ? <span className="cell-sub">—</span> : payoutLinked ? <Link className="transaction-cell-link" to={`/payouts?q=${encodeURIComponent(r.matched_payout_ref ?? String(r.matched_payout_id))}`}><span className="pay-status-badge st-paid">{t('معيّنة','Assigned')}</span><div className="cell-sub mono">WD {r.matched_payout_ref ?? r.matched_payout_id}{r.matched_payout_status ? ` · ${r.matched_payout_status}` : ''}</div></Link> : manuallyAssigned ? <><span className="pay-status-badge st-paid">{t('معيّنة','Assigned')}</span><div className="cell-sub">{r.withdrawal_assignment_type === 'p2p_usdt' ? 'P2P USDT' : 'Money cash return'} · {r.withdrawal_assignment_name}</div></> : <span className="pay-status-badge st-declined">{t('غير معيّنة','Unassigned')}</span>}
+                      <td className="mono">{r.trx_id ?? '—'}<div className="cell-sub">SMS #{r.id}</div></td>
+                      <td>
+                        {linked ? <><span className="pay-status-badge st-paid">{r.matched_ontarget_ref ?? r.matched_tx_id ?? (payoutLinked ? `WD ${r.matched_payout_ref ?? r.matched_payout_id}` : 'Linked')}</span>{r.matched_currency && <div className="cell-sub mono">{r.matched_currency}{r.matched_sub_merchant ? ` · ${r.matched_sub_merchant}` : ''}</div>}</> : <span className="pay-status-badge st-unlinked">{t('غير مرتبطة','Unlinked')}</span>}
                       </td>
                       <td>
-                        {mt
-                          ? <span className={`pay-status-badge ${mt.cls}`}>{t(mt.ar, mt.en)}</span>
-                          : <span className="mono">{r.match_status ?? '—'}</span>}
+                        {mt ? <span className={`pay-status-badge ${mt.cls}`}>{t(mt.ar, mt.en)}</span> : <span className="pay-status-badge st-unlinked">{t('غير مرتبطة','Unlinked')}</span>}
                         {r.review_required && !linked && <div className="cell-sub">⚠ {t('مراجعة', 'review')}</div>}
                         {r.is_blocked && <div className="cell-sub danger-text">🚫 {t('محظورة', 'Blocked')}</div>}
                       </td>
-                      <td className="mono">{depositTime({ first_seen_at: r.received_at })}</td>
+                      <td className="sms-cell"><div className="mono">{linkedAt ? depositTime({ first_seen_at: linkedAt }) : '—'}</div><div className="cell-sub sms-raw-preview" dir="auto">{firstLine(r)}</div></td>
                     </tr>
                   )
                 })}
