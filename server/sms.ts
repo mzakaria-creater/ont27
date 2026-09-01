@@ -36,8 +36,12 @@ function applySmsFilters(query: any, filters: SmsFilterInput) {
   if (category) query = query.eq('sms_category', category)
   if (from) query = query.gte('received_at', `${from}T00:00:00Z`)
   if (to) query = query.lte('received_at', `${to}T23:59:59.999Z`)
-  if (match === 'linked') query = query.or('and(sms_category.neq.withdrawal,consumed_by_tx_id.not.is.null),and(sms_category.eq.withdrawal,wallet_number.not.is.null)')
-  else if (match === 'unmatched') query = query.or('and(sms_category.neq.withdrawal,consumed_by_tx_id.is.null),and(sms_category.eq.withdrawal,wallet_number.is.null)')
+  // Link state is derived from every authoritative/legacy link column. The
+  // old filter only checked consumed_by_tx_id (and wallet_number for WD), so
+  // repaired rows with matched_transaction_id/maven_transaction_id appeared
+  // as unlinked and were offered for assignment again.
+  if (match === 'linked') query = query.or('matched.eq.true,consumed_by_tx_id.not.is.null,matched_transaction_id.not.is.null,maven_transaction_id.not.is.null')
+  else if (match === 'unmatched') query = query.or('matched.eq.false,matched.is.null').is('consumed_by_tx_id', null).is('matched_transaction_id', null).is('maven_transaction_id', null)
   else if (match === 'review') query = query.eq('review_required', true).eq('matched', false)
 
   if (q) {
@@ -202,10 +206,7 @@ smsRoutes.get('/stats', requirePerm('sms_live', 'can_view'), async (c) => {
       countWhere((q) => q),
       countWhere((q) => q.eq('sms_category', 'deposit')),
       countWhere((q) => q.eq('sms_category', 'withdrawal')),
-      Promise.all([
-        countWhere((q) => q.neq('sms_category', 'withdrawal').not('consumed_by_tx_id', 'is', null)),
-        countWhere((q) => q.eq('sms_category', 'withdrawal').not('wallet_number', 'is', null)),
-      ]).then(([depositLinks, walletLinks]) => depositLinks + walletLinks),
+      countWhere((q) => q.or('matched.eq.true,consumed_by_tx_id.not.is.null,matched_transaction_id.not.is.null,maven_transaction_id.not.is.null')),
       countWhere((q) => q.eq('review_required', true).eq('matched', false)),
       volumeSince('deposit'),
       volumeSince('withdrawal'),

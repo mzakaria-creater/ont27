@@ -1017,6 +1017,11 @@ a.stat-card:hover { border-color: var(--accent); }
 .page-sub { margin: 0; color: var(--text-dim); font-size: 13px; }
 
 .filter-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-block-end: 12px; }
+.filter-bar { position: sticky; top: 8px; z-index: 6; padding: 10px; border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(12px); }
+.filter-bar .chip-row, .filter-bar .search-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.filter-bar .search-row { flex: 1 1 420px; justify-content: flex-end; }
+.filter-bar .search-row .login-input { min-width: 0; max-width: 220px; }
+.filter-bar .search-row .search-input { flex: 1 1 240px; max-width: 360px; }
 .transaction-filter-toolbar { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); align-items: center; }
 .transaction-filter-fields { display: grid; grid-template-columns: repeat(7, minmax(105px, 1fr)) auto; flex: 1 1 100%; align-items: end; gap: 8px; min-width: 0; }
 .transaction-filter-fields .filter-field { min-width: 0; display: grid; gap: 4px; }
@@ -1025,6 +1030,14 @@ a.stat-card:hover { border-color: var(--accent); }
 .transaction-filter-fields button { flex: 0 0 auto; min-height: 36px; }
 .transaction-filter-toolbar .filter-pills, .transaction-filter-toolbar .chip-row, .transaction-filter-toolbar .search-row { flex: 0 0 auto; }
 .all-transactions-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+@media (max-width: 760px) {
+  .filter-bar { position: static; align-items: stretch; }
+  .filter-bar .chip-row, .filter-bar .search-row { width: 100%; justify-content: stretch; }
+  .filter-bar .search-row .login-input, .filter-bar .search-row .search-input { flex: 1 1 145px; width: 100%; max-width: none; }
+  .filter-bar .search-row button { flex: 0 0 auto; }
+  .table-wrap { max-width: 100%; overscroll-behavior-inline: contain; }
+  .data-table { min-width: 760px; }
+}
 .transaction-search-row { flex: 1 1 300px !important; display: flex; align-items: center; gap: 7px; }
 .transaction-search-row .search-input { flex: 1 1 auto; min-width: 180px; }
 .trx-search-bar{position:relative;display:flex;align-items:center;gap:8px;min-height:42px;min-width:min(100%,320px);padding:4px 5px 4px 11px;border:1px solid color-mix(in srgb,var(--accent) 55%,var(--border));border-radius:11px;background:var(--surface);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 10%,transparent),0 8px 24px color-mix(in srgb,var(--accent) 10%,transparent);color:var(--text-dim)}.trx-search-bar:focus-within,.trx-search-control:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent),0 0 24px color-mix(in srgb,var(--accent) 16%,transparent)}.trx-search-bar>.search-input,.trx-search-bar>input,.trx-search-control>input{flex:1 1 auto;width:100%;min-width:0;border:0!important;box-shadow:none!important;background:transparent!important;outline:0;color:var(--text)}.trx-search-clear{display:grid;place-items:center;flex:0 0 auto;width:28px;height:28px;padding:0;border:0;border-radius:7px;background:var(--hover-2);color:var(--text-dim);cursor:pointer}.trx-search-clear:hover{color:var(--text);background:color-mix(in srgb,var(--accent) 14%,var(--hover-2))}.trx-search-label{gap:6px}.trx-search-control{display:flex;align-items:center;gap:7px;min-height:38px;padding:0 7px 0 10px;border:1px solid color-mix(in srgb,var(--accent) 55%,var(--border));border-radius:9px;background:var(--surface)}.approval-search-bar{width:100%;margin-block:0 12px;padding-inline:12px}.approval-search-count{display:grid;place-items:center;min-width:30px;height:28px;padding:0 7px;border-radius:999px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-weight:800}:root[data-theme='light'] .trx-search-bar,:root[data-theme='light'] .trx-search-control{background:#fff;border-color:color-mix(in srgb,var(--accent) 58%,#cbd5e1)}@media(max-width:700px){.trx-search-bar,.trx-search-label{width:100%;min-width:0}.transaction-search-row{flex-basis:100%!important}}

@@ -9,7 +9,6 @@ const MAX_TIME_DIFF_MS = 7 * 86_400_000
 const FALLBACK_TIME_DIFF_MS = 10 * 60_000
 const ref = (value: unknown) => String(value ?? '').trim().toUpperCase()
 const cents = (value: unknown) => Math.round(Number(value) * 100)
-const name = (value: unknown) => String(value ?? '').normalize('NFKC').toUpperCase().replace(/[^\p{L}\p{N}]/gu, '')
 const phone = (value: unknown) => { const digits = String(value ?? '').replace(/\D/g, ''); return digits.length > 10 ? digits.slice(-10) : digits }
 
 export interface PaidSmsRepairResult {
@@ -29,8 +28,8 @@ export interface PaidSmsRepairResult {
 // decision, so waiting until a transaction is already PAID made the matcher
 // circular and useless to the live decision path.
 // deliberately stricter than the operator candidate search: amount alone is
-// never enough. A link requires an exact transaction reference, exact amount,
-// a seven-day time bound, and a unique one-to-one result.
+// never enough. The receiving wallet is the primary discriminator. A link
+// requires exact amount + wallet, a bounded time window and a unique result.
 export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Promise<PaidSmsRepairResult> {
   const limit = Math.min(Math.max(scanLimit, 1), PAGE)
   const [{ data: smsData, error: smsError }, { data: txData, error: txError }] = await Promise.all([
@@ -39,7 +38,6 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
       .eq('sms_category', 'deposit')
       .is('consumed_by_tx_id', null)
       .eq('is_blocked', false)
-      .not('trx_id', 'is', null)
       .order('received_at', { ascending: false, nullsFirst: false })
       .limit(limit),
     db.from('maven_transactions')
@@ -83,39 +81,31 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
   const diagnostics = { noAmountCandidate: 0, noUsableTime: 0, outsideTenMinutes: 0, missingSenderName: 0, senderNameMismatch: 0, ambiguousFallback: 0, ownWalletSender: 0 }
   for (const sms of smsRows) {
     if (ourWallets.has(phone(sms.sender_number))) { diagnostics.ownWalletSender++; continue }
-    let candidates = [...new Map((txByRef.get(ref(sms.trx_id)) ?? []).map((tx) => [tx.tx_id, tx])).values()]
-      .filter((tx) => cents(tx.amount) === cents(sms.amount))
-      .filter((tx) => {
-        if (!tx.first_seen_at || !sms.received_at) return true
-        return Math.abs(Date.parse(tx.first_seen_at) - Date.parse(sms.received_at)) <= MAX_TIME_DIFF_MS
-      })
-    // Bank TRX ids are often not copied into Maven's merchant reference. The
-    // only automatic fallback allowed is exact amount + exact normalized
-    // sender name + a tight 10-minute window, and it still must resolve to one
-    // transaction and one SMS. Amount-only matching remains forbidden.
-    if (candidates.length === 0) {
-      const byAmount = txRows.filter((tx) => cents(tx.amount) === cents(sms.amount))
-      if (!byAmount.length) diagnostics.noAmountCandidate++
-      else if (!sms.received_at || !Number.isFinite(Date.parse(sms.received_at))) diagnostics.noUsableTime++
-      else {
-        const smsAt = Date.parse(sms.received_at)
-        const byTime = byAmount.filter((tx) => tx.first_seen_at != null && Number.isFinite(Date.parse(tx.first_seen_at))
-          && Math.abs(Date.parse(tx.first_seen_at) - smsAt) <= FALLBACK_TIME_DIFF_MS)
-        if (!byTime.length) diagnostics.outsideTenMinutes++
-        else {
-          // Prefer the strongest bank evidence: exact normalized sender phone,
-          // exact receiving wallet, amount and a tight time window. Name-only
-          // remains a fallback for bank SMS that genuinely contains no phone.
-          const smsPhone = phone(sms.sender_number)
-          const smsWallet = phone(sms.receiver_number)
-          if (smsPhone) candidates = byTime.filter((tx) => phone(tx.sender_number) === smsPhone && (!smsWallet || phone(tx.receiving_wallet ?? tx.to_account_number) === smsWallet))
-          else if (!name(sms.sender_name)) diagnostics.missingSenderName++
-          else candidates = byTime.filter((tx) => name(tx.sender_name) === name(sms.sender_name))
-          if (!candidates.length) diagnostics.senderNameMismatch++
-          else if (candidates.length > 1) diagnostics.ambiguousFallback++
-        }
-      }
-    }
+    const smsPhone = phone(sms.sender_number)
+    const smsWallet = phone(sms.receiver_number)
+    // A receiver-less SMS cannot be auto-linked: matching amount/time would
+    // risk assigning funds to the wrong wallet. Name is intentionally ignored;
+    // Maven's sender_name is a merchant placeholder, not customer identity.
+    if (!smsWallet) { diagnostics.noUsableTime++; continue }
+    const byAmount = txRows.filter((tx) => cents(tx.amount) === cents(sms.amount))
+    if (!byAmount.length) { diagnostics.noAmountCandidate++; continue }
+    const byEvidence = byAmount.filter((tx) => {
+      const txWallet = phone(tx.receiving_wallet ?? tx.to_account_number)
+      if (!txWallet || txWallet !== smsWallet) return false
+      if (smsPhone && phone(tx.sender_number) && phone(tx.sender_number) !== smsPhone) return false
+      if (!tx.first_seen_at || !sms.received_at) return false
+      const delta = Math.abs(Date.parse(tx.first_seen_at) - Date.parse(sms.received_at))
+      return Number.isFinite(delta) && delta <= (txByRef.has(ref(sms.trx_id)) ? MAX_TIME_DIFF_MS : FALLBACK_TIME_DIFF_MS)
+    })
+    // Prefer an explicit bank reference only when the wallet/phone evidence
+    // still agrees. Otherwise the same strict wallet+amount+time rule applies.
+    const referenced = new Set((txByRef.get(ref(sms.trx_id)) ?? []).map((tx) => tx.tx_id))
+    let candidates = byEvidence.filter((tx) => referenced.size === 0 || referenced.has(tx.tx_id))
+    if (referenced.size > 0 && candidates.length === 0) candidates = byEvidence
+    if (!candidates.length) {
+      if (!sms.received_at || !Number.isFinite(Date.parse(sms.received_at))) diagnostics.noUsableTime++
+      else diagnostics.outsideTenMinutes++
+    } else if (candidates.length > 1) diagnostics.ambiguousFallback++
     if (candidates.length !== 1) { if (candidates.length > 1) skippedAmbiguous++; continue }
     if (assignedTx.has(candidates[0].tx_id)) { skippedAlreadyAssigned++; continue }
     const tx = candidates[0]
