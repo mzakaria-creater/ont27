@@ -10,7 +10,7 @@ import { useLocale } from '../lib/locale'
 import DepositKindBadge from '../components/DepositKindBadge'
 
 const CONTROL_ROLES = new Set(['owner', 'admin', 'super_admin'])
-const REFRESH_MS = 20_000
+const REFRESH_MS = 30_000
 
 interface QueueGuess { score: number | null; sms_id: number | null; reasons: string[] | null }
 interface QueueItem { tx_id: number; amount: number | null; sms_id: number | null; best_guess: QueueGuess | null }

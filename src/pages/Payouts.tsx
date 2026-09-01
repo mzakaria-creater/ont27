@@ -258,7 +258,7 @@ export default function Payouts() {
   useEffect(() => {
     const refresh = () => void load(true);
     window.addEventListener("ontarget:provider-sync", refresh);
-    const interval = window.setInterval(refresh, 15_000);
+    const interval = window.setInterval(refresh, 30_000);
     return () => {
       window.removeEventListener("ontarget:provider-sync", refresh);
       window.clearInterval(interval);
