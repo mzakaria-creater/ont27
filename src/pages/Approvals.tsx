@@ -62,6 +62,13 @@ interface PayRow {
   created_utc: string | null
 }
 
+interface RetentionSummary {
+  paid: number
+  declined: number
+  pending: number
+  total: number
+}
+
 export default function Approvals() {
   const { can } = useAuth()
   const { t } = useLocale()
@@ -72,6 +79,7 @@ export default function Approvals() {
   const [proof, setProof] = useState<{ url: string; ref: string } | null>(null)
   const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => localStorage.getItem('approval-queue-view') === 'cards' ? 'cards' : 'table')
   const [searchQuery, setSearchQuery] = useState('')
+  const [retentionSummary, setRetentionSummary] = useState<RetentionSummary>({ paid: 0, declined: 0, pending: 0, total: 0 })
   const refreshTimer = useRef<number | null>(null)
 
   const changeView = (mode: 'table' | 'cards') => {
@@ -83,9 +91,10 @@ export default function Approvals() {
     try {
       // The queue is served from the local mirror. Never wait for a provider
       // pull before painting it; provider sync runs independently below.
-      const res = await api<{ deposits: DepRow[]; payouts: PayRow[] }>('/api/approvals')
+      const res = await api<{ deposits: DepRow[]; payouts: PayRow[]; retention_summary?: RetentionSummary }>('/api/approvals')
       setDeposits((current) => JSON.stringify(current) === JSON.stringify(res.deposits) ? current : res.deposits)
       setPayouts((current) => JSON.stringify(current) === JSON.stringify(res.payouts) ? current : res.payouts)
+      setRetentionSummary(res.retention_summary ?? { paid: 0, declined: 0, pending: 0, total: 0 })
       setErr(null)
     } catch (e) {
       setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض طابور الموافقات.', 'You do not have permission to view the approval queue.') : t('تعذّر تحميل الطابور.', 'Failed to load the queue.'))
@@ -169,6 +178,21 @@ export default function Approvals() {
       </form>
 
       {err && <div className="card warn">{err}</div>}
+
+      <section className="card retention-summary-card" aria-label={t('ملخص الإيداعات المتكررة', 'Retention deposit summary')}>
+        <div className="recent-head">
+          <div>
+            <h3>↻ {t('Retention deposits', 'Retention deposits')}</h3>
+            <p className="page-sub">{retentionSummary.total.toLocaleString()} {t('إيداعاً لعملاء لديهم إيداع مقبول سابقاً', 'deposits from customers with a previous approved deposit')}</p>
+          </div>
+          <Link to="/transactions?deposit_kind=retention" className="pay-status-link">{t('عرض الكل ←', 'View all →')}</Link>
+        </div>
+        <div className="retention-summary-stats">
+          <div className="retention-stat paid"><strong>{retentionSummary.paid.toLocaleString()}</strong><span>{t('مدفوع', 'Paid')}</span></div>
+          <div className="retention-stat declined"><strong>{retentionSummary.declined.toLocaleString()}</strong><span>{t('مرفوض', 'Declined')}</span></div>
+          <div className="retention-stat pending"><strong>{retentionSummary.pending.toLocaleString()}</strong><span>{t('معلّق', 'Pending')}</span></div>
+        </div>
+      </section>
 
       {/* deposits */}
       <section className="card recent-card">

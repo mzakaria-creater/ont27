@@ -167,7 +167,7 @@ extraRoutes.get(
   '/approvals',
   requireAnyPerm(['approvals', 'approval-queue', 'my-queue', 'my-tasks', 'assigned_to_me'], 'can_view'),
   async (c) => {
-    const [dep, pay] = await Promise.all([
+    const [dep, pay, historyRows] = await Promise.all([
       db
         .from('maven_transactions')
         .select(APPROVAL_DEPOSIT_COLS)
@@ -180,9 +180,16 @@ extraRoutes.get(
         .eq('status', 'PENDING')
         .order('first_seen_at', { ascending: false, nullsFirst: false })
         .limit(100),
+      db
+        .from('maven_transactions')
+        .select('status, sender_number, first_seen_at, amount')
+        .in('status', ['PAID', 'APPROVED', 'DECLINED', 'PENDING'])
+        .order('first_seen_at', { ascending: true, nullsFirst: false })
+        .limit(50_000),
     ])
     if (dep.error) return c.json({ error: 'db_error', detail: dep.error.message }, 500)
     if (pay.error) return c.json({ error: 'db_error', detail: pay.error.message }, 500)
+    if (historyRows.error) return c.json({ error: 'db_error', detail: historyRows.error.message }, 500)
     const deposits = (dep.data ?? []).map((row) => withSenderAccount(row))
     const txIds = deposits.map((row) => row.tx_id)
     // Classify from approved history, never from the placeholder sender name.
@@ -220,7 +227,20 @@ extraRoutes.get(
         for (const row of reviews ?? []) if (!reasonByTx.has(Number(row.tx_id))) reasonByTx.set(Number(row.tx_id), row)
       }
     }
-    return c.json({ deposits: deposits.map((row) => {
+    const retentionSummary = { paid: 0, declined: 0, pending: 0, total: 0 }
+    const seenApproved = new Set<string>()
+    for (const row of historyRows.data ?? []) {
+      const phone = normalizePhone(row.sender_number)
+      const status = String(row.status ?? '').toUpperCase()
+      if (phone && seenApproved.has(phone)) {
+        if (status === 'PAID' || status === 'APPROVED') retentionSummary.paid += 1
+        else if (status === 'DECLINED') retentionSummary.declined += 1
+        else if (status === 'PENDING') retentionSummary.pending += 1
+        retentionSummary.total += 1
+      }
+      if (phone && (status === 'PAID' || status === 'APPROVED')) seenApproved.add(phone)
+    }
+    return c.json({ retention_summary: retentionSummary, deposits: deposits.map((row) => {
       const previousApproved = approvedHistory.get(normalizePhone(row.sender_number)) ?? 0
       return {
         ...row,

@@ -2777,3 +2777,17 @@ html[data-pay-theme="etisalat"]      .pay-wrap { --pay-glow: #95c11f; }
 @media(max-width:560px){.live-stat-grid{grid-template-columns:repeat(2,1fr)}.live-control-head{padding:16px}.live-control-title p{display:none}.live-control-actions .live-connection{flex:1}.live-control-actions button:not(.icon-only){flex:1}.live-stat-card{min-height:105px}.live-processing-amount,.live-history-row>strong{font-size:.78rem}.live-active-process{margin:10px;padding:14px}.live-active-summary{grid-template-columns:auto minmax(0,1fr)}.live-active-money{grid-column:2;text-align:start}.live-active-details{grid-template-columns:repeat(2,minmax(0,1fr))}.live-pipeline-step{grid-template-columns:auto minmax(0,1fr)}.live-pipeline-step>a{grid-column:2;justify-self:start}}
 @media(prefers-reduced-motion:reduce){.live-control-beacon,.live-state-dot,.spin,.live-history-stamp.rejected{animation:none!important;transition:none!important}}
 @media(max-width:560px){.live-market-grid{grid-template-columns:1fr}}
+
+/* Retention deposit status summary */
+.retention-summary-card { margin-bottom: 16px; border-color: color-mix(in srgb, #a78bfa 35%, var(--border)); background: linear-gradient(135deg, color-mix(in srgb, #a78bfa 7%, var(--card)), var(--card)); }
+.retention-summary-card .recent-head { align-items: flex-start; }
+.retention-summary-card h3 { margin: 0; }
+.retention-summary-card .page-sub { margin: 4px 0 0; }
+.retention-summary-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.retention-stat { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 11px; background: color-mix(in srgb, var(--surface) 82%, transparent); }
+.retention-stat strong { font: 750 22px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.retention-stat span { color: var(--text-dim); font-size: 11px; font-weight: 700; }
+.retention-stat.paid { border-color: var(--green-border); color: var(--status-paid); }
+.retention-stat.declined { border-color: var(--red-border); color: var(--status-declined); }
+.retention-stat.pending { border-color: var(--amber-border); color: var(--status-pending); }
+@media (max-width: 560px) { .retention-summary-stats { grid-template-columns: 1fr; } }
