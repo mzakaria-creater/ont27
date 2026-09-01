@@ -3,6 +3,7 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useAuth } from '../auth/AuthContext'
 import { Activity, BadgeCheck, Calculator, Gauge, HeartPulse, MessageSquareText, Route, WalletCards } from 'lucide-react'
 
 // Wallet pool: wallet_device_map rows (receiving wallets) + live device_status
@@ -91,6 +92,7 @@ interface AllocationResult {
 
 export default function Wallets() {
   const { t } = useLocale()
+  const { can } = useAuth()
   const [data, setData] = useState<WalletsResponse | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [q, setQ] = useState('')
@@ -104,6 +106,23 @@ export default function Wallets() {
   const [simulating, setSimulating] = useState(false)
   const [simulationError, setSimulationError] = useState<string | null>(null)
   const [result, setResult] = useState<AllocationResult | null>(null)
+  const [newWallet, setNewWallet] = useState({ wallet_number: '', provider: 'Orange Money', merchant: '', daily_limit: '' })
+  const [walletBusy, setWalletBusy] = useState(false)
+  const [walletMessage, setWalletMessage] = useState<string | null>(null)
+
+  const refreshWallets = async () => setData(await api<WalletsResponse>('/api/wallets'))
+  const importLiveWallets = async () => {
+    setWalletBusy(true); setWalletMessage(null)
+    try { const res = await api<{ imported: number }>('/api/wallets/sync-live', { method: 'POST' }); await refreshWallets(); setWalletMessage(t(`تم استيراد ${res.imported} محفظة من OnTarget.`, `Imported ${res.imported} wallets from OnTarget.`)) }
+    catch (e) { setWalletMessage(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية استيراد المحافظ.', 'You do not have permission to import wallets.') : t('فشل استيراد المحافظ الحية.', 'Live wallet import failed.')) }
+    finally { setWalletBusy(false) }
+  }
+  const createWallet = async (event: React.FormEvent) => {
+    event.preventDefault(); setWalletBusy(true); setWalletMessage(null)
+    try { await api('/api/wallets', { method: 'POST', body: JSON.stringify(newWallet) }); await refreshWallets(); setNewWallet({ wallet_number: '', provider: 'Orange Money', merchant: '', daily_limit: '' }); setWalletMessage(t('تمت إضافة المحفظة.', 'Wallet added.')) }
+    catch (e) { setWalletMessage(e instanceof ApiError && e.code === 'wallet_already_exists' ? t('هذه المحفظة موجودة بالفعل.', 'This wallet already exists.') : t('فشل إضافة المحفظة.', 'Failed to add wallet.')) }
+    finally { setWalletBusy(false) }
+  }
 
   useEffect(() => {
     api<WalletsResponse>('/api/wallets')
@@ -285,6 +304,18 @@ export default function Wallets() {
           />
         </form>
       </div>
+
+      {can('wallets', 'can_create') && <section className="card wallet-admin-tools">
+        <div className="recent-head"><div><h3>{t('إضافة وإدارة محافظ الهاتف', 'Add & manage phone wallets')}</h3><p className="cell-sub">{t('استيراد المحافظ النشطة من OnTarget أو إضافة رقم جديد يدوياً.', 'Import active wallets from OnTarget or add a new phone wallet manually.')}</p></div><button className="btn-ghost btn-sm" type="button" onClick={() => void importLiveWallets()} disabled={walletBusy}>{walletBusy ? t('جارٍ التحديث…', 'Syncing…') : t('↻ استيراد المحافظ الحية', '↻ Import live wallets')}</button></div>
+        <form className="wallet-create-form" onSubmit={(event) => void createWallet(event)}>
+          <input className="login-input" required inputMode="tel" placeholder={t('رقم المحفظة', 'Wallet phone number')} value={newWallet.wallet_number} onChange={(e) => setNewWallet({ ...newWallet, wallet_number: e.target.value })} />
+          <select className="login-input" value={newWallet.provider} onChange={(e) => setNewWallet({ ...newWallet, provider: e.target.value })}><option>Orange Money</option><option>Vodafone Cash</option><option>Etisalat Cash</option><option>WE Pay</option><option>InstaPay</option></select>
+          <input className="login-input" placeholder={t('التاجر (اختياري)', 'Merchant (optional)')} value={newWallet.merchant} onChange={(e) => setNewWallet({ ...newWallet, merchant: e.target.value })} />
+          <input className="login-input" type="number" min="1" placeholder={t('الحد اليومي', 'Daily limit')} value={newWallet.daily_limit} onChange={(e) => setNewWallet({ ...newWallet, daily_limit: e.target.value })} />
+          <button className="btn-primary btn-sm" disabled={walletBusy}>{t('إضافة محفظة', 'Add wallet')}</button>
+        </form>
+        {walletMessage && <div className="cell-sub" role="status">{walletMessage}</div>}
+      </section>}
 
       {editor && data && (
         <section className="card recent-card">

@@ -48,6 +48,46 @@ walletRoutes.get('/', requirePerm('wallets', 'can_view'), async (c) => {
   })
 })
 
+// Import the currently active phone wallets reported by the legacy OnTarget
+// source into the v2 wallet map. This is idempotent and never overwrites an
+// operator's device assignment.
+walletRoutes.post('/sync-live', requirePerm('wallets', 'can_edit'), async (c) => {
+  const old = oldDb()
+  if (!old) return c.json({ error: 'old_db_not_configured' }, 503)
+  const { data, error } = await old.rpc('maven_banks_live_list')
+  if (error) return c.json({ error: 'legacy_wallet_lookup_failed', detail: error.message }, 502)
+  const rows = (Array.isArray(data) ? data : []) as Array<Record<string, unknown>>
+  const wallets = rows.map((row) => ({
+    to_account_number: String(row.phone_number ?? '').replace(/\D/g, '').slice(-20),
+    provider: String(row.account_name ?? row.bank_name ?? 'Mobile Wallet').slice(0, 80),
+    payment_type: String(row.payment_type ?? 'Mobile Wallet').slice(0, 80),
+    auto_inferred: true, confidence: 100, updated_at: new Date().toISOString(),
+  })).filter((row) => /^\d{8,20}$/.test(row.to_account_number))
+  if (!wallets.length) return c.json({ ok: true, imported: 0, source_count: rows.length })
+  const result = await db.from('wallet_device_map').upsert(wallets, { onConflict: 'to_account_number', ignoreDuplicates: true })
+  if (result.error) return c.json({ error: 'wallet_import_failed', detail: result.error.message }, 400)
+  const actor = c.get('actor')
+  await db.from('audit_log').insert({ actor_type: 'panel_user', actor_id: actor.sub, actor_name: actor.username, action: 'wallets.sync_live', entity: 'wallet_device_map', entity_id: 'bulk', after: { source_count: rows.length, imported: wallets.length } })
+  return c.json({ ok: true, imported: wallets.length, source_count: rows.length })
+})
+
+// Add a phone wallet manually. Device assignment is optional and can be
+// configured later, so a new wallet can be used immediately for visibility.
+walletRoutes.post('/', requirePerm('wallets', 'can_create'), async (c) => {
+  const body = await c.req.json<Record<string, unknown>>().catch(() => null)
+  const wallet = String(body?.wallet_number ?? '').replace(/\D/g, '')
+  if (!/^\d{8,20}$/.test(wallet)) return c.json({ error: 'invalid_wallet_number' }, 400)
+  const device = typeof body?.device === 'string' && body.device.trim() ? body.device.trim().slice(0, 80) : null
+  const simSlot = body?.sim_slot == null || body.sim_slot === '' ? null : Number(body.sim_slot)
+  if (simSlot != null && (!Number.isInteger(simSlot) || simSlot < 0)) return c.json({ error: 'invalid_sim_slot' }, 400)
+  const row = { to_account_number: wallet, provider: typeof body?.provider === 'string' ? body.provider.trim().slice(0, 80) || 'Mobile Wallet' : 'Mobile Wallet', payment_type: 'Mobile Wallet', merchant: typeof body?.merchant === 'string' ? body.merchant.trim().slice(0, 120) || null : null, device, sim_slot: simSlot, auto_inferred: false, confidence: 100, daily_limit: Number.isFinite(Number(body?.daily_limit)) && Number(body?.daily_limit) > 0 ? Number(body?.daily_limit) : null, updated_at: new Date().toISOString() }
+  const { data, error } = await db.from('wallet_device_map').insert(row).select('to_account_number, device, provider, payment_type, merchant, sim_slot, daily_limit, auto_inferred, confidence, updated_at').single()
+  if (error) return c.json({ error: error.code === '23505' ? 'wallet_already_exists' : 'wallet_create_failed', detail: error.message }, 400)
+  const actor = c.get('actor')
+  await db.from('audit_log').insert({ actor_type: 'panel_user', actor_id: actor.sub, actor_name: actor.username, action: 'wallet_created', entity: 'wallet_device_map', entity_id: wallet, after: row })
+  return c.json({ ok: true, wallet: data }, 201)
+})
+
 const ENGINE_DAILY_CAP = 60_000
 const ENGINE_MONTHLY_CAP = 200_000
 const COMMITTED_STATUSES = new Set(['PENDING', 'PAID', 'APPROVED', 'SUCCESS', 'COMPLETED'])

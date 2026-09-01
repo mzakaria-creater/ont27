@@ -1022,6 +1022,11 @@ a.stat-card:hover { border-color: var(--accent); }
 .filter-bar .search-row { flex: 1 1 420px; justify-content: flex-end; }
 .filter-bar .search-row .login-input { min-width: 0; max-width: 220px; }
 .filter-bar .search-row .search-input { flex: 1 1 240px; max-width: 360px; }
+.wallet-admin-tools { margin-block-end: 12px; }
+.wallet-create-form { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)) auto; gap: 8px; align-items: center; }
+.wallet-create-form .login-input { min-width: 0; width: 100%; }
+@media (max-width: 850px) { .wallet-create-form { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .wallet-create-form { grid-template-columns: 1fr; } }
 .transaction-filter-toolbar { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); align-items: center; }
 .transaction-filter-fields { display: grid; grid-template-columns: repeat(7, minmax(105px, 1fr)) auto; flex: 1 1 100%; align-items: end; gap: 8px; min-width: 0; }
 .transaction-filter-fields .filter-field { min-width: 0; display: grid; gap: 4px; }
