@@ -7,6 +7,7 @@ import { depositTime, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
+import { LayoutGrid, TableProperties } from 'lucide-react'
 
 // SMS Live — the inbound_sms queue with its Maven links, auto-refreshing.
 
@@ -172,6 +173,7 @@ export default function SmsLive() {
   const [assignmentBusy, setAssignmentBusy] = useState(false)
   const [expenseComment, setExpenseComment] = useState('')
   const [expenseBusy, setExpenseBusy] = useState(false)
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => localStorage.getItem('sms-live-view') === 'cards' ? 'cards' : 'table')
 
   const appliedQ = params.get('q') ?? ''
   const amount = params.get('amount') ?? ''
@@ -419,6 +421,10 @@ export default function SmsLive() {
           <h2 style={{ margin: 0 }}>📨 {t('SMS مباشر', 'Live SMS')}</h2>
           <Link to="/wallet-report" className="btn-ghost btn-sm">📊 {t('تقرير المحافظ ←', 'Wallet report →')}</Link>
         </div>
+        <div className="view-switch" role="group" aria-label={t('طريقة العرض', 'View mode')}>
+          <button className={viewMode === 'table' ? 'active' : ''} aria-pressed={viewMode === 'table'} onClick={() => { setViewMode('table'); localStorage.setItem('sms-live-view', 'table') }}><TableProperties size={16} /> {t('جدول', 'Table')}</button>
+          <button className={viewMode === 'cards' ? 'active' : ''} aria-pressed={viewMode === 'cards'} onClick={() => { setViewMode('cards'); localStorage.setItem('sms-live-view', 'cards') }}><LayoutGrid size={16} /> {t('بطاقات', 'Cards')}</button>
+        </div>
         <p className="page-sub">
           {t('صندوق الرسائل الوارد من أجهزة المحافظ · تحديث تلقائي كل', 'Inbox from the wallet devices · auto-refresh every')} {REFRESH_MS / 1000} {t('ثانية', 's')}
           {data && <> · {data.total.toLocaleString('en-US')}</>}
@@ -544,7 +550,7 @@ export default function SmsLive() {
       <section className="card recent-card">
         {loading && !data && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
         {data && data.rows.length === 0 && <p>{t('لا توجد نتائج مطابقة.', 'No matching results.')}</p>}
-        {data && data.rows.length > 0 && (
+        {data && data.rows.length > 0 && viewMode === 'table' && (
           <div className="table-wrap">
             <table className="data-table clickable">
               <thead>
@@ -619,6 +625,28 @@ export default function SmsLive() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+        {data && data.rows.length > 0 && viewMode === 'cards' && (
+          <div className="sms-card-grid">
+            {data.rows.map((r) => {
+              const cat = r.sms_category ? CATEGORY_META[r.sms_category] : null
+              const linked = r.matched_payout_id != null || r.matched_tx_id != null
+              const displayWallet = r.confirmed_wallet_number ?? r.receiver_number ?? r.wallet_number
+              const matchMeta = linked ? MATCH_META.auto : r.match_status ? MATCH_META[r.match_status] : null
+              return <button type="button" className={`sms-live-card${!linked && !r.is_blocked ? ' is-unlinked' : ''}`} key={r.id} onClick={() => void openDetail(r.id)}>
+                <div className="sms-live-card-head"><strong className="mono">SMS #{r.id}</strong><span className="mono">{depositTime({ first_seen_at: r.received_at })}</span></div>
+                <div className="sms-live-card-amount">{money(r.amount, 'EGP')}</div>
+                <div className="sms-live-card-grid">
+                  <span>{t('النوع', 'Type')}<b>{cat ? t(cat.ar, cat.en) : '—'}</b></span>
+                  <span>{t('المرسل', 'Sender')}<b>{r.sender_name ?? r.sender_number ?? '—'}</b></span>
+                  <span>{t('المحفظة', 'Wallet')}<b className="mono">{displayWallet ?? '—'}</b></span>
+                  <span>{t('الجهاز', 'Device')}<b className="mono">{r.device_name ?? '—'}</b></span>
+                </div>
+                <div className="sms-live-card-foot">{matchMeta ? <span className={`pay-status-badge ${matchMeta.cls}`}>{t(matchMeta.ar, matchMeta.en)}</span> : <span className="pay-status-badge st-dim">{t('غير مرتبطة', 'Unlinked')}</span>}{r.sms_category === 'withdrawal' && <span className="cell-sub">{r.matched_payout_id ? `WD ${r.matched_payout_ref ?? r.matched_payout_id}` : t('سحب غير معيّن', 'Unassigned withdrawal')}</span>}</div>
+                <div className="cell-sub sms-card-preview">{firstLine(r)}</div>
+              </button>
+            })}
           </div>
         )}
         {data && totalPages > 1 && (
