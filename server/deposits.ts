@@ -408,6 +408,19 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
       return c.json({ error: 'worker_failed', worker: workerResult }, workerResponse.status as 400 | 401 | 404 | 409 | 500)
     }
 
+    // The provider worker has already read back a successful Maven result.
+    // Reflect that confirmed result in the panel mirror immediately instead
+    // of waiting for the next delta-sync cycle to repaint the approval queue.
+    // The status guard keeps this safe if the worker already updated the row.
+    const mirrorNow = new Date().toISOString()
+    const { error: mirrorErr } = await db.from('maven_transactions').update({
+      status: target,
+      approved_by: actor.username,
+      last_status_change: mirrorNow,
+      updated_at: mirrorNow,
+    }).eq('tx_id', Number(txId)).eq('status', 'PENDING')
+    if (mirrorErr) console.error('provider decision mirror update failed', { txId, error: mirrorErr.message })
+
     // The worker has now verified the live provider result. Audit mirroring and
     // CRM identity learning are important, but neither may delay the operator's
     // confirmed response. Vercel's execution context keeps this promise alive.

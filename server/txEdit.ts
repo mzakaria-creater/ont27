@@ -201,7 +201,16 @@ async function applyEdit(
     }
     executed = true
     localOnly = false
-    // The worker already wrote status/approved_by/last_status_change.
+    // The worker already verified Maven. Mirror the confirmed result locally
+    // now so the queue does not wait for a later provider sync repaint.
+    const mirrorNow = new Date().toISOString()
+    const { error: mirrorErr } = await db.from('maven_transactions').update({
+      status: edit.status,
+      approved_by: actorName,
+      last_status_change: mirrorNow,
+      updated_at: mirrorNow,
+    }).eq('tx_id', txId).eq('status', 'PENDING')
+    if (mirrorErr) console.error('provider edit mirror update failed', { txId, error: mirrorErr.message })
   } else if (edit.status != null) {
     patch.status = edit.status
     patch.last_status_change = new Date().toISOString()
