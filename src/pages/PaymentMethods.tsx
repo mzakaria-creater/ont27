@@ -81,6 +81,7 @@ export default function PaymentMethods() {
   const [generatorOpen, setGeneratorOpen] = useState(false)
   const [generator, setGenerator] = useState(emptyGenerator)
   const [generatorBusy, setGeneratorBusy] = useState(false)
+  const [poolMasterFilter, setPoolMasterFilter] = useState<'all' | 'ngpay' | 'payfuture'>('all')
   const editable = can('payment_methods', 'can_edit')
   const create = can('payment_methods', 'can_create')
   const canUploadLogo = ['owner', 'admin', 'super_admin'].includes(user?.role ?? '') && can('settings', 'can_edit')
@@ -370,7 +371,12 @@ export default function PaymentMethods() {
           <button className="btn-primary btn-sm">{t('إنشاء', 'Create')}</button>
         </form>
       )}
-      {data?.pools.map((pool) => {
+      {data && <div className="filter-bar payment-pool-filter"><div className="chip-row"><strong>{t('تجمّعات حسب التاجر الرئيسي:', 'Pools by master merchant:')}</strong>{(['all', 'ngpay', 'payfuture'] as const).map((key) => <button type="button" key={key} className={`chip${poolMasterFilter === key ? ' chip-active' : ''}`} onClick={() => setPoolMasterFilter(key)}>{key === 'all' ? t('الكل', 'All') : key === 'ngpay' ? 'NGPay' : 'PayFuture'}</button>)}</div></div>}
+      {data?.pools.filter((pool) => {
+        if (poolMasterFilter === 'all') return true
+        const master = data.masters.find((item) => item.id === pool.master_merchant_id)
+        return master?.code?.toLowerCase() === poolMasterFilter || master?.name?.toLowerCase().includes(poolMasterFilter)
+      }).map((pool) => {
         const members = data.poolMembers.filter((m) => m.payment_pool_id === pool.id)
         const accountsInPool = data.accounts.filter((a) => a.payment_pool_id === pool.id)
         const master = data.masters.find((m) => m.id === pool.master_merchant_id)
