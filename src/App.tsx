@@ -83,12 +83,24 @@ function Bell() {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   const seenRef = useRef<{ tx: number; sms: number } | null>(null)
+  const safeArray = <T,>(value: unknown): T[] => Array.isArray(value) ? value as T[] : []
 
   useEffect(() => { installNotificationAudioUnlock() }, [])
 
   useEffect(() => {
     const load = () => void api<NotifData>('/api/notifications').then((next) => {
-      const latestTx = Math.max(0, ...(next.latestPending ?? []).map((row) => Number(row.tx_id)))
+      // The notifications endpoint may return null/object values while an
+      // upstream provider is recovering. Normalize collections at the UI
+      // boundary so page navigation can never crash on `.map`.
+      const normalized: NotifData = {
+        ...next,
+        latestPending: safeArray(next.latestPending),
+        latestPayouts: safeArray(next.latestPayouts),
+        recentMatches: safeArray(next.recentMatches),
+        myEditRequests: safeArray(next.myEditRequests),
+        offlineDevices: safeArray(next.offlineDevices),
+      }
+      const latestTx = Math.max(0, ...normalized.latestPending.map((row) => Number(row.tx_id)))
       const latestSms = Number(next.latestSms?.id ?? 0)
       const seen = seenRef.current
       if (seen) {
@@ -96,7 +108,7 @@ function Bell() {
         if (latestSms > seen.sms) playNotificationTone('sms')
       }
       seenRef.current = { tx: Math.max(seen?.tx ?? 0, latestTx), sms: Math.max(seen?.sms ?? 0, latestSms) }
-      setData(next)
+      setData(normalized)
     }).catch(() => {})
     load()
     const iv = setInterval(load, 10_000)
