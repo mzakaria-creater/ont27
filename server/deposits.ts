@@ -345,8 +345,8 @@ async function depositDetail(c: Context<AuthEnv>, txId: string) {
 
 depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), async (c) => {
   const requestStartedAt = performance.now()
-  const txId = c.req.param('txId')
-  if (!/^\d+$/.test(txId)) return c.json({ error: 'bad_tx_id' }, 400)
+  const requestedId = c.req.param('txId')
+  if (!/^\d+$/.test(requestedId)) return c.json({ error: 'bad_tx_id' }, 400)
 
   const body = await c.req.json().catch(() => null)
   const action = body?.action as string | undefined
@@ -354,13 +354,23 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
   const target = action ? DECISION_TARGET[action] : undefined
   if (!target) return c.json({ error: 'bad_action' }, 400)
 
-  const { data: before, error: readErr } = await db
+  let { data: before, error: readErr } = await db
     .from('maven_transactions')
     .select('tx_id, status, amount, currency, ontarget_ref, merchant, master_merchant, gateway, country, payment_method, request_type')
-    .eq('tx_id', txId)
+    .eq('tx_id', requestedId)
     .maybeSingle()
+  // Operators often copy the merchant reference shown in the portal. Accept
+  // that identifier too, but always continue with the canonical tx_id.
+  if (!before && !readErr) {
+    const resolved = await db.from('maven_transactions')
+      .select('tx_id, status, amount, currency, ontarget_ref, merchant, master_merchant, gateway, country, payment_method, request_type')
+      .eq('ontarget_ref', requestedId).maybeSingle()
+    before = resolved.data
+    readErr = resolved.error
+  }
   if (readErr) return c.json({ error: 'db_error', detail: readErr.message }, 500)
   if (!before) return c.json({ error: 'not_found' }, 404)
+  const txId = String(before.tx_id)
   if (!await rowAllowed(c.get('actor'),before,'approve')) return c.json({error:'outside_assigned_scope'},403)
   if (before.status !== 'PENDING') {
     return c.json({ error: 'not_pending', status: before.status }, 409)
