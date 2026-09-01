@@ -1,6 +1,8 @@
 let inFlight: Promise<boolean> | null = null
 let lastStartedAt = 0
-const CLIENT_COOLDOWN_MS = 10_000
+// Keep provider changes visible within one fast-sync window while still
+// sharing a single request across tabs and pages.
+const CLIENT_COOLDOWN_MS = 5_000
 const SHARED_KEY = 'ontarget-provider-sync-started-at'
 
 // One shared browser-side pump for provider → old DB → panel DB. Multiple

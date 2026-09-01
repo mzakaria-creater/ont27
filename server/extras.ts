@@ -185,6 +185,23 @@ extraRoutes.get(
     if (pay.error) return c.json({ error: 'db_error', detail: pay.error.message }, 500)
     const deposits = (dep.data ?? []).map((row) => withSenderAccount(row))
     const txIds = deposits.map((row) => row.tx_id)
+    // Classify from approved history, never from the placeholder sender name.
+    // A customer with at least one earlier approved deposit is a retention
+    // deposit; otherwise the pending row is their first deposit.
+    const normalizePhone = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
+    const senderPhoneValues = [...new Set(deposits.map((row) => String(row.sender_number ?? '').trim()).filter(Boolean))]
+    const approvedHistory = new Map<string, number>()
+    if (senderPhoneValues.length) {
+      const { data: history } = await db.from('maven_transactions')
+        .select('sender_number, status, first_seen_at')
+        .in('status', ['PAID', 'APPROVED'])
+        .in('sender_number', senderPhoneValues)
+        .limit(10_000)
+      for (const row of history ?? []) {
+        const key = normalizePhone(row.sender_number)
+        if (key) approvedHistory.set(key, (approvedHistory.get(key) ?? 0) + 1)
+      }
+    }
     const smsByTx = new Map<number, Record<string, unknown>>()
     const reasonByTx = new Map<number, Record<string, unknown>>()
     if (txIds.length) {
@@ -203,7 +220,16 @@ extraRoutes.get(
         for (const row of reviews ?? []) if (!reasonByTx.has(Number(row.tx_id))) reasonByTx.set(Number(row.tx_id), row)
       }
     }
-    return c.json({ deposits: deposits.map((row) => ({ ...row, linked_sms: smsByTx.get(row.tx_id) ?? null, decision_context: reasonByTx.get(row.tx_id) ?? null })), payouts: pay.data ?? [] })
+    return c.json({ deposits: deposits.map((row) => {
+      const previousApproved = approvedHistory.get(normalizePhone(row.sender_number)) ?? 0
+      return {
+        ...row,
+        deposit_kind: previousApproved > 0 ? 'retention_deposit' : 'first_deposit',
+        previous_approved_deposits: previousApproved,
+        linked_sms: smsByTx.get(row.tx_id) ?? null,
+        decision_context: reasonByTx.get(row.tx_id) ?? null,
+      }
+    }), payouts: pay.data ?? [] })
   },
 )
 

@@ -38,8 +38,15 @@ interface DepRow {
   to_account_name: string | null
   receiving_wallet: string | null
   to_bank: string | null
+  deposit_kind?: 'first_deposit' | 'retention_deposit' | null
+  previous_approved_deposits?: number | null
   linked_sms?: { id: number; received_at: string | null; sender_name: string | null; sender_number: string | null; receiver_number: string | null; amount: number | null; sms_first_line: string | null; match_status: string | null; matched: boolean | null } | null
   decision_context?: { decision?: string | null; decision_reason?: string | null; reason?: string | null; match_score?: number | null; match_reasons?: unknown; actor_name?: string | null } | null
+}
+
+function DepositKindBadge({ kind, count }: { kind?: DepRow['deposit_kind']; count?: number | null }) {
+  if (kind === 'retention_deposit') return <span className="deposit-kind is-retention">↻ Retention deposit{count ? ` · ${count}` : ''}</span>
+  return <span className="deposit-kind is-first">★ First deposit</span>
 }
 
 interface PayRow {
@@ -99,7 +106,7 @@ export default function Approvals() {
       .subscribe()
     const syncIv = window.setInterval(() => {
       void syncProviders().then((changed) => { if (changed) schedule() })
-    }, 15_000)
+    }, 5_000)
     const fallbackIv = window.setInterval(() => void load(), 30_000)
     return () => {
       window.clearInterval(syncIv)
@@ -199,6 +206,7 @@ export default function Approvals() {
                   <th>{t('العميل / المُرسِل', 'Customer / sender')}</th>
                   <th>{t('المحفظة المستلِمة', 'Receiving wallet')}</th>
                   <th>{t('SMS المرتبطة', 'Linked SMS')}</th>
+                  <th>{t('نوع الإيداع', 'Deposit type')}</th>
                   <th>{t('سبب القرار', 'Decision reason')}</th>
                   <th>{t('الطريقة', 'Method')}</th>
                   <th>{t('التاجر', 'Merchant')}</th>
@@ -242,6 +250,7 @@ export default function Approvals() {
                     <td className="approval-evidence-cell">
                       {r.linked_sms ? <><span className="pay-status-badge st-paid">SMS #{r.linked_sms.id}</span><div>{r.linked_sms.sender_name ?? r.linked_sms.sender_number ?? '—'}</div><div className="cell-sub mono">{money(r.linked_sms.amount, 'EGP')} · {r.linked_sms.receiver_number ?? '—'}</div><div className="cell-sub approval-sms-line">{r.linked_sms.sms_first_line ?? '—'}</div></> : <span className="pay-status-badge st-dim">{t('لا توجد SMS', 'No SMS')}</span>}
                     </td>
+                    <td><DepositKindBadge kind={r.deposit_kind} count={r.previous_approved_deposits} /></td>
                     <td className="approval-reason-cell">
                       {r.decision_context ? <><strong>{r.decision_context.decision ?? t('مراجعة', 'Review')}</strong><div className="cell-sub">{r.decision_context.decision_reason ?? r.decision_context.reason ?? '—'}</div>{r.decision_context.match_score != null && <div className="cell-sub mono">score {r.decision_context.match_score}</div>}</> : <span className="cell-sub">{r.linked_sms ? t('SMS مرتبطة — بانتظار قرار', 'SMS linked — awaiting decision') : t('لا توجد مطابقة مؤكدة', 'No confirmed match')}</span>}
                     </td>
@@ -271,7 +280,7 @@ export default function Approvals() {
                   <span className="pay-status-badge st-pending">{t('معلّقة', 'Pending')}</span>
                 </div>
                 <div className="approval-card-amount">{money(r.amount, r.currency)}</div>
-                <div className="approval-card-party"><SenderIdentity name={r.sender_name} phone={r.sender_number} unknown={t('مرسل غير معروف', 'Unknown sender')} />{r.sender_account_number&&r.sender_account_number!==r.sender_number&&<small className="mono">{t('حساب المرسل','Sender account')}: {r.sender_account_number}</small>}</div>
+                  <div className="approval-card-party"><SenderIdentity name={r.sender_name} phone={r.sender_number} unknown={t('مرسل غير معروف', 'Unknown sender')} /><DepositKindBadge kind={r.deposit_kind} count={r.previous_approved_deposits} />{r.sender_account_number&&r.sender_account_number!==r.sender_number&&<small className="mono">{t('حساب المرسل','Sender account')}: {r.sender_account_number}</small>}</div>
                 <dl className="approval-card-facts">
                   <div><dt>{t('المحفظة', 'Wallet')}</dt><dd className="mono">{r.receiving_wallet ?? r.to_account_number ?? '—'}</dd></div>
                   <div><dt>{t('الطريقة', 'Method')}</dt><dd><MethodLogo method={r.payment_method} /></dd></div>
