@@ -81,6 +81,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/approvals', icon: '✅', labelAr: 'طابور الموافقات', labelEn: 'Approval queue', keys: ['approvals', 'approval-queue', 'my-queue', 'my-tasks', 'assigned_to_me'], group: 'transactions' },
   { to: '/deposits', icon: '💰', labelAr: 'الإيداعات', labelEn: 'Deposits', keys: ['deposits'], group: 'transactions' },
   { to: '/payouts', icon: '📤', labelAr: 'السحوبات', labelEn: 'Payouts', keys: ['payouts'], group: 'transactions' },
+  { to: '/payout-requests', icon: '⚡', labelAr: 'طلبات السحب اليدوية', labelEn: 'Manual payout requests', keys: ['payouts'], group: 'transactions' },
   { to: '/transactions', icon: '📋', labelAr: 'كل المعاملات', labelEn: 'All transactions', keys: ['transactions', 'all_transactions', 'refunds', 'reversals'], group: 'transactions' },
   { to: '/admin-transactions', icon: '🧰', labelAr: 'معاملات الإدارة', labelEn: 'Admin Transactions', keys: ['transactions'], roles: TRANSACTION_ADMIN_ROLES, group: 'transactions' },
   { to: '/review', icon: '🧐', labelAr: 'مراجعة القرارات', labelEn: 'Decision review', keys: ['review', 'audit_log', 'audit-logs'], group: 'transactions' },

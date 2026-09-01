@@ -64,6 +64,7 @@ const RevenueCenter = lazy(() => import('./pages/RevenueCenter'))
 const Welcome = lazy(() => import('./pages/Welcome'))
 const AccountAction = lazy(() => import('./pages/AccountAction'))
 const WebhookCenter = lazy(() => import('./pages/WebhookCenter'))
+const PayoutRequests = lazy(() => import('./pages/PayoutRequests'))
 
 type Conn = 'wait' | 'ok' | 'bad'
 
@@ -320,6 +321,7 @@ export default function App() {
             <Route path="/client/:phone" element={<PageGate keys={['client_crm']}><ClientProfile /></PageGate>} />
             <Route path="/deposits" element={<PageGate keys={['deposits']}><Deposits /></PageGate>} />
             <Route path="/payouts" element={<PageGate keys={['payouts']}><Payouts /></PageGate>} />
+            <Route path="/payout-requests" element={<PageGate keys={['payouts']}><PayoutRequests /></PageGate>} />
             <Route path="/transactions" element={<PageGate keys={['transactions','all_transactions']}><Transactions /></PageGate>} />
             <Route path="/transactions/:ref" element={<PageGate keys={['transactions','all_transactions','deposits']}><TransactionDetail /></PageGate>} />
             <Route path="/approvals" element={<PageGate keys={['approvals','approval-queue']}><Approvals /></PageGate>} />
