@@ -152,7 +152,7 @@ depositRoutes.get('/stats', requirePerm('dashboard', 'can_view'), async (c) => {
     db
       .from('maven_transactions')
       .select(LIST_COLUMNS)
-      .order('ontarget_ref', { ascending: false, nullsFirst: false })
+      .order('first_seen_at', { ascending: false, nullsFirst: false })
       .limit(10)
       .then(({ data, error }) => {
         if (error) throw new Error(error.message)
@@ -183,7 +183,7 @@ depositRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
   let query = db
     .from('maven_transactions')
     .select(LIST_COLUMNS, { count: 'exact' })
-    .order('ontarget_ref', { ascending: false, nullsFirst: false })
+    .order('first_seen_at', { ascending: false, nullsFirst: false })
     .order('tx_id', { ascending: false })
     .range(offset, offset + limit - 1)
   query = await applyDepositScopes(query,c.get('actor'),'view')

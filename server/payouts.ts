@@ -100,7 +100,7 @@ payoutRoutes.get("/", requirePerm("payouts", "can_view"), async (c) => {
   let query = db
     .from("maven_payout_transactions")
     .select(LIST_COLUMNS, { count: "exact" })
-    .order("ontarget_ref", { ascending: false, nullsFirst: false })
+    .order("first_seen_at", { ascending: false, nullsFirst: false })
     .order("maven_id", { ascending: false })
     .range(offset, offset + limit - 1);
   query = await applyPayoutScopes(query,c.get("actor"),"view");

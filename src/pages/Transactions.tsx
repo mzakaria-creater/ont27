@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import PanelShell from '../components/PanelShell'
 import MerchantLogo from '../components/MerchantLogo'
@@ -13,6 +13,8 @@ import SenderIdentity from '../components/SenderIdentity'
 import { useAuth } from '../auth/AuthContext'
 import { ChevronDown, ChevronRight, Eye, Image, LayoutGrid, Pencil, Search, TableProperties, X } from 'lucide-react'
 import TransactionEditDialog from '../components/TransactionEditDialog'
+import { supabase } from '../lib/supabase'
+import { syncProviders } from '../lib/providerSync'
 
 // All transactions — deposits + payouts merged, sorted by our ref.
 
@@ -82,8 +84,9 @@ export default function Transactions() {
 
   useEffect(() => setQ(appliedQ), [appliedQ])
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const refreshTimer = useRef<number | null>(null)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     setErr(null)
     const search = new URLSearchParams({ limit: String(pageSize), offset: String((page - 1) * pageSize) })
     if (type) search.set('type', type)
@@ -101,6 +104,26 @@ export default function Transactions() {
   }, [type, status, appliedQ, page, pageSize, from, to, merchant, method, currency, minAmount, maxAmount])
 
   useEffect(() => { void load() }, [load])
+
+  // Keep All Transactions live as well as the approval queue. Provider pulls
+  // are shared across tabs and local realtime events repaint immediately once
+  // the delta has landed, without flashing the existing table.
+  useEffect(() => {
+    const schedule = () => {
+      if (refreshTimer.current != null) window.clearTimeout(refreshTimer.current)
+      refreshTimer.current = window.setTimeout(() => { refreshTimer.current = null; void load(true) }, 120)
+    }
+    const channel = supabase.channel('transactions-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'maven_transactions' }, schedule)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'maven_payout_transactions' }, schedule)
+      .subscribe()
+    const syncIv = window.setInterval(() => { void syncProviders().then((changed) => { if (changed) schedule() }) }, 5_000)
+    return () => {
+      window.clearInterval(syncIv)
+      if (refreshTimer.current != null) window.clearTimeout(refreshTimer.current)
+      void supabase.removeChannel(channel)
+    }
+  }, [load])
 
   // Status summary counts (respects the deposit/payout filter, ignores search).
   useEffect(() => {
@@ -148,7 +171,7 @@ export default function Transactions() {
       } else if (action === 'decline') {
         await api(`/api/payouts/${id}/decision`, { method: 'POST', body: JSON.stringify({ decision: 'DECLINED', remark: 'Declined from All Transactions', mode: 'auto' }) })
       }
-      await load()
+      await load(true)
     } catch (e) {
       setErr(e instanceof ApiError ? `${t('فشل تنفيذ القرار', 'Decision failed')}: ${e.code}` : t('فشل تنفيذ القرار.', 'Decision failed.'))
     } finally {
