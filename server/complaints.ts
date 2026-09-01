@@ -49,6 +49,25 @@ async function notifySupport(alertType: string, message: string): Promise<{ sent
 const esc = (v: unknown): string =>
   String(v ?? '—').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
+function isNgPayGateway(value: unknown): boolean {
+  const key = String(value ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+  return key.includes('nagupay') || key.includes('nagopay')
+}
+
+async function executeProviderDecision(txId: number, decision: 'PAID' | 'DECLINED', actorName: string, remark: string | null) {
+  const baseUrl = process.env.SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SECRET_KEY
+  if (!baseUrl || !serviceKey) return { ok: false, error: 'worker_not_configured' as const }
+  const response = await fetch(`${baseUrl}/functions/v1/ngpay-approve`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
+    body: JSON.stringify({ tx_id: txId, decision, actor_name: actorName, remark: remark ?? undefined }),
+  })
+  const result = await response.json().catch(() => ({ error: 'worker_invalid_response' })) as Record<string, unknown>
+  if (!response.ok || result.executed_on_provider !== true) return { ok: false, error: 'worker_failed' as const, result }
+  return { ok: true as const, result }
+}
+
 const audit = (actor: { sub: string; username: string }, action: string, entityId: string, after: Record<string, unknown>) =>
   db.from('audit_log').insert({
     actor_type: 'manual_panel',
@@ -201,14 +220,21 @@ complaintRoutes.post('/investigation-action', async (c) => {
     }).eq('id', smsId).is('consumed_by_tx_id', null)
     if (error) return c.json({ error: 'link_failed', detail: error.message }, 500)
   } else if (action === 'approve_paid') {
-    // This existing production RPC writes PAID and creates the provider-sync job.
-    const { data, error } = await old.rpc('complaint_approve', {
-      p_tx_id: txId, p_complaint_id: null, p_admin_note: note, p_target_status: 'PAID',
-    })
-    if (error) return c.json({ error: 'approve_failed', detail: error.message }, 500)
-    await old.from('maven_transactions').update({ approved_by: actor.username }).eq('tx_id', txId)
-    await db.from('maven_transactions').update({ status: 'PAID', approved_by: actor.username }).eq('tx_id', txId)
-    void data
+    const raw = tx.raw as Record<string, unknown> | null
+    const gateway = raw?.Gateway ?? raw?.gateway
+    if (isNgPayGateway(gateway) && String(tx.status ?? '').toUpperCase() === 'PENDING') {
+      const provider = await executeProviderDecision(txId, 'PAID', actor.username, note)
+      if (!provider.ok) return c.json({ error: provider.error, detail: provider.result }, 502)
+    } else {
+      // Non-NagoPay complaints retain the legacy RPC path.
+      const { data, error } = await old.rpc('complaint_approve', {
+        p_tx_id: txId, p_complaint_id: null, p_admin_note: note, p_target_status: 'PAID',
+      })
+      if (error) return c.json({ error: 'approve_failed', detail: error.message }, 500)
+      await old.from('maven_transactions').update({ approved_by: actor.username }).eq('tx_id', txId)
+      await db.from('maven_transactions').update({ status: 'PAID', approved_by: actor.username }).eq('tx_id', txId)
+      void data
+    }
   }
 
   const reference = String((tx.raw as Record<string, unknown> | null)?.Reference1 ?? '')
@@ -239,9 +265,18 @@ complaintRoutes.post('/:id/:decision', async (c) => {
 
   const args: Record<string, unknown> = { p_tx_id: txId, p_complaint_id: id, p_admin_note: note }
   if (decision === 'approve') args.p_target_status = 'PAID'
-  const { data, error } = await old.rpc(rpcName, args)
-  if (error) return c.json({ error: 'rpc_error', detail: error.message }, 500)
   const actor = c.get('actor')
+  const { data: tx } = await old.from('maven_transactions').select('status, gateway, raw').eq('tx_id', txId).maybeSingle()
+  let data: unknown = null
+  if ((decision === 'approve' || decision === 'decline') && isNgPayGateway(tx?.gateway ?? (tx?.raw as Record<string, unknown> | null)?.Gateway) && String(tx?.status ?? '').toUpperCase() === 'PENDING') {
+    const provider = await executeProviderDecision(txId, decision === 'approve' ? 'PAID' : 'DECLINED', actor.username, note)
+    if (!provider.ok) return c.json({ error: provider.error, detail: provider.result }, 502)
+    data = provider.result
+  } else {
+    const rpcResult = await old.rpc(rpcName, args)
+    if (rpcResult.error) return c.json({ error: 'rpc_error', detail: rpcResult.error.message }, 500)
+    data = rpcResult.data
+  }
   await audit(actor, `complaint.${decision}`, String(id), { tx_id: txId, note, result: data })
 
   const headline = decision === 'approve' ? '✅ شكوى: تمت الموافقة (المعاملة → PAID)'
