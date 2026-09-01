@@ -230,8 +230,32 @@ function ChatTopIcon() {
   </Link>
 }
 
+function TelegramTopIcon() {
+  const { t } = useLocale()
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState<Array<{ id: number; alert_type: string; message: string | null; created_at: string | null }>>([])
+  const [lastSeen, setLastSeen] = useState(() => Number(localStorage.getItem('ontarget:telegram-top-seen') ?? 0))
+  useEffect(() => {
+    let alive = true
+    const load = () => void api<{ alerts?: typeof rows }>('/api/telegram/live?limit=12').then((result) => { if (alive) setRows(result.alerts ?? []) }).catch(() => {})
+    load(); const timer = window.setInterval(load, 10_000)
+    return () => { alive = false; window.clearInterval(timer) }
+  }, [])
+  const unread = rows.filter((row) => row.id > lastSeen).length
+  const markSeen = () => { const latest = Math.max(0, ...rows.map((row) => row.id)); setLastSeen(latest); localStorage.setItem('ontarget:telegram-top-seen', String(latest)) }
+  return <div className="top-telegram-wrap">
+    <button type="button" className="theme-btn top-chat-btn" title={t('رسائل بوت OnTarget', 'OnTarget bot messages')} aria-label={t('رسائل بوت OnTarget', 'OnTarget bot messages')} aria-expanded={open} onClick={() => { setOpen((value) => !value); markSeen() }}>
+      <span aria-hidden="true">✈️</span>{unread > 0 && <span className="bell-badge">{unread > 99 ? '99+' : unread}</span>}
+    </button>
+    {open && <div className="top-telegram-popover" role="dialog" aria-label={t('رسائل Telegram الأخيرة', 'Recent Telegram messages')}>
+      <div className="top-telegram-popover-head"><strong>✈️ {t('رسائل OnTarget bot', 'OnTarget bot messages')}</strong><Link to="/telegram" onClick={() => setOpen(false)}>{t('فتح الكل', 'Open all')}</Link></div>
+      {rows.length === 0 ? <div className="alert-empty">{t('لا توجد رسائل.', 'No messages.')}</div> : rows.slice(0, 6).map((row) => <Link key={row.id} to="/telegram" className="top-telegram-row" onClick={() => setOpen(false)}><span className="mono">{row.alert_type.replaceAll('_', ' ')}</span><span>{(row.message ?? '—').replace(/<[^>]+>/g, '').slice(0, 100)}</span></Link>)}
+    </div>}
+  </div>
+}
+
 function Topbar() {
-  const { user, logout, status } = useAuth()
+  const { user, logout, status, can } = useAuth()
   const { locale, toggleLocale, t } = useLocale()
   const { theme, toggle } = useTheme()
   const [conn, setConn] = useState<Conn>('wait')
@@ -270,6 +294,7 @@ function Topbar() {
       <span className="live-dot"><span className="ld" />{t('مباشر', 'Live')}</span>
       <div className="spacer" />
       <ChatTopIcon />
+      {can('telegram_bot') || can('automation') ? <TelegramTopIcon /> : null}
       <Bell />
       <button className="theme-btn" onClick={toggleLocale} aria-label={t('تبديل اللغة', 'Switch language')}>
         <span className="theme-btn-label">{locale === 'ar' ? 'EN' : 'AR'}</span>
