@@ -583,6 +583,28 @@ smsRoutes.patch('/:id/withdrawal-meta', requirePerm('sms_live', 'can_edit'), asy
   return c.json({ ok: true, sms: data })
 })
 
+// Operator annotation for an unlinked SMS (for example, "Extra fund"). The
+// operational SMS category remains intact; this stores a human classification
+// and note without making the message look automatically reconciled.
+smsRoutes.patch('/:id/annotation', requirePerm('sms_live', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)
+  const body = await c.req.json<{ category?: unknown; notes?: unknown }>().catch(() => null)
+  if (!body) return c.json({ error: 'invalid_body' }, 400)
+  const category = typeof body.category === 'string' ? body.category.trim().slice(0, 120) : ''
+  const notes = typeof body.notes === 'string' ? body.notes.trim().slice(0, 2000) : ''
+  const { data: before, error: readError } = await db.from('inbound_sms').select('id, matched_tx_id, consumed_by_tx_id, manual_entry_note, notes').eq('id', id).maybeSingle()
+  if (readError) return c.json({ error: 'db_error', detail: readError.message }, 500)
+  if (!before) return c.json({ error: 'not_found' }, 404)
+  if (before.matched_tx_id != null || before.consumed_by_tx_id != null) return c.json({ error: 'sms_must_be_unlinked' }, 409)
+  const next = { manual_entry_note: category || null, notes: notes || null }
+  const { data, error } = await db.from('inbound_sms').update(next).eq('id', id).select('id, manual_entry_note, notes').single()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  const actor = c.get('actor')
+  await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'sms.unlinked_annotation_updated', entity_type: 'inbound_sms', entity_id: id, before: { category: before.manual_entry_note, notes: before.notes }, after: { category, notes } })
+  return c.json({ ok: true, sms: data })
+})
+
 smsRoutes.post('/:id/withdrawal-assignment', requirePerm('sms_live', 'can_edit'), async (c) => {
   const id = c.req.param('id')
   if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)

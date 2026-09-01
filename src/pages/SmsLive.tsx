@@ -163,6 +163,7 @@ export default function SmsLive() {
   const [linkErr, setLinkErr] = useState<string | null>(null)
   const [metaName, setMetaName] = useState('')
   const [metaNotes, setMetaNotes] = useState('')
+  const [metaCategory, setMetaCategory] = useState('')
   const [metaWallet, setMetaWallet] = useState('')
   const [metaBusy, setMetaBusy] = useState(false)
   const [assignmentType, setAssignmentType] = useState<'payout' | 'p2p_usdt' | 'cash_return'>('payout')
@@ -252,6 +253,7 @@ export default function SmsLive() {
       setSelected(res.sms)
       setMetaName(res.sms.sender_name ?? '')
       setMetaNotes(res.sms.notes ?? '')
+      setMetaCategory(res.sms.manual_entry_note ?? '')
       setMetaWallet(res.sms.confirmed_wallet_number ?? res.sms.wallet_number ?? '')
       setAssignmentName(res.sms.sender_name ?? '')
       setExpenseComment('')
@@ -362,6 +364,19 @@ export default function SmsLive() {
         : t('فشل حفظ بيانات السحب.', 'Failed to save withdrawal details.'))
     }
     finally { setMetaBusy(false) }
+  }
+
+  const saveUnlinkedAnnotation = async () => {
+    if (!selected || selected.matched_tx_id != null || selected.consumed_by_tx_id != null) return
+    setMetaBusy(true); setLinkErr(null)
+    try {
+      const res = await api<{ sms: { manual_entry_note: string | null; notes: string | null } }>(`/api/sms/${selected.id}/annotation`, { method: 'PATCH', body: JSON.stringify({ category: metaCategory, notes: metaNotes }) })
+      setSelected({ ...selected, ...res.sms })
+      void load(true)
+      setLinkErr(t('تم حفظ تصنيف وملاحظة SMS غير المرتبطة.', 'Unlinked SMS category and note saved.'))
+    } catch (e) {
+      setLinkErr(e instanceof ApiError && e.code === 'sms_must_be_unlinked' ? t('لا يمكن تعديل SMS مرتبطة.', 'A linked SMS cannot be edited.') : t('فشل حفظ التصنيف والملاحظة.', 'Failed to save category and note.'))
+    } finally { setMetaBusy(false) }
   }
 
   const assignWithdrawal = async () => {
@@ -658,6 +673,15 @@ export default function SmsLive() {
                   {selected.notes && <><dt>{t('ملاحظات', 'Notes')}</dt><dd>{selected.notes}</dd></>}
                   <dt>{t('وقت الاستلام', 'Received at')}</dt><dd className="mono">{depositTime({ first_seen_at: selected.received_at })}</dd>
                 </dl>
+
+                {selected.sms_category !== 'withdrawal' && selected.matched_tx_id == null && selected.consumed_by_tx_id == null && !selected.is_blocked && can('sms_live', 'can_edit') && (
+                  <section className="link-section unlinked-annotation-editor">
+                    <h4>📝 {t('تصنيف SMS غير المرتبطة', 'Unlinked SMS annotation')}</h4>
+                    <label className="filter-field">{t('التصنيف', 'Category')}<input className="login-input" maxLength={120} value={metaCategory} onChange={(e) => setMetaCategory(e.target.value)} placeholder={t('مثال: أموال إضافية · #12493', 'Example: Extra fund · #12493')} /></label>
+                    <label className="filter-field">{t('ملاحظة المشغّل', 'Operator note')}<textarea className="login-input" rows={3} maxLength={2000} value={metaNotes} onChange={(e) => setMetaNotes(e.target.value)} placeholder={t('مثال: 700 EGP أموال إضافية', 'Example: 700 EGP extra fund')} /></label>
+                    <button className="btn-primary btn-sm" disabled={metaBusy || (!metaCategory.trim() && !metaNotes.trim())} onClick={() => void saveUnlinkedAnnotation()}>{metaBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ التصنيف والملاحظة', 'Save category and note')}</button>
+                  </section>
+                )}
 
                 {selected.sms_category === 'withdrawal' && can('sms_live', 'can_edit') && (
                   <section className="link-section withdrawal-meta-editor">
