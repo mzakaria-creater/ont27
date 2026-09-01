@@ -327,9 +327,14 @@ smsRoutes.get('/:id/candidates', requirePerm('sms_live', 'can_view'), async (c) 
   let linkedIds = new Set<number>()
   if (candidateIds.length) {
     const { data: linkedRows } = await db.from('inbound_sms')
-      .select('consumed_by_tx_id')
-      .in('consumed_by_tx_id', candidateIds)
-    linkedIds = new Set((linkedRows ?? []).map((row) => Number(row.consumed_by_tx_id)).filter(Number.isFinite))
+      .select('consumed_by_tx_id, matched_transaction_id, maven_transaction_id')
+      .or(`consumed_by_tx_id.in.(${candidateIds.join(',')}),matched_transaction_id.in.(${candidateIds.join(',')}),maven_transaction_id.in.(${candidateIds.join(',')})`)
+    for (const row of linkedRows ?? []) {
+      for (const value of [row.consumed_by_tx_id, row.matched_transaction_id, row.maven_transaction_id]) {
+        const n = Number(value)
+        if (Number.isFinite(n)) linkedIds.add(n)
+      }
+    }
   }
   return c.json({ candidates: (data ?? []).filter((row) => !linkedIds.has(Number(row.tx_id))) })
 })
@@ -344,7 +349,7 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
   const [{ data: sms, error: smsErr }, { data: tx, error: txErr }, { data: existingTxLinks, error: linkErr }] = await Promise.all([
     db.from('inbound_sms').select('id, matched, match_status, sms_category, amount, received_at, receiver_number, sender_name, sender_number, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').eq('id', id).maybeSingle(),
     db.from('maven_transactions').select('tx_id, amount, status, sender_number, first_seen_at, ontarget_ref').eq('tx_id', txId).maybeSingle(),
-    db.from('sms_maven_matches').select('sms_id').eq('tx_id', txId).limit(2),
+    db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').or(`consumed_by_tx_id.eq.${txId},matched_transaction_id.eq.${txId},maven_transaction_id.eq.${txId}`).limit(2),
   ])
   if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
   if (txErr) return c.json({ error: 'db_error', detail: txErr.message }, 500)
@@ -358,7 +363,7 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
   // A transaction may have exactly one deposit SMS. This check complements
   // the database guard below and gives operators a clear response instead of
   // silently replacing an existing evidence link.
-  if ((existingTxLinks ?? []).some((link) => Number(link.sms_id) !== Number(id))) {
+  if ((existingTxLinks ?? []).some((link) => Number(link.id) !== Number(id))) {
     return c.json({ error: 'transaction_already_linked' }, 409)
   }
 
