@@ -49,6 +49,17 @@ function DepositKindBadge({ kind, count }: { kind?: DepRow['deposit_kind']; coun
   return <span className="deposit-kind is-first">★ First deposit</span>
 }
 
+function AutomationCountdown({ row, now }: { row: DepRow; now: number }) {
+  if (row.linked_sms) return <div className="approval-automation-ready">⚡ SMS linked · ready for fast approval</div>
+  const started = new Date(row.created_utc ?? row.first_seen_at ?? '').getTime()
+  if (!Number.isFinite(started)) return null
+  const remaining = Math.max(0, 5 * 60 * 1000 - (now - started))
+  const seconds = Math.ceil(remaining / 1000)
+  const mm = Math.floor(seconds / 60).toString().padStart(2, '0')
+  const ss = (seconds % 60).toString().padStart(2, '0')
+  return <div className={`approval-automation-countdown ${remaining === 0 ? 'expired' : ''}`}>⏱ Auto-decline in <strong>{remaining === 0 ? 'due' : `${mm}:${ss}`}</strong></div>
+}
+
 interface PayRow {
   maven_id: number
   ontarget_ref: string | null
@@ -80,7 +91,13 @@ export default function Approvals() {
   const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => localStorage.getItem('approval-queue-view') === 'cards' ? 'cards' : 'table')
   const [searchQuery, setSearchQuery] = useState('')
   const [retentionSummary, setRetentionSummary] = useState<RetentionSummary>({ paid: 0, declined: 0, pending: 0, total: 0 })
+  const [now, setNow] = useState(() => Date.now())
   const refreshTimer = useRef<number | null>(null)
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   const changeView = (mode: 'table' | 'cards') => {
     setViewMode(mode)
@@ -316,6 +333,7 @@ export default function Approvals() {
                   {r.linked_sms && <><span>{r.linked_sms.sender_name ?? r.linked_sms.sender_number ?? '—'} · {money(r.linked_sms.amount, 'EGP')}</span><small>{r.linked_sms.sms_first_line ?? '—'}</small></>}
                 </div>
                 <div className="approval-card-reason"><span>{t('سبب المراجعة', 'Review reason')}</span><strong>{r.decision_context?.decision_reason ?? r.decision_context?.reason ?? (r.linked_sms ? t('SMS مرتبطة — بانتظار قرار', 'SMS linked — awaiting decision') : t('لا توجد مطابقة مؤكدة', 'No confirmed match'))}</strong>{r.decision_context?.match_score != null && <small className="mono">score {r.decision_context.match_score}</small>}</div>
+                <AutomationCountdown row={r} now={now} />
                 {r.proof_image_url && <button className="approval-card-proof" onClick={() => setProof({ url: r.proof_image_url!, ref: String(r.ontarget_ref ?? r.tx_id) })}><img src={r.proof_image_url} alt="" loading="lazy" /><span>{t('عرض إثبات الدفع', 'View payment proof')}</span></button>}
                 {canDep && <div className="approval-card-actions"><button className="btn-primary" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'approve')}>{t('موافقة', 'Approve')}</button><button className="btn-ghost danger" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'decline')}>{t('رفض', 'Decline')}</button></div>}
               </article>
