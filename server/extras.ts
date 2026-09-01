@@ -182,7 +182,7 @@ extraRoutes.get(
         .limit(100),
       db
         .from('maven_transactions')
-        .select('status, sender_number, first_seen_at, amount')
+        .select('status, sender_number, receiving_wallet, to_account_number, first_seen_at, amount')
         .in('status', ['PAID', 'APPROVED', 'DECLINED', 'PENDING'])
         .order('first_seen_at', { ascending: true, nullsFirst: false })
         .limit(50_000),
@@ -228,10 +228,23 @@ extraRoutes.get(
       }
     }
     const retentionSummary = { paid: 0, declined: 0, pending: 0, total: 0 }
+    const clientCounts = new Map<string, { paid: number; declined: number; pending: number }>()
+    const walletCounts = new Map<string, { paid: number; declined: number; pending: number }>()
     const seenApproved = new Set<string>()
+    const bump = (map: Map<string, { paid: number; declined: number; pending: number }>, key: string, status: string) => {
+      if (!key) return
+      const value = map.get(key) ?? { paid: 0, declined: 0, pending: 0 }
+      if (status === 'PAID' || status === 'APPROVED') value.paid += 1
+      else if (status === 'DECLINED') value.declined += 1
+      else if (status === 'PENDING') value.pending += 1
+      map.set(key, value)
+    }
     for (const row of historyRows.data ?? []) {
       const phone = normalizePhone(row.sender_number)
       const status = String(row.status ?? '').toUpperCase()
+      const wallet = String(row.receiving_wallet ?? row.to_account_number ?? '').replace(/\s/g, '')
+      bump(clientCounts, phone, status)
+      bump(walletCounts, wallet, status)
       if (phone && seenApproved.has(phone)) {
         if (status === 'PAID' || status === 'APPROVED') retentionSummary.paid += 1
         else if (status === 'DECLINED') retentionSummary.declined += 1
@@ -242,10 +255,14 @@ extraRoutes.get(
     }
     return c.json({ retention_summary: retentionSummary, deposits: deposits.map((row) => {
       const previousApproved = approvedHistory.get(normalizePhone(row.sender_number)) ?? 0
+      const senderKey = normalizePhone(row.sender_number)
+      const walletKey = String(row.receiving_wallet ?? row.to_account_number ?? '').replace(/\s/g, '')
       return {
         ...row,
         deposit_kind: previousApproved > 0 ? 'retention_deposit' : 'first_deposit',
         previous_approved_deposits: previousApproved,
+        client_status_counts: clientCounts.get(senderKey) ?? { paid: 0, declined: 0, pending: 0 },
+        wallet_status_counts: walletCounts.get(walletKey) ?? { paid: 0, declined: 0, pending: 0 },
         linked_sms: smsByTx.get(row.tx_id) ?? null,
         decision_context: reasonByTx.get(row.tx_id) ?? null,
       }

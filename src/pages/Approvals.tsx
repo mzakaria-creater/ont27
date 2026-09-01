@@ -40,6 +40,8 @@ interface DepRow {
   to_bank: string | null
   deposit_kind?: 'first_deposit' | 'retention_deposit' | null
   previous_approved_deposits?: number | null
+  client_status_counts?: { paid: number; declined: number; pending: number } | null
+  wallet_status_counts?: { paid: number; declined: number; pending: number } | null
   linked_sms?: { id: number; received_at: string | null; sender_name: string | null; sender_number: string | null; receiver_number: string | null; amount: number | null; sms_first_line: string | null; match_status: string | null; matched: boolean | null } | null
   decision_context?: { decision?: string | null; decision_reason?: string | null; reason?: string | null; match_score?: number | null; match_reasons?: unknown; actor_name?: string | null } | null
 }
@@ -333,6 +335,11 @@ export default function Approvals() {
                   {r.linked_sms && <><span>{r.linked_sms.sender_name ?? r.linked_sms.sender_number ?? '—'} · {money(r.linked_sms.amount, 'EGP')}</span><small>{r.linked_sms.sms_first_line ?? '—'}</small></>}
                 </div>
                 <div className="approval-card-reason"><span>{t('سبب المراجعة', 'Review reason')}</span><strong>{r.decision_context?.decision_reason ?? r.decision_context?.reason ?? (r.linked_sms ? t('SMS مرتبطة — بانتظار قرار', 'SMS linked — awaiting decision') : t('لا توجد مطابقة مؤكدة', 'No confirmed match'))}</strong>{r.decision_context?.match_score != null && <small className="mono">score {r.decision_context.match_score}</small>}</div>
+                <div className="approval-card-history" aria-label={t('سجل العميل والمحفظة', 'Client and wallet history')}>
+                  <span>{t('العميل', 'Client')} <b className="paid">{r.client_status_counts?.paid ?? 0}</b> / <b className="declined">{r.client_status_counts?.declined ?? 0}</b> / <b className="pending">{r.client_status_counts?.pending ?? 0}</b></span>
+                  <span>{t('المحفظة', 'Wallet')} <b className="paid">{r.wallet_status_counts?.paid ?? 0}</b> / <b className="declined">{r.wallet_status_counts?.declined ?? 0}</b> / <b className="pending">{r.wallet_status_counts?.pending ?? 0}</b></span>
+                  <small>{t('Paid / Declined / Pending', 'Paid / Declined / Pending')}</small>
+                </div>
                 <AutomationCountdown row={r} now={now} />
                 {r.proof_image_url && <button className="approval-card-proof" onClick={() => setProof({ url: r.proof_image_url!, ref: String(r.ontarget_ref ?? r.tx_id) })}><img src={r.proof_image_url} alt="" loading="lazy" /><span>{t('عرض إثبات الدفع', 'View payment proof')}</span></button>}
                 {canDep && <div className="approval-card-actions"><button className="btn-primary" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'approve')}>{t('موافقة', 'Approve')}</button><button className="btn-ghost danger" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'decline')}>{t('رفض', 'Decline')}</button></div>}
