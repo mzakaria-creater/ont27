@@ -693,7 +693,16 @@ export default function SmsLive() {
                 </div>
 
                 {selected.message && (
-                  <div><span className="field-label">{selected.sms_category === 'withdrawal' && selected.linked_wallet_number ? t('SMS الخام المرتبطة بالمحفظة', 'Raw SMS linked to wallet') : t('SMS الخام', 'Raw SMS')}</span><pre className="sms-body">{selected.message}</pre></div>
+                  <div className="sms-phone-preview-wrap">
+                    <span className="field-label">{t('معاينة الرسالة على الهاتف', 'Phone message preview')}</span>
+                    <div className="sms-phone-frame" role="img" aria-label={t('معاينة SMS داخل شاشة هاتف', 'SMS preview inside phone screen')}>
+                      <div className="sms-phone-notch" />
+                      <div className="sms-phone-status"><span>9:41</span><span>●●● ᯤ 🔋</span></div>
+                      <div className="sms-phone-header"><span>‹</span><strong>{selected.sms_sender ?? selected.provider ?? t('الرسائل', 'Messages')}</strong><span>ⓘ</span></div>
+                      <div className="sms-phone-content"><small>{selected.sender_name ?? selected.sender_number ?? t('مرسل غير معروف', 'Unknown sender')}</small><time>{selected.received_at ? new Date(selected.received_at).toLocaleString() : '—'}</time><pre className="sms-phone-bubble">{selected.message}</pre></div>
+                    </div>
+                    <span className="cell-sub">{selected.sms_category === 'withdrawal' && selected.linked_wallet_number ? t('SMS الخام المرتبطة بالمحفظة', 'Raw SMS linked to wallet') : t('SMS الخام', 'Raw SMS')}</span>
+                  </div>
                 )}
 
                 <dl className="detail-grid">
