@@ -281,6 +281,43 @@ smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
   return c.json({ rows, total: count ?? 0, limit, offset })
 })
 
+// Manual fallback for messages that were not forwarded by a device. The row is
+// explicitly marked as panel_manual so it remains auditable and distinguishable
+// from device/webhook intake; it is never auto-linked on insertion.
+smsRoutes.post('/manual', requirePerm('sms_live', 'can_edit'), async (c) => {
+  const body = await c.req.json().catch(() => null) as Record<string, unknown> | null
+  const message = typeof body?.message === 'string' ? body.message.trim().slice(0, 10000) : ''
+  if (!message) return c.json({ error: 'message_required' }, 400)
+  const category = typeof body?.sms_category === 'string' && ['deposit', 'withdrawal', 'balance', 'unknown'].includes(body.sms_category) ? body.sms_category : 'unknown'
+  const amount = body?.amount == null || body.amount === '' ? null : Number(body.amount)
+  if (amount != null && (!Number.isFinite(amount) || amount < 0)) return c.json({ error: 'invalid_amount' }, 400)
+  const cleanPhone = (value: unknown) => typeof value === 'string' ? value.replace(/[^0-9+]/g, '').slice(0, 30) || null : null
+  const senderNumber = cleanPhone(body?.sender_number)
+  const receiverNumber = cleanPhone(body?.receiver_number)
+  const receivedAt = typeof body?.received_at === 'string' && !Number.isNaN(Date.parse(body.received_at)) ? new Date(body.received_at).toISOString() : new Date().toISOString()
+  const actor = c.get('actor')
+  const note = typeof body?.note === 'string' ? body.note.trim().slice(0, 1000) : null
+  const payload = { ...body, _source: 'panel_manual', _entered_by: actor.username, _entered_at: new Date().toISOString() }
+  const { data, error } = await db.from('inbound_sms').insert({
+    message, raw_sms: message, sms_first_line: message.split(/\r?\n/)[0]?.slice(0, 500),
+    sender: typeof body?.sender_name === 'string' ? body.sender_name.trim().slice(0, 160) || null : senderNumber,
+    sender_name: typeof body?.sender_name === 'string' ? body.sender_name.trim().slice(0, 160) || null : null,
+    sender_number: senderNumber, manual_sender_number: senderNumber,
+    receiver_number: receiverNumber, manual_receiver_number: receiverNumber,
+    wallet_number: receiverNumber, confirmed_wallet_number: receiverNumber,
+    amount, provider: typeof body?.provider === 'string' ? body.provider.trim().slice(0, 100) || 'Manual entry' : 'Manual entry',
+    trx_id: typeof body?.trx_id === 'string' ? body.trx_id.trim().slice(0, 160) || null : null,
+    sms_category: category, match_status: 'unmatched', matched: false, review_required: true,
+    status: 'received', suspicious: false, raw_payload: payload,
+    webhook_name: 'panel_manual', import_source: 'panel_manual', manual_entry: true,
+    manual_entry_by: actor.username, manual_entry_at: new Date().toISOString(), manual_entry_note: note,
+    received_at: receivedAt,
+  }).select('id, received_at, sms_category, amount, sender_number, receiver_number, manual_entry').single()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'sms.manual_created', entity_type: 'inbound_sms', entity_id: String(data.id), after: data })
+  return c.json({ ok: true, sms: data }, 201)
+})
+
 // Device chips for the live SMS rail.
 smsRoutes.get('/devices', requirePerm('sms_live', 'can_view'), async (c) => {
   const { data, error } = await db

@@ -2320,6 +2320,7 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .dot-st-pending { background: var(--status-pending); }
 .dot-st-declined { background: var(--status-declined); }
 .dot-st-under { background: var(--payfuture, #a89ee8); }
+.manual-sms-card{max-inline-size:none;border-color:color-mix(in srgb,var(--brand-blue) 35%,var(--border));}.manual-sms-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding-top:12px}.manual-sms-form .manual-sms-message{grid-column:1/-1;resize:vertical}.manual-sms-form .manual-sms-note{grid-column:span 2}.manual-sms-form button{justify-self:start}@media(max-width:800px){.manual-sms-form{grid-template-columns:1fr 1fr}.manual-sms-form .manual-sms-note{grid-column:1/-1}}@media(max-width:520px){.manual-sms-form{grid-template-columns:1fr}}
 .dot-st-dim { background: var(--text-muted); }
 
 /* Payment method mark + name, so the column reads at a glance. The mark is a

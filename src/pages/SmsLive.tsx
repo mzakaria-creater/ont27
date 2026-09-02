@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
@@ -173,11 +173,28 @@ export default function SmsLive() {
   const [assignmentBusy, setAssignmentBusy] = useState(false)
   const [expenseComment, setExpenseComment] = useState('')
   const [expenseBusy, setExpenseBusy] = useState(false)
+  const [manualOpen, setManualOpen] = useState(false)
+  const [manualBusy, setManualBusy] = useState(false)
+  const [manualForm, setManualForm] = useState({ message: '', sms_category: 'deposit', amount: '', sender_name: '', sender_number: '', receiver_number: '', trx_id: '', received_at: '', note: '' })
   const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => localStorage.getItem('sms-live-view') === 'cards' ? 'cards' : 'table')
 
   const appliedQ = params.get('q') ?? ''
   const amount = params.get('amount') ?? ''
   const requestedSmsId = Number(params.get('sms_id'))
+
+  const submitManual = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!manualForm.message.trim()) return
+    setManualBusy(true); setErr(null)
+    try {
+      await api('/api/sms/manual', { method: 'POST', body: JSON.stringify({ ...manualForm, amount: manualForm.amount || null, received_at: manualForm.received_at ? new Date(manualForm.received_at).toISOString() : null }) })
+      setManualForm({ message: '', sms_category: 'deposit', amount: '', sender_name: '', sender_number: '', receiver_number: '', trx_id: '', received_at: '', note: '' })
+      setManualOpen(false)
+      await load()
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : t('تعذر حفظ SMS اليدوية.', 'Could not save manual SMS.'))
+    } finally { setManualBusy(false) }
+  }
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -456,6 +473,22 @@ export default function SmsLive() {
           <span className="stat-value">{stats ? stats.review.toLocaleString('en-US') : '…'}</span>
         </div>
       </div>
+
+      {can('sms_live', 'can_edit') && <section className="card manual-sms-card">
+        <div className="recent-head"><div><h3>✍️ {t('إضافة SMS يدوياً', 'Add SMS manually')}</h3><p className="page-sub">{t('استخدمها فقط عند فشل الاستقبال من الجهاز. سيتم وسمها panel_manual وتبقى غير مرتبطة حتى تراجعها.', 'Use only when device forwarding failed. It is marked panel_manual and stays unlinked until reviewed.')}</p></div><button type="button" className="btn-ghost btn-sm" onClick={() => setManualOpen((v) => !v)}>{manualOpen ? t('إغلاق', 'Close') : t('فتح النموذج', 'Open form')}</button></div>
+        {manualOpen && <form className="manual-sms-form" onSubmit={submitManual}>
+          <textarea className="login-input manual-sms-message" required rows={4} placeholder={t('ألصق نص SMS الخام هنا…', 'Paste the raw SMS text here…')} value={manualForm.message} onChange={e => setManualForm({ ...manualForm, message: e.target.value })} />
+          <select className="login-input" value={manualForm.sms_category} onChange={e => setManualForm({ ...manualForm, sms_category: e.target.value })}><option value="deposit">{t('إيداع', 'Deposit')}</option><option value="withdrawal">{t('سحب', 'Withdrawal')}</option><option value="balance">{t('رصيد', 'Balance')}</option><option value="unknown">{t('غير معروف', 'Unknown')}</option></select>
+          <input className="login-input" inputMode="decimal" placeholder={t('المبلغ', 'Amount')} value={manualForm.amount} onChange={e => setManualForm({ ...manualForm, amount: e.target.value.replace(/[^0-9.]/g, '') })} />
+          <input className="login-input" placeholder={t('اسم المرسل', 'Sender name')} value={manualForm.sender_name} onChange={e => setManualForm({ ...manualForm, sender_name: e.target.value })} />
+          <input className="login-input" inputMode="tel" placeholder={t('رقم المرسل', 'Sender number')} value={manualForm.sender_number} onChange={e => setManualForm({ ...manualForm, sender_number: e.target.value })} />
+          <input className="login-input" inputMode="tel" placeholder={t('رقم المحفظة المستقبلة', 'Receiving wallet')} value={manualForm.receiver_number} onChange={e => setManualForm({ ...manualForm, receiver_number: e.target.value })} />
+          <input className="login-input" placeholder={t('رقم العملية في SMS (اختياري)', 'SMS transaction id (optional)')} value={manualForm.trx_id} onChange={e => setManualForm({ ...manualForm, trx_id: e.target.value })} />
+          <input className="login-input" type="datetime-local" value={manualForm.received_at} onChange={e => setManualForm({ ...manualForm, received_at: e.target.value })} aria-label={t('وقت الاستلام', 'Received at')} />
+          <input className="login-input manual-sms-note" placeholder={t('ملاحظة المصدر', 'Source note')} value={manualForm.note} onChange={e => setManualForm({ ...manualForm, note: e.target.value })} />
+          <button className="btn-primary" disabled={manualBusy || !manualForm.message.trim()}>{manualBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ SMS للمراجعة', 'Save SMS for review')}</button>
+        </form>}
+      </section>}
 
       <div className="filter-bar">
         <div className="chip-row">
