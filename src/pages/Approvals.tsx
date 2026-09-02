@@ -381,7 +381,11 @@ export default function Approvals() {
                     <td><MethodLogo method={r.pay_by} /></td>
                     <td><MerchantLogo merchant={r.merchant} /></td>
                     <td className="mono">{depositTime(r)}</td>
-                    <td><Link to={`/payouts?status=PENDING&q=${encodeURIComponent(r.ontarget_ref ?? String(r.maven_id))}`} className="btn-ghost btn-sm">{t('فتح السحب', 'Open payout')}</Link></td>
+                    <td>
+                      <Link to={`/payouts?status=PENDING&q=${encodeURIComponent(r.ontarget_ref ?? String(r.maven_id))}`} className="btn-primary btn-sm approval-payout-pay-action">
+                        📎 {t('رفع إثبات ودفع', 'Upload proof & Pay')}
+                      </Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -395,7 +399,7 @@ export default function Approvals() {
               <div className="approval-card-amount">{money(r.amount, 'EGP')}</div>
               <div className="approval-card-party"><strong>{r.account_name ?? t('مستفيد غير معروف', 'Unknown beneficiary')}</strong><span className="mono">{r.mobile_no ?? '—'}</span></div>
               <dl className="approval-card-facts"><div><dt>{t('الطريقة', 'Method')}</dt><dd><MethodLogo method={r.pay_by} /></dd></div><div><dt>{t('التاجر', 'Merchant')}</dt><dd><MerchantLogo merchant={r.merchant} /></dd></div><div><dt>{t('رقم المزود', 'Provider ID')}</dt><dd className="mono">{r.maven_id}</dd></div><div><dt>{t('الوقت', 'Time')}</dt><dd>{depositTime(r)}</dd></div></dl>
-              <Link to={`/payouts?status=PENDING&q=${encodeURIComponent(r.ontarget_ref ?? String(r.maven_id))}`} className="btn-primary approval-card-open">{t('فتح السحب واتخاذ القرار', 'Open payout and decide')}</Link>
+              <Link to={`/payouts?status=PENDING&q=${encodeURIComponent(r.ontarget_ref ?? String(r.maven_id))}`} className="btn-primary approval-card-open approval-payout-pay-action">📎 {t('رفع الإثبات ثم تأكيد Paid', 'Upload proof then confirm Paid')}</Link>
             </article>)}
           </div>
         )}
