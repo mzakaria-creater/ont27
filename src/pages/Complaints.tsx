@@ -23,7 +23,8 @@ interface ComplaintRow {
   tx_status?: string | null
   tx_gateway?: string | null
 }
-interface TicketRow { id:number; ticket_no:string|null; tx_id:number|null; customer_phone:string|null; subject:string|null; description:string|null; priority:string|null; ticket_status:string; created_at:string|null }
+interface TicketRow { id:number; ticket_no:string|null; tx_id:number|null; customer_phone:string|null; subject:string|null; description:string|null; action_requested?:string|null; assigned_to?:string|null; due_at?:string|null; priority:string|null; ticket_status:string; created_at:string|null }
+interface Assignee { id:string; username:string; display_name:string|null; role:string; active:boolean }
 
 const STATUS_META: Record<string, { ar: string; en: string; cls: string }> = {
   open: { ar: 'مفتوحة', en: 'Open', cls: 'st-pending' },
@@ -54,6 +55,11 @@ export default function Complaints() {
   const [caseBusy, setCaseBusy] = useState(false)
   const [caseMessage, setCaseMessage] = useState<string | null>(null)
   const [tickets, setTickets] = useState<TicketRow[]>([])
+  const [assignees, setAssignees] = useState<Assignee[]>([])
+  const [ticketFilter, setTicketFilter] = useState('all')
+  const [ticketModal, setTicketModal] = useState<TicketRow | null>(null)
+  const [ticketDraft, setTicketDraft] = useState<Partial<TicketRow>>({})
+  const [ticketBusy, setTicketBusy] = useState(false)
 
   const load = useCallback(async () => {
     const params = new URLSearchParams()
@@ -71,9 +77,18 @@ export default function Complaints() {
   }, [status, txId])
 
   useEffect(() => { void load() }, [load])
-  const loadTickets = useCallback(async () => { try { const res = await api<{ rows: TicketRow[] }>('/api/tickets?limit=50'); setTickets(res.rows) } catch { setTickets([]) } }, [])
+  const loadTickets = useCallback(async () => { try { const [res, people] = await Promise.all([api<{ rows: TicketRow[] }>('/api/tickets?limit=100'), api<{ rows: Assignee[] }>('/api/tickets/assignees')]); setTickets(res.rows); setAssignees(people.rows) } catch { setTickets([]) } }, [])
   useEffect(() => { void loadTickets() }, [loadTickets])
-  const updateTicket = async (id: number, next: string) => { try { await api(`/api/tickets/${id}/status`, { method:'PATCH', body: JSON.stringify({ status: next }) }); await loadTickets() } catch { setErr(t('تعذّر تحديث التذكرة.', 'Could not update ticket.')) } }
+  const openTicket = (ticket: TicketRow) => { setTicketModal(ticket); setTicketDraft({ ...ticket }) }
+  const saveTicket = async () => {
+    if (!ticketModal) return
+    setTicketBusy(true)
+    try {
+      await api(`/api/tickets/${ticketModal.id}`, { method: 'PATCH', body: JSON.stringify({ subject: ticketDraft.subject, description: ticketDraft.description, action_requested: ticketDraft.action_requested, assigned_to: ticketDraft.assigned_to || null, due_at: ticketDraft.due_at || null, priority: ticketDraft.priority, ticket_status: ticketDraft.ticket_status }) })
+      setTicketModal(null); await loadTickets()
+    } catch { setErr(t('تعذّر حفظ التذكرة.', 'Could not save ticket.')) } finally { setTicketBusy(false) }
+  }
+  const visibleTickets = tickets.filter((x) => ticketFilter === 'all' || (ticketFilter === 'unassigned' ? !x.assigned_to : x.assigned_to === ticketFilter))
 
   const open = (r: ComplaintRow) => {
     setSelected(r)
@@ -167,9 +182,10 @@ export default function Complaints() {
 
       <section className="card recent-card complaint-ledger" style={{ marginBottom: 16 }}>
         <div className="recent-head"><div><h3>🎫 {t('تذاكر الدعم','Support tickets')}</h3><span className="cell-sub">{tickets.length} {t('تذكرة مرتبطة بالشكاوى والمعاملات','tickets linked to complaints and transactions')}</span></div></div>
-        <div className="table-wrap"><table className="data-table"><thead><tr><th>Ticket</th><th>TRX</th><th>{t('الموضوع','Subject')}</th><th>{t('الأولوية','Priority')}</th><th>{t('الحالة','Status')}</th><th>{t('الإجراء','Action')}</th></tr></thead><tbody>
-          {tickets.map(ticket => <tr key={ticket.id}><td className="mono">{ticket.ticket_no ?? `TKT-${ticket.id}`}</td><td className="mono">{ticket.tx_id ?? '—'}</td><td>{ticket.subject ?? 'Transaction issue'}<div className="cell-sub">{ticket.description ?? ticket.customer_phone ?? ''}</div></td><td><span className={`pay-status-badge ${ticket.priority === 'high' ? 'st-declined' : ticket.priority === 'medium' ? 'st-pending' : 'st-dim'}`}>{ticket.priority ?? 'normal'}</span></td><td><span className="pay-status-badge st-pending">{ticket.ticket_status}</span></td><td><select className="filter-select" value={ticket.ticket_status} onChange={e => void updateTicket(ticket.id, e.target.value)}><option value="open">Open</option><option value="in_progress">In progress</option><option value="resolved">Resolved</option><option value="closed">Closed</option></select></td></tr>)}
-          {tickets.length === 0 && <tr><td colSpan={6} className="sidebar-hint">{t('لا توجد تذاكر بعد. تسجيل شكوى جديدة ينشئ تذكرة تلقائياً.','No tickets yet. Filing a complaint creates one automatically.')}</td></tr>}
+        <div className="ticket-filter-row"><span className="cell-sub">{t('عرض القائمة حسب المسؤول','Filter list by assignee')}</span><select className="filter-select" value={ticketFilter} onChange={e=>setTicketFilter(e.target.value)}><option value="all">{t('كل الفريق','All team')}</option><option value="unassigned">{t('غير مسندة','Unassigned')}</option>{assignees.map(a=><option key={a.username} value={a.username}>{a.display_name||a.username}</option>)}</select></div>
+        <div className="table-wrap"><table className="data-table"><thead><tr><th>Ticket</th><th>TRX</th><th>{t('الموضوع','Subject')}</th><th>{t('الأولوية','Priority')}</th><th>{t('الحالة','Status')}</th><th>{t('المسند إليه','Assigned')}</th><th>{t('الإجراء','Action')}</th></tr></thead><tbody>
+          {visibleTickets.map(ticket => <tr key={ticket.id}><td className="mono">{ticket.ticket_no ?? `TKT-${ticket.id}`}</td><td className="mono">{ticket.tx_id ?? '—'}</td><td>{ticket.subject ?? 'Transaction issue'}<div className="cell-sub">{ticket.description ?? ticket.customer_phone ?? ''}</div></td><td><span className={`pay-status-badge ${ticket.priority === 'high' ? 'st-declined' : ticket.priority === 'medium' ? 'st-pending' : 'st-dim'}`}>{ticket.priority ?? 'normal'}</span></td><td><span className="pay-status-badge st-pending">{ticket.ticket_status}</span></td><td>{ticket.assigned_to || '—'}</td><td><button className="btn-ghost btn-sm" onClick={()=>openTicket(ticket)}>{t('عرض / تعديل','View / edit')}</button></td></tr>)}
+          {visibleTickets.length === 0 && <tr><td colSpan={7} className="sidebar-hint">{t('لا توجد تذاكر بعد. تسجيل شكوى جديدة ينشئ تذكرة تلقائياً.','No tickets yet. Filing a complaint creates one automatically.')}</td></tr>}
         </tbody></table></div>
       </section>
 
@@ -299,6 +315,12 @@ export default function Complaints() {
           </aside>
         </div>
       )}
+      {ticketModal && <div className="ticket-modal-backdrop" onClick={()=>!ticketBusy&&setTicketModal(null)}><section className="ticket-modal" onClick={e=>e.stopPropagation()}>
+        <div className="drawer-head"><div><span className="guide-eyebrow">SUPPORT WORK ITEM</span><h3>{ticketModal.ticket_no || `TKT-${ticketModal.id}`}</h3></div><button className="btn-ghost btn-sm" onClick={()=>setTicketModal(null)}>✕</button></div>
+        <div className="ticket-linked-list"><strong>{t('المعاملات والبيانات المرتبطة','Linked transaction details')}</strong><div className="ticket-linked-chip">{ticketModal.tx_id ? `TRX ${ticketModal.tx_id}` : (ticketModal.description?.match(/\d{11}/g)?.join(' · ') || t('لا يوجد رقم معاملة','No transaction reference'))}</div>{ticketModal.customer_phone&&<div className="cell-sub">📱 {ticketModal.customer_phone}</div>}</div>
+        <div className="ticket-form-grid"><label>{t('الموضوع','Subject')}<input className="login-input" value={ticketDraft.subject||''} onChange={e=>setTicketDraft(d=>({...d,subject:e.target.value}))}/></label><label>{t('المسؤول','Assignee')}<select className="filter-select" value={ticketDraft.assigned_to||''} onChange={e=>setTicketDraft(d=>({...d,assigned_to:e.target.value}))}><option value="">{t('غير مسندة','Unassigned')}</option>{assignees.map(a=><option key={a.username} value={a.username}>{a.display_name||a.username}</option>)}</select></label><label>{t('الحالة','Status')}<select className="filter-select" value={ticketDraft.ticket_status||'open'} onChange={e=>setTicketDraft(d=>({...d,ticket_status:e.target.value}))}><option value="open">Open</option><option value="in_progress">In progress</option><option value="resolved">Resolved</option><option value="closed">Closed</option></select></label><label>{t('الأولوية','Priority')}<select className="filter-select" value={ticketDraft.priority||'normal'} onChange={e=>setTicketDraft(d=>({...d,priority:e.target.value}))}><option value="high">High</option><option value="medium">Medium</option><option value="normal">Normal</option><option value="low">Low</option></select></label><label>{t('الموعد النهائي','Deadline')}<input className="login-input" type="datetime-local" value={ticketDraft.due_at ? ticketDraft.due_at.slice(0,16) : ''} onChange={e=>setTicketDraft(d=>({...d,due_at:e.target.value}))}/></label><label className="ticket-form-wide">{t('الإجراء المطلوب','Requested action')}<input className="login-input" value={ticketDraft.action_requested||''} onChange={e=>setTicketDraft(d=>({...d,action_requested:e.target.value}))}/></label><label className="ticket-form-wide">{t('الوصف / الملاحظات','Description / notes')}<textarea className="login-input ticket-description" value={ticketDraft.description||''} onChange={e=>setTicketDraft(d=>({...d,description:e.target.value}))}/></label></div>
+        <div className="drawer-actions"><button className="btn-primary" disabled={ticketBusy} onClick={()=>void saveTicket()}>{ticketBusy?t('جارٍ الحفظ…','Saving…'):t('حفظ التغييرات','Save changes')}</button><button className="btn-ghost" onClick={()=>setTicketModal(null)}>{t('إلغاء','Cancel')}</button></div>
+      </section></div>}
     </PanelShell>
   )
 }
