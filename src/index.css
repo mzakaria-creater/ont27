@@ -1462,6 +1462,9 @@ a.stat-card:hover { border-color: var(--accent); }
 .merchant-master-tag { display:block; margin-top:2px; font-size:10px; opacity:.7; }
 .merchant-master-tag.payfuture { color:var(--payfuture); }
 .merchant-master-tag.ngpay { color:var(--ngpay); }
+.team-task-textarea { width:100%; min-height:140px; resize:vertical; margin:10px 0 14px; }
+.team-task-toast { position:fixed; z-index:120; top:50%; left:50%; transform:translate(-50%,-50%); background:var(--panel,#171923); border:1px solid var(--accent,#6d8cff); box-shadow:0 18px 60px rgba(0,0,0,.45); border-radius:14px; padding:18px 26px; font-weight:700; }
+.task-overdue { color:#ef4444; font-weight:700; }
 .merchant-chip.other { background: var(--hover-2); color: var(--text-dim); }
 
 /* Drawer extras: matched SMS + client history + timeline */

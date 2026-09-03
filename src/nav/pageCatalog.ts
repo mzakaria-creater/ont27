@@ -109,6 +109,7 @@ export const PAGE_CATALOG: Record<string, { category: string; label: string }> =
   revenue_center: { category: 'reports', label: 'الإيرادات والعمولات' },
 
   support: { category: 'support', label: 'الدعم الفني' },
+  team_tasks: { category: 'support', label: 'مهام فريق الدعم' },
   notifications: { category: 'support', label: 'الإشعارات' },
 }
 
