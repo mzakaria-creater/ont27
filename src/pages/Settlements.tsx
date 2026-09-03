@@ -17,7 +17,7 @@ interface SettleRow {
   payCount: number
   payVolume: number
 }
-interface SettlementPayment { id: string; merchant: string; settlement_month: string; amount: number; blocked_percent: number; note: string | null; paid_by: string | null; paid_at: string }
+interface SettlementPayment { id: string; merchant: string; settlement_month: string; amount: number; blocked_percent: number; usdt_rate: number | null; payment_fee: number; service_fee: number; note: string | null; paid_by: string | null; paid_at: string }
 
 // Gross settlement batches per sub-merchant. Net is deliberately absent: the
 // per-transaction fee columns are NULL on every paid row, and the configured
@@ -47,8 +47,10 @@ export default function Settlements() {
   const [rows, setRows] = useState<SettleRow[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [payments, setPayments] = useState<SettlementPayment[]>([])
-  const [paymentForm, setPaymentForm] = useState({ merchant: '', settlement_month: new Date().toISOString().slice(0, 7), amount: '', blocked_percent: '0', note: '' })
+  const [paymentForm, setPaymentForm] = useState({ merchant: '', settlement_month: new Date().toISOString().slice(0, 7), amount: '', blocked_percent: '0', usdt_rate: '', payment_fee: '0', service_fee: '0', note: '' })
   const [paymentBusy, setPaymentBusy] = useState(false)
+  const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7))
+  const [smsReport, setSmsReport] = useState<{ total: number; deposits: { count: number; dayVolume: number }; withdrawals: { count: number; dayVolume: number }; linked: number; review: number } | null>(null)
 
   useEffect(() => {
     setRows(null)
@@ -58,6 +60,7 @@ export default function Settlements() {
   }, [days])
 
   useEffect(() => { api<{ payments: SettlementPayment[] }>('/api/settlements/payments').then((r) => setPayments(r.payments)).catch(() => setPayments([])) }, [])
+  useEffect(() => { const [y, m] = reportMonth.split('-').map(Number); const last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); api<typeof smsReport>(`/api/sms/stats?from=${reportMonth}-01&to=${last}`).then(setSmsReport).catch(() => setSmsReport(null)) }, [reportMonth])
 
   const addPayment = async (event: FormEvent) => {
     event.preventDefault(); setPaymentBusy(true); setErr(null)
@@ -95,8 +98,11 @@ export default function Settlements() {
               {t('آخر', 'Last')} {d} {t('يوم', 'days')}
             </button>
           ))}
+          <label className="settlement-month-filter">{t('تقرير الشهر', 'Report month')}<input className="login-input" type="month" value={reportMonth} onChange={e => setReportMonth(e.target.value)} /></label>
         </div>
       </div>
+
+      {smsReport && <section className="kpi-grid settlement-sms-report"><div className="kpi-card"><span className="kpi-icon">📱</span><div className="kpi-value">{smsReport.total.toLocaleString()}</div><div className="kpi-label">{t('إجمالي SMS للشهر', 'Monthly SMS')}</div></div><div className="kpi-card"><span className="kpi-icon">💰</span><div className="kpi-value">{money(smsReport.deposits.dayVolume, 'EGP')}</div><div className="kpi-label">{t('حجم SMS الإيداع', 'Deposit SMS volume')}</div></div><div className="kpi-card"><span className="kpi-icon">📤</span><div className="kpi-value">{money(smsReport.withdrawals.dayVolume, 'EGP')}</div><div className="kpi-label">{t('حجم SMS السحب', 'Withdrawal SMS volume')}</div></div><div className="kpi-card"><span className="kpi-icon">🔗</span><div className="kpi-value">{smsReport.linked.toLocaleString()}</div><div className="kpi-label">{t('SMS مرتبطة', 'Linked SMS')}</div></div></section>}
 
       <div className="kpi-grid">
         <div className="kpi-card">
@@ -125,7 +131,7 @@ export default function Settlements() {
 
       {can('settlements', 'can_edit') && <section className="card settlement-payment-card">
         <div className="recent-head"><div><h3>💸 {t('إضافة دفعة / حجز للتاجر', 'Add merchant payment / hold')}</h3><p className="page-sub">{t('المتاح = (Payin − Payout) − الدفعات − نسبة الحجز.', 'Available = (Payin − Payout) − payments − hold percentage.')}</p></div></div>
-        <form className="settlement-payment-form" onSubmit={addPayment}><select className="login-input" required value={paymentForm.merchant} onChange={e => setPaymentForm({ ...paymentForm, merchant: e.target.value })}><option value="">{t('اختر التاجر', 'Select merchant')}</option>{(rows ?? []).map(r => <option key={r.merchant} value={r.merchant}>{r.merchant}</option>)}</select><input className="login-input" type="month" required value={paymentForm.settlement_month} onChange={e => setPaymentForm({ ...paymentForm, settlement_month: e.target.value })} /><input className="login-input" type="number" min="0.01" step="0.01" required placeholder={t('المبلغ المدفوع', 'Payment amount')} value={paymentForm.amount} onChange={e => setPaymentForm({ ...paymentForm, amount: e.target.value })} /><input className="login-input" type="number" min="0" max="100" step="0.01" placeholder={t('نسبة الحجز %', 'Hold %')} value={paymentForm.blocked_percent} onChange={e => setPaymentForm({ ...paymentForm, blocked_percent: e.target.value })} /><input className="login-input" placeholder={t('ملاحظة', 'Note')} value={paymentForm.note} onChange={e => setPaymentForm({ ...paymentForm, note: e.target.value })} /><button className="btn-primary" disabled={paymentBusy || !paymentForm.merchant}>{paymentBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ الدفعة', 'Save payment')}</button></form>
+        <form className="settlement-payment-form" onSubmit={addPayment}><select className="login-input" required value={paymentForm.merchant} onChange={e => setPaymentForm({ ...paymentForm, merchant: e.target.value })}><option value="">{t('اختر التاجر', 'Select merchant')}</option>{(rows ?? []).map(r => <option key={r.merchant} value={r.merchant}>{r.merchant}</option>)}</select><input className="login-input" type="month" required value={paymentForm.settlement_month} onChange={e => setPaymentForm({ ...paymentForm, settlement_month: e.target.value })} /><input className="login-input" type="number" min="0.01" step="0.01" required placeholder={t('المبلغ المدفوع', 'Payment amount')} value={paymentForm.amount} onChange={e => setPaymentForm({ ...paymentForm, amount: e.target.value })} /><input className="login-input" type="number" min="0" max="100" step="0.01" placeholder={t('نسبة الحجز %', 'Hold %')} value={paymentForm.blocked_percent} onChange={e => setPaymentForm({ ...paymentForm, blocked_percent: e.target.value })} /><input className="login-input" type="number" min="0" step="0.000001" placeholder={t('سعر USDT', 'USDT rate')} value={paymentForm.usdt_rate} onChange={e => setPaymentForm({ ...paymentForm, usdt_rate: e.target.value })} /><input className="login-input" type="number" min="0" step="0.01" placeholder={t('رسوم الدفع', 'Payment fees')} value={paymentForm.payment_fee} onChange={e => setPaymentForm({ ...paymentForm, payment_fee: e.target.value })} /><input className="login-input" type="number" min="0" step="0.01" placeholder={t('رسوم الخدمة', 'Service fees')} value={paymentForm.service_fee} onChange={e => setPaymentForm({ ...paymentForm, service_fee: e.target.value })} /><input className="login-input" placeholder={t('ملاحظة', 'Note')} value={paymentForm.note} onChange={e => setPaymentForm({ ...paymentForm, note: e.target.value })} /><button className="btn-primary" disabled={paymentBusy || !paymentForm.merchant}>{paymentBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ الدفعة', 'Save payment')}</button></form>
       </section>}
 
       <section className="card recent-card">

@@ -160,10 +160,13 @@ extraRoutes.post('/settlements/payments', requireAnyPerm(['settlements', 'settle
   const merchant = typeof body?.merchant === 'string' ? body.merchant.trim().slice(0, 180) : ''
   const month = typeof body?.settlement_month === 'string' && /^\d{4}-\d{2}$/.test(body.settlement_month) ? `${body.settlement_month}-01` : ''
   const amount = Number(body?.amount)
+  const usdtRate = body?.usdt_rate == null || body.usdt_rate === '' ? null : Number(body.usdt_rate)
+  const paymentFee = body?.payment_fee == null || body.payment_fee === '' ? 0 : Number(body.payment_fee)
+  const serviceFee = body?.service_fee == null || body.service_fee === '' ? 0 : Number(body.service_fee)
   const blockedPercent = body?.blocked_percent == null || body.blocked_percent === '' ? 0 : Number(body.blocked_percent)
-  if (!merchant || !month || !Number.isFinite(amount) || amount <= 0 || !Number.isFinite(blockedPercent) || blockedPercent < 0 || blockedPercent > 100) return c.json({ error: 'merchant_month_amount_and_valid_block_required' }, 400)
+  if (!merchant || !month || !Number.isFinite(amount) || amount <= 0 || (usdtRate != null && (!Number.isFinite(usdtRate) || usdtRate <= 0)) || !Number.isFinite(paymentFee) || paymentFee < 0 || !Number.isFinite(serviceFee) || serviceFee < 0 || !Number.isFinite(blockedPercent) || blockedPercent < 0 || blockedPercent > 100) return c.json({ error: 'merchant_month_amount_and_valid_fees_required' }, 400)
   const actor = c.get('actor')
-  const { data, error } = await db.from('settlement_merchant_payments').insert({ merchant, settlement_month: month, amount, blocked_percent: blockedPercent, note: typeof body?.note === 'string' ? body.note.trim().slice(0, 500) || null : null, paid_by: actor.username }).select().single()
+  const { data, error } = await db.from('settlement_merchant_payments').insert({ merchant, settlement_month: month, amount, usdt_rate: usdtRate, payment_fee: paymentFee, service_fee: serviceFee, blocked_percent: blockedPercent, note: typeof body?.note === 'string' ? body.note.trim().slice(0, 500) || null : null, paid_by: actor.username }).select().single()
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'settlement.payment_added', entity: 'settlement_merchant_payments', entity_id: data.id, after: data })
   return c.json({ payment: data }, 201)
