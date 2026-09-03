@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
@@ -16,6 +17,7 @@ interface SettleRow {
   payCount: number
   payVolume: number
 }
+interface SettlementPayment { id: string; merchant: string; settlement_month: string; amount: number; blocked_percent: number; note: string | null; paid_by: string | null; paid_at: string }
 
 // Gross settlement batches per sub-merchant. Net is deliberately absent: the
 // per-transaction fee columns are NULL on every paid row, and the configured
@@ -39,10 +41,14 @@ interface Batches {
 
 export default function Settlements() {
   const { t } = useLocale()
+  const { can } = useAuth()
   const [days, setDays] = useState(7)
   const [batches, setBatches] = useState<Batches | null>(null)
   const [rows, setRows] = useState<SettleRow[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [payments, setPayments] = useState<SettlementPayment[]>([])
+  const [paymentForm, setPaymentForm] = useState({ merchant: '', settlement_month: new Date().toISOString().slice(0, 7), amount: '', blocked_percent: '0', note: '' })
+  const [paymentBusy, setPaymentBusy] = useState(false)
 
   useEffect(() => {
     setRows(null)
@@ -50,6 +56,15 @@ export default function Settlements() {
       .then((r) => setRows(r.rows))
       .catch((e) => setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض التسويات.', 'You do not have permission to view settlements.') : t('تعذّر تحميل التسويات.', 'Failed to load settlements.')))
   }, [days])
+
+  useEffect(() => { api<{ payments: SettlementPayment[] }>('/api/settlements/payments').then((r) => setPayments(r.payments)).catch(() => setPayments([])) }, [])
+
+  const addPayment = async (event: FormEvent) => {
+    event.preventDefault(); setPaymentBusy(true); setErr(null)
+    try { const r = await api<{ payment: SettlementPayment }>('/api/settlements/payments', { method: 'POST', body: JSON.stringify(paymentForm) }); setPayments((p) => [r.payment, ...p]); setPaymentForm({ ...paymentForm, amount: '', note: '' }) }
+    catch (e) { setErr(e instanceof ApiError ? e.message : t('تعذر حفظ دفعة التسوية.', 'Could not save settlement payment.')) }
+    finally { setPaymentBusy(false) }
+  }
 
   useEffect(() => {
     setBatches(null)
@@ -108,6 +123,11 @@ export default function Settlements() {
 
       {err && <div className="card warn">{err}</div>}
 
+      {can('settlements', 'can_edit') && <section className="card settlement-payment-card">
+        <div className="recent-head"><div><h3>💸 {t('إضافة دفعة / حجز للتاجر', 'Add merchant payment / hold')}</h3><p className="page-sub">{t('المتاح = (Payin − Payout) − الدفعات − نسبة الحجز.', 'Available = (Payin − Payout) − payments − hold percentage.')}</p></div></div>
+        <form className="settlement-payment-form" onSubmit={addPayment}><select className="login-input" required value={paymentForm.merchant} onChange={e => setPaymentForm({ ...paymentForm, merchant: e.target.value })}><option value="">{t('اختر التاجر', 'Select merchant')}</option>{(rows ?? []).map(r => <option key={r.merchant} value={r.merchant}>{r.merchant}</option>)}</select><input className="login-input" type="month" required value={paymentForm.settlement_month} onChange={e => setPaymentForm({ ...paymentForm, settlement_month: e.target.value })} /><input className="login-input" type="number" min="0.01" step="0.01" required placeholder={t('المبلغ المدفوع', 'Payment amount')} value={paymentForm.amount} onChange={e => setPaymentForm({ ...paymentForm, amount: e.target.value })} /><input className="login-input" type="number" min="0" max="100" step="0.01" placeholder={t('نسبة الحجز %', 'Hold %')} value={paymentForm.blocked_percent} onChange={e => setPaymentForm({ ...paymentForm, blocked_percent: e.target.value })} /><input className="login-input" placeholder={t('ملاحظة', 'Note')} value={paymentForm.note} onChange={e => setPaymentForm({ ...paymentForm, note: e.target.value })} /><button className="btn-primary" disabled={paymentBusy || !paymentForm.merchant}>{paymentBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ الدفعة', 'Save payment')}</button></form>
+      </section>}
+
       <section className="card recent-card">
         {!rows && !err && <p className="sidebar-hint">{t('جارٍ الحساب…', 'Calculating…')}</p>}
         {rows && rows.length === 0 && <p>{t('لا توجد معاملات معتمدة في الفترة.', 'No approved transactions in this window.')}</p>}
@@ -123,7 +143,7 @@ export default function Settlements() {
                   <th>{t('حجم السحوبات', 'Payout volume')}</th>
                   <th>{t('عمولة', 'Commission')}</th>
                   <th>{t('رسوم', 'Fees')}</th>
-                  <th>{t('الصافي', 'Net')}</th>
+                  <th>{t('الصافي', 'Net')}</th><th>{t('المدفوع/المحجوز', 'Paid / held')}</th><th>{t('المتاح', 'Available')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -139,6 +159,7 @@ export default function Settlements() {
                     <td className="mono" style={{ color: r.depVolume - r.payVolume >= 0 ? 'var(--status-paid)' : 'var(--status-declined)' }}>
                       {money(r.depVolume - r.payVolume, 'EGP')}
                     </td>
+                    {(() => { const net = r.depVolume - r.payVolume; const ps = payments.filter(p => p.merchant === r.merchant); const paid = ps.reduce((s, p) => s + Number(p.amount), 0); const held = ps.reduce((s, p) => s + Number(p.amount) * Number(p.blocked_percent) / 100, 0); return <><td className="mono">{money(paid + held, 'EGP')}</td><td className="mono" style={{ color: net - paid - held >= 0 ? 'var(--status-paid)' : 'var(--status-declined)' }}>{money(net - paid - held, 'EGP')}</td></> })()}
                   </tr>
                 ))}
               </tbody>
