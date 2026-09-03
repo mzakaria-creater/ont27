@@ -206,6 +206,17 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
           for (const k of ['merchant', 'sub_merchant', 'master_merchant']) {
             if (typeof r[k] === 'string') r[k] = (r[k] as string).trim()
           }
+          // PayFuture exposes the sub-merchant as reference5/SiteId on its
+          // legacy payloads rather than in the normalized column. Preserve
+          // that provider identifier so new mirror rows are immediately
+          // filterable and assignable in the panel.
+          if (!r.sub_merchant && r.master_merchant?.toString().toLowerCase() === 'payfuture') {
+            const raw = r.raw
+            const payload = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : null
+            const candidate = payload && ['sub_merchant', 'subMerchant', 'subMerchantName', 'SubMerchantName', 'reference5', 'reference4', 'SiteId', 'siteId']
+              .map((key) => payload[key]).find((value) => typeof value === 'string' && value.trim() && value.trim() !== 'merchant_payment_detail')
+            if (typeof candidate === 'string') r.sub_merchant = candidate.trim()
+          }
         }
       }
 
