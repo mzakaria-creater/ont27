@@ -1,6 +1,6 @@
 import { db } from './db.js'
 
-type Candidate = { id: number; amount: number | null; receiver_number: string | null; received_at: string | null; consumed_by_tx_id: number | null }
+type Candidate = { id: number; amount: number | null; receiver_number: string | null; received_at: string | null; consumed_by_tx_id: number | null; message?: string | null; sender_name?: string | null; notes?: string | null; manual_entry_note?: string | null }
 type Payout = { maven_id: number; amount: number | null; mobile_no: string | null; first_seen_at: string | null }
 
 const phone = (value: string | null) => (value ?? '').replace(/\D/g, '').replace(/^20(?=1\d{9}$)/, '0')
@@ -13,7 +13,7 @@ export async function autoLinkWithdrawalSms(limit = 300) {
   const [{ data: payouts, error: payoutErr }, { data: messages, error: smsErr }] = await Promise.all([
     db.from('maven_payout_transactions').select('maven_id, amount, mobile_no, first_seen_at')
       .is('matched_sms_id', null).gte('first_seen_at', since).order('first_seen_at', { ascending: false }).limit(limit),
-    db.from('inbound_sms').select('id, amount, receiver_number, received_at, consumed_by_tx_id')
+    db.from('inbound_sms').select('id, amount, receiver_number, received_at, consumed_by_tx_id, message, sender_name, notes, manual_entry_note')
       .eq('sms_category', 'withdrawal').gte('received_at', since)
       .order('received_at', { ascending: false }).limit(limit * 2),
   ])
@@ -62,6 +62,24 @@ export async function autoLinkWithdrawalSms(limit = 300) {
       if (assignErr) throw new Error(`assign payout ${payout.maven_id}: ${assignErr.message}`)
       continue
     }
+    linked += 1
+  }
+
+  // Deterministic fallback classification for withdrawal SMS that are not a
+  // payout: only explicit USDT/expense wording is eligible. Ambiguous SMS stay
+  // unlinked for an operator, so the matcher never invents a financial target.
+  const classified = ss.filter((sms) => sms.consumed_by_tx_id == null && !repairedPayouts.has(Number(sms.consumed_by_tx_id)))
+  for (const sms of classified) {
+    const text = `${sms.message ?? ''} ${sms.notes ?? ''} ${sms.manual_entry_note ?? ''}`.toLowerCase()
+    const assignmentType = /\busdt\b|tether|p2p\s*crypto|بينانس|تيثر/.test(text) ? 'p2p_usdt' : /expense|مصروف|مصاريف|expense\s*withdrawal/.test(text) ? 'cash_return' : null
+    if (!assignmentType) continue
+    const displayName = sms.sender_name?.trim() || (assignmentType === 'p2p_usdt' ? 'USDT P2P' : 'Wallet expense')
+    const { data: claimed, error: claimErr } = await db.from('inbound_sms').update({ matched: true, match_status: `auto_${assignmentType}`, auto_match_score: 100, processed_at: new Date().toISOString() }).eq('id', sms.id).is('consumed_by_tx_id', null).select('id').maybeSingle()
+    if (claimErr) throw new Error(`classify SMS ${sms.id}: ${claimErr.message}`)
+    if (!claimed) continue
+    const { error: assignmentErr } = await db.from('sms_withdrawal_assignments').upsert({ sms_id: sms.id, assignment_type: assignmentType, target_reference: null, display_name: displayName, note: sms.notes ?? sms.manual_entry_note ?? null, assigned_by: 'automation', assigned_at: new Date().toISOString() }, { onConflict: 'sms_id' })
+    if (assignmentErr) throw new Error(`assign SMS ${sms.id}: ${assignmentErr.message}`)
+    await db.from('audit_log').insert({ actor_type: 'system', actor_name: 'withdrawal-sms-matcher', action: `sms.withdrawal_auto_${assignmentType}`, entity_type: 'inbound_sms', entity_id: String(sms.id), after: { assignment_type: assignmentType, amount: sms.amount } })
     linked += 1
   }
   return { scannedPayouts: ps.length, scannedSms: ss.length, linked }
