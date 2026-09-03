@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
@@ -15,7 +15,8 @@ export default function TeamTasks() {
   const [assignee,setAssignee] = useState(''); const [action,setAction] = useState('Investigate transaction and update support ticket')
   const [due,setDue] = useState(''); const [priority,setPriority] = useState('medium'); const [category,setCategory] = useState('support'); const [all,setAll] = useState(manager)
   const [busy,setBusy] = useState(false); const [error,setError] = useState<string|null>(null); const [toast,setToast] = useState<string|null>(null)
-  const load = useCallback(async () => { try { const [ticketRes,userRes] = await Promise.all([api<{rows:Task[]}>(`/api/tickets?limit=200${all?'':'&mine=1'}`), api<{rows:User[]}>('/api/tickets/assignees')]); setTasks(ticketRes.rows); setUsers(userRes.rows); setError(null) } catch (e) { setError(e instanceof ApiError ? e.code : 'load_failed') } }, [all])
+  const knownIds = useRef<Set<number> | null>(null)
+  const load = useCallback(async () => { try { const [ticketRes,userRes] = await Promise.all([api<{rows:Task[]}>(`/api/tickets?limit=200${all?'':'&mine=1'}`), api<{rows:User[]}>('/api/tickets/assignees')]); const incoming=new Set(ticketRes.rows.map((x)=>x.id)); if (knownIds.current && [...incoming].some((id)=>!knownIds.current?.has(id))) { setToast(t('تم إسناد مهمة جديدة إليك','A new task was assigned to you')); window.setTimeout(()=>setToast(null),3500) } knownIds.current=incoming; setTasks(ticketRes.rows); setUsers(userRes.rows); setError(null) } catch (e) { setError(e instanceof ApiError ? e.code : 'load_failed') } }, [all,t])
   useEffect(()=>{ void load(); const id=window.setInterval(()=>void load(),15000); return ()=>window.clearInterval(id) },[load])
   const operators = useMemo(()=>users.filter((u)=>u.role==='operator'||u.role==='operations_admin'),[users])
   const create = async () => { const lines=refs.split(/\r?\n/).map((x)=>x.trim()).filter(Boolean); if (!lines.length) return; setBusy(true); setError(null); try { for (let i=0;i<lines.length;i++) { const ref=lines[i]; const owner=assignee==='split' ? (i%2===0 ? 'Ahmed' : 'ahmedmano.solly') : assignee || null; await api('/api/tickets',{method:'POST',body:JSON.stringify({subject:`${category} · ${ref}`,description:`Provider reference: ${ref}`,action_requested:action,assigned_to:owner,due_at:due||null,priority,task_type:category})}) } setRefs(''); setToast(`${lines.length} ${t('مهمة أُضيفت للفريق','tasks assigned to the team')}`); window.setTimeout(()=>setToast(null),3500); await load() } catch(e) { setError(e instanceof ApiError ? e.code : 'create_failed') } finally { setBusy(false) } }
