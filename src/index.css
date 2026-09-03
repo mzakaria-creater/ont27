@@ -1459,6 +1459,9 @@ a.stat-card:hover { border-color: var(--accent); }
 .merchant-chip { font-size: 10px; padding: 3px 8px; border-radius: 6px; width: fit-content; font-weight: 600; display: inline-block; }
 .merchant-chip.ngpay { background: var(--ngpay-bg); color: var(--ngpay); }
 .merchant-chip.payfuture { background: var(--payfuture-bg); color: var(--payfuture); }
+.merchant-master-tag { display:block; margin-top:2px; font-size:10px; opacity:.7; }
+.merchant-master-tag.payfuture { color:var(--payfuture); }
+.merchant-master-tag.ngpay { color:var(--ngpay); }
 .merchant-chip.other { background: var(--hover-2); color: var(--text-dim); }
 
 /* Drawer extras: matched SMS + client history + timeline */
