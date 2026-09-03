@@ -471,8 +471,8 @@ export default function Deposits() {
                       )}
                       <td className="mono">
                         {r.ontarget_ref ?? r.tx_id}
-                        {r.merchant_tx_reference && (
-                          <div className="cell-sub mono" title="مرجع التاجر">{r.merchant_tx_reference}</div>
+                        {(r.merchant_reference ?? r.merchant_tx_reference) && (
+                          <div className="cell-sub mono" title="NGPay merchant reference">{r.merchant_reference ?? r.merchant_tx_reference}</div>
                         )}
                       </td>
                       <td className="mono">{money(r.amount, r.currency)}</td>
@@ -618,7 +618,7 @@ export default function Deposits() {
                   <dt>البنك / الطريقة</dt><dd>{selected.to_bank ?? '—'} · {selected.payment_method ?? selected.gateway ?? '—'}</dd>
                   <dt>التاجر</dt><dd>{selected.merchant ?? '—'}{selected.sub_merchant && <> · فرعي: {selected.sub_merchant}</>}</dd>
                   <dt>التاجر الرئيسي</dt><dd>{selected.master_merchant ?? '—'}</dd>
-                  <dt>مرجع التاجر</dt><dd className="mono">{selected.merchant_tx_reference ?? '—'}</dd>
+                  <dt>NGPay merchant reference</dt><dd className="mono">{selected.merchant_reference ?? selected.merchant_tx_reference ?? '—'}</dd>
                   <dt>الرسوم / العمولة</dt><dd className="mono">{money(selected.fees, selected.currency)} / {money(selected.commission, selected.currency)}</dd>
                   {selected.receiving_wallet && selected.to_account_number && selected.receiving_wallet !== selected.to_account_number && <><dt>{t('المحفظة المخصصة', 'Allocated wallet')}</dt><dd className="mono">{selected.to_account_number}</dd></>}
                   <dt>أول ظهور</dt><dd className="mono">{depositTime({ first_seen_at: selected.first_seen_at })}</dd>

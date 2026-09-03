@@ -28,9 +28,11 @@ function withSenderAccount<T extends Record<string, unknown>>(row: T): Omit<T, '
   const accountName = rawValue(['accountname', 'senderaccountname', 'bankaccountname'])
   const email = rawValue(['emailaddress', 'useremail', 'email'])
   const { maven_raw_row: _raw, ...safe } = row
+  const providerRef = rawValue(['reference1', 'merchantreference', 'merchantref'])
   const fallback = typeof row.sender_number === 'string' ? row.sender_number : null
   return {
     ...safe,
+    merchant_reference: providerRef == null ? null : String(providerRef).trim() || null,
     sender_account_number: account == null ? fallback : String(account).trim() || fallback,
     sender_account_name: accountName == null ? null : String(accountName).trim() || null,
     user_email: email == null ? null : String(email).trim() || null,
@@ -72,7 +74,7 @@ extraRoutes.get(
       if (Number.isFinite(maxAmount)) query = query.lte('amount', maxAmount)
       if (q) {
         const like = `%${q.replaceAll(',', ' ')}%`
-        const ors = [`ontarget_ref.ilike.${like}`, `merchant_tx_reference.ilike.${like}`, `sender_number.ilike.${like}`, `sender_name.ilike.${like}`, `maven_raw_row->>AccountNumber.ilike.${like}`, `maven_raw_row->>PhoneNo.ilike.${like}`, `maven_raw_row->>UserName.ilike.${like}`, `receiving_wallet.ilike.${like}`, `to_account_number.ilike.${like}`, `merchant.ilike.${like}`]
+        const ors = [`ontarget_ref.ilike.${like}`, `merchant_tx_reference.ilike.${like}`, `maven_raw_row->>Reference1.ilike.${like}`, `sender_number.ilike.${like}`, `sender_name.ilike.${like}`, `maven_raw_row->>AccountNumber.ilike.${like}`, `maven_raw_row->>PhoneNo.ilike.${like}`, `maven_raw_row->>UserName.ilike.${like}`, `receiving_wallet.ilike.${like}`, `to_account_number.ilike.${like}`, `merchant.ilike.${like}`]
         if (/^\d+$/.test(q)) ors.push(`tx_id.eq.${q}`)
         if (/^\d+(\.\d{1,2})?$/.test(q)) ors.push(`amount.eq.${q}`)
         query = query.or(ors.join(','))

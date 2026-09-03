@@ -24,6 +24,14 @@ depositRoutes.use('*', requireAuth)
 const LIST_COLUMNS =
   'tx_id, guid, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, agent_name, email, payment_method, gateway, merchant, sub_merchant, master_merchant, manual_entry, approved_by, to_account_number, receiving_wallet, proof_image_url, first_seen_at, last_status_change, created_utc, maven_raw_row'
 
+function providerReference(row: Record<string, unknown>): string | null {
+  const raw = row.maven_raw_row && typeof row.maven_raw_row === 'object' && !Array.isArray(row.maven_raw_row)
+    ? row.maven_raw_row as Record<string, unknown> : null
+  if (!raw) return null
+  const entry = Object.entries(raw).find(([key, value]) => key.replace(/[^a-z0-9]/gi, '').toLowerCase() === 'reference1' && value != null && String(value).trim())
+  return entry ? String(entry[1]).trim() : null
+}
+
 const APPROVED_STATUSES = new Set(['PAID', 'APPROVED'])
 const phoneKey = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
 const txTime = (row: Record<string, unknown>) => {
@@ -195,6 +203,7 @@ depositRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
     const ors = [
       `ontarget_ref.ilike.${like}`,
       `merchant_tx_reference.ilike.${like}`,
+      `maven_raw_row->>Reference1.ilike.${like}`,
       `sender_number.ilike.${like}`,
       `sender_name.ilike.${like}`,
       `email.ilike.${like}`,
@@ -212,7 +221,7 @@ depositRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
 
   const { data, count, error } = await query
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  const rows = (data ?? []) as unknown as Record<string, unknown>[]
+  const rows = (data ?? []).map((row) => ({ ...(row as unknown as Record<string, unknown>), merchant_reference: providerReference(row as unknown as Record<string, unknown>) }))
   await Promise.all([attachSms(rows), attachDepositContext(rows)])
   return c.json({ rows, total: count ?? 0, limit, offset })
 })
@@ -222,11 +231,16 @@ depositRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
 depositRoutes.get('/by-ref/:ref', requirePerm('deposits', 'can_view'), async (c) => {
   const ref = c.req.param('ref')
   if (!/^[\w-]{3,40}$/.test(ref)) return c.json({ error: 'bad_ref' }, 400)
-  const { data, error } = await db
+  let { data, error } = await db
     .from('maven_transactions')
     .select('tx_id')
     .eq('ontarget_ref', ref)
     .maybeSingle()
+  if (!data && !error) {
+    const fallback = await db.from('maven_transactions').select('tx_id').filter('maven_raw_row->>Reference1', 'eq', ref).maybeSingle()
+    data = fallback.data
+    error = fallback.error
+  }
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   if (!data) return c.json({ error: 'not_found' }, 404)
   return depositDetail(c, String(data.tx_id))
@@ -338,7 +352,7 @@ async function depositDetail(c: Context<AuthEnv>, txId: string) {
 
   const raw = data.maven_raw_row && typeof data.maven_raw_row === 'object' ? data.maven_raw_row : null
   return c.json({
-    deposit: { ...data, raw }, sms: smsMatch, client, history,
+    deposit: { ...data, raw, merchant_reference: providerReference(data as unknown as Record<string, unknown>) }, sms: smsMatch, client, history,
     provider: { review: reviewRows[0] ?? null, jobs: jobRows, events: providerRows },
   })
 }

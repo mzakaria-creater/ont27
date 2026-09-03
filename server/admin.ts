@@ -42,7 +42,7 @@ adminRoutes.get('/transactions', requirePerm('transactions', 'can_view'), async 
   if (to) summaryQuery = summaryQuery.lte('first_seen_at', `${to}T23:59:59.999Z`)
   if (q) {
     const like = `%${q.replaceAll(',', ' ')}%`
-    const ors = [`ontarget_ref.ilike.${like}`, `merchant_tx_reference.ilike.${like}`, `sender_name.ilike.${like}`, `sender_number.ilike.${like}`, `manual_sender_number.ilike.${like}`, `email.ilike.${like}`, `maven_raw_row->>AccountNumber.ilike.${like}`, `maven_raw_row->>PhoneNo.ilike.${like}`, `maven_raw_row->>UserName.ilike.${like}`, `merchant.ilike.${like}`]
+    const ors = [`ontarget_ref.ilike.${like}`, `merchant_tx_reference.ilike.${like}`, `maven_raw_row->>Reference1.ilike.${like}`, `sender_name.ilike.${like}`, `sender_number.ilike.${like}`, `manual_sender_number.ilike.${like}`, `email.ilike.${like}`, `maven_raw_row->>AccountNumber.ilike.${like}`, `maven_raw_row->>PhoneNo.ilike.${like}`, `maven_raw_row->>UserName.ilike.${like}`, `merchant.ilike.${like}`]
     if (/^\d+$/.test(q)) ors.push(`tx_id.eq.${q}`)
     if (/^\d+(\.\d{1,2})?$/.test(q)) ors.push(`amount.eq.${q}`)
     query = query.or(ors.join(','))
@@ -63,7 +63,8 @@ adminRoutes.get('/transactions', requirePerm('transactions', 'can_view'), async 
       ? row.maven_raw_row as Record<string, unknown>
       : null
     const account = raw ? Object.entries(raw).find(([key]) => key.replace(/[^a-z0-9]/gi, '').toLowerCase() === 'accountnumber')?.[1] : null
-    return { ...row, sender_account_number: account == null ? row.sender_number : String(account).trim() || row.sender_number }
+    const providerRef = raw ? Object.entries(raw).find(([key, value]) => key.replace(/[^a-z0-9]/gi, '').toLowerCase() === 'reference1' && value != null && String(value).trim())?.[1] : null
+    return { ...row, merchant_reference: providerRef == null ? null : String(providerRef).trim(), sender_account_number: account == null ? row.sender_number : String(account).trim() || row.sender_number }
   })
   return c.json({ rows, total: records.count ?? 0, summary, limit, offset })
 })

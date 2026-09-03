@@ -7,6 +7,7 @@ export interface DepositRow {
   guid: string | null
   ontarget_ref: string | null
   merchant_tx_reference: string | null
+  merchant_reference?: string | null
   status: string
   amount: number | null
   currency: string | null
