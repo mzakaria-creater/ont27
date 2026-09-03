@@ -66,6 +66,7 @@ const AccountAction = lazy(() => import('./pages/AccountAction'))
 const WebhookCenter = lazy(() => import('./pages/WebhookCenter'))
 const PayoutRequests = lazy(() => import('./pages/PayoutRequests'))
 const TeamTasks = lazy(() => import('./pages/TeamTasks'))
+const OperatorHandbook = lazy(() => import('./pages/OperatorHandbook'))
 
 type Conn = 'wait' | 'ok' | 'bad'
 
@@ -364,6 +365,7 @@ export default function App() {
             <Route path="/transactions/:ref" element={<PageGate keys={['transactions','all_transactions','deposits']}><TransactionDetail /></PageGate>} />
             <Route path="/approvals" element={<PageGate keys={['approvals','approval-queue']}><Approvals /></PageGate>} />
             <Route path="/team-tasks" element={<PageGate keys={['support']}><TeamTasks /></PageGate>} />
+            <Route path="/operator-handbook" element={<PageGate keys={['support']}><OperatorHandbook /></PageGate>} />
             <Route path="/merchants" element={<PageGate keys={['merchants']}><Merchants /></PageGate>} />
             <Route path="/wallets" element={<PageGate keys={['wallets']}><Wallets /></PageGate>} />
             <Route path="/sms" element={<PageGate keys={['sms_live']}><SmsLive /></PageGate>} />

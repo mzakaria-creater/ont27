@@ -80,6 +80,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   // Operations — the daily transaction workflow
   { to: '/approvals', icon: '✅', labelAr: 'طابور الموافقات', labelEn: 'Approval queue', keys: ['approvals', 'approval-queue', 'my-queue', 'my-tasks', 'assigned_to_me'], group: 'transactions' },
   { to: '/team-tasks', icon: '🗂️', labelAr: 'مهام فريق الدعم', labelEn: 'Team support tasks', keys: ['support'], group: 'transactions' },
+  { to: '/operator-handbook', icon: '📖', labelAr: 'دليل المشغّل', labelEn: 'Operator handbook', keys: ['support'], group: 'transactions' },
   { to: '/deposits', icon: '💰', labelAr: 'الإيداعات', labelEn: 'Deposits', keys: ['deposits'], group: 'transactions' },
   { to: '/payouts', icon: '📤', labelAr: 'السحوبات', labelEn: 'Payouts', keys: ['payouts'], group: 'transactions' },
   { to: '/payout-requests', icon: '⚡', labelAr: 'طلبات السحب اليدوية', labelEn: 'Manual payout requests', keys: ['payouts'], group: 'transactions' },

@@ -1,0 +1,14 @@
+import PanelShell from '../components/PanelShell'
+
+const steps = [
+  ['١', 'تسجيل الدخول', 'استخدم حسابك الشخصي فقط. لا تشارك كلمة المرور أو رابط الدخول. إذا ظهرت صفحة فارغة، نفّذ تحديثاً قسرياً ثم أبلغ المسؤول.'],
+  ['٢', 'المهام المسندة إليك', 'افتح «مهام فريق الدعم». المشغّل يرى المهام المسندة إليه فقط. راجع الفئة، رقم المعاملة، الإجراء المطلوب والموعد النهائي. حدّث الحالة إلى قيد التنفيذ فور البدء.'],
+  ['٣', 'فحص المعاملة', 'افتح رقم المعاملة وتحقق من المبلغ والعملة والمحفظة والمرجع وSMS المرتبط. لا تعتمد على اسم العميل وحده. إذا كان هناك إثبات، افتحه قبل اتخاذ القرار.'],
+  ['٤', 'الموافقة أو الرفض', 'استخدم اعتماد أو رفض من الطابور فقط بعد مراجعة الدليل. اكتب سبباً واضحاً. لا تكرر الضغط؛ انتظر نتيجة التنفيذ ومزامنة مزود الدفع.'],
+  ['٥', 'الشكاوى', 'افتح «الشكاوى» وابحث برقم المعاملة أو مرجع التاجر. اربط SMS الصحيح، أضف ملاحظتك، ثم اختر اعتماد إلى PAID أو رفض الشكوى حسب الدليل. كل إجراء مسجل باسمك.'],
+  ['٦', 'تقارير ومتابعة', 'استخدم التقارير مع شريط الفلاتر والتاريخ. راجع الإجمالي، المدفوع، المرفوض، المعلّق، تغطية SMS والمحافظ. صدّر XLSX عند طلب الإدارة فقط.'],
+]
+
+export default function OperatorHandbook() {
+  return <PanelShell><section className="guide-hero"><div><span className="guide-eyebrow">ONTARGET · OPERATOR HANDBOOK</span><h2>دليل تشغيل المشغّل</h2><p>مرجع عربي سريع للعمل على المهام، المعاملات، الشكاوى والتقارير.</p></div><div className="guide-version"><span>نسخة التشغيل</span><small>محدّث سبتمبر 2026</small></div></section><div className="guide-layout"><aside className="card guide-toc"><strong>المحتويات</strong>{steps.map(([n,title])=><a key={n} href={`#operator-${n}`}><span>{n}</span>{title}</a>)}</aside><article className="card guide-doc operator-handbook" dir="rtl"><div className="guide-callout success">✅ القاعدة الذهبية: راجع الدليل والمرجع والعملة والمحفظة قبل أي إجراء، وسجّل سبب القرار دائماً.</div>{steps.map(([n,title,body])=><section id={`operator-${n}`} key={n}><h3>{n}. {title}</h3><p>{body}</p></section>)}<section><h3>عند وجود مشكلة</h3><ul><li>SMS غير مرتبطة: لا تربطها إذا كان رقم المحفظة أو المبلغ غير مطابق؛ اتركها للمراجعة.</li><li>المعاملة لا تظهر: ابحث بالـ OnTarget ref أو مرجع NGPay الذي يبدأ غالباً بـ 23.</li><li>الإجراء لم يتزامن: لا تكرر القرار؛ التقط رقم المعاملة والوقت وأرسلها للمسؤول.</li><li>موعد متأخر: يظهر باللون الأحمر؛ ارفع الأولوية وأضف تعليقاً.</li></ul></section><section><h3>اختصارات الصفحات</h3><div className="guide-grid"><div><strong>المهام</strong><code>/team-tasks</code></div><div><strong>الموافقات</strong><code>/approvals</code></div><div><strong>الشكاوى</strong><code>/complaints</code></div><div><strong>التقارير</strong><code>/reports</code></div><div><strong>كل المعاملات</strong><code>/transactions</code></div><div><strong>SMS مباشر</strong><code>/sms</code></div></div></section></article></div></PanelShell>
+}
