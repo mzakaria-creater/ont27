@@ -12,6 +12,14 @@ type Tx = { tx_id: number; ontarget_ref: string | null; amount: number | null; s
 type Payout = { amount: number | null; status: string | null; merchant: string | null; first_seen_at: string | null }
 type GroupKpi = { key: string; label: string; count: number; amount: number; linked: number; unlinked: number; latest_balance: number | null }
 
+// Withdrawal SMS reports are read frequently while operators work the queue.
+// Keep a very short, per-actor cache so refreshes/navigation do not re-scan
+// every historical SMS row on each request. The TTL is intentionally small so
+// the report remains effectively live.
+const withdrawalReportCache = new Map<string, { expires: number; body: unknown }>()
+const WITHDRAWAL_REPORT_TTL_MS = 10_000
+const WITHDRAWAL_REPORT_CACHE_MAX = 40
+
 function params(c: any) {
   const from = c.req.query('from')?.trim() || null
   const to = c.req.query('to')?.trim() || null
@@ -115,6 +123,11 @@ reportsRoutes.get('/withdrawal-sms', requireAnyPerm(['reports', 'advanced_analys
   const q = c.req.query('q')?.trim() || null
   const limit = Math.min(Math.max(Number(c.req.query('limit')) || 100, 1), 500)
   const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
+  const actor = c.get('actor')
+  const cacheKey = JSON.stringify({ actor: actor.sub, role: actor.role, from, to, wallet, provider, link, q, limit, offset })
+  const cached = withdrawalReportCache.get(cacheKey)
+  if (cached && cached.expires > Date.now()) return c.json(cached.body)
+  if (cached) withdrawalReportCache.delete(cacheKey)
   const columns = 'id, received_at, device_name, sim_slot, receiver_number, wallet_number, confirmed_wallet_number, provider, amount, balance_after, matched, match_status, consumed_by_tx_id, matched_transaction_id, trx_id, trx_reference, sender_name, sender_number, sms_first_line'
   const apply = (base: any) => {
     let query = base.eq('sms_category', 'withdrawal')
@@ -153,7 +166,7 @@ reportsRoutes.get('/withdrawal-sms', requireAnyPerm(['reports', 'advanced_analys
       }
       return [...groups.values()].sort((a, b) => b.amount - a.amount || b.count - a.count)
     }
-    return c.json({
+    const body = {
       rows, total: pageResult.count ?? 0, limit, offset, providers,
       kpis: {
         count: allRows.length,
@@ -166,7 +179,13 @@ reportsRoutes.get('/withdrawal-sms', requireAnyPerm(['reports', 'advanced_analys
       },
       wallet_kpis: grouped((row) => row.confirmed_wallet_number ?? row.wallet_number ?? row.receiver_number),
       sender_kpis: grouped((row) => row.sender_name || row.sender_number || null),
-    })
+    }
+    withdrawalReportCache.set(cacheKey, { expires: Date.now() + WITHDRAWAL_REPORT_TTL_MS, body })
+    if (withdrawalReportCache.size > WITHDRAWAL_REPORT_CACHE_MAX) {
+      const oldest = withdrawalReportCache.keys().next().value
+      if (oldest) withdrawalReportCache.delete(oldest)
+    }
+    return c.json(body)
   } catch (error) {
     return c.json({ error: 'db_error', detail: (error as Error).message }, 500)
   }
