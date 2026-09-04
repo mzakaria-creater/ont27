@@ -477,6 +477,18 @@ deltaSyncRoutes.get('/delta-sync', async (c) => {
   return c.json({ ok: resultOk(results), mode: 'full', results, at: new Date().toISOString() }, resultOk(results) ? 200 : 502)
 })
 
+// v2 owns the decline sweep after the legacy bridge cutover. The SQL function
+// contains the any-wallet ±10 minute evidence guard; this endpoint only
+// invokes it under the cron secret and a short distributed lease.
+deltaSyncRoutes.get('/auto-decline', async (c) => {
+  const secret = process.env.CRON_SECRET
+  if (!secret || c.req.header('authorization') !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401)
+  if (!(await claimDistributedLease(50, 'provider_auto_decline_v2'))) return c.json({ ok: true, skipped: 'distributed_lease' })
+  const { data, error } = await db.rpc('sweep_auto_decline_stale_unmatched', { p_grace_minutes: null, p_score_threshold: null })
+  if (error) return c.json({ ok: false, error: error.message }, 502)
+  return c.json({ ok: true, results: data ?? [] , at: new Date().toISOString() })
+})
+
 // Piggyback trigger from the authed panel. Throttled per warm lambda; the
 // overlap-window upsert keeps concurrent runs idempotent.
 //
