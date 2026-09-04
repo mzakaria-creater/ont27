@@ -1,7 +1,7 @@
 import { db } from './db.js'
 
 type SmsRow = { id: number; trx_id: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; received_at: string | null; receiver_number: string | null; is_blocked?: boolean | null }
-type TxRow = { tx_id: number; guid: string | null; ontarget_ref: string | null; merchant_tx_reference: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; receiving_wallet: string | null; to_account_number: string | null; first_seen_at: string | null }
+type TxRow = { tx_id: number; guid: string | null; ontarget_ref: string | null; merchant_tx_reference: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; receiving_wallet: string | null; to_account_number: string | null; payment_method: string | null; first_seen_at: string | null }
 
 const PAGE = 1000
 const MAX_LINKS_PER_RUN = 250
@@ -41,7 +41,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
       .order('received_at', { ascending: false, nullsFirst: false })
       .limit(limit),
     db.from('maven_transactions')
-      .select('tx_id, guid, ontarget_ref, merchant_tx_reference, amount, sender_name, sender_number, receiving_wallet, to_account_number, first_seen_at')
+      .select('tx_id, guid, ontarget_ref, merchant_tx_reference, amount, sender_name, sender_number, receiving_wallet, to_account_number, payment_method, first_seen_at')
       .in('status', ['PENDING', 'PAID', 'APPROVED'])
       .order('first_seen_at', { ascending: false, nullsFirst: false })
       .limit(limit),
@@ -93,6 +93,14 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
       const txWallet = phone(tx.receiving_wallet ?? tx.to_account_number)
       if (!txWallet || txWallet !== smsWallet) return false
       if (smsPhone && phone(tx.sender_number) && phone(tx.sender_number) !== smsPhone) return false
+      const method = String(tx.payment_method ?? '').toLowerCase()
+      // Name-only SMS is intentionally narrow: it may be linked only when the
+      // client identity already has an Egyptian 010/012 number, or the method
+      // is InstaPay. A literal Maven sender name is never sufficient evidence.
+      const txPrefix = String(tx.sender_number ?? '').replace(/\D/g, '').slice(-11)
+      if (!smsPhone && !(/^01(?:0|2)/.test(txPrefix) || method.includes('insta'))) return false
+      // Orange Cash sender identities are 012-based when a number is present.
+      if (method.includes('orange') && smsPhone && !/^012/.test(String(sms.sender_number ?? '').replace(/\D/g, '').slice(-11))) return false
       if (!tx.first_seen_at || !sms.received_at) return false
       const delta = Math.abs(Date.parse(tx.first_seen_at) - Date.parse(sms.received_at))
       return Number.isFinite(delta) && delta <= (txByRef.has(ref(sms.trx_id)) ? MAX_TIME_DIFF_MS : FALLBACK_TIME_DIFF_MS)

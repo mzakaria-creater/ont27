@@ -136,18 +136,25 @@ extraRoutes.get(
     const pageRows = rows.slice(offset, offset + limit)
     const depositPhones = [...new Set(pageRows.filter((row) => row.kind === 'deposit').map((row) => String(row.sender_number ?? '').trim()).filter(Boolean))]
     const payoutPhones = [...new Set(pageRows.filter((row) => row.kind === 'payout').map((row) => String(row.mobile_no ?? '').trim()).filter(Boolean))]
-    const [depositHistory, payoutHistory] = await Promise.all([
+    const depositIds = pageRows.filter((row) => row.kind === 'deposit').map((row) => Number(row.tx_id)).filter(Number.isFinite)
+    const [depositHistory, payoutHistory, linkedSms] = await Promise.all([
       depositPhones.length ? db.from('maven_transactions').select('sender_number').in('sender_number', depositPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
       payoutPhones.length ? db.from('maven_payout_transactions').select('mobile_no').in('mobile_no', payoutPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
+      depositIds.length ? db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, received_at, amount, sender_name, sender_number, receiver_number, sms_first_line, raw_sms, message, device_name, sms_category, match_status, matched').or(`consumed_by_tx_id.in.(${depositIds.join(',')}),matched_transaction_id.in.(${depositIds.join(',')})`).order('received_at', { ascending: false, nullsFirst: false }).limit(2000) : Promise.resolve({ data: [], error: null }),
     ])
     const clientCounts = new Map<string, number>()
     for (const item of depositHistory.data ?? []) { const key = String(item.sender_number ?? '').trim(); if (key) clientCounts.set(key, (clientCounts.get(key) ?? 0) + 1) }
     for (const item of payoutHistory.data ?? []) { const key = String(item.mobile_no ?? '').trim(); if (key) clientCounts.set(key, (clientCounts.get(key) ?? 0) + 1) }
 
+    const smsByTx = new Map<number, Record<string, unknown>>()
+    for (const sms of (linkedSms.data ?? []) as Record<string, unknown>[]) {
+      const txId = Number(sms.consumed_by_tx_id ?? sms.matched_transaction_id)
+      if (Number.isFinite(txId) && !smsByTx.has(txId)) smsByTx.set(txId, sms)
+    }
     return c.json({
       rows: pageRows.map((row) => {
         const clientKey = String(row.kind === 'deposit' ? row.sender_number ?? '' : row.mobile_no ?? '').trim()
-        return { ...row, client_transaction_count: clientKey ? clientCounts.get(clientKey) ?? 1 : 1 }
+        return { ...row, client_transaction_count: clientKey ? clientCounts.get(clientKey) ?? 1 : 1, matched_sms: row.kind === 'deposit' ? smsByTx.get(Number(row.tx_id)) ?? null : null }
       }),
       total: (dep.count ?? 0) + (pay.count ?? 0),
       limit,

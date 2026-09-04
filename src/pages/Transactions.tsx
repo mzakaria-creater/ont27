@@ -50,6 +50,7 @@ interface TxRow {
   first_seen_at: string | null
   created_utc: string | null
   client_transaction_count?: number
+  matched_sms?: { id: number; received_at: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; receiver_number: string | null; device_name: string | null; sms_first_line: string | null; raw_sms: string | null; message: string | null; sms_category: string | null; match_status: string | null; matched: boolean | null } | null
 }
 
 interface ListResponse {
@@ -86,7 +87,13 @@ export default function Transactions() {
   useEffect(() => setQ(appliedQ), [appliedQ])
 
   const refreshTimer = useRef<number | null>(null)
+  const requestSeq = useRef(0)
+  const abortRef = useRef<AbortController | null>(null)
   const load = useCallback(async (silent = false) => {
+    const seq = ++requestSeq.current
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     if (!silent) setLoading(true)
     setErr(null)
     const search = new URLSearchParams({ limit: String(pageSize), offset: String((page - 1) * pageSize) })
@@ -95,9 +102,12 @@ export default function Transactions() {
     if (appliedQ) search.set('q', appliedQ)
     for (const [key, value] of Object.entries({ from, to, merchant, method, currency, min_amount: minAmount, max_amount: maxAmount })) if (value) search.set(key, value)
     try {
-      const next = await api<ListResponse>(`/api/transactions?${search}`)
+      const next = await api<ListResponse>(`/api/transactions?${search}`, { signal: controller.signal })
+      if (seq !== requestSeq.current) return
       setData((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next)
     } catch (e) {
+      if (controller.signal.aborted) return
+      if (seq !== requestSeq.current) return
       setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض المعاملات.', 'You do not have permission to view transactions.') : t('تعذّر تحميل المعاملات.', 'Failed to load transactions.'))
     } finally {
       setLoading(false)
@@ -120,6 +130,7 @@ export default function Transactions() {
       .subscribe()
     const syncIv = window.setInterval(() => { void syncProviders().then((changed) => { if (changed) schedule() }) }, 30_000)
     return () => {
+      abortRef.current?.abort()
       window.clearInterval(syncIv)
       if (refreshTimer.current != null) window.clearTimeout(refreshTimer.current)
       void supabase.removeChannel(channel)
@@ -263,7 +274,7 @@ export default function Transactions() {
                   const senderAccountName = r.kind === 'deposit' ? (r.sender_account_name ?? r.payment_method ?? party) : (r.account_name ?? party)
                   return (
                     <Fragment key={rowKey}>
-                      <tr key={rowKey} className={r.status === 'PENDING' ? 'row-pending' : undefined}>
+                      <tr key={rowKey} className={`${r.status === 'PENDING' ? 'row-pending ' : ''}${r.matched_sms ? `tx-pair-${Math.abs(Number(id ?? 0)) % 5}` : ''}`}>
                         <td><button type="button" className="tx-expand-btn" onClick={() => toggleExpanded(rowKey)} aria-expanded={isExpanded} aria-label={isExpanded ? t('إغلاق التفاصيل', 'Collapse details') : t('فتح التفاصيل', 'Expand details')}>{isExpanded ? <ChevronDown size={15}/> : <ChevronRight size={15}/>}</button></td>
                         <td><div className="portal-row-actions"><Link className="tx-action-primary" to={details}>{r.status === 'PENDING' ? <Pencil size={13}/> : <Eye size={13}/>}<span>{r.status === 'PENDING' ? t('تعديل', 'Edit') : t('عرض', 'View')}</span></Link>{id && <TransactionEditDialog txId={Number(id)} ontargetRef={r.ontarget_ref} status={r.status} amount={r.amount} currency={r.currency} gateway={r.gateway} onDone={() => void load()} />}{proofUrl && <button type="button" className="tx-proof-icon" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id) })} aria-label={t('عرض الإثبات', 'View proof')} title={t('عرض الإثبات', 'View proof')}><Image size={15}/></button>}</div></td>
                         <td className="mono"><Link className="transaction-cell-link" to={details}>{id}</Link>{r.ontarget_ref && String(r.ontarget_ref) !== String(id) && <div className="cell-sub mono">{r.ontarget_ref}</div>}{(r.merchant_reference ?? r.merchant_tx_reference) && <div className="cell-sub mono" title="NGPay merchant reference">{r.merchant_reference ?? r.merchant_tx_reference}</div>}</td>
@@ -276,6 +287,7 @@ export default function Transactions() {
                         <td className="mono"><Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(r.sender_account_number ?? clientPhone ?? '')}`}>{r.sender_account_number ?? clientPhone ?? '—'}</Link></td>
                         <td className="mono">{depositTime(r)}</td>
                       </tr>
+                      {r.matched_sms && <tr className={`tx-sms-raw-row tx-pair-${Math.abs(Number(id ?? 0)) % 5}`}><td colSpan={11}><div className="tx-sms-raw"><span className="tx-sms-label">📨 SMS</span><span className="mono">#{r.matched_sms.id}</span><span>{r.matched_sms.sender_name ?? r.matched_sms.sender_number ?? '—'} → {r.matched_sms.receiver_number ?? '—'}</span><span className="mono">{money(r.matched_sms.amount, r.currency ?? 'EGP')}</span><span className="mono">{r.matched_sms.received_at ? depositTime({ first_seen_at: r.matched_sms.received_at }) : '—'}</span><code>{r.matched_sms.raw_sms ?? r.matched_sms.message ?? r.matched_sms.sms_first_line ?? '—'}</code></div></td></tr>}
                       {isExpanded && <tr key={`${rowKey}-details`} className="tx-expanded-row"><td colSpan={11}><div className="tx-expanded-grid">
                         <div><span>{t('الطرف', 'Party')}</span><SenderIdentity name={party} phone={clientPhone} nameHref={party ? `/transactions?q=${encodeURIComponent(party)}` : undefined} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined}/></div>
                         <div><span>{t('المحفظة المستلمة', 'Receiving wallet')}</span>{wallet ? <Link className="mono transaction-cell-link" to={`/transactions?type=deposit&q=${encodeURIComponent(wallet)}`}>{wallet}</Link> : '—'}</div>
