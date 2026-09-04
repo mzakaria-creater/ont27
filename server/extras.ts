@@ -211,7 +211,7 @@ extraRoutes.get(
   '/approvals',
   requireAnyPerm(['approvals', 'approval-queue', 'my-queue', 'my-tasks', 'assigned_to_me'], 'can_view'),
   async (c) => {
-    const [dep, pay, historyRows] = await Promise.all([
+    const [dep, pay, historyRows, blacklistRows] = await Promise.all([
       db
         .from('maven_transactions')
         .select(APPROVAL_DEPOSIT_COLS)
@@ -230,10 +230,12 @@ extraRoutes.get(
         .in('status', ['PAID', 'APPROVED', 'DECLINED', 'PENDING'])
         .order('first_seen_at', { ascending: true, nullsFirst: false })
         .limit(50_000),
+      db.from('api_risk_blacklist').select('type,value').eq('type','phone').limit(10_000),
     ])
     if (dep.error) return c.json({ error: 'db_error', detail: dep.error.message }, 500)
     if (pay.error) return c.json({ error: 'db_error', detail: pay.error.message }, 500)
     if (historyRows.error) return c.json({ error: 'db_error', detail: historyRows.error.message }, 500)
+    if (blacklistRows.error) return c.json({ error: 'db_error', detail: blacklistRows.error.message }, 500)
     const deposits = (dep.data ?? []).map((row) => withSenderAccount(row))
     const txIds = deposits.map((row) => row.tx_id)
     // Classify from approved history, never from the placeholder sender name.
@@ -275,6 +277,14 @@ extraRoutes.get(
     const clientCounts = new Map<string, { paid: number; declined: number; pending: number }>()
     const walletCounts = new Map<string, { paid: number; declined: number; pending: number }>()
     const seenApproved = new Set<string>()
+    const blacklistedPhones = new Set((blacklistRows.data ?? []).map((r) => normalizePhone(r.value)).filter(Boolean))
+    const duplicateFor = (row: Record<string, unknown>) => {
+      const sender = normalizePhone(row.sender_number)
+      const amount = Number(row.amount)
+      const at = Date.parse(String(row.first_seen_at ?? ''))
+      if (!sender || !Number.isFinite(amount) || !Number.isFinite(at)) return false
+      return (historyRows.data ?? []).some((s) => normalizePhone(s.sender_number) === sender && Number(s.amount) === amount && (s.status === 'PAID' || s.status === 'APPROVED') && Number(s.first_seen_at ? Date.parse(String(s.first_seen_at)) : NaN) >= at - 30 * 60_000 && Number(s.first_seen_at ? Date.parse(String(s.first_seen_at)) : NaN) <= at + 30 * 60_000)
+    }
     const bump = (map: Map<string, { paid: number; declined: number; pending: number }>, key: string, status: string) => {
       if (!key) return
       const value = map.get(key) ?? { paid: 0, declined: 0, pending: 0 }
@@ -309,6 +319,8 @@ extraRoutes.get(
         wallet_status_counts: walletCounts.get(walletKey) ?? { paid: 0, declined: 0, pending: 0 },
         linked_sms: smsByTx.get(row.tx_id) ?? null,
         decision_context: reasonByTx.get(row.tx_id) ?? null,
+        blacklisted_sender: blacklistedPhones.has(senderKey),
+        duplicate_flag: duplicateFor(row as unknown as Record<string, unknown>),
       }
     }), payouts: pay.data ?? [] })
   },
