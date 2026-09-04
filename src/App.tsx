@@ -38,6 +38,7 @@ const BinanceP2PEgp = lazy(() => import('./pages/BinanceP2PEgp'))
 const BinanceP2PAds = lazy(() => import('./pages/BinanceP2PAds'))
 const OperationsArchive = lazy(() => import('./pages/OperationsArchive'))
 const WalletReport = lazy(() => import('./pages/WalletReport'))
+const WalletInvestigation = lazy(() => import('./pages/WalletInvestigation'))
 const WithdrawalSmsReport = lazy(() => import('./pages/WithdrawalSmsReport'))
 const Notifications = lazy(() => import('./pages/Notifications'))
 const TvScreen = lazy(() => import('./pages/TvScreen'))
@@ -387,6 +388,7 @@ export default function App() {
             <Route path="/binance/p2p-ads" element={<PageGate keys={['binance_p2p','treasury']}><BinanceP2PAds /></PageGate>} />
             <Route path="/operations-archive" element={<PageGate keys={['audit_log','audit-logs','transactions']}><OperationsArchive /></PageGate>} />
             <Route path="/wallet-report" element={<PageGate keys={['sms_live','wallets']}><WalletReport /></PageGate>} />
+            <Route path="/wallet-investigation" element={<PageGate keys={['sms_live','wallets']}><WalletInvestigation /></PageGate>} />
             <Route path="/withdrawal-sms-report" element={<PageGate keys={['reports','advanced_analysis','sms_live']}><WithdrawalSmsReport /></PageGate>} />
             <Route path="/admin" element={<PageGate keys={['settings','users','permissions']}><AdminPage /></PageGate>} />
             <Route path="/admin/*" element={<PageGate keys={['settings','users','permissions']}><AdminPage /></PageGate>} />

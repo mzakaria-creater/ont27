@@ -93,6 +93,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/airdroid', icon: '📱', labelAr: 'إدارة AirDroid', labelEn: 'AirDroid devices', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/devices', icon: '📲', labelAr: 'أسطول الأجهزة', labelEn: 'Device fleet', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/wallet-report', icon: '📊', labelAr: 'تقرير المحافظ', labelEn: 'Wallet report', keys: ['sms_live', 'wallets'], group: 'payments' },
+  { to: '/wallet-investigation', icon: '🔎', labelAr: 'تحقيق المحفظة', labelEn: 'Wallet investigation', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/withdrawal-sms-report', icon: '🧾', labelAr: 'تقرير SMS السحب', labelEn: 'Withdrawal SMS report', keys: ['reports', 'advanced_analysis', 'sms_live'], group: 'payments' },
   { to: '/wallet-movements', icon: '💱', labelAr: 'حركة المحافظ', labelEn: 'Wallet movements', keys: ['wallets', 'treasury', 'reports', 'sms_live'], group: 'payments' },
   { to: '/tv', icon: '🖥️', labelAr: 'شاشة TV', labelEn: 'TV screen', keys: ['sms_live'], group: 'overview' },

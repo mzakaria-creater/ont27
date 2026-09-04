@@ -429,6 +429,34 @@ extraRoutes.get('/wallet-report/:wallet', requireAnyPerm(['sms_live', 'wallets']
   return c.json({ wallet, sms: sms.data ?? [], transactions: txns.data ?? [] })
 })
 
+// Investigation view: one wallet's complete usage footprint grouped by
+// merchant, with last activity and status totals for quick operator review.
+extraRoutes.get('/wallet-investigation/:wallet', requireAnyPerm(['sms_live', 'wallets'], 'can_view'), async (c) => {
+  const wallet = c.req.param('wallet')
+  if (!/^\d{10,15}$/.test(wallet)) return c.json({ error: 'bad_wallet' }, 400)
+  const [txns, sms, mapping] = await Promise.all([
+    db.from('maven_transactions').select('tx_id, status, amount, merchant, master_merchant, sub_merchant, receiving_wallet, to_account_number, created_utc, modified_utc').or(`receiving_wallet.eq.${wallet},to_account_number.eq.${wallet}`).limit(20_000),
+    db.from('inbound_sms').select('id, amount, sms_category, received_at, matched, consumed_by_tx_id, receiver_number, wallet_number').or(`receiver_number.eq.${wallet},wallet_number.eq.${wallet},confirmed_wallet_number.eq.${wallet}`).limit(20_000),
+    db.from('wallet_device_map').select('to_account_number, provider, device, sim_slot, merchant, updated_at').eq('to_account_number', wallet).maybeSingle(),
+  ])
+  if (txns.error) return c.json({ error: 'db_error', detail: txns.error.message }, 500)
+  if (sms.error) return c.json({ error: 'db_error', detail: sms.error.message }, 500)
+  const rows = txns.data ?? []
+  const byMerchant = new Map<string, { merchant: string; master_merchant: string | null; sub_merchants: Set<string>; uses: number; paid: number; pending: number; declined: number; amount: number; last_used_at: string | null }>()
+  for (const row of rows) {
+    const key = String(row.merchant ?? row.master_merchant ?? 'Unassigned')
+    const item = byMerchant.get(key) ?? { merchant: key, master_merchant: row.master_merchant ?? null, sub_merchants: new Set<string>(), uses: 0, paid: 0, pending: 0, declined: 0, amount: 0, last_used_at: null }
+    if (row.sub_merchant) item.sub_merchants.add(String(row.sub_merchant))
+    item.uses++; item.amount += Number(row.amount ?? 0)
+    if (row.status === 'PAID') item.paid++; else if (row.status === 'PENDING') item.pending++; else if (row.status === 'DECLINED') item.declined++
+    const at = row.modified_utc ?? row.created_utc
+    if (at && (!item.last_used_at || String(at) > item.last_used_at)) item.last_used_at = String(at)
+    byMerchant.set(key, item)
+  }
+  const merchantRows = [...byMerchant.values()].map((row) => ({ ...row, sub_merchants: [...row.sub_merchants] })).sort((a, b) => String(b.last_used_at ?? '').localeCompare(String(a.last_used_at ?? '')))
+  return c.json({ wallet, mapping: mapping.data ?? null, summary: { transactions: rows.length, paid: rows.filter((r) => r.status === 'PAID').length, pending: rows.filter((r) => r.status === 'PENDING').length, declined: rows.filter((r) => r.status === 'DECLINED').length, amount: rows.reduce((sum, r) => sum + Number(r.amount ?? 0), 0), last_used_at: rows.map((r) => r.modified_utc ?? r.created_utc).filter(Boolean).sort().at(-1) ?? null, sms_count: (sms.data ?? []).length }, merchants: merchantRows, recent_transactions: rows.sort((a, b) => String(b.modified_utc ?? b.created_utc).localeCompare(String(a.modified_utc ?? a.created_utc))).slice(0, 100), recent_sms: (sms.data ?? []).sort((a, b) => String(b.received_at ?? '').localeCompare(String(a.received_at ?? ''))).slice(0, 100) })
+})
+
 // ---- CRM clients ----
 extraRoutes.get('/crm', requirePerm('client_crm', 'can_view'), async (c) => {
   const q = c.req.query('q')?.trim()
