@@ -28,6 +28,7 @@ import { webhookRoutes } from './webhooks.js'
 import { railwayApiRoutes } from './railwayApi.js'
 import { ticketRoutes } from './tickets.js'
 import { payoutRequestRoutes } from './payoutRequests.js'
+import { deviceRoutes } from './devices.js'
 
 export const app = new Hono().basePath('/api')
 
@@ -38,6 +39,7 @@ app.route('/links', linkRoutes)
 app.route('/deposits', depositRoutes)
 app.route('/payouts', payoutRoutes)
 app.route('/payout-requests', payoutRequestRoutes)
+app.route('/devices', deviceRoutes)
 app.route('/merchants', merchantRoutes)
 app.route('/wallets', walletRoutes)
 app.route('/sms', smsRoutes)

@@ -67,6 +67,7 @@ const WebhookCenter = lazy(() => import('./pages/WebhookCenter'))
 const PayoutRequests = lazy(() => import('./pages/PayoutRequests'))
 const TeamTasks = lazy(() => import('./pages/TeamTasks'))
 const OperatorHandbook = lazy(() => import('./pages/OperatorHandbook'))
+const Devices = lazy(() => import('./pages/Devices'))
 
 type Conn = 'wait' | 'ok' | 'bad'
 
@@ -400,6 +401,7 @@ export default function App() {
             <Route path="/replay-lab" element={<PageGate keys={['automation','sms_live','webhooks']}><ReplayLab /></PageGate>} />
             <Route path="/webhooks" element={<PageGate keys={['webhooks','developers']}><WebhookCenter /></PageGate>} />
             <Route path="/airdroid" element={<PageGate keys={['sms_live','wallets']}><AirDroid /></PageGate>} />
+            <Route path="/devices" element={<PageGate keys={['sms_live','wallets']}><Devices /></PageGate>} />
             <Route path="/ontarget-hub" element={<PageGate keys={['wallets','payouts','sms_live','treasury']}><TreasuryHub /></PageGate>} />
             <Route path="/hub" element={<PageGate keys={['wallets','payouts','sms_live','treasury']}><TreasuryHub /></PageGate>} />
           </Route>
