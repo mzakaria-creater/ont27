@@ -17,7 +17,7 @@ const DEPOSIT_COLS =
 const PAYOUT_COLS =
   'maven_id, ontarget_ref, status, amount, pay_by, merchant, account_name, mobile_no, agent_name, approved_by, image_url, first_seen_at, created_utc'
 
-function withSenderAccount<T extends Record<string, unknown>>(row: T): Omit<T, 'maven_raw_row'> & { sender_account_number: string | null; sender_account_name: string | null; user_email: string | null } {
+function withSenderAccount<T extends Record<string, unknown>>(row: T): Omit<T, 'maven_raw_row'> & { sender_account_number: string | null; sender_account_name: string | null; user_email: string | null; raw_preview: Record<string, unknown> | null } {
   const raw = row.maven_raw_row && typeof row.maven_raw_row === 'object' && !Array.isArray(row.maven_raw_row)
     ? row.maven_raw_row as Record<string, unknown>
     : null
@@ -28,6 +28,7 @@ function withSenderAccount<T extends Record<string, unknown>>(row: T): Omit<T, '
   const accountName = rawValue(['accountname', 'senderaccountname', 'bankaccountname'])
   const email = rawValue(['emailaddress', 'useremail', 'email'])
   const { maven_raw_row: _raw, ...safe } = row
+  const rawPreview = raw ? Object.fromEntries(['TransactionId','Status','Amount','Currency','PhoneNo','BankName','AccountNumber','Reference1','CreatedDateUTC','ModifiedDateUTC','SiteName','MerchantName','Gateway','iPayinfo'].filter((key) => raw[key] !== undefined).map((key) => [key, raw[key]])) : null
   const providerRef = rawValue(['reference1', 'merchantreference', 'merchantref'])
   const fallback = typeof row.sender_number === 'string' ? row.sender_number : null
   return {
@@ -36,6 +37,7 @@ function withSenderAccount<T extends Record<string, unknown>>(row: T): Omit<T, '
     sender_account_number: account == null ? fallback : String(account).trim() || fallback,
     sender_account_name: accountName == null ? null : String(accountName).trim() || null,
     user_email: email == null ? null : String(email).trim() || null,
+    raw_preview: rawPreview,
   }
 }
 
@@ -140,7 +142,7 @@ extraRoutes.get(
     const [depositHistory, payoutHistory, linkedSms] = await Promise.all([
       depositPhones.length ? db.from('maven_transactions').select('sender_number').in('sender_number', depositPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
       payoutPhones.length ? db.from('maven_payout_transactions').select('mobile_no').in('mobile_no', payoutPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
-      depositIds.length ? db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, received_at, amount, sender_name, sender_number, receiver_number, sms_first_line, raw_sms, message, device_name, sms_category, match_status, matched').or(`consumed_by_tx_id.in.(${depositIds.join(',')}),matched_transaction_id.in.(${depositIds.join(',')})`).order('received_at', { ascending: false, nullsFirst: false }).limit(2000) : Promise.resolve({ data: [], error: null }),
+      depositIds.length ? db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, received_at, amount, sender_name, sender_number, receiver_number, sms_first_line, raw_sms, raw_payload, message, device_name, sms_category, match_status, matched').or(`consumed_by_tx_id.in.(${depositIds.join(',')}),matched_transaction_id.in.(${depositIds.join(',')})`).order('received_at', { ascending: false, nullsFirst: false }).limit(2000) : Promise.resolve({ data: [], error: null }),
     ])
     const clientCounts = new Map<string, number>()
     for (const item of depositHistory.data ?? []) { const key = String(item.sender_number ?? '').trim(); if (key) clientCounts.set(key, (clientCounts.get(key) ?? 0) + 1) }
