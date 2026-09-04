@@ -432,14 +432,24 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
     console.error('risk alert producers failed:', e)
   }
 
-  try {
-    const autoDeclines = await executeRecordedAutoDeclines()
-    results['auto_declines_executed'] = autoDeclines.executed
-    results['auto_declines_failed'] = autoDeclines.failed
-    console.info('recorded auto-decline bridge completed', autoDeclines)
-  } catch (e) {
-    results['auto_declines_executed'] = `error: ${(e as Error).message}`
-    console.error('recorded auto-decline bridge failed:', e)
+  // Legacy auto-decline execution is disabled during the v2 cutover. The old
+  // bridge reads the legacy project's queue and could apply a decline before
+  // the v2 any-wallet-SMS guard has reviewed the evidence. Keep it opt-in for
+  // emergency rollback only; normal production runs leave these transactions
+  // pending until the v2 worker owns the queue.
+  if (process.env.ENABLE_LEGACY_AUTO_DECLINE_BRIDGE === 'true') {
+    try {
+      const autoDeclines = await executeRecordedAutoDeclines()
+      results['auto_declines_executed'] = autoDeclines.executed
+      results['auto_declines_failed'] = autoDeclines.failed
+      console.info('recorded legacy auto-decline bridge completed', autoDeclines)
+    } catch (e) {
+      results['auto_declines_executed'] = `error: ${(e as Error).message}`
+      console.error('recorded legacy auto-decline bridge failed:', e)
+    }
+  } else {
+    results['auto_declines_executed'] = 0
+    console.info('legacy auto-decline bridge disabled during v2 cutover')
   }
 
   return results
