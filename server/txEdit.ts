@@ -33,6 +33,7 @@ txEditRoutes.use('*', requireAuth)
 const DIRECT_STATUS_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin', 'operator_admin', 'operation_admin', 'operator'])
 const AMOUNT_EDIT_ROLES = new Set(['super_admin', 'owner', 'admin'])
 const EDITABLE_STATUSES = ['PENDING', 'PAID', 'DECLINED', 'EXPIRED', 'EXPIRED_LOCAL', 'UNDERPAID', 'APPROVED']
+const PROVIDER_STATUSES = new Set(['PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID', 'OVERPAID'])
 
 // Mina and Eslam, by label in telegram_chats. Resolved at send time rather
 // than hard-coding chat ids, so moving an account only touches that table.
@@ -184,7 +185,7 @@ async function applyEdit(
   const isProviderDecision =
     edit.status != null &&
     isNgPayGateway(tx) &&
-    (edit.status === 'PAID' || edit.status === 'DECLINED') &&
+    PROVIDER_STATUSES.has(edit.status) &&
     (currentStatus === 'PENDING' || (currentStatus === 'DECLINED' && edit.status === 'PAID'))
 
   if (isProviderDecision) {
