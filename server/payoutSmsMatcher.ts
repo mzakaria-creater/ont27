@@ -1,6 +1,6 @@
 import { db } from './db.js'
 
-type Candidate = { id: number; amount: number | null; receiver_number: string | null; received_at: string | null; consumed_by_tx_id: number | null; message?: string | null; sender_name?: string | null; notes?: string | null; manual_entry_note?: string | null }
+type Candidate = { id: number; amount: number | null; receiver_number: string | null; received_at: string | null; consumed_by_tx_id: number | null; matched?: boolean | null; message?: string | null; sender_name?: string | null; notes?: string | null; manual_entry_note?: string | null }
 type Payout = { maven_id: number; amount: number | null; mobile_no: string | null; first_seen_at: string | null }
 
 const phone = (value: string | null) => (value ?? '').replace(/\D/g, '').replace(/^20(?=1\d{9}$)/, '0')
@@ -13,7 +13,7 @@ export async function autoLinkWithdrawalSms(limit = 300) {
   const [{ data: payouts, error: payoutErr }, { data: messages, error: smsErr }] = await Promise.all([
     db.from('maven_payout_transactions').select('maven_id, amount, mobile_no, first_seen_at')
       .is('matched_sms_id', null).gte('first_seen_at', since).order('first_seen_at', { ascending: false }).limit(limit),
-    db.from('inbound_sms').select('id, amount, receiver_number, received_at, consumed_by_tx_id, message, sender_name, notes, manual_entry_note')
+    db.from('inbound_sms').select('id, amount, receiver_number, received_at, consumed_by_tx_id, matched, message, sender_name, notes, manual_entry_note')
       .eq('sms_category', 'withdrawal').gte('received_at', since)
       .order('received_at', { ascending: false }).limit(limit * 2),
   ])
@@ -68,7 +68,7 @@ export async function autoLinkWithdrawalSms(limit = 300) {
   // Deterministic fallback classification for withdrawal SMS that are not a
   // payout: only explicit USDT/expense wording is eligible. Ambiguous SMS stay
   // unlinked for an operator, so the matcher never invents a financial target.
-  const classified = ss.filter((sms) => sms.consumed_by_tx_id == null && !repairedPayouts.has(Number(sms.consumed_by_tx_id)))
+  const classified = ss.filter((sms) => sms.consumed_by_tx_id == null && !sms.matched && !repairedPayouts.has(Number(sms.consumed_by_tx_id)))
   for (const sms of classified) {
     const text = `${sms.message ?? ''} ${sms.notes ?? ''} ${sms.manual_entry_note ?? ''}`.toLowerCase()
     const usdt = /\busdt\b|tether|p2p\s*crypto|بينانس|تيثر/.test(text)
