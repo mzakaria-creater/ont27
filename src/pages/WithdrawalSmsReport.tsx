@@ -14,9 +14,11 @@ interface Row {
   matched_transaction_id: number | null; trx_id: string | null; trx_reference: string | null
   sender_name: string | null; sms_first_line: string | null
 }
+interface GroupKpi { key: string; label: string; count: number; amount: number; linked: number; unlinked: number; latest_balance: number | null }
 interface ReportData {
   rows: Row[]; total: number; limit: number; offset: number; providers: string[]
   kpis: { count: number; amount: number; linked: number; unlinked: number; coverage: number; wallets: number; with_balance: number }
+  wallet_kpis: GroupKpi[]; sender_kpis: GroupKpi[]
 }
 const dateValue = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
@@ -77,6 +79,10 @@ export default function WithdrawalSmsReport() {
       <div className="kpi-card"><div className="kpi-value">{k ? `${k.coverage.toFixed(1)}%` : '…'}</div><div className="kpi-label">{t('تغطية الربط', 'Match coverage')}</div></div>
       <div className="kpi-card"><div className="kpi-value">{k ? k.wallets.toLocaleString('en-US') : '…'}</div><div className="kpi-label">{t('محافظ نشطة', 'Active wallets')}</div></div>
     </section>
+    {data && <section className="withdrawal-group-kpis">
+      <div className="card withdrawal-group-card"><div className="recent-head"><h3>👛 {t('KPI حسب محفظة الاستلام','Receiver wallet KPIs')}</h3><span className="cell-sub">{data.wallet_kpis.length} {t('محفظة','wallets')}</span></div><div className="withdrawal-group-list">{data.wallet_kpis.slice(0,12).map((g)=><div className="withdrawal-group-row" key={g.key}><div><strong className="mono">{g.label}</strong><span className="cell-sub">{g.count} SMS · {g.linked} {t('مرتبطة','linked')} · {g.unlinked} {t('غير مرتبطة','unlinked')}</span></div><strong className="mono">{money(g.amount,'EGP')}</strong></div>)}{!data.wallet_kpis.length&&<span className="cell-sub">{t('لا توجد بيانات','No data')}</span>}</div></div>
+      <div className="card withdrawal-group-card"><div className="recent-head"><h3>👤 {t('KPI حسب المرسل','Sender KPIs')}</h3><span className="cell-sub">{data.sender_kpis.length} {t('مرسل','senders')}</span></div><div className="withdrawal-group-list">{data.sender_kpis.slice(0,12).map((g)=><div className="withdrawal-group-row" key={g.key}><div><strong>{g.label}</strong><span className="cell-sub">{g.count} SMS · {g.linked} {t('مرتبطة','linked')} · {g.unlinked} {t('غير مرتبطة','unlinked')}</span></div><strong className="mono">{money(g.amount,'EGP')}</strong></div>)}{!data.sender_kpis.length&&<span className="cell-sub">{t('لا توجد بيانات','No data')}</span>}</div></div>
+    </section>}
 
     <section className="card withdrawal-report-filters transaction-filter-toolbar">
       <div className="payout-filter-presets"><button className="btn-ghost btn-sm" onClick={() => applyPreset('today')}>{t('اليوم','Today')}</button><button className="btn-ghost btn-sm" onClick={() => applyPreset('week')}>{t('هذا الأسبوع','This week')}</button><button className="btn-ghost btn-sm" onClick={() => applyPreset('month')}>{t('هذا الشهر','This month')}</button></div>
