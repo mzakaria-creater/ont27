@@ -20,11 +20,18 @@ Deno.serve(async (req) => {
     const providerRows: any[] = [];
     for (const [windowFrom, windowTo] of dayWindows(from, to)) {
       let offset = 0;
+      let fetchedForWindow = 0;
+      let expectedForWindow = 0;
       while (true) {
         const page = await listTransactions(cookie, offset, windowFrom, windowTo);
+        expectedForWindow = Math.max(expectedForWindow, page.total);
+        fetchedForWindow += page.rows.length;
         providerRows.push(...page.rows);
         if (page.rows.length < 100) break;
         offset += 100;
+      }
+      if (expectedForWindow > 0 && fetchedForWindow !== expectedForWindow) {
+        throw new Error(`Maven completeness gap for ${windowFrom}: fetched ${fetchedForWindow}, expected ${expectedForWindow}`);
       }
     }
     const mapped = (await Promise.all(providerRows.map(async (r) => { const row = toDbRow(r); return row ? { ...row, row_hash: await sha256(r) } : null; }))).filter(Boolean) as any[];
