@@ -180,11 +180,12 @@ async function applyEdit(
   let localOnly = true
 
   // A status change that IS the deposit decision goes through the real worker.
+  const currentStatus = String(tx.status ?? '').toUpperCase()
   const isProviderDecision =
     edit.status != null &&
     isNgPayGateway(tx) &&
-    String(tx.status ?? '').toUpperCase() === 'PENDING' &&
-    (edit.status === 'PAID' || edit.status === 'DECLINED')
+    (edit.status === 'PAID' || edit.status === 'DECLINED') &&
+    (currentStatus === 'PENDING' || (currentStatus === 'DECLINED' && edit.status === 'PAID'))
 
   if (isProviderDecision) {
     const baseUrl = process.env.SUPABASE_URL
@@ -193,7 +194,14 @@ async function applyEdit(
     const res = await fetch(`${baseUrl}/functions/v1/ngpay-approve`, {
       method: 'POST',
       headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
-      body: JSON.stringify({ tx_id: txId, decision: edit.status, actor_name: actorName, remark: edit.reason }),
+      body: JSON.stringify({
+        tx_id: txId,
+        decision: edit.status,
+        actor_name: actorName,
+        remark: edit.reason,
+        source: currentStatus === 'DECLINED' && edit.status === 'PAID' ? 'direct_edit' : 'panel_decision',
+        allow_reversal: currentStatus === 'DECLINED' && edit.status === 'PAID',
+      }),
     })
     const out = await res.json().catch(() => ({ error: 'worker_invalid_response' })) as Record<string, unknown>
     if (!res.ok || out.executed_on_provider !== true) {
