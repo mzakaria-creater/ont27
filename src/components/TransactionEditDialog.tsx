@@ -15,7 +15,7 @@ export default function TransactionEditDialog({ txId, ontargetRef, status, amoun
   const { user } = useAuth(); const steward = DIRECT_STATUS_ROLES.has(user?.role ?? ''); const canEditAmount = new Set(['super_admin', 'owner', 'admin']).has(user?.role ?? '')
   const [open, setOpen] = useState(false); const [nextStatus, setNextStatus] = useState(''); const [nextAmount, setNextAmount] = useState(''); const [reason, setReason] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [done, setDone] = useState<string | null>(null)
   const changing = (nextStatus !== '' && nextStatus !== status) || (nextAmount !== '' && Number(nextAmount) !== Number(amount ?? 0))
-  const provider = changing && gateway === 'NagupayP2P' && status === 'PENDING' && (nextStatus === 'PAID' || nextStatus === 'DECLINED')
+  const provider = changing && gateway === 'NagupayP2P' && (status === 'PENDING' || (status === 'DECLINED' && nextStatus === 'PAID')) && (nextStatus === 'PAID' || nextStatus === 'DECLINED')
   const submit = async () => {
     if (!changing || !reason.trim()) return
     setBusy(true); setError(null); setDone(null)
