@@ -142,12 +142,13 @@ extraRoutes.get(
     const payoutPhones = [...new Set(pageRows.filter((row) => row.kind === 'payout').map((row) => String(row.mobile_no ?? '').trim()).filter(Boolean))]
     const depositIds = pageRows.filter((row) => row.kind === 'deposit').map((row) => Number(row.tx_id)).filter(Number.isFinite)
     const [depositHistory, payoutHistory, linkedSms] = await Promise.all([
-      depositPhones.length ? db.from('maven_transactions').select('sender_number').in('sender_number', depositPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
+      depositPhones.length ? db.from('maven_transactions').select('sender_number, status, first_seen_at').in('sender_number', depositPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
       payoutPhones.length ? db.from('maven_payout_transactions').select('mobile_no').in('mobile_no', payoutPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
       depositIds.length ? db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, received_at, amount, sender_name, sender_number, receiver_number, sms_first_line, raw_sms, raw_payload, message, device_name, sms_category, match_status, matched').or(`consumed_by_tx_id.in.(${depositIds.join(',')}),matched_transaction_id.in.(${depositIds.join(',')})`).order('received_at', { ascending: false, nullsFirst: false }).limit(2000) : Promise.resolve({ data: [], error: null }),
     ])
     const clientCounts = new Map<string, number>()
-    for (const item of depositHistory.data ?? []) { const key = String(item.sender_number ?? '').trim(); if (key) clientCounts.set(key, (clientCounts.get(key) ?? 0) + 1) }
+    const approvedHistory = new Map<string, { at: number; count: number }[]>()
+    for (const item of depositHistory.data ?? []) { const key = String(item.sender_number ?? '').trim(); if (key) { clientCounts.set(key, (clientCounts.get(key) ?? 0) + 1); if (item.status === 'PAID' || item.status === 'APPROVED') { const list = approvedHistory.get(key) ?? []; list.push({ at: Date.parse(String(item.first_seen_at ?? '')), count: 1 }); approvedHistory.set(key, list) } } }
     for (const item of payoutHistory.data ?? []) { const key = String(item.mobile_no ?? '').trim(); if (key) clientCounts.set(key, (clientCounts.get(key) ?? 0) + 1) }
 
     const smsByTx = new Map<number, Record<string, unknown>>()
@@ -158,7 +159,9 @@ extraRoutes.get(
     return c.json({
       rows: pageRows.map((row) => {
         const clientKey = String(row.kind === 'deposit' ? row.sender_number ?? '' : row.mobile_no ?? '').trim()
-        return { ...row, client_transaction_count: clientKey ? clientCounts.get(clientKey) ?? 1 : 1, matched_sms: row.kind === 'deposit' ? smsByTx.get(Number(row.tx_id)) ?? null : null }
+        const rowAt = Date.parse(String(row.first_seen_at ?? row.created_utc ?? ''))
+        const approved = row.kind === 'deposit' ? (approvedHistory.get(clientKey) ?? []).filter((item) => !Number.isFinite(rowAt) || !Number.isFinite(item.at) || item.at < rowAt).length : 0
+        return { ...row, client_transaction_count: clientKey ? clientCounts.get(clientKey) ?? 1 : 1, deposit_kind: row.kind === 'deposit' ? (approved > 0 ? 'retention_deposit' : 'first_deposit') : null, previous_approved_deposits: approved, matched_sms: row.kind === 'deposit' ? smsByTx.get(Number(row.tx_id)) ?? null : null }
       }),
       total: (dep.count ?? 0) + (pay.count ?? 0),
       limit,

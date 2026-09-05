@@ -63,13 +63,23 @@ adminRoutes.get('/transactions', requirePerm('transactions', 'can_view'), async 
     else if (state === 'DECLINED') acc.declined += 1
     return acc
   }, { volume: 0, pending: 0, paid: 0, declined: 0 })
-  const rows = (records.data ?? []).map((row) => {
+  const recordsRows = records.data ?? []
+  const phones = [...new Set(recordsRows.map((row) => String(row.sender_number ?? '').trim()).filter(Boolean))]
+  let approvedHistoryRows: { sender_number: string | null; status: string | null; first_seen_at: string | null }[] = []
+  if (phones.length) {
+    const { data: history } = await db.from('maven_transactions').select('sender_number, status, first_seen_at').in('sender_number', phones).in('status', ['PAID', 'APPROVED']).limit(10_000)
+    approvedHistoryRows = (history ?? []) as typeof approvedHistoryRows
+  }
+  const rows = recordsRows.map((row) => {
     const raw = row.maven_raw_row && typeof row.maven_raw_row === 'object' && !Array.isArray(row.maven_raw_row)
       ? row.maven_raw_row as Record<string, unknown>
       : null
     const account = raw ? Object.entries(raw).find(([key]) => key.replace(/[^a-z0-9]/gi, '').toLowerCase() === 'accountnumber')?.[1] : null
     const providerRef = raw ? Object.entries(raw).find(([key, value]) => key.replace(/[^a-z0-9]/gi, '').toLowerCase() === 'reference1' && value != null && String(value).trim())?.[1] : null
-    return { ...row, merchant_reference: providerRef == null ? null : String(providerRef).trim(), sender_account_number: account == null ? row.sender_number : String(account).trim() || row.sender_number }
+    const sender = String(row.sender_number ?? '').trim()
+    const at = Date.parse(String(row.first_seen_at ?? ''))
+    const prior = sender ? approvedHistoryRows.filter((item) => String(item.sender_number ?? '').trim() === sender && (!Number.isFinite(at) || !Number.isFinite(Date.parse(String(item.first_seen_at ?? ''))) || Date.parse(String(item.first_seen_at)) < at)).length : 0
+    return { ...row, merchant_reference: providerRef == null ? null : String(providerRef).trim(), sender_account_number: account == null ? row.sender_number : String(account).trim() || row.sender_number, deposit_kind: prior > 0 ? 'retention_deposit' : 'first_deposit', previous_approved_deposits: prior }
   })
   return c.json({ rows, total: records.count ?? 0, summary, limit, offset })
 })

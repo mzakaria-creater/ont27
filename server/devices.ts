@@ -10,19 +10,22 @@ const validDevice = (value: unknown) => typeof value === 'string' && /^ont(?:[1-
 const clean = (value: unknown, max = 240) => typeof value === 'string' ? value.trim().slice(0, max) || null : null
 
 deviceRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
-  const [registry, status, sms] = await Promise.all([
+  const [registry, status, sms, walletRows] = await Promise.all([
     db.from('device_registry').select('device, label, sim_number, sim_provider, sms_webhook, active, notes, updated_at').order('device'),
     db.from('device_status').select('device, sim_slot, sim_number, operator, battery, charging, net_type, online, balance, balance_at, last_seen_at').order('device'),
     db.from('inbound_sms').select('id, device_name, amount, sms_category, sender_name, receiver_number, received_at, matched, consumed_by_tx_id, message').order('received_at', { ascending: false, nullsFirst: false }).limit(250),
+    db.from('wallet_device_map').select('to_account_number, device, sim_slot, provider, merchant').order('to_account_number').limit(2000),
   ])
   if (registry.error && !/device_registry/i.test(registry.error.message)) return c.json({ error: 'db_error', detail: registry.error.message }, 500)
   if (status.error) return c.json({ error: 'db_error', detail: status.error.message }, 500)
   if (sms.error) return c.json({ error: 'db_error', detail: sms.error.message }, 500)
+  if (walletRows.error) return c.json({ error: 'db_error', detail: walletRows.error.message }, 500)
   const rows = (registry.data ?? []).map((item) => {
     const telemetry = (status.data ?? []).find((row) => row.device === item.device)
+    const mappedWallets = (walletRows.data ?? []).filter((row) => row.device === item.device || (row.device == null && telemetry?.sim_slot != null && row.sim_slot === telemetry.sim_slot)).map((row) => ({ wallet_number: row.to_account_number, sim_slot: row.sim_slot, provider: row.provider, merchant: row.merchant }))
     const messages = (sms.data ?? []).filter((row) => row.device_name === item.device)
     const today = messages.filter((row) => row.received_at && new Date(row.received_at).toDateString() === new Date().toDateString())
-    return { ...item, telemetry: telemetry ?? null, sms_count_24h: messages.filter((row) => row.received_at && Date.now() - Date.parse(row.received_at) < 86_400_000).length, sms_today: today.length, received_today: today.reduce((sum, row) => sum + (Number(row.amount) || 0), 0) }
+    return { ...item, telemetry: telemetry ?? null, wallet_numbers: mappedWallets, sms_count_24h: messages.filter((row) => row.received_at && Date.now() - Date.parse(row.received_at) < 86_400_000).length, sms_today: today.length, received_today: today.reduce((sum, row) => sum + (Number(row.amount) || 0), 0) }
   })
   return c.json({ devices: rows, sms: sms.data ?? [] })
 })

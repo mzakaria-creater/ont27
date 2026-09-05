@@ -39,7 +39,7 @@ const PROVIDER_STATUSES = new Set(['PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID', '
 // than hard-coding chat ids, so moving an account only touches that table.
 const APPROVER_LABEL_PREFIXES = ['Mina', 'Eslam']
 
-const TX_COLS = 'tx_id, ontarget_ref, status, amount, currency, gateway, master_merchant, sender_name, maven_raw_row'
+const TX_COLS = 'tx_id, ontarget_ref, status, amount, currency, gateway, master_merchant, sender_name, sender_number, receiving_wallet, to_account_number, maven_raw_row'
 
 function isNgPayGateway(tx: Record<string, unknown>): boolean {
   const raw = tx.maven_raw_row && typeof tx.maven_raw_row === 'object' && !Array.isArray(tx.maven_raw_row)
@@ -52,6 +52,11 @@ interface EditInput {
   status: string | null
   amount: number | null
   reason: string
+  receiving_wallet: string | null
+  sender_name: string | null
+  sender_number: string | null
+  user_email: string | null
+  sender_account_name: string | null
 }
 
 function readEdit(body: unknown): EditInput | { error: string } {
@@ -73,8 +78,17 @@ function readEdit(body: unknown): EditInput | { error: string } {
     amount = n
   }
 
-  if (status == null && amount == null) return { error: 'nothing_to_change' }
-  return { status, amount, reason }
+  const textField = (key: string, max = 180) => {
+    if (b[key] == null || b[key] === '') return null
+    return typeof b[key] === 'string' ? b[key].trim().slice(0, max) || null : null
+  }
+  const receiving_wallet = textField('receiving_wallet', 40)
+  const sender_name = textField('sender_name', 120)
+  const sender_number = textField('sender_number', 40)
+  const user_email = textField('user_email', 180)
+  const sender_account_name = textField('sender_account_name', 120)
+  if (status == null && amount == null && !receiving_wallet && !sender_name && !sender_number && !user_email && !sender_account_name) return { error: 'nothing_to_change' }
+  return { status, amount, reason, receiving_wallet, sender_name, sender_number, user_email, sender_account_name }
 }
 
 async function loadTx(txId: number) {
@@ -227,6 +241,23 @@ async function applyEdit(
 
   if (edit.amount != null) patch.amount = edit.amount
 
+  const raw = tx.maven_raw_row && typeof tx.maven_raw_row === 'object' && !Array.isArray(tx.maven_raw_row)
+    ? { ...(tx.maven_raw_row as Record<string, unknown>) } : {}
+  const rawBefore = { ...raw }
+  if (edit.receiving_wallet != null) {
+    patch.receiving_wallet = edit.receiving_wallet
+    patch.to_account_number = edit.receiving_wallet
+    raw.BankWalletNumber = edit.receiving_wallet
+    raw.AccountNumber = edit.receiving_wallet
+    raw.ToBankAccountNumber = edit.receiving_wallet
+  }
+  if (edit.sender_name != null) { patch.sender_name = edit.sender_name; raw.FirstName = edit.sender_name; raw.AccountName = edit.sender_name }
+  if (edit.sender_number != null) { patch.sender_number = edit.sender_number; raw.PhoneNo = edit.sender_number }
+  if (edit.user_email != null) raw.EmailAddress = edit.user_email
+  if (edit.sender_account_name != null) { raw.SenderAccountName = edit.sender_account_name; raw.BankAccountName = edit.sender_account_name }
+  const rawChanged = JSON.stringify(raw) !== JSON.stringify(rawBefore)
+  if (rawChanged) patch.maven_raw_row = raw
+
   if (Object.keys(patch).length) {
     patch.updated_at = new Date().toISOString()
     const { error } = await db.from('maven_transactions').update(patch).eq('tx_id', txId)
@@ -240,10 +271,16 @@ async function applyEdit(
     action: 'transaction.edit',
     entity: 'maven_transactions',
     entity_id: String(txId),
-    before: { status: tx.status, amount: tx.amount },
+    before: { status: tx.status, amount: tx.amount, receiving_wallet: tx.receiving_wallet ?? tx.to_account_number, sender_name: tx.sender_name, sender_number: tx.sender_number, maven_raw_row: rawBefore },
     after: {
       status: edit.status ?? tx.status,
       amount: edit.amount ?? tx.amount,
+      receiving_wallet: edit.receiving_wallet ?? tx.receiving_wallet ?? tx.to_account_number,
+      sender_name: edit.sender_name ?? tx.sender_name,
+      sender_number: edit.sender_number ?? tx.sender_number,
+      user_email: edit.user_email,
+      sender_account_name: edit.sender_account_name,
+      maven_raw_row: rawChanged ? raw : undefined,
       reason: edit.reason,
       source,
       // The single most important field here: whether the provider was told.
@@ -357,7 +394,48 @@ txEditRoutes.get('/edit-requests', async (c) => {
   if (status) q = q.eq('status', status)
   const { data, error } = await q
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  return c.json({ rows: data ?? [], canDecide: DIRECT_STATUS_ROLES.has(c.get('actor').role) })
+  const rows = data ?? []
+  const txIds = rows.map((r) => Number(r.tx_id)).filter(Number.isFinite)
+  const txMap = new Map<number, Record<string, unknown>>()
+  const smsMap = new Map<number, Record<string, unknown>>()
+  if (txIds.length) {
+    const [{ data: txRows }, { data: smsRows }] = await Promise.all([
+      db.from('maven_transactions').select('tx_id, status, amount, currency, sender_name, sender_number, receiving_wallet, to_account_number, created_utc, modified_utc, first_seen_at, master_merchant, merchant, maven_raw_row').in('tx_id', txIds),
+      db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, received_at, amount, sender_name, sender_number, receiver_number, sms_first_line, match_status, matched').or(`consumed_by_tx_id.in.(${txIds.join(',')}),matched_transaction_id.in.(${txIds.join(',')})`).order('received_at', { ascending: false }),
+    ])
+    for (const row of txRows ?? []) txMap.set(Number(row.tx_id), row as Record<string, unknown>)
+    for (const row of smsRows ?? []) {
+      const txId = Number(row.consumed_by_tx_id ?? row.matched_transaction_id)
+      if (Number.isFinite(txId) && !smsMap.has(txId)) smsMap.set(txId, row as Record<string, unknown>)
+    }
+  }
+  const normalize = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
+  const phones = [...new Set([...txMap.values()].map((r) => String(r.sender_number ?? '').trim()).filter(Boolean))]
+  const approved = new Map<string, number>()
+  if (phones.length) {
+    const { data: paid } = await db.from('maven_transactions').select('sender_number').in('sender_number', phones).in('status', ['PAID', 'APPROVED']).limit(10_000)
+    for (const row of paid ?? []) { const key = normalize(row.sender_number); if (key) approved.set(key, (approved.get(key) ?? 0) + 1) }
+  }
+  return c.json({ rows: rows.map((request) => {
+    const tx = txMap.get(Number(request.tx_id)) ?? {}
+    const previous = Math.max(0, (approved.get(normalize(tx.sender_number)) ?? 0) - (String(tx.status).toUpperCase() === 'PAID' || String(tx.status).toUpperCase() === 'APPROVED' ? 1 : 0))
+    return {
+      ...request,
+      tx_status: tx.status ?? request.current_status,
+      tx_amount: tx.amount ?? request.current_amount,
+      currency: tx.currency ?? 'EGP',
+      created_utc: tx.created_utc ?? tx.first_seen_at ?? request.created_at,
+      modified_utc: tx.modified_utc ?? null,
+      sender_name: tx.sender_name ?? null,
+      sender_number: tx.sender_number ?? null,
+      receiving_wallet: tx.receiving_wallet ?? tx.to_account_number ?? null,
+      merchant: tx.merchant ?? null,
+      master_merchant: tx.master_merchant ?? null,
+      deposit_kind: previous > 0 ? 'retention_deposit' : 'first_deposit',
+      previous_approved_deposits: previous,
+      matched_sms: smsMap.get(Number(request.tx_id)) ?? null,
+    }
+  }), canDecide: DIRECT_STATUS_ROLES.has(c.get('actor').role) })
 })
 
 // ---- Approve / reject a request ----
@@ -395,7 +473,7 @@ txEditRoutes.post('/edit-requests/:id/decision', async (c) => {
 
   const result = await applyEdit(
     tx as Record<string, unknown>,
-    { status: req.requested_status, amount: req.requested_amount, reason: req.reason },
+    { status: req.requested_status, amount: req.requested_amount, reason: req.reason, receiving_wallet: null, sender_name: null, sender_number: null, user_email: null, sender_account_name: null },
     actor.username,
     actor.sub,
     `edit_request:${id}`,

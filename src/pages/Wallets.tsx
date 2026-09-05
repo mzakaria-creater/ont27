@@ -117,6 +117,12 @@ export default function Wallets() {
     catch (e) { setWalletMessage(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية استيراد المحافظ.', 'You do not have permission to import wallets.') : t('فشل استيراد المحافظ الحية.', 'Live wallet import failed.')) }
     finally { setWalletBusy(false) }
   }
+  const importAllLegacyWallets = async () => {
+    setWalletBusy(true); setWalletMessage(null)
+    try { const res = await api<{ imported: number; source_count: number }>('/api/wallets/sync-all', { method: 'POST' }); await refreshWallets(); setWalletMessage(t(`تمت قراءة ${res.source_count} محفظة قديمة وإضافة ${res.imported} محفظة جديدة.`, `Read ${res.source_count} legacy wallets and added ${res.imported} new wallets.`)) }
+    catch (e) { setWalletMessage(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية استيراد المحافظ.', 'You do not have permission to import wallets.') : t('فشل استيراد المحافظ القديمة.', 'Legacy wallet import failed.')) }
+    finally { setWalletBusy(false) }
+  }
   const createWallet = async (event: React.FormEvent) => {
     event.preventDefault(); setWalletBusy(true); setWalletMessage(null)
     try { await api('/api/wallets', { method: 'POST', body: JSON.stringify(newWallet) }); await refreshWallets(); setNewWallet({ wallet_number: '', provider: 'Orange Money', merchant: '', daily_limit: '' }); setWalletMessage(t('تمت إضافة المحفظة.', 'Wallet added.')) }
@@ -306,7 +312,7 @@ export default function Wallets() {
       </div>
 
       {can('wallets', 'can_create') && <section className="card wallet-admin-tools">
-        <div className="recent-head"><div><h3>{t('إضافة وإدارة محافظ الهاتف', 'Add & manage phone wallets')}</h3><p className="cell-sub">{t('استيراد المحافظ النشطة من OnTarget أو إضافة رقم جديد يدوياً.', 'Import active wallets from OnTarget or add a new phone wallet manually.')}</p></div><button className="btn-ghost btn-sm" type="button" onClick={() => void importLiveWallets()} disabled={walletBusy}>{walletBusy ? t('جارٍ التحديث…', 'Syncing…') : t('↻ استيراد المحافظ الحية', '↻ Import live wallets')}</button></div>
+        <div className="recent-head"><div><h3>{t('إضافة وإدارة محافظ الهاتف', 'Add & manage phone wallets')}</h3><p className="cell-sub">{t('استيراد المحافظ النشطة أو كل أرقام المحافظ القديمة من OnTarget.', 'Import active wallets or every legacy wallet number from OnTarget.')}</p></div><div className="page-actions"><button className="btn-ghost btn-sm" type="button" onClick={() => void importLiveWallets()} disabled={walletBusy}>{walletBusy ? t('جارٍ التحديث…', 'Syncing…') : t('↻ استيراد المحافظ الحية', '↻ Import live wallets')}</button><button className="btn-ghost btn-sm" type="button" onClick={() => void importAllLegacyWallets()} disabled={walletBusy}>↻ {t('كل المحافظ القديمة', 'All legacy wallets')}</button></div></div>
         <form className="wallet-create-form" onSubmit={(event) => void createWallet(event)}>
           <input className="login-input" required inputMode="tel" placeholder={t('رقم المحفظة', 'Wallet phone number')} value={newWallet.wallet_number} onChange={(e) => setNewWallet({ ...newWallet, wallet_number: e.target.value })} />
           <select className="login-input" value={newWallet.provider} onChange={(e) => setNewWallet({ ...newWallet, provider: e.target.value })}><option>Orange Money</option><option>Vodafone Cash</option><option>Etisalat Cash</option><option>WE Pay</option><option>InstaPay</option></select>

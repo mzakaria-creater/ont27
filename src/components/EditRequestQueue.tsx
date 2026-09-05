@@ -20,6 +20,19 @@ interface EditRequest {
   requested_by: string
   requested_by_role: string
   created_at: string
+  tx_status?: string | null
+  tx_amount?: number | null
+  currency?: string | null
+  created_utc?: string | null
+  modified_utc?: string | null
+  sender_name?: string | null
+  sender_number?: string | null
+  receiving_wallet?: string | null
+  merchant?: string | null
+  master_merchant?: string | null
+  deposit_kind?: 'first_deposit' | 'retention_deposit' | null
+  previous_approved_deposits?: number | null
+  matched_sms?: { id: number; received_at: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; receiver_number: string | null; sms_first_line: string | null; match_status: string | null } | null
 }
 
 export default function EditRequestQueue() {
@@ -28,6 +41,9 @@ export default function EditRequestQueue() {
   const [canDecide, setCanDecide] = useState(false)
   const [busy, setBusy] = useState<number | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [editRow, setEditRow] = useState<EditRequest | null>(null)
+  const [editForm, setEditForm] = useState({ receiving_wallet: '', sender_name: '', sender_number: '', user_email: '', sender_account_name: '', reason: '' })
+  const [editBusy, setEditBusy] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -56,6 +72,24 @@ export default function EditRequestQueue() {
     }
   }
 
+  const openRawEdit = (row: EditRequest) => {
+    setEditRow(row)
+    setEditForm({ receiving_wallet: row.receiving_wallet ?? '', sender_name: row.sender_name ?? '', sender_number: row.sender_number ?? '', user_email: '', sender_account_name: '', reason: '' })
+    setErr(null)
+  }
+
+  const saveRawEdit = async () => {
+    if (!editRow || !editForm.reason.trim()) { setErr(t('أدخل سبب التعديل قبل الحفظ.', 'Enter a reason before saving.')); return }
+    setEditBusy(true)
+    try {
+      await api(`/api/tx/${editRow.tx_id}/edit`, { method: 'POST', body: JSON.stringify(editForm) })
+      setEditRow(null)
+      await load()
+    } catch {
+      setErr(t('تعذّر حفظ تفاصيل المعاملة.', 'Could not save transaction details.'))
+    } finally { setEditBusy(false) }
+  }
+
   if (rows.length === 0) return null
 
   return (
@@ -70,7 +104,8 @@ export default function EditRequestQueue() {
           <thead>
             <tr>
               <th>{t('المرجع', 'Ref')}</th><th>{t('المطلوب', 'Requested')}</th>
-              <th>{t('السبب', 'Reason')}</th><th>{t('مقدّم الطلب', 'Requested by')}</th>
+              <th>{t('المبلغ / الوقت / الحالة', 'Amount / time / status')}</th><th>{t('SMS', 'SMS')}</th>
+              <th>{t('النوع', 'Type')}</th><th>{t('السبب', 'Reason')}</th><th>{t('مقدّم الطلب', 'Requested by')}</th>
               <th>{canDecide ? t('قرار', 'Decision') : ''}</th>
             </tr>
           </thead>
@@ -94,6 +129,15 @@ export default function EditRequestQueue() {
                     </div>
                   )}
                 </td>
+                <td>
+                  <b className="mono">{money(r.tx_amount ?? r.current_amount, r.currency ?? 'EGP')}</b>
+                  <div className="cell-sub mono">{r.created_utc ? new Date(r.created_utc).toLocaleString() : '—'}</div>
+                  <span className="pay-status-badge st-pending">{r.tx_status ?? r.current_status ?? '—'}</span>
+                </td>
+                <td>
+                  {r.matched_sms ? <><span className="pay-status-badge st-paid">✓ #{r.matched_sms.id}</span><div className="cell-sub mono">{r.matched_sms.received_at ? new Date(r.matched_sms.received_at).toLocaleString() : '—'}</div></> : <span className="pay-status-badge st-dim">Unlinked</span>}
+                </td>
+                <td><span className={`deposit-kind ${r.deposit_kind === 'retention_deposit' ? 'is-retention' : 'is-first'}`}>{r.deposit_kind === 'retention_deposit' ? `↻ Retention${r.previous_approved_deposits ? ` · ${r.previous_approved_deposits}` : ''}` : '★ First'}</span></td>
                 <td>{r.reason}</td>
                 <td>{r.requested_by}<div className="cell-sub">{r.requested_by_role}</div></td>
                 <td>
@@ -105,6 +149,9 @@ export default function EditRequestQueue() {
                       <button className="btn-ghost danger btn-sm" disabled={busy !== null} onClick={() => void decide(r.id, 'reject')}>
                         ❌ {t('ارفض', 'Reject')}
                       </button>
+                      <button className="btn-ghost btn-sm" disabled={busy !== null} onClick={() => openRawEdit(r)}>
+                        ✏️ {t('تعديل التفاصيل', 'Edit details')}
+                      </button>
                     </div>
                   )}
                 </td>
@@ -113,6 +160,23 @@ export default function EditRequestQueue() {
           </tbody>
         </table>
       </div>
+      {editRow && (
+        <div className="modal-backdrop" onClick={() => setEditRow(null)}>
+          <div className="card edit-request-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="recent-head"><h3>✏️ {t('تعديل بيانات المعاملة', 'Edit transaction details')}</h3><button className="icon-btn" onClick={() => setEditRow(null)}>×</button></div>
+            <p className="page-sub mono">{editRow.ontarget_ref ?? editRow.tx_id} · {money(editRow.tx_amount ?? editRow.current_amount, editRow.currency ?? 'EGP')}</p>
+            <div className="form-grid two-col">
+              <label>{t('المحفظة المستلمة', 'Receiving wallet')}<input value={editForm.receiving_wallet} onChange={(e) => setEditForm((v) => ({ ...v, receiving_wallet: e.target.value }))} /></label>
+              <label>{t('اسم المرسل', 'Sender name')}<input value={editForm.sender_name} onChange={(e) => setEditForm((v) => ({ ...v, sender_name: e.target.value }))} /></label>
+              <label>{t('رقم المرسل', 'Sender number')}<input value={editForm.sender_number} onChange={(e) => setEditForm((v) => ({ ...v, sender_number: e.target.value }))} /></label>
+              <label>{t('اسم حساب المرسل', 'Sender account name')}<input value={editForm.sender_account_name} onChange={(e) => setEditForm((v) => ({ ...v, sender_account_name: e.target.value }))} /></label>
+              <label>{t('بريد المستخدم', 'User email')}<input value={editForm.user_email} onChange={(e) => setEditForm((v) => ({ ...v, user_email: e.target.value }))} /></label>
+              <label className="full-span">{t('سبب التعديل (إلزامي)', 'Reason (required)')}<textarea value={editForm.reason} onChange={(e) => setEditForm((v) => ({ ...v, reason: e.target.value }))} rows={3} /></label>
+            </div>
+            <div className="row-actions modal-actions"><button className="btn-ghost" onClick={() => setEditRow(null)}>{t('إلغاء', 'Cancel')}</button><button className="btn-primary" disabled={editBusy} onClick={() => void saveRawEdit()}>{editBusy ? '⏳' : '💾'} {t('حفظ مع سجل تدقيق', 'Save with audit')}</button></div>
+          </div>
+        </div>
+      )}
     </section>
   )
 }

@@ -71,6 +71,34 @@ walletRoutes.post('/sync-live', requirePerm('wallets', 'can_edit'), async (c) =>
   return c.json({ ok: true, imported: wallets.length, source_count: rows.length })
 })
 
+// One-time/full migration from the legacy wallet map. Unlike sync-live, this
+// includes retired and manually assigned numbers too; existing v2 rows are
+// never overwritten so operator device/SIM assignments remain authoritative.
+walletRoutes.post('/sync-all', requirePerm('wallets', 'can_edit'), async (c) => {
+  const old = oldDb()
+  if (!old) return c.json({ error: 'old_db_not_configured' }, 503)
+  const { data, error } = await old.from('wallet_device_map').select('to_account_number, device, provider, payment_type, merchant, sim_slot, daily_limit, confidence, auto_inferred').limit(20_000)
+  if (error) return c.json({ error: 'legacy_wallet_lookup_failed', detail: error.message }, 502)
+  const rows = (data ?? []).map((row) => ({
+    to_account_number: String(row.to_account_number ?? '').replace(/\D/g, '').slice(-20),
+    device: typeof row.device === 'string' ? row.device : null,
+    provider: typeof row.provider === 'string' ? row.provider : 'Mobile Wallet',
+    payment_type: typeof row.payment_type === 'string' ? row.payment_type : 'Mobile Wallet',
+    merchant: typeof row.merchant === 'string' ? row.merchant : null,
+    sim_slot: Number.isInteger(row.sim_slot) ? row.sim_slot : null,
+    daily_limit: Number.isFinite(Number(row.daily_limit)) ? Number(row.daily_limit) : null,
+    confidence: Number.isFinite(Number(row.confidence)) ? Number(row.confidence) : 100,
+    auto_inferred: row.auto_inferred !== false,
+    updated_at: new Date().toISOString(),
+  })).filter((row) => /^\d{8,20}$/.test(row.to_account_number))
+  if (!rows.length) return c.json({ ok: true, source_count: data?.length ?? 0, imported: 0 })
+  const result = await db.from('wallet_device_map').upsert(rows, { onConflict: 'to_account_number', ignoreDuplicates: true })
+  if (result.error) return c.json({ error: 'wallet_import_failed', detail: result.error.message }, 400)
+  const actor = c.get('actor')
+  await db.from('audit_log').insert({ actor_type: 'panel_user', actor_id: actor.sub, actor_name: actor.username, action: 'wallets.sync_all_legacy', entity: 'wallet_device_map', entity_id: 'bulk', after: { source_count: data?.length ?? 0, valid_rows: rows.length } })
+  return c.json({ ok: true, source_count: data?.length ?? 0, imported: rows.length })
+})
+
 // Add a phone wallet manually. Device assignment is optional and can be
 // configured later, so a new wallet can be used immediately for visibility.
 walletRoutes.post('/', requirePerm('wallets', 'can_create'), async (c) => {
