@@ -352,8 +352,11 @@ async function depositDetail(c: Context<AuthEnv>, txId: string) {
   ].sort((a, b) => Date.parse(String(b.at ?? '')) - Date.parse(String(a.at ?? '')))
 
   const raw = data.maven_raw_row && typeof data.maven_raw_row === 'object' ? data.maven_raw_row : null
+  const phoneKey = String(data.sender_number ?? '').replace(/\D/g, '').slice(-10)
+  const { data: blocked } = phoneKey ? await db.from('api_risk_blacklist').select('value').eq('type', 'phone').limit(10_000) : { data: [] as { value: string }[] }
+  const isBlacklisted = (blocked ?? []).some((row) => String(row.value ?? '').replace(/\D/g, '').slice(-10) === phoneKey)
   return c.json({
-    deposit: { ...data, raw, merchant_reference: providerReference(data as unknown as Record<string, unknown>) }, sms: smsMatch, client, history,
+    deposit: { ...data, raw, is_blacklisted: isBlacklisted, merchant_reference: providerReference(data as unknown as Record<string, unknown>) }, sms: smsMatch, client, history,
     provider: { review: reviewRows[0] ?? null, jobs: jobRows, events: providerRows },
   })
 }

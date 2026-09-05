@@ -29,6 +29,7 @@ interface ClientRow {
   is_vip: boolean | null
   is_repeat_client: boolean | null
   needs_review: boolean | null
+  is_blacklisted?: boolean
 }
 
 interface CrmSummary { clients: number; approvedVolume: number; transactions: number; vip: number; repeat: number; review: number; risk: number }
@@ -96,6 +97,11 @@ export default function Crm() {
     try { const result = await api<{ removed: number }>('/api/risk/blacklist/unblock-client', { method: 'POST', body: JSON.stringify({ value: phone }) }); setErr(t(`تم رفع الحظر (${result.removed} سجل).`, `Client unblocked (${result.removed} entries).`)) }
     catch (e) { setErr(e instanceof ApiError ? e.message : t('تعذّر رفع الحظر.', 'Could not unblock client.')) }
   }
+  const block = async (phone: string) => {
+    if (!window.confirm(t('حظر هذا العميل؟', 'Block this client?'))) return
+    try { await api('/api/risk/blacklist', { method: 'POST', body: JSON.stringify({ type: 'phone', value: phone, reason: 'Blocked from CRM' }) }); await load() }
+    catch (e) { setErr(e instanceof ApiError ? e.message : t('تعذّر حظر العميل.', 'Could not block client.')) }
+  }
 
   return (
     <PanelShell>
@@ -155,7 +161,7 @@ export default function Crm() {
                   <footer className="crm-account-actions">
                   <button className="btn-ghost btn-sm" onClick={() => void openDetail(r.id)}>{t('ملخص سريع', 'Quick details')}</button>
                   {phone ? <Link className="btn-primary btn-sm" to={`/client/${encodeURIComponent(phone)}`}>{t('فتح الحساب وكل TRX', 'Open account & all TRX')}</Link> : <button className="btn-primary btn-sm" disabled>{t('لا يوجد رقم', 'No phone')}</button>}
-                  {phone && canUnblock && <button className="btn-ghost btn-sm" onClick={() => void unblock(phone)}>{t('رفع الحظر', 'Unblock')}</button>}
+                  {phone && canUnblock && (r.is_blacklisted ? <button className="btn-ghost btn-sm" onClick={() => void unblock(phone)}>{t('رفع الحظر', 'Unblock')}</button> : <button className="btn-ghost danger btn-sm" onClick={() => void block(phone)}>{t('حظر', 'Block')}</button>)}
                 </footer>
               </article>
             })}
@@ -187,7 +193,7 @@ export default function Crm() {
                   {detail.client.is_repeat_client && <span className="pay-status-badge st-dim">{t('عميل متكرر', 'Repeat client')}</span>}
                 </div>
                 {(detail.client.phone_no || detail.client.normalized_phone) && <Link className="btn-primary btn-sm" to={`/client?phone=${encodeURIComponent(detail.client.normalized_phone ?? detail.client.phone_no ?? '')}`}>{t('فتح السجل التشغيلي الكامل', 'Open full operational history')}</Link>}
-                {(detail.client.phone_no || detail.client.normalized_phone) && <button className="btn-ghost btn-sm" onClick={() => void unblock(detail.client.normalized_phone ?? detail.client.phone_no ?? '')}>{t('رفع الحظر عن العميل', 'Unblock client')}</button>}
+                {(detail.client.phone_no || detail.client.normalized_phone) && canUnblock && (detail.client.is_blacklisted ? <button className="btn-ghost btn-sm" onClick={() => void unblock(detail.client.normalized_phone ?? detail.client.phone_no ?? '')}>{t('رفع الحظر عن العميل', 'Unblock client')}</button> : <button className="btn-ghost danger btn-sm" onClick={() => void block(detail.client.normalized_phone ?? detail.client.phone_no ?? '')}>{t('حظر العميل', 'Block client')}</button>)}
                 <dl className="txd-grid">
                   <dt>{t('الموبايل', 'Phone')}</dt><dd className="mono">{detail.client.phone_no ?? detail.client.normalized_phone ?? '—'}</dd>
                   <dt>{t('البريد', 'Email')}</dt><dd className="mono">{detail.client.email_address ?? '—'}</dd>

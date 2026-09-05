@@ -496,7 +496,11 @@ extraRoutes.get('/crm', requirePerm('client_crm', 'can_view'), async (c) => {
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   if (summaryRows.error) return c.json({ error: 'db_error', detail: summaryRows.error.message }, 500)
   const all = summaryRows.data ?? []
-  return c.json({ rows: data ?? [], total: count ?? 0, limit, offset, summary: {
+  const crmRows = data ?? []
+  const phones = crmRows.map((row) => String(row.normalized_phone ?? row.phone_no ?? '').replace(/\D/g, '').slice(-10)).filter(Boolean)
+  const { data: blockedRows } = phones.length ? await db.from('api_risk_blacklist').select('value').eq('type', 'phone') : { data: [] as { value: string }[] }
+  const blocked = new Set((blockedRows ?? []).map((row) => String(row.value ?? '').replace(/\D/g, '').slice(-10)))
+  return c.json({ rows: crmRows.map((row) => ({ ...row, is_blacklisted: blocked.has(String(row.normalized_phone ?? row.phone_no ?? '').replace(/\D/g, '').slice(-10)) })), total: count ?? 0, limit, offset, summary: {
     clients: all.length,
     approvedVolume: all.reduce((sum, row) => sum + Number(row.approved_deposit ?? 0), 0),
     transactions: all.reduce((sum, row) => sum + Number(row.total_transactions ?? 0), 0),
@@ -518,6 +522,9 @@ extraRoutes.get('/crm/:id', requirePerm('client_crm', 'can_view'), async (c) => 
     .maybeSingle()
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   if (!client) return c.json({ error: 'not_found' }, 404)
+  const clientPhoneKey = String(client.normalized_phone ?? client.phone_no ?? '').replace(/\D/g, '').slice(-10)
+  const { data: blockedClient } = clientPhoneKey ? await db.from('api_risk_blacklist').select('value').eq('type', 'phone').limit(10_000) : { data: [] as { value: string }[] }
+  const isBlacklisted = (blockedClient ?? []).some((row) => String(row.value ?? '').replace(/\D/g, '').slice(-10) === clientPhoneKey)
 
   const phones = [client.phone_no, client.normalized_phone].filter(Boolean) as string[]
   let txns: unknown[] = []
@@ -530,7 +537,7 @@ extraRoutes.get('/crm/:id', requirePerm('client_crm', 'can_view'), async (c) => 
       .limit(50)
     txns = rows ?? []
   }
-  return c.json({ client, transactions: txns })
+  return c.json({ client: { ...client, is_blacklisted: isBlacklisted }, transactions: txns })
 })
 
 // ---- CRM: the whole customer, keyed on their phone number ----

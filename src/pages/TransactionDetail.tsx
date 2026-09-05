@@ -60,7 +60,7 @@ interface ProviderDiagnostics {
 }
 
 interface DetailResponse {
-  deposit: DepositDetail & { raw?: Record<string, unknown> | null; email?: string | null }
+  deposit: DepositDetail & { raw?: Record<string, unknown> | null; email?: string | null; is_blacklisted?: boolean }
   sms: MatchedSms | null
   client: ClientHistory | null
   history: HistoryEvent[]
@@ -206,7 +206,7 @@ export default function TransactionDetail() {
                       <Pencil size={15} aria-hidden="true" /> {t('تعديل', 'Edit')}
                     </a>
                   )}
-                  {canUnblock && d.sender_number && <button className="btn-ghost btn-sm" onClick={() => void unblockClient()}>🚫 {t('رفع حظر العميل', 'Unblock client')}</button>}
+                  {canUnblock && d.sender_number && (d.is_blacklisted ? <button className="btn-ghost btn-sm" onClick={() => void unblockClient()}>🚫 {t('رفع حظر العميل', 'Unblock client')}</button> : <button className="btn-ghost danger btn-sm" onClick={async () => { if (window.confirm(t('حظر هذا العميل؟','Block this client?'))) { await api('/api/risk/blacklist', { method: 'POST', body: JSON.stringify({ type: 'phone', value: d.sender_number, reason: 'Blocked from transaction detail' }) }); void load() } }}>🚫 {t('حظر العميل', 'Block client')}</button>)}
                   {masterChip(d.master_merchant)}
                   <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
                 </div>
