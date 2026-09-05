@@ -2381,10 +2381,32 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .admin-trx-filter { justify-content: flex-start; }
 .admin-trx-filter .analytics-filter-search { min-width: min(100%, 320px); }
 .admin-trx-card { padding: 0; overflow: hidden; }
-.admin-trx-table { min-width: 2100px; font-size: 11px; }
-.admin-trx-table th { position: sticky; top: 0; z-index: 2; background: var(--surface); }
-.admin-trx-table th, .admin-trx-table td { border-inline-end: 1px solid var(--border-soft); border-block-end: 1px solid var(--border-soft); vertical-align: middle; }
-.admin-trx-actions { display: flex; flex-wrap: wrap; gap: 4px; min-width: 190px; }
+.admin-trx-table-wrap { max-height: calc(100vh - 345px); min-height: 320px; overscroll-behavior: contain; scrollbar-color: var(--accent) var(--surface); }
+.admin-trx-table { width: 100%; min-width: 1840px; table-layout: fixed; font-size: 10.5px; }
+.admin-trx-table th { position: sticky; top: 0; z-index: 2; background: color-mix(in srgb, var(--surface) 88%, var(--accent) 12%); color: var(--text); font-size: 10px; letter-spacing: .02em; }
+.admin-trx-table th, .admin-trx-table td { padding: 8px 7px; border-inline-end: 1px solid var(--border-soft); border-block-end: 1px solid var(--border-soft); vertical-align: middle; overflow-wrap: anywhere; }
+.admin-trx-table th:nth-child(1) { width: 190px; }
+.admin-trx-table th:nth-child(2) { width: 112px; }
+.admin-trx-table th:nth-child(3) { width: 110px; }
+.admin-trx-table th:nth-child(4) { width: 88px; }
+.admin-trx-table th:nth-child(5) { width: 120px; }
+.admin-trx-table th:nth-child(6) { width: 100px; }
+.admin-trx-table th:nth-child(7) { width: 160px; }
+.admin-trx-table th:nth-child(8) { width: 140px; }
+.admin-trx-table th:nth-child(9) { width: 145px; }
+.admin-trx-table th:nth-child(10) { width: 145px; }
+.admin-trx-table th:nth-child(11), .admin-trx-table th:nth-child(12) { width: 145px; }
+.admin-trx-table th:nth-child(13) { width: 120px; }
+.admin-trx-table th:nth-child(14) { width: 135px; }
+.admin-trx-table th:nth-child(15) { width: 125px; }
+.admin-trx-table th:nth-child(16) { width: 125px; }
+.admin-trx-table th:nth-child(17) { width: 90px; }
+.admin-trx-table th:nth-child(18) { width: 75px; }
+.admin-trx-table tbody tr:not(.admin-trx-extra-row):nth-child(even) td { background: color-mix(in srgb, var(--surface) 91%, var(--hover-2) 9%); }
+.admin-trx-table tbody tr:not(.admin-trx-extra-row):hover td { background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
+.admin-trx-table tr.row-pending td { background: color-mix(in srgb, var(--status-pending) 10%, var(--surface)); border-block-color: var(--amber-border); }
+.admin-trx-actions { display: flex; flex-wrap: wrap; gap: 4px; min-width: 176px; }
+.admin-trx-actions .btn-sm { min-height: 28px; padding: 4px 7px; font-size: 10px; }
 .admin-trx-extra-row td { padding: 14px; background: var(--hover); }
 .admin-trx-extra-row dl { display: grid; grid-template-columns: repeat(7,minmax(140px,1fr)); gap: 12px; margin: 0; }
 .admin-trx-extra-row dt { color: var(--text-dim); font-size: 10px; }
@@ -2397,6 +2419,13 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 :root[data-theme='light'] .admin-trx-table tr.row-pending td { background: #fff8e7; }
 :root[data-theme='light'] .admin-trx-table tr.row-pending:hover td { background: #fff1c7; }
 :root[data-theme='light'] .admin-trx-extra-row td { background: #edf4ff; border-block-end: 2px solid #9db6d8; }
+:root[data-theme='dark'] .admin-trx-card { border-color: #2b3442; background: #0d1015; box-shadow: 0 18px 48px rgba(0,0,0,.32); }
+:root[data-theme='dark'] .admin-trx-table th { background: #182231; color: #f4f7fb; border-color: #34465d; }
+:root[data-theme='dark'] .admin-trx-table td { border-color: #202a38; }
+:root[data-theme='dark'] .admin-trx-table tbody tr:not(.admin-trx-extra-row):nth-child(even) td { background: #111821; }
+:root[data-theme='dark'] .admin-trx-table tbody tr:not(.admin-trx-extra-row):hover td { background: #1b2a3c; }
+:root[data-theme='dark'] .admin-trx-table tr.row-pending td { background: #2a2114; border-color: #725529; }
+:root[data-theme='dark'] .admin-trx-extra-row td { background: #151d2a; border-block-end-color: #365171; }
 
 /* Rebuilt payment-link workspace */
 .payment-links-page { max-inline-size: 1440px; }
