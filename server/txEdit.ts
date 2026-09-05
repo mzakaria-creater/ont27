@@ -20,10 +20,13 @@ import type { AuthEnv } from './rbac.js'
 //    The provider is not told. These are recorded with local_only: true and a
 //    mandatory reason so they are never mistaken for a provider action.
 //
-// Amounts are never pushed to the provider from here at all. UpdateTransaction
-// does take an amount, but re-pricing a transaction upstream is a materially
-// different and riskier action than approving one, and nobody has asked for
-// it.
+// 2026-09-05: amounts CAN now be pushed to the provider, but only alongside a
+// status that Maven will accept them with. Maven refuses PAID at an amount
+// other than the one it holds — a short payment is UNDERPAID there and settles
+// at the lower figure — so an amount change rides along with a provider status
+// change and is verified against Maven afterwards. An amount edited on its own,
+// or on a transaction the provider is not deciding, stays a LOCAL correction
+// exactly as before.
 
 export const txEditRoutes = new Hono<AuthEnv>()
 
@@ -31,7 +34,10 @@ txEditRoutes.use('*', requireAuth)
 
 // "Operator admin" is stored as operations_admin in panel_users.
 const DIRECT_STATUS_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin', 'operator_admin', 'operation_admin', 'operator'])
-const AMOUNT_EDIT_ROLES = new Set(['super_admin', 'owner', 'admin'])
+// Operator-admins can now re-price too. Plain 'operator' is deliberately NOT
+// here: it holds direct status editing, and widening it to amounts as well
+// would turn a routine approve/decline seat into a re-pricing seat.
+const AMOUNT_EDIT_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin', 'operator_admin', 'operation_admin'])
 const EDITABLE_STATUSES = ['PENDING', 'PAID', 'DECLINED', 'EXPIRED', 'EXPIRED_LOCAL', 'UNDERPAID', 'APPROVED']
 const PROVIDER_STATUSES = new Set(['PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID', 'OVERPAID'])
 
@@ -192,6 +198,9 @@ async function applyEdit(
   const txId = Number(tx.tx_id)
   const patch: Record<string, unknown> = {}
   let executed: boolean | undefined
+  // Whether the provider actually took the new amount, as opposed to merely
+  // accepting the status. Only the worker can answer that.
+  let amountSyncedToProvider = false
   let localOnly = true
 
   // A status change that IS the deposit decision goes through the real worker.
@@ -216,6 +225,11 @@ async function applyEdit(
         remark: edit.reason,
         source: currentStatus === 'DECLINED' && edit.status === 'PAID' ? 'direct_edit' : 'panel_decision',
         allow_reversal: currentStatus === 'DECLINED' && edit.status === 'PAID',
+        // Ride the amount along so the provider and our row agree. The worker
+        // verifies the new figure against Maven after the update and fails the
+        // whole call if it did not take, so a local amount can never drift
+        // ahead of the provider's.
+        ...(edit.amount != null ? { override_amount: edit.amount } : {}),
       }),
     })
     const out = await res.json().catch(() => ({ error: 'worker_invalid_response' })) as Record<string, unknown>
@@ -224,6 +238,7 @@ async function applyEdit(
     }
     executed = true
     localOnly = false
+    amountSyncedToProvider = out.amount_synced === true
     // The worker already verified Maven. Mirror the confirmed result locally
     // now so the queue does not wait for a later provider sync repaint.
     const mirrorNow = new Date().toISOString()
@@ -232,6 +247,8 @@ async function applyEdit(
       approved_by: actorName,
       last_status_change: mirrorNow,
       updated_at: mirrorNow,
+      // Mirror the amount only when the worker confirmed Maven took it.
+      ...(amountSyncedToProvider ? { amount: edit.amount } : {}),
     }).eq('tx_id', txId).eq('status', 'PENDING')
     if (mirrorErr) console.error('provider edit mirror update failed', { txId, error: mirrorErr.message })
   } else if (edit.status != null) {
@@ -239,7 +256,9 @@ async function applyEdit(
     patch.last_status_change = new Date().toISOString()
   }
 
-  if (edit.amount != null) patch.amount = edit.amount
+  // Skip when the provider path already wrote the verified figure — patching it
+  // again here would be harmless but would hide which write is authoritative.
+  if (edit.amount != null && !amountSyncedToProvider) patch.amount = edit.amount
 
   const raw = tx.maven_raw_row && typeof tx.maven_raw_row === 'object' && !Array.isArray(tx.maven_raw_row)
     ? { ...(tx.maven_raw_row as Record<string, unknown>) } : {}
@@ -286,6 +305,10 @@ async function applyEdit(
       // The single most important field here: whether the provider was told.
       local_only: localOnly,
       executed_on_provider: executed ?? false,
+      // And, separately, whether the AMOUNT reached the provider. A status can
+      // execute upstream while the re-price stays local, and the trail has to
+      // distinguish those two rather than imply one from the other.
+      amount_synced_to_provider: edit.amount != null ? amountSyncedToProvider : undefined,
     },
   })
 

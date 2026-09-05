@@ -1697,6 +1697,22 @@ a.stat-card:hover { border-color: var(--accent); }
   .sidebar:not(:hover):not(:focus-within) .nav-group-chevron,
   .sidebar:not(:hover):not(:focus-within) .sidebar-hint { display: initial; }
   .sidebar:not(:hover):not(:focus-within) .sidebar-item { justify-content: flex-start; padding-inline: 10px; }
+  /* The labels above never actually came back on a phone. The desktop collapse
+     rule is `.sidebar:not(.pinned):not(:hover):not(:focus-within) …`, which
+     scores (0,6,1); the override right above omits `:not(.pinned)` and so
+     scores (0,5,1) — one class lower — and a media query adds no specificity of
+     its own. A touch device never fires :hover, so the drawer sat permanently
+     in the collapsed state and the desktop rule kept every label at
+     display:none: icons only, no text.
+     Repeating the selector verbatim makes the two tie, and this block comes
+     later in the file, so the labels win. The unpinned-agnostic rules above are
+     kept so a pinned drawer is completely unaffected. */
+  .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-item > span:not(.sidebar-icon),
+  .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-count,
+  .sidebar:not(.pinned):not(:hover):not(:focus-within) .nav-group-name,
+  .sidebar:not(.pinned):not(:hover):not(:focus-within) .nav-group-chevron,
+  .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-hint { display: initial; }
+  .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-item { justify-content: flex-start; padding-inline: 10px; }
   .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-search-wrap { flex: 1; justify-content: flex-start; padding: 0 9px; border-color: var(--border); background: color-mix(in srgb,var(--bg) 72%,transparent); }
   .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-search-wrap input,
   .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-search-wrap button,

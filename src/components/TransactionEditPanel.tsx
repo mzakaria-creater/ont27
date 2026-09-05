@@ -15,9 +15,18 @@ import { Pencil, Save, Send, X } from 'lucide-react'
 // two cases are genuinely different and confusing them is how undocumented
 // divergence gets created:
 //   · NGPay + still PENDING + target PAID/DECLINED → real execution on Maven.
-//   · anything else, and every amount change → local correction only.
+//   · an amount change riding along with such a status change → the new figure
+//     goes to Maven too and is verified there before we mirror it locally.
+//   · anything else → local correction only.
+//
+// Maven refuses PAID at an amount other than the one it holds; a short payment
+// is UNDERPAID there. So re-pricing to PAID is rejected by the worker, and the
+// panel says which status to use instead rather than failing opaquely.
 
-const STEWARD_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin'])
+// Mirrors AMOUNT_EDIT_ROLES in server/txEdit.ts. The server is the authority —
+// this only decides whether the direct-edit surface is offered, so a mismatch
+// shows the wrong affordance rather than granting anything.
+const STEWARD_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin', 'operator_admin', 'operation_admin'])
 
 interface Props {
   txId: number
@@ -87,8 +96,15 @@ export default function TransactionEditPanel({
     } catch (e) {
       if (e instanceof ApiError && e.code === 'steward_role_required') {
         setErr(t('هذا التعديل يحتاج دور مسؤول.', 'This edit requires a steward role.'))
+      } else if (e instanceof ApiError && e.code === 'amount_edit_requires_admin') {
+        setErr(t('تعديل المبلغ يحتاج دور مسؤول أو مسؤول عمليات.', 'Editing the amount requires an admin or operations-admin role.'))
       } else if (e instanceof ApiError && e.code === 'worker_failed') {
-        setErr(t('فشل التنفيذ على المزوّد — لم يتغيّر شيء.', 'Provider execution failed — nothing changed.'))
+        // The worker refuses PAID at a new amount because Maven does; saying so
+        // beats a generic failure the operator cannot act on.
+        const detail = (e.body?.detail as Record<string, unknown> | undefined)?.error
+        setErr(detail === 'amount_change_requires_underpaid'
+          ? t('المزوّد لا يقبل PAID بمبلغ مختلف — استخدم UNDERPAID للمبلغ الأقل.', 'The provider rejects PAID at a different amount — use UNDERPAID to settle at the lower figure.')
+          : t('فشل التنفيذ على المزوّد — لم يتغيّر شيء.', 'Provider execution failed — nothing changed.'))
       } else {
         setErr(t('تعذّر تنفيذ الطلب.', 'The request could not be completed.'))
       }
