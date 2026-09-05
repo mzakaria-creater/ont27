@@ -8,6 +8,7 @@ import DepositCard from '../components/DepositCard'
 import type { CardAction } from '../components/DepositCard'
 import { api, ApiError } from '../lib/api'
 import { useBulk } from '../lib/useBulk'
+import { useDecisionReason } from '../lib/useDecisionReason'
 import { useLocale } from '../lib/locale'
 import MethodLogo from '../components/MethodLogo'
 import { depositTime, merchantChipCls, money, statusMeta } from '../lib/deposits'
@@ -162,15 +163,37 @@ export default function Deposits() {
     }
   }
 
-  // Which card/row is mid-flight, and for which action — the card layout shows
-  // "جارٍ التنفيذ…" on the exact button that was pressed and disables the rest,
-  // which is the fix for operators double-clicking Approve during the (real,
-  // multi-second) provider round-trip.
-  const [rowBusy, setRowBusy] = useState<{ id: number; action: CardAction } | null>(null)
+  // Which rows are mid-flight, and for which action — the card layout shows
+  // "جارٍ التنفيذ…" on the exact button that was pressed.
+  //
+  // A map, not a single row, and that is the point. ngpay-approve takes 5.3s at
+  // the median and 6.7s at p95 (159 calls measured) because it really talks to
+  // the provider. With one global lock an operator could not even begin the
+  // next transaction during those seconds, so a queue of twenty cost nearly two
+  // minutes of pure waiting. Decisions on different rows share nothing — the
+  // provider call is per tx_id — so they may overlap. A row still locks itself
+  // against a double-click.
+  const [inFlight, setInFlight] = useState<Map<number, CardAction>>(new Map())
+  const markInFlight = (id: number, action: CardAction | null) =>
+    setInFlight((prev) => {
+      const next = new Map(prev)
+      if (action) next.set(id, action)
+      else next.delete(id)
+      return next
+    })
   const [proofUrl, setProofUrl] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [retryLocked, setRetryLocked] = useState(false)
   const bulk = useBulk((id) => `/api/deposits/${id}/decision`, () => void load())
+  const { prompt, node: reasonModal } = useDecisionReason()
+
+  // One reason for the whole selection — see the note on useBulk.
+  const bulkWithReason = async (action: 'approve' | 'decline') => {
+    const n = bulk.selected.size
+    if (!n) return
+    const reason = await prompt(action, t(`${n} معاملة محدَّدة`, `${n} selected transactions`))
+    if (reason) await bulk.run(action, reason)
+  }
 
   // The deposits list had no auto-refresh at all: an operator watching this page
   // never saw a new transaction until they reloaded by hand. Refresh every 30s,
@@ -180,11 +203,11 @@ export default function Deposits() {
   // captured in `load`, so a refresh keeps whatever the operator is looking at.
   useEffect(() => {
     const iv = setInterval(() => {
-      if (rowBusy || decisionBusy || selected || bulk.selected.size > 0) return
+      if (inFlight.size > 0 || decisionBusy || selected || bulk.selected.size > 0) return
       void load()
     }, 30_000)
     return () => clearInterval(iv)
-  }, [load, rowBusy, decisionBusy, selected, bulk.selected.size])
+  }, [load, inFlight, decisionBusy, selected, bulk.selected.size])
   const armRetryCooldown = (ms: number) => {
     setRetryLocked(true)
     setTimeout(() => setRetryLocked(false), ms)
@@ -200,6 +223,9 @@ export default function Deposits() {
   function describeDecisionError(e: unknown): string {
     if (e instanceof ApiError) {
       if (e.code === 'not_pending') return 'حالة الإيداع اتغيّرت بالفعل — أعد التحميل.'
+      // The panel always sends a reason now, so this only surfaces if an older
+      // cached build is still open in a tab. Say what to do, not just "failed".
+      if (e.code === 'reason_required') return 'القرار يحتاج سبباً — حدّث الصفحة ثم أعد المحاولة.'
       if (e.status === 403) return 'لا تملك صلاحية الاعتماد (can_approve غير ممنوحة لدورك).'
       if (e.code === 'worker_failed') {
         const providerMsg = (e.body?.worker as Record<string, unknown> | undefined)?.error
@@ -210,14 +236,16 @@ export default function Deposits() {
   }
 
   const quickDecide = async (txId: number, action: 'approve' | 'decline') => {
-    if (rowBusy) return
-    setRowBusy({ id: txId, action })
+    if (inFlight.has(txId)) return
+    const reason = await prompt(action, t(`المعاملة ${txId}`, `Transaction ${txId}`))
+    if (!reason) return
+    markInFlight(txId, action)
     setErr(null)
     setNotice(null)
     try {
       await api(`/api/deposits/${txId}/decision`, {
         method: 'POST',
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, note: reason }),
       })
       void load()
     } catch (e) {
@@ -225,7 +253,7 @@ export default function Deposits() {
       if (e instanceof ApiError && e.code === 'not_pending') void load()
       else armRetryCooldown(RETRY_COOLDOWN_MS)
     } finally {
-      setRowBusy(null)
+      markInFlight(txId, null)
     }
   }
 
@@ -234,9 +262,9 @@ export default function Deposits() {
   // backend logic; a number that is already blocked comes back as 409.
   const blockSender = async (row: DepositRow) => {
     const value = row.sender_number?.trim()
-    if (!value || rowBusy) return
+    if (!value || inFlight.has(row.tx_id)) return
     if (!window.confirm(t(`حظر الرقم ${value} نهائياً؟`, `Block ${value} permanently?`))) return
-    setRowBusy({ id: row.tx_id, action: 'block' })
+    markInFlight(row.tx_id, 'block')
     setErr(null)
     setNotice(null)
     try {
@@ -254,7 +282,7 @@ export default function Deposits() {
       else if (e instanceof ApiError && e.status === 403) setErr(t('لا تملك صلاحية الحظر (can_edit على صفحات المخاطر).', 'You lack blocking permission (can_edit on a risk page).'))
       else setErr(t('تعذّر إضافة الرقم للقائمة السوداء.', 'Could not add the number to the blacklist.'))
     } finally {
-      setRowBusy(null)
+      markInFlight(row.tx_id, null)
     }
   }
 
@@ -262,12 +290,14 @@ export default function Deposits() {
 
   const decide = async (action: 'approve' | 'decline') => {
     if (!selected) return
+    const reason = await prompt(action, t(`المعاملة ${selected.ontarget_ref ?? selected.tx_id}`, `Transaction ${selected.ontarget_ref ?? selected.tx_id}`))
+    if (!reason) return
     setDecisionBusy(true)
     setDecisionErr(null)
     try {
       await api(`/api/deposits/${selected.tx_id}/decision`, {
         method: 'POST',
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, note: reason }),
       })
       setSelected(null)
       void load()
@@ -283,6 +313,7 @@ export default function Deposits() {
 
   return (
     <PanelShell>
+      {reasonModal}
       <section className="page-head">
         <h2>💰 الإيداعات</h2>
         <p className="page-sub">
@@ -389,10 +420,10 @@ export default function Deposits() {
       {bulk.selected.size > 0 && can('deposits', 'can_approve') && (
         <div className="bulk-bar">
           <span>{bulk.selected.size} محدد</span>
-          <button className="btn-primary btn-sm" disabled={bulk.busy} onClick={() => void bulk.run('approve')}>
+          <button className="btn-primary btn-sm" disabled={bulk.busy} onClick={() => void bulkWithReason('approve')}>
             ✅ اعتماد الكل
           </button>
-          <button className="btn-ghost danger btn-sm" disabled={bulk.busy} onClick={() => void bulk.run('decline')}>
+          <button className="btn-ghost danger btn-sm" disabled={bulk.busy} onClick={() => void bulkWithReason('decline')}>
             ❌ رفض الكل
           </button>
           <button className="btn-ghost btn-sm" disabled={bulk.busy} onClick={bulk.clear}>إلغاء</button>
@@ -412,7 +443,7 @@ export default function Deposits() {
               row={r}
               canApprove={can('deposits', 'can_approve')}
               canBlock={canBlock}
-              busy={rowBusy?.id === r.tx_id ? rowBusy.action : null}
+              busy={inFlight.get(r.tx_id) ?? null}
               locked={retryLocked}
               onOpen={() => void openDetail(r.tx_id)}
               onProof={setProofUrl}
@@ -547,17 +578,17 @@ export default function Deposits() {
                             <>
                               <button
                                 className="btn-primary btn-sm"
-                                disabled={rowBusy !== null || retryLocked}
+                                disabled={inFlight.has(r.tx_id) || retryLocked}
                                 onClick={() => void quickDecide(r.tx_id, 'approve')}
                               >
-                                {rowBusy?.id === r.tx_id && rowBusy.action === 'approve' ? '⏳' : '✅'}
+                                {inFlight.get(r.tx_id) === 'approve' ? '⏳' : '✅'}
                               </button>
                               <button
                                 className="btn-ghost danger btn-sm"
-                                disabled={rowBusy !== null || retryLocked}
+                                disabled={inFlight.has(r.tx_id) || retryLocked}
                                 onClick={() => void quickDecide(r.tx_id, 'decline')}
                               >
-                                {rowBusy?.id === r.tx_id && rowBusy.action === 'decline' ? '⏳' : '❌'}
+                                {inFlight.get(r.tx_id) === 'decline' ? '⏳' : '❌'}
                               </button>
                             </>
                           )}

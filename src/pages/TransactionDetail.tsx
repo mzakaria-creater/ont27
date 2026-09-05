@@ -7,6 +7,7 @@ import TransactionEditPanel from '../components/TransactionEditPanel'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useDecisionReason } from '../lib/useDecisionReason'
 import type { DepositDetail } from '../lib/deposits'
 import { Activity, Bot, CheckCircle2, CircleDollarSign, Clock3, Database, FileJson, History, MessageSquareText, Pencil, UserRound, Workflow } from 'lucide-react'
 import DepositKindBadge from '../components/DepositKindBadge'
@@ -130,6 +131,7 @@ export default function TransactionDetail() {
   const [data, setData] = useState<DetailResponse | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const { prompt, node: reasonModal } = useDecisionReason()
   const [decisionMsg, setDecisionMsg] = useState<string | null>(null)
   const [proofOpen, setProofOpen] = useState(false)
 
@@ -156,12 +158,14 @@ export default function TransactionDetail() {
 
   const decide = async (action: 'approve' | 'decline') => {
     if (!d) return
+    const reason = await prompt(action, t(`المعاملة ${d.ontarget_ref ?? d.tx_id}`, `Transaction ${d.ontarget_ref ?? d.tx_id}`))
+    if (!reason) return
     setBusy(true)
     setDecisionMsg(null)
     try {
       const res = await api<{ status: string; old_sync?: string }>(`/api/deposits/${d.tx_id}/decision`, {
         method: 'POST',
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, note: reason }),
       })
       setDecisionMsg(
         res.old_sync === 'ok'
@@ -185,6 +189,7 @@ export default function TransactionDetail() {
 
   return (
     <PanelShell>
+      {reasonModal}
       {err && <div className="card warn">{err}</div>}
       {!data && !err && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
       {d && st && (

@@ -112,6 +112,13 @@ async function attachSms(rows: Record<string, unknown>[]): Promise<void> {
   }
 }
 
+// Long enough to exclude "ok", "تم" and a stray keypress; short enough that a
+// genuinely brief reason still passes. Kept in step with the same constant in
+// src/lib/decisionReasons.ts by hand — importing across the tree drags the
+// whole React source into tsconfig.server.json, which types only Node. Drift is
+// harmless: the browser copy spares a round-trip, this one is the rule.
+const MIN_REASON_LENGTH = 4
+
 const DECISION_TARGET: Record<string, string> = {
   approve: 'PAID',
   decline: 'DECLINED',
@@ -376,9 +383,19 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
 
   const body = await c.req.json().catch(() => null)
   const action = body?.action as string | undefined
-  const note = typeof body?.note === 'string' ? body.note.slice(0, 500) : null
+  const note = typeof body?.note === 'string' ? body.note.trim().slice(0, 500) : null
   const target = action ? DECISION_TARGET[action] : undefined
   if (!target) return c.json({ error: 'bad_action' }, 400)
+
+  // A manual decision with no recorded reason is not auditable, and this
+  // endpoint produced 1,904 of them in 30 days — 217 of those approvals, money
+  // released with nothing saying why. `note` was always accepted here and no
+  // screen ever sent one. Enforcing it server-side is what makes it a rule
+  // rather than a habit: the browser is not where a constraint on the money
+  // path can live.
+  if (!note || note.length < MIN_REASON_LENGTH) {
+    return c.json({ error: 'reason_required', min_length: MIN_REASON_LENGTH }, 400)
+  }
 
   let { data: before, error: readErr } = await db
     .from('maven_transactions')

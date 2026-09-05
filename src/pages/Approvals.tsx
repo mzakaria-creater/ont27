@@ -7,6 +7,7 @@ import EditRequestQueue from '../components/EditRequestQueue'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useBulk } from '../lib/useBulk'
+import { useDecisionReason } from '../lib/useDecisionReason'
 import { useLocale } from '../lib/locale'
 import { syncProviders } from '../lib/providerSync'
 import { LayoutGrid, Search, TableProperties, X } from 'lucide-react'
@@ -90,7 +91,17 @@ export default function Approvals() {
   const [deposits, setDeposits] = useState<DepRow[] | null>(null)
   const [payouts, setPayouts] = useState<PayRow[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  const [rowBusy, setRowBusy] = useState<string | null>(null)
+  // A set, not one slot. Each decision is a real provider call of several
+  // seconds; with a single slot, starting a second row cleared the first row's
+  // flag and re-enabled its buttons while that decision was still running —
+  // an open invitation to submit the same approval twice.
+  const [rowBusy, setRowBusy] = useState<Set<string>>(new Set())
+  const setBusyKey = (key: string, on: boolean) =>
+    setRowBusy((prev) => {
+      const next = new Set(prev)
+      if (on) next.add(key); else next.delete(key)
+      return next
+    })
   const [proof, setProof] = useState<{ url: string; ref: string } | null>(null)
   const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => localStorage.getItem('approval-queue-view') === 'cards' ? 'cards' : 'table')
   const [searchQuery, setSearchQuery] = useState('')
@@ -147,10 +158,21 @@ export default function Approvals() {
   }, [load])
 
   const depBulk = useBulk((id) => `/api/deposits/${id}/decision`, () => void load())
+  const { prompt, node: reasonModal } = useDecisionReason()
+
+  // One reason for the whole selection — see the note on useBulk.
+  const bulkWithReason = async (action: 'approve' | 'decline') => {
+    const n = depBulk.selected.size
+    if (!n) return
+    const reason = await prompt(action, t(`${n} معاملة محدَّدة`, `${n} selected transactions`))
+    if (reason) await depBulk.run(action, reason)
+  }
   const quick = async (id: number, action: 'approve' | 'decline') => {
-    setRowBusy(`deposits-${id}`)
+    const reason = await prompt(action, t(`المعاملة ${id}`, `Transaction ${id}`))
+    if (!reason) return
+    setBusyKey(`deposits-${id}`, true)
     try {
-      await api(`/api/deposits/${id}/decision`, { method: 'POST', body: JSON.stringify({ action }) })
+      await api(`/api/deposits/${id}/decision`, { method: 'POST', body: JSON.stringify({ action, note: reason }) })
       setDeposits((current) => current?.filter((row) => row.tx_id !== id) ?? current)
       // The decision endpoint already updated the local live row. Refresh the
       // queue only; do not start another provider-wide sync after every click.
@@ -164,7 +186,7 @@ export default function Approvals() {
         setErr(t('فشل تنفيذ القرار — أعد المحاولة.', 'Failed to apply the decision — try again.'))
       }
     } finally {
-      setRowBusy(null)
+      setBusyKey(`deposits-${id}`, false)
     }
   }
 
@@ -175,6 +197,7 @@ export default function Approvals() {
 
   return (
     <PanelShell>
+      {reasonModal}
       <section className="page-head">
         <div>
           <h2>✅ {t('طابور الموافقات', 'Approval queue')}</h2>
@@ -225,8 +248,8 @@ export default function Approvals() {
         {depBulk.selected.size > 0 && canDep && (
           <div className="bulk-bar">
             <span>{depBulk.selected.size} {t('محدد', 'selected')}</span>
-            <button className="btn-primary btn-sm" disabled={depBulk.busy} onClick={() => void depBulk.run('approve')}>✅ {t('اعتماد الكل', 'Approve all')}</button>
-            <button className="btn-ghost danger btn-sm" disabled={depBulk.busy} onClick={() => void depBulk.run('decline')}>❌ {t('رفض الكل', 'Decline all')}</button>
+            <button className="btn-primary btn-sm" disabled={depBulk.busy} onClick={() => void bulkWithReason('approve')}>✅ {t('اعتماد الكل', 'Approve all')}</button>
+            <button className="btn-ghost danger btn-sm" disabled={depBulk.busy} onClick={() => void bulkWithReason('decline')}>❌ {t('رفض الكل', 'Decline all')}</button>
           </div>
         )}
         {!deposits && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
@@ -305,8 +328,8 @@ export default function Approvals() {
                     <td>
                       {canDep && (
                         <div className="row-actions">
-                          <button className="btn-primary btn-sm" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'approve')}>✅</button>
-                          <button className="btn-ghost danger btn-sm" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'decline')}>❌</button>
+                          <button className="btn-primary btn-sm" disabled={rowBusy.has(`deposits-${r.tx_id}`)} onClick={() => void quick(r.tx_id, 'approve')}>✅</button>
+                          <button className="btn-ghost danger btn-sm" disabled={rowBusy.has(`deposits-${r.tx_id}`)} onClick={() => void quick(r.tx_id, 'decline')}>❌</button>
                         </div>
                       )}
                     </td>
@@ -344,7 +367,7 @@ export default function Approvals() {
                 </div>
                 <AutomationCountdown row={r} now={now} />
                 {r.proof_image_url && <button className="approval-card-proof" onClick={() => setProof({ url: r.proof_image_url!, ref: String(r.ontarget_ref ?? r.tx_id) })}><img src={r.proof_image_url} alt="" loading="lazy" /><span>{t('عرض إثبات الدفع', 'View payment proof')}</span></button>}
-                {canDep && <div className="approval-card-actions"><button className="btn-primary" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'approve')}>{t('موافقة', 'Approve')}</button><button className="btn-ghost danger" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'decline')}>{t('رفض', 'Decline')}</button></div>}
+                {canDep && <div className="approval-card-actions"><button className="btn-primary" disabled={rowBusy.has(`deposits-${r.tx_id}`)} onClick={() => void quick(r.tx_id, 'approve')}>{t('موافقة', 'Approve')}</button><button className="btn-ghost danger" disabled={rowBusy.has(`deposits-${r.tx_id}`)} onClick={() => void quick(r.tx_id, 'decline')}>{t('رفض', 'Decline')}</button></div>}
               </article>
             ))}
           </div>

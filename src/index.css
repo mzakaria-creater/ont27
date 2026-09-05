@@ -1697,6 +1697,22 @@ a.stat-card:hover { border-color: var(--accent); }
   .sidebar:not(:hover):not(:focus-within) .nav-group-chevron,
   .sidebar:not(:hover):not(:focus-within) .sidebar-hint { display: initial; }
   .sidebar:not(:hover):not(:focus-within) .sidebar-item { justify-content: flex-start; padding-inline: 10px; }
+  /* The labels above never actually came back on a phone. The desktop collapse
+     rule is `.sidebar:not(.pinned):not(:hover):not(:focus-within) …`, which
+     scores (0,6,1); the override right above omits `:not(.pinned)` and so
+     scores (0,5,1) — one class lower — and a media query adds no specificity of
+     its own. A touch device never fires :hover, so the drawer sat permanently
+     in the collapsed state and the desktop rule kept every label at
+     display:none: icons only, no text.
+     Repeating the selector verbatim makes the two tie, and this block comes
+     later in the file, so the labels win. The unpinned-agnostic rules above are
+     kept so a pinned drawer is completely unaffected. */
+  .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-item > span:not(.sidebar-icon),
+  .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-count,
+  .sidebar:not(.pinned):not(:hover):not(:focus-within) .nav-group-name,
+  .sidebar:not(.pinned):not(:hover):not(:focus-within) .nav-group-chevron,
+  .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-hint { display: initial; }
+  .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-item { justify-content: flex-start; padding-inline: 10px; }
   .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-search-wrap { flex: 1; justify-content: flex-start; padding: 0 9px; border-color: var(--border); background: color-mix(in srgb,var(--bg) 72%,transparent); }
   .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-search-wrap input,
   .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-search-wrap button,
@@ -2942,3 +2958,20 @@ html[data-pay-theme="etisalat"]      .pay-wrap { --pay-glow: #95c11f; }
 
 /* Full imported API console */
 .api-console-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:14px}.api-console-head>div:first-child{min-width:0}.api-console-head span{font-size:10px;letter-spacing:.12em;color:var(--text-dim);font-weight:800}.api-console-head h2{margin:4px 0;font-size:24px}.api-console-head p{margin:0;color:var(--text-dim);font-size:13px}.api-console-frame-wrap{height:calc(100vh - 190px);min-height:620px;overflow:hidden;border:1px solid var(--border);border-radius:16px;background:#05060b;box-shadow:0 14px 40px rgba(0,0,0,.18)}.api-console-frame-toolbar{height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid rgba(255,255,255,.1);color:#aeb7d0;font-size:11px}.api-console-frame-toolbar a{display:inline-flex;color:#f7b84b}.api-console-frame{display:block;width:100%;height:calc(100% - 34px);border:0;background:#05060b}@media(max-width:720px){.api-console-head{flex-direction:column}.api-console-frame-wrap{height:calc(100vh - 240px);min-height:520px}}
+/* Reason box on a deposit decision. dir="auto" on the element keeps an Arabic
+   reason right-aligned and a pasted reference left-aligned, so the operator
+   never fights the cursor while typing the thing that makes the decision
+   auditable. */
+.reason-input {
+  width: 100%;
+  margin: 6px 0 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line, #262b36);
+  background: var(--surface-2, #0d0f14);
+  color: inherit;
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+.reason-input:focus-visible { outline: 2px solid var(--accent, #7c5cff); outline-offset: 1px; }
