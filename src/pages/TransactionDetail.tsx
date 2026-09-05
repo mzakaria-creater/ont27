@@ -149,6 +149,7 @@ export default function TransactionDetail() {
   const d = data?.deposit
   const st = d ? statusMeta(d.status) : null
   const canDirectEdit = ['super_admin', 'owner', 'admin', 'operations_admin'].includes(user?.role ?? '')
+  const canUnblock = can('client_crm', 'can_edit') || can('transactions', 'can_edit') || can('risk', 'can_edit')
   const raw = d?.raw ?? {}
   const rawValue = (...keys: string[]) => keys.map((key) => raw[key]).find((value) => value != null && value !== '')
 
@@ -175,6 +176,12 @@ export default function TransactionDetail() {
     }
   }
 
+  const unblockClient = async () => {
+    if (!d?.sender_number || !window.confirm(t('رفع الحظر عن رقم العميل؟', 'Unblock this client number?'))) return
+    try { await api('/api/risk/blacklist/unblock-client', { method: 'POST', body: JSON.stringify({ value: d.sender_number }) }); setDecisionMsg(t('تم رفع الحظر عن العميل وتسجيل العملية.', 'Client unblocked and the action was audited.')) }
+    catch { setDecisionMsg(t('تعذّر رفع الحظر — تحقق من الصلاحيات.', 'Could not unblock — check permissions.')) }
+  }
+
   return (
     <PanelShell>
       {err && <div className="card warn">{err}</div>}
@@ -199,6 +206,7 @@ export default function TransactionDetail() {
                       <Pencil size={15} aria-hidden="true" /> {t('تعديل', 'Edit')}
                     </a>
                   )}
+                  {canUnblock && d.sender_number && <button className="btn-ghost btn-sm" onClick={() => void unblockClient()}>🚫 {t('رفع حظر العميل', 'Unblock client')}</button>}
                   {masterChip(d.master_merchant)}
                   <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
                 </div>

@@ -6,6 +6,7 @@ import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
+import { useAuth } from '../auth/AuthContext'
 
 // CRM — crm_clients directory.
 
@@ -42,6 +43,7 @@ interface ClientDetail {
 export default function Crm() {
   const [pageSize, setPageSize] = usePageSize('crm')
   const { t } = useLocale()
+  const { can } = useAuth()
   const [params, setParams] = useSearchParams()
   const page = Math.max(Number(params.get('page')) || 1, 1)
   const [q, setQ] = useState(params.get('q') ?? '')
@@ -88,6 +90,12 @@ export default function Crm() {
   }
 
   const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1
+  const canUnblock = can('client_crm', 'can_edit') || can('transactions', 'can_edit') || can('risk', 'can_edit')
+  const unblock = async (phone: string) => {
+    if (!window.confirm(t('رفع الحظر عن هذا العميل؟', 'Unblock this client?'))) return
+    try { const result = await api<{ removed: number }>('/api/risk/blacklist/unblock-client', { method: 'POST', body: JSON.stringify({ value: phone }) }); setErr(t(`تم رفع الحظر (${result.removed} سجل).`, `Client unblocked (${result.removed} entries).`)) }
+    catch (e) { setErr(e instanceof ApiError ? e.message : t('تعذّر رفع الحظر.', 'Could not unblock client.')) }
+  }
 
   return (
     <PanelShell>
@@ -144,9 +152,10 @@ export default function Crm() {
                   <div><span>{t('نسبة القبول', 'Approval rate')}</span><strong className="mono">{r.approval_rate != null ? `${Math.round(Number(r.approval_rate))}%` : '—'}</strong><small>{r.is_repeat_client ? t('عميل متكرر', 'Repeat client') : t('عميل جديد', 'New client')}</small></div>
                 </div>
                 <div className="crm-account-last"><span>{t('آخر TRX', 'Last TRX')}</span><b className="mono">{depositTime({ first_seen_at: r.last_transaction_at })}</b></div>
-                <footer className="crm-account-actions">
+                  <footer className="crm-account-actions">
                   <button className="btn-ghost btn-sm" onClick={() => void openDetail(r.id)}>{t('ملخص سريع', 'Quick details')}</button>
                   {phone ? <Link className="btn-primary btn-sm" to={`/client/${encodeURIComponent(phone)}`}>{t('فتح الحساب وكل TRX', 'Open account & all TRX')}</Link> : <button className="btn-primary btn-sm" disabled>{t('لا يوجد رقم', 'No phone')}</button>}
+                  {phone && canUnblock && <button className="btn-ghost btn-sm" onClick={() => void unblock(phone)}>{t('رفع الحظر', 'Unblock')}</button>}
                 </footer>
               </article>
             })}
@@ -178,6 +187,7 @@ export default function Crm() {
                   {detail.client.is_repeat_client && <span className="pay-status-badge st-dim">{t('عميل متكرر', 'Repeat client')}</span>}
                 </div>
                 {(detail.client.phone_no || detail.client.normalized_phone) && <Link className="btn-primary btn-sm" to={`/client?phone=${encodeURIComponent(detail.client.normalized_phone ?? detail.client.phone_no ?? '')}`}>{t('فتح السجل التشغيلي الكامل', 'Open full operational history')}</Link>}
+                {(detail.client.phone_no || detail.client.normalized_phone) && <button className="btn-ghost btn-sm" onClick={() => void unblock(detail.client.normalized_phone ?? detail.client.phone_no ?? '')}>{t('رفع الحظر عن العميل', 'Unblock client')}</button>}
                 <dl className="txd-grid">
                   <dt>{t('الموبايل', 'Phone')}</dt><dd className="mono">{detail.client.phone_no ?? detail.client.normalized_phone ?? '—'}</dd>
                   <dt>{t('البريد', 'Email')}</dt><dd className="mono">{detail.client.email_address ?? '—'}</dd>

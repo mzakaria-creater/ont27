@@ -661,6 +661,26 @@ extraRoutes.delete('/risk/blacklist/:id', requireAnyPerm(['risk', 'risk_audit', 
   return c.json({ ok: true, removed: data })
 })
 
+// Unblock a client from any page (CRM, transaction detail, or Risk). The
+// operation is scoped to the normalized phone and removes every duplicate
+// phone entry while preserving a single auditable action.
+extraRoutes.post('/risk/blacklist/unblock-client', requireAnyPerm(['risk', 'risk_audit', 'flagged', 'velocity', 'compliance', 'client_crm', 'transactions'], 'can_edit'), async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const value = typeof body?.value === 'string' ? body.value.trim() : ''
+  const normalized = value.replace(/\D/g, '').slice(-10)
+  if (!/^\d{10}$/.test(normalized)) return c.json({ error: 'invalid_phone' }, 400)
+  const { data: rows, error: readError } = await db.from('api_risk_blacklist').select('id, type, value, reason, created_at').eq('type', 'phone')
+  if (readError) return c.json({ error: 'db_error', detail: readError.message }, 500)
+  const matches = (rows ?? []).filter((row) => String(row.value ?? '').replace(/\D/g, '').slice(-10) === normalized)
+  if (!matches.length) return c.json({ ok: true, removed: 0, phone: normalized })
+  const ids = matches.map((row) => row.id)
+  const { error } = await db.from('api_risk_blacklist').delete().in('id', ids)
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  const actor = c.get('actor')
+  await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'risk.client_unblocked', entity: 'api_risk_blacklist', entity_id: normalized, before: { entries: matches }, after: { removed: ids.length, phone: normalized } })
+  return c.json({ ok: true, removed: ids.length, phone: normalized })
+})
+
 // ---- Automation: settings + rules + worker jobs + treasury ----
 const RULE_COLS =
   'id, scope_type, master_merchant, merchant, sub_merchant, account_wallet, payment_method, provider, enabled, min_amount, max_amount, time_window_minutes, action_type, priority, use_crm_matching, use_near_amount, use_unique_amount, created_at, updated_at'
