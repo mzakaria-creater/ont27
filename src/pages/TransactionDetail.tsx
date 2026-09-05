@@ -98,6 +98,7 @@ const actionLabels: Record<string, [string, string]> = {
   'transaction.edit_rejected': ['رفض طلب التعديل', 'Edit request rejected'],
   'deposit.approve': ['اعتماد الإيداع', 'Deposit approved'],
   'deposit.decline': ['رفض الإيداع', 'Deposit declined'],
+  'deposit.maven_action_applied': ['كتابة إجراء بواسطة Maven', 'Write action by Maven'],
   'crm.sms_name_learned': ['حفظ اسم SMS للعميل', 'SMS name saved to client'],
 }
 

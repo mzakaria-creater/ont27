@@ -47,6 +47,7 @@ const LinkGenerator = lazy(() => import('./pages/LinkGenerator'))
 const PaymentCheckout = lazy(() => import('./pages/PaymentCheckout'))
 const PaymentStatus = lazy(() => import('./pages/PaymentStatus'))
 const PaymentMethods = lazy(() => import('./pages/PaymentMethods'))
+const MerchantPaymentSetup = lazy(() => import('./pages/MerchantPaymentSetup'))
 const KnownRecipients = lazy(() => import('./pages/KnownRecipients'))
 const TreasuryHub = lazy(() => import('./pages/TreasuryHub'))
 const ExecutiveDashboard = lazy(() => import('./pages/ExecutiveDashboard'))
@@ -399,6 +400,7 @@ export default function App() {
             <Route path="/complaints" element={<PageGate keys={['support']}><Complaints /></PageGate>} />
             <Route path="/merchant-link-generator" element={<PageGate keys={['checkout-builder']}><LinkGenerator /></PageGate>} />
             <Route path="/payment-methods" element={<PageGate keys={['wallets','payment_methods']}><PaymentMethods /></PageGate>} />
+            <Route path="/merchant-payment-setup" element={<PageGate keys={['wallets','payment_methods']}><MerchantPaymentSetup /></PageGate>} />
             <Route path="/known-recipients" element={<PageGate keys={['wallets','payouts']}><KnownRecipients /></PageGate>} />
             <Route path="/replay-lab" element={<PageGate keys={['automation','sms_live','webhooks']}><ReplayLab /></PageGate>} />
             <Route path="/webhooks" element={<PageGate keys={['webhooks','developers']}><WebhookCenter /></PageGate>} />

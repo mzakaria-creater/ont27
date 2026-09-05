@@ -337,6 +337,37 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
           const held = localHold.get(r.tx_id as number)
           return { ...r, status: held?.status, last_status_change: held?.last_status_change }
         })
+
+        // A status change observed in Maven is a provider-side action. Keep
+        // it separate from review_queue/browser_jobs: those rows describe an
+        // automation decision or an agent execution attempt, while this is
+        // the fact that Maven actually applied a change. The timestamp guard
+        // above also makes this idempotent across the overlap window.
+        const providerActions = payload.filter((r) => {
+          const txId = Number(r.tx_id)
+          const held = localHold.get(txId)
+          if (!held || held.status === r.status) return false
+          const theirs = typeof r.last_status_change === 'string' ? Date.parse(r.last_status_change) : NaN
+          const mine = localTs.get(txId) ?? 0
+          return Number.isFinite(theirs) && theirs > mine
+        })
+
+        if (providerActions.length > 0) {
+          const { error: auditErr } = await db.from('audit_log').insert(providerActions.map((r) => ({
+            actor_type: 'system',
+            actor_name: 'Maven',
+            action: 'deposit.maven_action_applied',
+            entity: 'maven_transactions',
+            entity_id: String(r.tx_id),
+            before: { status: localHold.get(Number(r.tx_id))?.status ?? null },
+            after: {
+              status: r.status,
+              source: 'maven_dashboard',
+              provider_modified_at: r.modified_utc ?? r.last_status_change ?? null,
+            },
+          })))
+          if (auditErr) console.error('Maven provider action audit failed', { error: auditErr.message, count: providerActions.length })
+        }
       }
 
       const { error: upErr } = await db.from(table).upsert(payload, { onConflict: pk })

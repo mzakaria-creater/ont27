@@ -340,7 +340,15 @@ async function depositDetail(c: Context<AuthEnv>, txId: string) {
     : null
 
   const history = [
-    ...auditRows.map((row) => ({ id: `audit:${row.id}`, type: 'audit', title: row.action, actor: row.actor_name ?? row.actor_type, at: row.created_at, before: row.before, after: row.after })),
+    ...auditRows.map((row) => ({
+      id: `audit:${row.id}`,
+      type: row.action === 'deposit.maven_action_applied' ? 'provider' : 'audit',
+      title: row.action,
+      actor: row.action === 'deposit.maven_action_applied' ? 'Maven' : row.actor_name ?? row.actor_type,
+      at: row.created_at,
+      before: row.before,
+      after: row.after,
+    })),
     ...decisionRows.map((row) => ({ id: `decision:${row.id}`, type: 'decision', title: row.decision, detail: row.reason, actor: row.actor_name, at: row.created_at, before: { status: row.db_status_before, provider_status: row.provider_raw_status_at_decision }, after: { executed_on_provider: row.executed_on_provider } })),
     ...editRows.flatMap((row) => [
       { id: `edit-request:${row.id}`, type: 'edit_request', title: 'transaction.edit_requested', detail: row.reason, actor: row.requested_by, at: row.created_at, before: { status: row.current_status, amount: row.current_amount }, after: { status: row.requested_status, amount: row.requested_amount, request_status: row.status } },

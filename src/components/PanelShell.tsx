@@ -104,6 +104,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/merchants', icon: '🏬', labelAr: 'التجار', labelEn: 'Merchants', keys: ['merchants'], group: 'customers' },
   { to: '/wallets', icon: '👛', labelAr: 'المحافظ', labelEn: 'Wallets', keys: ['wallets'], group: 'payments' },
   { to: '/payment-methods', icon: '💳', labelAr: 'طرق الدفع', labelEn: 'Payment Methods', keys: ['wallets', 'payment_methods'], group: 'payments' },
+  { to: '/merchant-payment-setup', icon: '🧩', labelAr: 'إعداد دفع التجار', labelEn: 'Merchant Payment Setup', keys: ['wallets', 'payment_methods'], group: 'payments' },
   { to: '/known-recipients', icon: '🎯', labelAr: 'المستلمون المعروفون', labelEn: 'Known Recipients', keys: ['wallets', 'payouts'], group: 'payments' },
   { to: '/ontarget-hub', icon: '🏛️', labelAr: 'مركز الخزينة', labelEn: 'Treasury Hub', keys: ['wallets', 'payouts', 'sms_live', 'treasury'], group: 'payments' },
   { to: '/crm', icon: '👥', labelAr: 'CRM العملاء', labelEn: 'Customer CRM', keys: ['client_crm'], group: 'customers' },
