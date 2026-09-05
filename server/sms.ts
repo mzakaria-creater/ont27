@@ -28,6 +28,50 @@ type SmsFilterInput = {
   to?: string
 }
 
+type QueueSms = Record<string, unknown> & { id: number; amount: number | null; received_at: string | null; sender_name: string | null; sender_number: string | null; receiver_number: string | null; provider: string | null }
+type QueueTx = { tx_id: number; amount: number | null; sender_name: string | null; sender_number: string | null; receiving_wallet: string | null; to_account_number: string | null; first_seen_at: string | null }
+const cents = (value: unknown) => Math.round(Number(value ?? 0) * 100)
+const nameKey = (value: unknown) => String(value ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter((part) => part.length > 1).join(' ')
+const phoneKey = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
+const sameName = (left: unknown, right: unknown) => { const a = nameKey(left); const b = nameKey(right); return Boolean(a && b && (a === b || a.includes(b) || b.includes(a))) }
+const queueTime = (value: unknown) => { const parsed = Date.parse(String(value ?? '')); return Number.isFinite(parsed) ? parsed : null }
+
+function balanceContinuity(sms: QueueSms, history: QueueSms[]) {
+  const wallet = phoneKey(sms.receiver_number)
+  const at = queueTime(sms.received_at)
+  const balance = Number(sms.balance_after)
+  const amount = Number(sms.amount)
+  if (!wallet || at == null || !Number.isFinite(balance) || !Number.isFinite(amount)) return false
+  const previous = history
+    .filter((row) => phoneKey(row.receiver_number) === wallet && row.id !== sms.id && Number.isFinite(Number(row.balance_after)) && (queueTime(row.received_at) ?? 0) < at)
+    .sort((a, b) => (queueTime(b.received_at) ?? 0) - (queueTime(a.received_at) ?? 0))[0]
+  if (!previous) return false
+  return Math.abs(balance - (Number(previous.balance_after) + amount)) <= 1
+}
+
+function queueCandidates(sms: QueueSms, transactions: QueueTx[], balanceHistory: QueueSms[]) {
+  const smsAt = queueTime(sms.received_at)
+  const smsWallet = phoneKey(sms.receiver_number)
+  const smsPhone = phoneKey(sms.sender_number)
+  const orange = /orange/i.test(`${sms.provider ?? ''} ${sms.message ?? ''} ${sms.raw_sms ?? ''}`)
+  return transactions.filter((tx) => {
+    if (cents(tx.amount) !== cents(sms.amount) || !smsWallet || phoneKey(tx.receiving_wallet ?? tx.to_account_number) !== smsWallet) return false
+    const txAt = queueTime(tx.first_seen_at)
+    if (smsAt == null || txAt == null || Math.abs(smsAt - txAt) > 10 * 60_000) return false
+    if (smsPhone) return !phoneKey(tx.sender_number) || phoneKey(tx.sender_number) === smsPhone
+    return orange && sameName(sms.sender_name, tx.sender_name) && balanceContinuity(sms, balanceHistory)
+  })
+}
+
+function isPotentialDeposit(sms: QueueSms) {
+  const hasAmount = Number.isFinite(Number(sms.amount))
+  const hasWallet = Boolean(phoneKey(sms.receiver_number))
+  const hasPhone = Boolean(phoneKey(sms.sender_number))
+  const orange = /orange/i.test(`${sms.provider ?? ''} ${sms.message ?? ''} ${sms.raw_sms ?? ''}`)
+  const hasName = Boolean(nameKey(sms.sender_name))
+  return hasAmount && hasWallet && (hasPhone || (orange && hasName))
+}
+
 // Keep the list and KPI cards on one definition of "filtered SMS". This is
 // deliberately shared: adding a filter to the table without adding it to the
 // cards was the reason their numbers previously looked stale/wrong.
@@ -230,6 +274,34 @@ smsRoutes.get('/stats', requirePerm('sms_live', 'can_view'), async (c) => {
   } catch (e) {
     return c.json({ error: 'db_error', detail: (e as Error).message }, 500)
   }
+})
+
+// Operator queue for the SMS↔transaction workflow. This is intentionally
+// read-only: the existing matcher/link endpoints remain the only writers.
+// A message is "waiting" when it has a safe identity/amount/wallet shape for
+// a Maven deposit, even if the PENDING row has not arrived yet. Once a pending
+// row exists, queueCandidates supplies the candidate and the UI can show it.
+smsRoutes.get('/queues', requirePerm('sms_live', 'can_view'), async (c) => {
+  const since = new Date(Date.now() - 7 * 86_400_000).toISOString()
+  const [{ data: smsRows, error: smsError }, { data: txRows, error: txError }, { data: balanceHistory, error: balanceError }] = await Promise.all([
+    db.from('inbound_sms').select(LIST_COLUMNS).eq('sms_category', 'deposit').is('consumed_by_tx_id', null).is('matched_transaction_id', null).is('maven_transaction_id', null).or('is_blocked.eq.false,is_blocked.is.null').gte('received_at', since).order('received_at', { ascending: false, nullsFirst: false }).limit(1000),
+    db.from('maven_transactions').select('tx_id, amount, sender_name, sender_number, receiving_wallet, to_account_number, first_seen_at').eq('status', 'PENDING').gte('first_seen_at', since).order('first_seen_at', { ascending: false, nullsFirst: false }).limit(1000),
+    db.from('inbound_sms').select('id, amount, receiver_number, balance_after, received_at').not('balance_after', 'is', null).gte('received_at', since).order('received_at', { ascending: false, nullsFirst: false }).limit(10_000),
+  ])
+  if (smsError || txError || balanceError) return c.json({ error: 'db_error', detail: smsError?.message ?? txError?.message ?? balanceError?.message }, 500)
+  const transactions = (txRows ?? []) as QueueTx[]
+  const history = (balanceHistory ?? []) as unknown as QueueSms[]
+  const waiting: Record<string, unknown>[] = []
+  const unlinked: Record<string, unknown>[] = []
+  for (const sms of (smsRows ?? []) as unknown as QueueSms[]) {
+    const candidates = queueCandidates(sms, transactions, history)
+    const target = candidates[0]
+    const ageHours = Math.max(0, (Date.now() - (queueTime(sms.received_at) ?? Date.now())) / 3_600_000)
+    const item = { ...sms, age_hours: ageHours, stale: ageHours >= 1, candidate_tx_id: target?.tx_id ?? null, candidate_count: candidates.length, match_route: phoneKey(sms.sender_number) ? 'phone_exact' : 'orange_name_amount_balance' }
+    if (target || isPotentialDeposit(sms)) waiting.push(item)
+    else unlinked.push(item)
+  }
+  return c.json({ waiting, unlinked, generated_at: new Date().toISOString() })
 })
 
 // Latest reported balance per wallet, sourced only from SMS balance_after.

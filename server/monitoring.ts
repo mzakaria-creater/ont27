@@ -64,7 +64,7 @@ monitoringRoutes.get('/', async (c) => {
 
   const [sms, transactions, telegram, devices, integrations, pendingDeposits, pendingPayouts, editRequests, todayTransactions, providerTransactions] = await Promise.all([
     db.from('inbound_sms')
-      .select('id, received_at, device_name, sender_name, sender_number, receiver_number, amount, sms_category, trx_id, consumed_by_tx_id, matched_transaction_id, maven_transaction_id')
+      .select('id, received_at, device_name, sender_name, sender_number, receiver_number, amount, balance_after, provider, raw_sms, message, sms_category, trx_id, consumed_by_tx_id, matched_transaction_id, maven_transaction_id')
       .gte('received_at', since).order('received_at', { ascending: false }).limit(30),
     db.from('maven_transactions')
       .select('tx_id, ontarget_ref, status, amount, currency, sender_name, merchant, master_merchant, gateway, first_seen_at, last_status_change')

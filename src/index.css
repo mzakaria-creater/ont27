@@ -2411,6 +2411,38 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .admin-trx-extra-row dl { display: grid; grid-template-columns: repeat(7,minmax(140px,1fr)); gap: 12px; margin: 0; }
 .admin-trx-extra-row dt { color: var(--text-dim); font-size: 10px; }
 .admin-trx-extra-row dd { margin: 3px 0 0; font-weight: 700; overflow-wrap: anywhere; }
+.sms-match-queues { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-block-end: 14px; }
+.sms-queue { min-width: 0; padding: 0; overflow: hidden; }
+.sms-queue.is-waiting { border-color: var(--amber-border); }
+.sms-queue.is-unlinked { border-color: var(--red-border); }
+.sms-queue-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 15px; border-block-end: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 92%, var(--accent) 8%); }
+.sms-queue-head h3 { margin: 0; font-size: 13px; }
+.sms-queue-head p { margin: 3px 0 0; color: var(--text-dim); font-size: 10px; }
+.sms-queue-head > strong { display: grid; min-width: 30px; height: 30px; place-items: center; border-radius: 999px; background: var(--hover-2); color: var(--accent); font: 800 12px ui-monospace, monospace; }
+.sms-queue-list { display: grid; max-height: 370px; overflow: auto; }
+.sms-queue-item { display: grid; gap: 7px; padding: 11px 14px; border-block-end: 1px solid var(--border-soft); }
+.sms-queue-item:last-child { border-block-end: 0; }
+.sms-queue-item.is-stale { background: color-mix(in srgb, var(--status-declined) 8%, var(--surface)); }
+.sms-queue-identity, .sms-queue-facts, .sms-queue-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.sms-queue-identity { min-width: 0; }
+.sms-queue-label { color: var(--accent); font: 800 11px ui-monospace, monospace; }
+.sms-queue-facts { justify-content: flex-end; font-size: 11px; }
+.sms-queue-tx, .sms-queue-manual { padding: 3px 7px; border-radius: 6px; text-decoration: none; font-size: 10px; font-weight: 800; }
+.sms-queue-tx { color: var(--status-paid); background: var(--green-bg); }
+.sms-queue-manual { color: var(--accent); background: var(--amber-bg); }
+.sms-queue-raw { margin: 0; max-height: 48px; overflow: auto; color: var(--text); font: 10px/1.55 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sms-queue-meta { justify-content: space-between; color: var(--text-muted); font-size: 9px; }
+.sms-queue-meta b { color: var(--status-declined); }
+.live-pair-card { overflow: hidden; }
+.live-pair-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+.live-pair { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 11px; background: color-mix(in srgb, var(--surface) 94%, var(--accent) 6%); }
+.live-pair-head, .live-pair-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.live-pair-head a { color: var(--accent); font-weight: 800; text-decoration: none; }
+.live-pair-main { color: var(--text-dim); font-size: 10px; }
+.live-pair-main strong { color: var(--text); font-size: 14px; }
+.live-pair-sms { display: grid; gap: 4px; padding: 9px; border-inline-start: 3px solid var(--status-paid); border-radius: 7px; background: var(--green-bg); color: var(--text-dim); font-size: 10px; }
+.live-pair-sms .tx-sms-label { color: var(--status-paid); font-weight: 800; }
+.live-pair-sms p { max-height: 42px; margin: 0; overflow: auto; color: var(--text); font: 10px/1.5 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 :root[data-theme='light'] .admin-trx-card { border-color: #cbd5e1; box-shadow: 0 8px 24px rgba(15,23,42,.07); }
 :root[data-theme='light'] .admin-trx-table th { background: #e8eef7; color: #334155; font-weight: 700; border-color: #b8c5d6; }
 :root[data-theme='light'] .admin-trx-table td { border-color: #d7e0eb; }
@@ -2426,6 +2458,7 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 :root[data-theme='dark'] .admin-trx-table tbody tr:not(.admin-trx-extra-row):hover td { background: #1b2a3c; }
 :root[data-theme='dark'] .admin-trx-table tr.row-pending td { background: #2a2114; border-color: #725529; }
 :root[data-theme='dark'] .admin-trx-extra-row td { background: #151d2a; border-block-end-color: #365171; }
+@media (max-width: 900px) { .sms-match-queues { grid-template-columns: 1fr; } .sms-queue-list { max-height: 300px; } }
 
 /* Rebuilt payment-link workspace */
 .payment-links-page { max-inline-size: 1440px; }

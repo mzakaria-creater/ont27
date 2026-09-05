@@ -17,6 +17,7 @@ import PageSizeSelect from '../components/PageSizeSelect'
 import DepositKindBadge from '../components/DepositKindBadge'
 import { syncProviders } from '../lib/providerSync'
 import { Search, X } from 'lucide-react'
+import SmsMatchQueues, { type QueueSms } from '../components/SmsMatchQueues'
 
 const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
 const MASTER_PILLS = [
@@ -51,6 +52,8 @@ interface ClientHistory {
   declined: number
 }
 
+interface SmsQueues { waiting: QueueSms[]; unlinked: QueueSms[] }
+
 function smsFirstLine(s: MatchedSms): string {
   const raw = s.sms_first_line ?? ''
   return raw.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('From :'))[0] ?? '—'
@@ -76,6 +79,7 @@ export default function Deposits() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [decisionBusy, setDecisionBusy] = useState(false)
   const [decisionErr, setDecisionErr] = useState<string | null>(null)
+  const [smsQueues, setSmsQueues] = useState<SmsQueues>({ waiting: [], unlinked: [] })
 
   const appliedQ = params.get('q') ?? ''
   useEffect(() => setQ(appliedQ), [appliedQ])
@@ -107,6 +111,7 @@ export default function Deposits() {
       const read = () => Promise.all([
         load(silent),
         api<DepositStats>('/api/deposits/stats').then((value) => { if (alive) setStats(value) }).catch(() => { if (alive) setStats(null) }),
+        api<SmsQueues>('/api/sms/queues').then((value) => { if (alive) setSmsQueues({ waiting: value.waiting ?? [], unlinked: value.unlinked ?? [] }) }).catch(() => { if (alive) setSmsQueues({ waiting: [], unlinked: [] }) }),
       ])
       await read()
       if (!alive) return
@@ -379,6 +384,7 @@ export default function Deposits() {
 
       {err && <div className="card warn">{err}</div>}
       {notice && <div className="card">{notice}</div>}
+      <SmsMatchQueues waiting={smsQueues.waiting} unlinked={smsQueues.unlinked} loading={loading && !data} />
       {bulk.progress && <div className="card bulk-progress">{bulk.progress}</div>}
       {bulk.selected.size > 0 && can('deposits', 'can_approve') && (
         <div className="bulk-bar">

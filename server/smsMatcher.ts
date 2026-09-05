@@ -1,6 +1,6 @@
 import { db } from './db.js'
 
-type SmsRow = { id: number; trx_id: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; received_at: string | null; receiver_number: string | null; is_blocked?: boolean | null }
+type SmsRow = { id: number; trx_id: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; received_at: string | null; receiver_number: string | null; balance_after?: number | null; provider?: string | null; raw_sms?: string | null; message?: string | null; is_blocked?: boolean | null }
 type TxRow = { tx_id: number; guid: string | null; ontarget_ref: string | null; merchant_tx_reference: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; receiving_wallet: string | null; to_account_number: string | null; payment_method: string | null; first_seen_at: string | null }
 
 const PAGE = 1000
@@ -10,6 +10,17 @@ const FALLBACK_TIME_DIFF_MS = 10 * 60_000
 const ref = (value: unknown) => String(value ?? '').trim().toUpperCase()
 const cents = (value: unknown) => Math.round(Number(value) * 100)
 const phone = (value: unknown) => { const digits = String(value ?? '').replace(/\D/g, ''); return digits.length > 10 ? digits.slice(-10) : digits }
+const nameKey = (value: unknown) => String(value ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter((part) => part.length > 1).join(' ')
+const sameName = (left: unknown, right: unknown) => { const a = nameKey(left); const b = nameKey(right); return Boolean(a && b && (a === b || a.includes(b) || b.includes(a))) }
+function hasBalanceContinuity(sms: SmsRow, history: SmsRow[]) {
+  const wallet = phone(sms.receiver_number)
+  const at = Date.parse(String(sms.received_at ?? ''))
+  const balance = Number(sms.balance_after)
+  const amount = Number(sms.amount)
+  if (!wallet || !Number.isFinite(at) || !Number.isFinite(balance) || !Number.isFinite(amount)) return false
+  const previous = history.filter((row) => row.id !== sms.id && phone(row.receiver_number) === wallet && Number.isFinite(Number(row.balance_after)) && Date.parse(String(row.received_at ?? '')) < at).sort((a, b) => Date.parse(String(b.received_at ?? '')) - Date.parse(String(a.received_at ?? '')))[0]
+  return Boolean(previous && Math.abs(balance - (Number(previous.balance_after) + amount)) <= 1)
+}
 
 export interface PaidSmsRepairResult {
   scannedSms: number
@@ -34,7 +45,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
   const limit = Math.min(Math.max(scanLimit, 1), PAGE)
   const [{ data: smsData, error: smsError }, { data: txData, error: txError }] = await Promise.all([
     db.from('inbound_sms')
-      .select('id, trx_id, amount, sender_name, sender_number, received_at, receiver_number')
+      .select('id, trx_id, amount, sender_name, sender_number, received_at, receiver_number, balance_after, provider, raw_sms, message')
       .eq('sms_category', 'deposit')
       .is('consumed_by_tx_id', null)
       .eq('is_blocked', false)
@@ -51,6 +62,8 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
 
   const { data: walletRows, error: walletError } = await db.from('wallet_device_map').select('to_account_number')
   if (walletError) throw new Error(`wallet exclusion lookup: ${walletError.message}`)
+  const { data: balanceHistory, error: balanceHistoryError } = await db.from('inbound_sms').select('id, amount, receiver_number, balance_after, received_at').not('balance_after', 'is', null).gte('received_at', new Date(Date.now() - 7 * 86_400_000).toISOString()).limit(10_000)
+  if (balanceHistoryError) throw new Error(`balance continuity lookup: ${balanceHistoryError.message}`)
   const ourWallets = new Set((walletRows ?? []).map((row) => phone(row.to_account_number)).filter(Boolean))
   const smsRows = (smsData ?? []) as SmsRow[]
   const txRows = (txData ?? []) as TxRow[]
@@ -83,9 +96,6 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
     if (ourWallets.has(phone(sms.sender_number))) { diagnostics.ownWalletSender++; continue }
     const smsPhone = phone(sms.sender_number)
     const smsWallet = phone(sms.receiver_number)
-    // A receiver-less SMS cannot be auto-linked: matching amount/time would
-    // risk assigning funds to the wrong wallet. Name is intentionally ignored;
-    // Maven's sender_name is a merchant placeholder, not customer identity.
     if (!smsWallet) { diagnostics.noUsableTime++; continue }
     const byAmount = txRows.filter((tx) => cents(tx.amount) === cents(sms.amount))
     if (!byAmount.length) { diagnostics.noAmountCandidate++; continue }
@@ -94,11 +104,10 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
       if (!txWallet || txWallet !== smsWallet) return false
       if (smsPhone && phone(tx.sender_number) && phone(tx.sender_number) !== smsPhone) return false
       const method = String(tx.payment_method ?? '').toLowerCase()
-      // Name-only SMS is intentionally narrow: it may be linked only when the
-      // client identity already has an Egyptian 010/012 number, or the method
-      // is InstaPay. A literal Maven sender name is never sufficient evidence.
-      const txPrefix = String(tx.sender_number ?? '').replace(/\D/g, '').slice(-11)
-      if (!smsPhone && !(/^01(?:0|2)/.test(txPrefix) || method.includes('insta'))) return false
+      const orange = /orange/i.test(`${sms.provider ?? ''} ${sms.message ?? ''} ${sms.raw_sms ?? ''} ${method}`)
+      // Orange Cash commonly omits the sender phone. In that case the safe
+      // identity path is name + amount + wallet + time + balance continuity.
+      if (!smsPhone && (!orange || !sameName(sms.sender_name, tx.sender_name) || !hasBalanceContinuity(sms, (balanceHistory ?? []) as SmsRow[]))) return false
       // Orange Cash sender identities are 012-based when a number is present.
       if (method.includes('orange') && smsPhone && !/^012/.test(String(sms.sender_number ?? '').replace(/\D/g, '').slice(-11))) return false
       if (!tx.first_seen_at || !sms.received_at) return false

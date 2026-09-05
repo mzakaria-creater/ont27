@@ -5,15 +5,17 @@ import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { supabase } from '../lib/supabase'
+import SmsMatchQueues, { type QueueSms } from '../components/SmsMatchQueues'
 
 type Source = { ok: boolean; error: string | null }
-type Sms = { id: number; received_at: string | null; sms_category: string | null; amount: number | null; trx_id: string | null; assigned_tx_id: number | string | null }
+type Sms = { id: number; received_at: string | null; sms_category: string | null; amount: number | null; trx_id: string | null; assigned_tx_id: number | string | null; sender_name: string | null; sender_number: string | null; receiver_number: string | null; provider: string | null; balance_after: number | null; raw_sms: string | null; message: string | null }
 type Tx = { tx_id: number; ontarget_ref: string | null; status: string; amount: number | null; currency: string | null; merchant: string | null; master_merchant: string | null; gateway: string | null; first_seen_at: string | null; last_status_change: string | null }
 type Tg = { id: number; alert_type: string; chat_id: string | null; ok: boolean; error: string | null; created_at: string | null }
 type Integration = { id: number; action: string; entity: string; entity_id: string | null; actor_name: string | null; after: { status?: number | null; latency_ms?: number; destination_host?: string; error?: string } | null; created_at: string | null }
 type Device = { device: string; sim_slot: number | null; online: boolean | null; battery: number | null; charging: boolean | null; net_type: string | null; last_seen_at: string | null }
 type ProviderState = { count24h: number; pending: number; lastChange: string | null; latestTransaction: string | null; stale: boolean }
 type MonitorData = { generatedAt: string; lastSync: string | null; api: { ok: boolean; latencyMs: number }; supabase: { ok: boolean; latencyMs: number; failedSources: string[] }; queues: { pendingDeposits: number | null; pendingPayouts: number | null; editRequests: number | null }; providers: { nagopay: ProviderState; payfuture: ProviderState }; sources: Record<string, Source>; sms: Sms[]; transactions: Tx[]; telegram: Tg[]; email: Integration[]; webhooks: Integration[]; devices: Device[] }
+type SmsQueues = { waiting: QueueSms[]; unlinked: QueueSms[] }
 
 const POLL_MS = 15_000
 const when = (iso: string | null) => iso ? new Date(iso).toLocaleString() : '—'
@@ -23,9 +25,10 @@ export default function Monitor() {
   const [data, setData] = useState<MonitorData | null>(null)
   const [error, setError] = useState(false)
   const [realtime, setRealtime] = useState<'connecting' | 'connected' | 'degraded'>('connecting')
+  const [smsQueues, setSmsQueues] = useState<SmsQueues>({ waiting: [], unlinked: [] })
 
   const load = useCallback(async () => {
-    try { setData(await api<MonitorData>('/api/monitoring')); setError(false) }
+    try { const [monitoring, queues] = await Promise.all([api<MonitorData>('/api/monitoring'), api<SmsQueues>('/api/sms/queues')]); setData(monitoring); setSmsQueues({ waiting: queues.waiting ?? [], unlinked: queues.unlinked ?? [] }); setError(false) }
     catch { setError(true) }
   }, [])
 
@@ -50,6 +53,7 @@ export default function Monitor() {
 
   const online = data?.devices.filter((d) => d.online).length ?? 0
   const unassigned = data?.sms.filter((s) => !s.assigned_tx_id && ['deposit', 'withdrawal'].includes(s.sms_category ?? '')).length ?? 0
+  const linkedPairs = useMemo(() => data ? data.transactions.map((tx) => ({ tx, sms: data.sms.find((sms) => String(sms.assigned_tx_id) === String(tx.tx_id)) })).filter((pair) => pair.sms) : [], [data])
 
   return <PanelShell>
     <section className="page-head">
@@ -57,6 +61,8 @@ export default function Monitor() {
       <p className="page-sub">{t('تدفق SMS والمعاملات والتكاملات وحالة الأجهزة.', 'SMS, transaction, integration, and device activity in one operational stream.')}</p>
     </section>
     {error && <div className="card warn">{t('تعذّر تحميل بيانات المراقبة.', 'Unable to load monitoring data.')}</div>}
+    <SmsMatchQueues waiting={smsQueues.waiting} unlinked={smsQueues.unlinked} loading={!data && !error} />
+    {linkedPairs.length > 0 && <section className="card recent-card live-pair-card"><div className="recent-head"><div><h3>{t('المعاملات مع SMS المطابقة', 'Transactions with matched SMS')}</h3><span className="cell-sub">{t('كل معاملة ورسالتها في بطاقة واحدة', 'Each transaction and its SMS in one card')}</span></div><span className="live-dot"><span className="ld" />LIVE</span></div><div className="live-pair-grid">{linkedPairs.slice(0, 12).map(({ tx, sms }) => <article className="live-pair" key={tx.tx_id}><div className="live-pair-head"><Link to={`/transactions/${encodeURIComponent(tx.ontarget_ref ?? String(tx.tx_id))}`} className="mono">TRX {tx.ontarget_ref ?? tx.tx_id}</Link><span className={`pay-status-badge ${tx.status === 'PAID' || tx.status === 'APPROVED' ? 'st-paid' : tx.status === 'DECLINED' ? 'st-declined' : 'st-pending'}`}>{tx.status}</span></div><div className="live-pair-main"><strong className="mono">{money(tx.amount, tx.currency)}</strong><span>{tx.merchant ?? '—'}</span><span>{when(tx.first_seen_at)}</span></div><div className="live-pair-sms"><span className="tx-sms-label">📨 SMS #{sms?.id}</span><span>{sms?.provider ?? '—'} · {sms?.sender_name ?? sms?.sender_number ?? '—'}</span><span className="mono">{money(sms?.amount, tx.currency)}</span><p>{sms?.raw_sms ?? sms?.message ?? '—'}</p></div></article>)}</div></section>}
     <div className="stat-grid">
       <div className="stat-card"><span className="stat-label">WebSocket / Realtime</span><span className="stat-value" style={{ fontSize: '1.1rem' }}>{realtime === 'connected' ? '● Connected' : realtime === 'degraded' ? '● Polling fallback' : '○ Connecting'}</span><span className="stat-sub">{t('تحديث احتياطي كل 15 ثانية', '15-second polling fallback')}</span></div>
       <div className="stat-card"><span className="stat-label">{t('آخر مزامنة', 'Last sync')}</span><span className="stat-value" style={{ fontSize: '1.1rem' }}>{when(data?.lastSync ?? null)}</span><span className="stat-sub">API {data ? '●' : '○'} · {data?.generatedAt ? when(data.generatedAt) : '—'}</span></div>
