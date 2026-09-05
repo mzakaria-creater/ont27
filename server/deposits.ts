@@ -196,7 +196,8 @@ depositRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
     .range(offset, offset + limit - 1)
   query = await applyDepositScopes(query,c.get('actor'),'view')
 
-  if (status) query = query.eq('status', status)
+  if (status === 'PAID') query = query.in('status', ['PAID', 'APPROVED'])
+  else if (status) query = query.eq('status', status)
   if (master) query = query.ilike('master_merchant', `%${master}%`)
   if (q) {
     const like = `%${q.replaceAll(',', ' ')}%`

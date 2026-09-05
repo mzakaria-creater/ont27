@@ -30,8 +30,13 @@ adminRoutes.get('/transactions', requirePerm('transactions', 'can_view'), async 
   let summaryQuery = db.from('maven_transactions').select('status, amount').limit(10_000)
   query = await applyDepositScopes(query,c.get('actor'),'view')
   summaryQuery = await applyDepositScopes(summaryQuery,c.get('actor'),'view')
-  if (status) query = query.eq('status', status)
-  if (status) summaryQuery = summaryQuery.eq('status', status)
+  if (status === 'PAID') {
+    query = query.in('status', ['PAID', 'APPROVED'])
+    summaryQuery = summaryQuery.in('status', ['PAID', 'APPROVED'])
+  } else if (status) {
+    query = query.eq('status', status)
+    summaryQuery = summaryQuery.eq('status', status)
+  }
   if (merchant) query = query.ilike('merchant', `%${merchant.replaceAll(',', ' ')}%`)
   if (merchant) summaryQuery = summaryQuery.ilike('merchant', `%${merchant.replaceAll(',', ' ')}%`)
   if (method) query = query.eq('payment_method', method)
