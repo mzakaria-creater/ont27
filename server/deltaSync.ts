@@ -353,9 +353,17 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
         })
 
         if (providerActions.length > 0) {
+          // A terminal status arriving from the Maven source is a provider
+          // action, not an automation/agent decision. Preserve that identity
+          // on the mirrored transaction so every UI can render the same actor.
+          for (const row of providerActions) {
+            if (['PAID', 'APPROVED', 'DECLINED'].includes(String(row.status ?? '').toUpperCase()) && (row.approved_by == null || row.approved_by === 'Manual')) {
+              row.approved_by = 'Maven Team'
+            }
+          }
           const { error: auditErr } = await db.from('audit_log').insert(providerActions.map((r) => ({
             actor_type: 'system',
-            actor_name: 'Maven',
+            actor_name: 'Maven Team',
             action: 'deposit.maven_action_applied',
             entity: 'maven_transactions',
             entity_id: String(r.tx_id),
