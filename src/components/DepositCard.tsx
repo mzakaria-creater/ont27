@@ -53,6 +53,15 @@ export default function DepositCard({
         </div>
       </header>
 
+      {row.sms && (
+        <div className="dep-sms dep-sms-top">
+          📨 {t('رسالة المعاملة', 'Transaction SMS')} <span className="mono">#{row.sms.id}</span>
+          <span>{row.sms.sender_name ?? row.sms.sender_number ?? '—'} → {row.sms.receiver_number ?? '—'}</span>
+          <span className="mono">{money(row.sms.amount, row.currency ?? 'EGP')} · {row.sms.received_at ? depositTime({ first_seen_at: row.sms.received_at }) : '—'}</span>
+          {(row.sms.raw_sms ?? row.sms.message ?? row.sms.sms_first_line) && <code>{row.sms.raw_sms ?? row.sms.message ?? row.sms.sms_first_line}</code>}
+        </div>
+      )}
+
       <div className="dep-amount">
         <span className="mono">{money(row.amount, '')}</span>
         <span className="dep-cur">{row.currency ?? ''}</span>
@@ -101,15 +110,6 @@ export default function DepositCard({
         </button>
       ) : (
         <div className="dep-proof empty">{t('لا يوجد إثبات مرفق', 'No proof attached')}</div>
-      )}
-
-      {row.sms && (
-        <div className="dep-sms">
-          ✅ {t('رسالة مطابقة', 'Matched SMS')} <span className="mono">#{row.sms.id}</span>
-          {row.sms.balance_after != null && (
-            <span className="mono"> · {t('الرصيد بعدها', 'Balance after')} {money(row.sms.balance_after, '')}</span>
-          )}
-        </div>
       )}
 
       <div className="dep-actions">

@@ -2267,6 +2267,8 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
   font-size: 10.5px; color: var(--status-paid);
   background: var(--green-bg); border-radius: 8px; padding: 6px 9px;
 }
+.dep-sms-top { display: grid; gap: 3px; margin-block-end: 8px; border-inline-start: 3px solid var(--status-paid); }
+.dep-sms-top code { color: var(--text); font: 10px/1.45 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-block-size: 48px; overflow: auto; }
 
 /* All four actions stay on one line even in the narrowest 4-up column — the
    approve/decline pair shares whatever the two icon buttons leave over. */

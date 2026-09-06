@@ -29,7 +29,7 @@ export interface DepositRow {
   to_account_number: string | null
   receiving_wallet: string | null
   proof_image_url: string | null
-  sms?: { id: number; sender_name: string | null; amount: number | null; balance_after: number | null; received_at: string | null } | null
+  sms?: { id: number; sender_name: string | null; sender_number?: string | null; receiver_number?: string | null; amount: number | null; balance_after: number | null; received_at: string | null; raw_sms?: string | null; message?: string | null; sms_first_line?: string | null } | null
   first_seen_at: string | null
   last_status_change: string | null
   created_utc: string | null

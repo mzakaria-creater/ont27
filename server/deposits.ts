@@ -94,7 +94,7 @@ async function attachSms(rows: Record<string, unknown>[]): Promise<void> {
   if (!matches?.length) return
   const { data: smsRows } = await db
     .from('inbound_sms')
-    .select('id, sender_name, amount, balance_after, received_at, receiver_number')
+    .select('id, sender_name, sender_number, amount, balance_after, received_at, receiver_number, raw_sms, message, sms_first_line')
     .in('id', matches.map((m) => m.sms_id))
   const smsById = new Map((smsRows ?? []).map((s) => [s.id, s]))
   const byTx = new Map(matches.map((m) => [m.tx_id, smsById.get(m.sms_id)]))
