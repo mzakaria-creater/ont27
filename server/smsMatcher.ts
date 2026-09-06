@@ -1,7 +1,7 @@
 import { db } from './db.js'
 
 type SmsRow = { id: number; trx_id: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; received_at: string | null; receiver_number: string | null; balance_after?: number | null; provider?: string | null; raw_sms?: string | null; message?: string | null; is_blocked?: boolean | null }
-type TxRow = { tx_id: number; guid: string | null; ontarget_ref: string | null; merchant_tx_reference: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; receiving_wallet: string | null; to_account_number: string | null; payment_method: string | null; first_seen_at: string | null }
+type TxRow = { tx_id: number; guid: string | null; ontarget_ref: string | null; merchant_tx_reference: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; receiving_wallet: string | null; to_account_number: string | null; payment_method: string | null; gateway: string | null; status: string | null; first_seen_at: string | null }
 
 const PAGE = 1000
 const MAX_LINKS_PER_RUN = 250
@@ -27,6 +27,7 @@ export interface PaidSmsRepairResult {
   scannedTransactions: number
   eligible: number
   linked: number
+  autoApproved: number
   skippedAmbiguous: number
   skippedAlreadyAssigned: number
   errors: string[]
@@ -34,10 +35,10 @@ export interface PaidSmsRepairResult {
   sample: { sms_id: number; tx_id: number; trx_id: string; sec_diff: number | null }[]
 }
 
-// Assigns an SMS to a transaction without changing the transaction status.
-// PENDING must be included: assignment is evidence for the automation/review
-// decision, so waiting until a transaction is already PAID made the matcher
-// circular and useless to the live decision path.
+// Assigns an SMS to a transaction. For a clean unique match, a pending live
+// NGPay transaction is also approved by the provider worker when automation
+// is enabled; the worker must confirm the provider result before mirroring
+// PAID locally.
 // deliberately stricter than the operator candidate search: amount alone is
 // never enough. The receiving wallet is the primary discriminator. A link
 // requires exact amount + wallet, a bounded time window and a unique result.
@@ -52,7 +53,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
       .order('received_at', { ascending: false, nullsFirst: false })
       .limit(limit),
     db.from('maven_transactions')
-      .select('tx_id, guid, ontarget_ref, merchant_tx_reference, amount, sender_name, sender_number, receiving_wallet, to_account_number, payment_method, first_seen_at')
+      .select('tx_id, guid, ontarget_ref, merchant_tx_reference, amount, sender_name, sender_number, receiving_wallet, to_account_number, payment_method, gateway, status, first_seen_at')
       .in('status', ['PENDING', 'PAID', 'APPROVED'])
       .order('first_seen_at', { ascending: false, nullsFirst: false })
       .limit(limit),
@@ -139,6 +140,13 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
 
   const errors: string[] = []
   let linked = 0
+  let autoApproved = 0
+  let automationEnabled = false
+  if (apply) {
+    const { data: settings, error: settingsError } = await db.from('automation_settings').select('automation_enabled').eq('id', 1).maybeSingle()
+    if (settingsError) throw new Error(`automation settings: ${settingsError.message}`)
+    automationEnabled = settings?.automation_enabled === true
+  }
   if (apply) {
     for (let i = 0; i < unique.length; i += 10) {
       await Promise.all(unique.slice(i, i + 10).map(async ({ sms, tx, secDiff }) => {
@@ -164,7 +172,41 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
         ])
         if (match.error) errors.push(`match ${sms.id}/${tx.tx_id}: ${match.error.message}`)
         if (wallet.error) errors.push(`wallet tx ${tx.tx_id}: ${wallet.error.message}`)
-        if (!match.error) linked++
+        if (!match.error) {
+          linked++
+
+          // A clean, unique SMS match is sufficient evidence to approve a
+          // pending live NGPay deposit. The provider worker verifies the
+          // action on Maven; only then do we mirror PAID locally. Other
+          // gateways remain linked for manual handling because this worker
+          // must never mark a provider transaction paid without confirmation.
+          const gateway = String(tx.gateway ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+          if (automationEnabled && tx.status === 'PENDING' && (gateway === 'nagupayp2p' || gateway === 'nagopay')) {
+            const baseUrl = process.env.SUPABASE_URL
+            const serviceKey = process.env.SUPABASE_SECRET_KEY
+            if (!baseUrl || !serviceKey) { errors.push(`auto approve ${tx.tx_id}: worker_not_configured`); return }
+            try {
+              const response = await fetch(`${baseUrl}/functions/v1/ngpay-approve`, {
+                method: 'POST',
+                signal: AbortSignal.timeout(45_000),
+                headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
+                body: JSON.stringify({ tx_id: tx.tx_id, decision: 'PAID', actor_name: 'Auto', remark: `Approved automatically after verified SMS match #${sms.id}` }),
+              })
+              const result = await response.json().catch(() => ({ error: 'worker_invalid_response' })) as Record<string, unknown>
+              if (!response.ok || result.executed_on_provider !== true) {
+                errors.push(`auto approve ${tx.tx_id}: ${String(result.error ?? `HTTP ${response.status}`)}`)
+                return
+              }
+              const nowApproved = new Date().toISOString()
+              const { error: mirrorError } = await db.from('maven_transactions').update({ status: 'PAID', approved_by: 'Auto', last_status_change: nowApproved, updated_at: nowApproved }).eq('tx_id', tx.tx_id).eq('status', 'PENDING')
+              if (mirrorError) errors.push(`auto approve mirror ${tx.tx_id}: ${mirrorError.message}`)
+              await db.from('audit_log').insert({ actor_type: 'system', actor_name: 'Auto', action: 'deposit.auto_approve_sms_match', entity: 'maven_transactions', entity_id: String(tx.tx_id), before: { status: 'PENDING' }, after: { status: 'PAID', sms_id: sms.id, provider_execution: true } })
+              autoApproved++
+            } catch (error) {
+              errors.push(`auto approve ${tx.tx_id}: ${error instanceof Error ? error.message : 'worker_failed'}`)
+            }
+          }
+        }
       }))
     }
   }
@@ -174,6 +216,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
     scannedTransactions: txRows.length,
     eligible: unique.length,
     linked,
+    autoApproved,
     skippedAmbiguous,
     skippedAlreadyAssigned,
     errors: errors.slice(0, 20),

@@ -435,11 +435,13 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
     try {
       const repair = await repairPaidSmsMatches(true, mode === 'full' ? 1000 : 150)
       results['sms_exact_matches'] = repair.linked
+      results['sms_auto_approved'] = repair.autoApproved
       console.info('exact SMS matcher completed', {
         scannedSms: repair.scannedSms,
         scannedTransactions: repair.scannedTransactions,
         eligible: repair.eligible,
         linked: repair.linked,
+        autoApproved: repair.autoApproved,
         skippedAmbiguous: repair.skippedAmbiguous,
         skippedAlreadyAssigned: repair.skippedAlreadyAssigned,
         diagnosticCounts: Object.entries(repair.diagnostics).map(([key, value]) => `${key}=${value}`).join(','),
