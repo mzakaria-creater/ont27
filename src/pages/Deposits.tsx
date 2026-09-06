@@ -118,7 +118,7 @@ export default function Deposits() {
       if (await sync) await read()
     }
     void refresh(false)
-    const interval = setInterval(() => void refresh(true), 30_000)
+    const interval = setInterval(() => void refresh(true), 10_000)
     return () => { alive = false; clearInterval(interval) }
   }, [load])
 

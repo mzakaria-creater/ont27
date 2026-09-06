@@ -136,8 +136,8 @@ export default function Approvals() {
       .subscribe()
     const syncIv = window.setInterval(() => {
       void syncProviders().then((changed) => { if (changed) schedule() })
-    }, 30_000)
-    const fallbackIv = window.setInterval(() => void load(), 30_000)
+    }, 10_000)
+    const fallbackIv = window.setInterval(() => void load(), 10_000)
     return () => {
       window.clearInterval(syncIv)
       window.clearInterval(fallbackIv)
