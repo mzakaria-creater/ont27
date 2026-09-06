@@ -5,7 +5,7 @@ import PanelShell from '../components/PanelShell'
 import ProofModal from '../components/ProofModal'
 import TransactionEditPanel from '../components/TransactionEditPanel'
 import { api, ApiError } from '../lib/api'
-import { depositTime, money, statusMeta } from '../lib/deposits'
+import { depositTime, isAutomaticApprovalActor, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import type { DepositDetail } from '../lib/deposits'
 import { Activity, Bot, CheckCircle2, CircleDollarSign, Clock3, Database, FileJson, History, MessageSquareText, Pencil, UserRound, Workflow } from 'lucide-react'
@@ -69,12 +69,12 @@ interface DetailResponse {
 
 function DecisionBy({ name }: { name: string | null | undefined }) {
   const { t } = useLocale()
-  if (!name || name === 'Manual' || name === 'auto_trigger') {
-    return <span className="decision-by" title={t('قرار آلي', 'Automatic decision')}><Bot size={15} aria-hidden="true" /> {t('النظام (آلي)', 'System (auto)')}</span>
+  if (isAutomaticApprovalActor(name)) {
+    return <span className="decision-by" title={t('قرار آلي', 'Automatic decision')}><Bot size={15} aria-hidden="true" /> {t('آلي (Auto)', 'Auto')}</span>
   }
   return (
     <span className="decision-by">
-      <span className="avatar-initial">{name.charAt(0).toUpperCase()}</span> {name}
+      <span className="avatar-initial">{String(name).charAt(0).toUpperCase()}</span> {name}
     </span>
   )
 }

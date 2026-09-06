@@ -10,7 +10,7 @@ import { api, ApiError } from '../lib/api'
 import { useBulk } from '../lib/useBulk'
 import { useLocale } from '../lib/locale'
 import MethodLogo from '../components/MethodLogo'
-import { depositTime, merchantChipCls, money, statusMeta } from '../lib/deposits'
+import { depositTime, isAutomaticApprovalActor, merchantChipCls, money, statusMeta } from '../lib/deposits'
 import type { DepositDetail, DepositRow, DepositStats } from '../lib/deposits'
 import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
@@ -533,7 +533,7 @@ export default function Deposits() {
                           </div>
                         )}
                       </td>
-                      <td>{r.status === 'PENDING' ? '—' : (!r.approved_by || r.approved_by === 'Manual' ? 'النظام (آلي)' : r.approved_by)}</td>
+                      <td>{r.status === 'PENDING' ? '—' : (isAutomaticApprovalActor(r.approved_by) ? 'آلي (Auto)' : r.approved_by)}</td>
                       <td className="mono">{depositTime(r)}</td>
                     </tr>
                   )
@@ -601,7 +601,7 @@ export default function Deposits() {
                   {selected.receiving_wallet && selected.to_account_number && selected.receiving_wallet !== selected.to_account_number && <><dt>{t('المحفظة المخصصة', 'Allocated wallet')}</dt><dd className="mono">{selected.to_account_number}</dd></>}
                   <dt>أول ظهور</dt><dd className="mono">{depositTime({ first_seen_at: selected.first_seen_at })}</dd>
                   <dt>آخر تغيير حالة</dt><dd className="mono">{depositTime({ first_seen_at: selected.last_status_change })}</dd>
-                  <dt>اعتمده</dt><dd>{selected.approved_by ?? '—'}</dd>
+                      <dt>اعتمده</dt><dd>{selected.status === 'PENDING' ? '—' : (isAutomaticApprovalActor(selected.approved_by) ? 'آلي (Auto)' : selected.approved_by)}</dd>
                   {selected.manual_entry && (
                     <>
                       <dt>إدخال يدوي</dt>

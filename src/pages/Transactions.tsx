@@ -4,7 +4,7 @@ import PanelShell from '../components/PanelShell'
 import MerchantLogo from '../components/MerchantLogo'
 import MethodLogo from '../components/MethodLogo'
 import { api, ApiError } from '../lib/api'
-import { depositTime, money, statusMeta } from '../lib/deposits'
+import { depositTime, isAutomaticApprovalActor, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
@@ -297,7 +297,7 @@ export default function Transactions() {
                         <div><span>{t('التاجر', 'Merchant')}</span><MerchantLogo merchant={r.merchant ?? r.master_merchant}/></div>
                         <div><span>{t('البوابة', 'Gateway')}</span><strong>{r.gateway ?? '—'}</strong></div>
                         <div><span>{t('التكرار', 'Duplicates')}</span>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First transaction')}</div>
-                        <div><span>{t('اعتمد بواسطة', 'Approved by')}</span><strong>{r.status === 'PENDING' ? '—' : (!r.approved_by || r.approved_by === 'Manual' ? t('النظام (آلي)', 'System (auto)') : r.approved_by)}</strong></div>
+                        <div><span>{t('اعتمد بواسطة', 'Approved by')}</span><strong>{r.status === 'PENDING' ? '—' : (isAutomaticApprovalActor(r.approved_by) ? t('آلي (Auto)', 'Auto') : r.approved_by)}</strong></div>
                         <div className="tx-expanded-actions">{r.status === 'PENDING' && r.kind === 'deposit' && can('deposits','can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r,'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.status === 'PENDING' && r.kind === 'payout' && can('payouts','can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}</div>
                         {r.kind === 'deposit' && r.raw_preview && <details className="tx-raw-details"><summary>{t('عرض Raw المعاملة', 'View transaction raw')}</summary><pre>{JSON.stringify(r.raw_preview, null, 2)}</pre></details>}
                       </div></td></tr>}
@@ -330,7 +330,7 @@ export default function Transactions() {
                   <div><dt>{t('المحفظة', 'Wallet')}</dt><dd className="mono">{wallet ?? '—'}</dd></div>
                   <div><dt>{t('نوع الإيداع', 'Deposit type')}</dt><dd>{r.kind === 'deposit' ? <span className={`deposit-kind ${r.deposit_kind === 'retention_deposit' ? 'is-retention' : 'is-first'}`}>{r.deposit_kind === 'retention_deposit' ? `↻ ${t('Retention deposit','Retention deposit')}` : `★ ${t('First deposit','First deposit')}`}</span> : '—'}</dd></div>
                   <div><dt>{t('التكرار', 'Duplicates')}</dt><dd>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First')}</dd></div>
-                  <div><dt>{t('اعتمد بواسطة', 'Approved by')}</dt><dd>{r.status === 'PENDING' ? '—' : (!r.approved_by || r.approved_by === 'Manual' ? t('النظام (آلي)', 'System (auto)') : r.approved_by)}</dd></div>
+                  <div><dt>{t('اعتمد بواسطة', 'Approved by')}</dt><dd>{r.status === 'PENDING' ? '—' : (isAutomaticApprovalActor(r.approved_by) ? t('آلي (Auto)', 'Auto') : r.approved_by)}</dd></div>
                   <div><dt>{t('الوقت', 'Time')}</dt><dd className="mono">{depositTime(r)}</dd></div>
                 </dl>
                 <div className="all-tx-card-actions">

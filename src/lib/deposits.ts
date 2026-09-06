@@ -86,6 +86,14 @@ export function statusMeta(status: string) {
   return { label: statusLocale === 'en' ? m.en : m.ar, cls: m.cls, ar: m.ar, en: m.en }
 }
 
+// Maven's legacy feed uses null/"Manual" for decisions made by the
+// automation worker. Normalize all known automation markers so every
+// transaction screen shows the same actor instead of a misleading human name.
+export function isAutomaticApprovalActor(name: string | null | undefined): boolean {
+  const value = String(name ?? '').trim().toLowerCase()
+  return !value || value === 'manual' || value === 'auto_trigger' || value === 'auto' || value === 'automation' || value.startsWith('auto_') || value.startsWith('system')
+}
+
 export function parseUtcText(value: string | null | undefined): Date | null {
   if (!value) return null
   let s = value.trim()
