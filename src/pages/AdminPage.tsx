@@ -1,64 +1,1360 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
-import PanelShell from '../components/PanelShell'
-import UserEditor from '../components/UserEditor'
-import type { UserOverride, UserRow } from '../components/UserEditor'
-import { api, ApiError } from '../lib/api'
-import { useLocale } from '../lib/locale'
-import { refreshBrandLogos } from '../lib/brandLogos'
-import UserLogo from '../components/UserLogo'
-import MerchantLogo from '../components/MerchantLogo'
-import MethodLogo from '../components/MethodLogo'
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import PanelShell from "../components/PanelShell";
+import UserEditor from "../components/UserEditor";
+import type { UserOverride, UserRow } from "../components/UserEditor";
+import { api, ApiError } from "../lib/api";
+import { useLocale } from "../lib/locale";
+import { refreshBrandLogos } from "../lib/brandLogos";
+import UserLogo from "../components/UserLogo";
+import MerchantLogo from "../components/MerchantLogo";
+import MethodLogo from "../components/MethodLogo";
+import { Eye, EyeOff } from "lucide-react";
 
-type Tab = 'users' | 'merchants' | 'permissions' | 'fees' | 'capacity' | 'keys' | 'branding'
-type Perm = { role_key: string; page_key: string; can_view: boolean; can_create: boolean; can_edit: boolean; can_delete: boolean; can_approve: boolean; can_export: boolean }
-type Data = { users: any[]; roles: any[]; permissions: Perm[]; apiKeys: any[]; merchants: any[]; masters: any[]; feeDefaults: any[]; hierarchy: any[]; capacities: any[]; accounts: any[]; methods: any[]; userPermissions?: UserOverride[]; accessScopes?: any[]; teams?: any[]; teamMembers?: any[] }
-const actions: (keyof Omit<Perm, 'role_key' | 'page_key'>)[] = ['can_view', 'can_create', 'can_edit', 'can_delete', 'can_approve', 'can_export']
+type Tab =
+  | "users"
+  | "merchants"
+  | "permissions"
+  | "fees"
+  | "capacity"
+  | "keys"
+  | "branding";
+type Perm = {
+  role_key: string;
+  page_key: string;
+  can_view: boolean;
+  can_create: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+  can_approve: boolean;
+  can_export: boolean;
+};
+type Data = {
+  users: any[];
+  roles: any[];
+  permissions: Perm[];
+  apiKeys: any[];
+  merchants: any[];
+  masters: any[];
+  feeDefaults: any[];
+  hierarchy: any[];
+  capacities: any[];
+  accounts: any[];
+  methods: any[];
+  userPermissions?: UserOverride[];
+  accessScopes?: any[];
+  teams?: any[];
+  teamMembers?: any[];
+};
+const actions: (keyof Omit<Perm, "role_key" | "page_key">)[] = [
+  "can_view",
+  "can_create",
+  "can_edit",
+  "can_delete",
+  "can_approve",
+  "can_export",
+];
 const tabPaths: Record<Tab, string> = {
-  users: '/admin/users',
-  merchants: '/admin/merchants/new',
-  branding: '/admin/logos',
-  permissions: '/admin/permissions',
-  fees: '/admin/fees',
-  capacity: '/admin/wallet-capacity',
-  keys: '/admin/api-keys',
-}
-const pathTabs = Object.fromEntries(Object.entries(tabPaths).map(([tab, path]) => [path, tab])) as Record<string, Tab>
+  users: "/admin/users",
+  merchants: "/admin/merchants/new",
+  branding: "/admin/logos",
+  permissions: "/admin/permissions",
+  fees: "/admin/fees",
+  capacity: "/admin/wallet-capacity",
+  keys: "/admin/api-keys",
+};
+const pathTabs = Object.fromEntries(
+  Object.entries(tabPaths).map(([tab, path]) => [path, tab]),
+) as Record<string, Tab>;
 
 export default function AdminPage() {
-  const { t } = useLocale(); const { pathname } = useLocation(); const navigate = useNavigate(); const [tab, setTab] = useState<Tab>(() => pathTabs[pathname] ?? 'users'); const [data, setData] = useState<Data | null>(null); const [err, setErr] = useState<string | null>(null); const [saving, setSaving] = useState(false); const [shownSecret, setShownSecret] = useState<string | null>(null)
-  const [user, setUser] = useState({ username: '', email: '', display_name: '', password: '', role: '' }); const [merchant, setMerchant] = useState({ name: '', code: '', master_merchant_id: '', initial_payin_pct: '' }); const [key, setKey] = useState({ merchant_id: '', key_name: '', environment: 'test' }); const [override, setOverride] = useState({ master_merchant_id: '', name: '', payin_commission_pct: '', payout_commission_pct: '0' }); const [editing, setEditing] = useState<UserRow | null>(null)
-  const [brandType, setBrandType] = useState<'merchant' | 'user' | 'method'>('merchant'); const [brandKey, setBrandKey] = useState(''); const [brandFile, setBrandFile] = useState<File | null>(null); const [brandMsg, setBrandMsg] = useState<string | null>(null)
-  const [roleFilter,setRoleFilter]=useState('core'); const [teamDraft,setTeamDraft]=useState({name:'',description:''})
-  const [accountLink,setAccountLink]=useState<{link:string;purpose:string;sent:boolean}|null>(null)
-  const load = useCallback(async () => { try { setData(await api<Data>('/api/admin')); setErr(null) } catch (e) { setErr(e instanceof ApiError && e.status === 403 ? t('هذه الواجهة للمالك أو المدير فقط.', 'This page is for owner or admin only.') : t('تعذر تحميل الإدارة.', 'Unable to load administration.')) } }, [t])
-  useEffect(() => { void load() }, [load])
-  useEffect(() => { setTab(pathTabs[pathname] ?? 'users') }, [pathname])
-  const call = async (path: string, method: string, body?: unknown) => { setSaving(true); try { const result = await api<any>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) }); await load(); return result } catch (e) { setErr((e as Error).message || t('فشلت العملية.', 'Operation failed.')); return null } finally { setSaving(false) } }
-  const pages = useMemo(() => [...new Set(data?.permissions.map((p) => p.page_key) ?? [])].sort(), [data])
-  const updatePerm = async (row: Perm, action: keyof Omit<Perm, 'role_key' | 'page_key'>) => { await call(`/api/admin/permissions/${encodeURIComponent(row.role_key)}/${encodeURIComponent(row.page_key)}`, 'PUT', { ...row, [action]: !row[action] }) }
+  const { t } = useLocale();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const [tab, setTab] = useState<Tab>(() => pathTabs[pathname] ?? "users");
+  const [data, setData] = useState<Data | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [shownSecret, setShownSecret] = useState<string | null>(null);
+  const [user, setUser] = useState({
+    username: "",
+    email: "",
+    display_name: "",
+    password: "",
+    role: "",
+  });
+  const [showUserPassword, setShowUserPassword] = useState(false);
+  const [merchant, setMerchant] = useState({
+    name: "",
+    code: "",
+    master_merchant_id: "",
+    initial_payin_pct: "",
+  });
+  const [key, setKey] = useState({
+    merchant_id: "",
+    key_name: "",
+    environment: "test",
+  });
+  const [override, setOverride] = useState({
+    master_merchant_id: "",
+    name: "",
+    payin_commission_pct: "",
+    payout_commission_pct: "0",
+  });
+  const [editing, setEditing] = useState<UserRow | null>(null);
+  const [brandType, setBrandType] = useState<"merchant" | "user" | "method">(
+    "merchant",
+  );
+  const [brandKey, setBrandKey] = useState("");
+  const [brandFile, setBrandFile] = useState<File | null>(null);
+  const [brandMsg, setBrandMsg] = useState<string | null>(null);
+  const [roleFilter, setRoleFilter] = useState("core");
+  const [teamDraft, setTeamDraft] = useState({ name: "", description: "" });
+  const [accountLink, setAccountLink] = useState<{
+    link: string;
+    purpose: string;
+    sent: boolean;
+  } | null>(null);
+  const load = useCallback(async () => {
+    try {
+      setData(await api<Data>("/api/admin"));
+      setErr(null);
+    } catch (e) {
+      setErr(
+        e instanceof ApiError && e.status === 403
+          ? t(
+              "هذه الواجهة للمالك أو المدير فقط.",
+              "This page is for owner or admin only.",
+            )
+          : t("تعذر تحميل الإدارة.", "Unable to load administration."),
+      );
+    }
+  }, [t]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  useEffect(() => {
+    setTab(pathTabs[pathname] ?? "users");
+  }, [pathname]);
+  const call = async (path: string, method: string, body?: unknown) => {
+    setSaving(true);
+    try {
+      const result = await api<any>(path, {
+        method,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      await load();
+      return result;
+    } catch (e) {
+      setErr((e as Error).message || t("فشلت العملية.", "Operation failed."));
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  };
+  const pages = useMemo(
+    () => [...new Set(data?.permissions.map((p) => p.page_key) ?? [])].sort(),
+    [data],
+  );
+  const updatePerm = async (
+    row: Perm,
+    action: keyof Omit<Perm, "role_key" | "page_key">,
+  ) => {
+    await call(
+      `/api/admin/permissions/${encodeURIComponent(row.role_key)}/${encodeURIComponent(row.page_key)}`,
+      "PUT",
+      { ...row, [action]: !row[action] },
+    );
+  };
   const unblockLogin = async (row: UserRow) => {
-    if (!window.confirm(t(`إلغاء حظر تسجيل الدخول لـ ${row.display_name ?? row.username}؟`, `Unblock login for ${row.display_name ?? row.username}?`))) return
-    await call(`/api/admin/users/${row.id}/unblock-login`, 'POST')
-  }
-  const setAccountState=async(row:UserRow,state:'active'|'inactive'|'frozen'|'rejected')=>{const reason=state==='active'?null:window.prompt(t('سبب الإجراء (اختياري)','Reason (optional)'))??null;if(state!=='active'&&reason===null)return;const freeze_hours=state==='frozen'?Number(window.prompt(t('مدة التجميد بالساعات','Freeze duration in hours'),'24')||24):undefined;await call(`/api/admin/users/${row.id}/state`,'POST',{state,reason,freeze_hours})}
-  const sendUserLink=async(row:UserRow,purpose:'magic_login'|'password_reset')=>{if(!row.email){setErr(t('أضف بريداً للمستخدم أولاً.','Add an email to the user first.'));return}const res=await call(`/api/admin/users/${row.id}/send-link`,'POST',{purpose});if(res?.link)setAccountLink({link:res.link,purpose,sent:res.delivery?.sent===true})}
-  const createMerchant = async (e: React.FormEvent) => { e.preventDefault(); const result = await call('/api/admin/merchants', 'POST', merchant); if (result) setMerchant({ name: '', code: '', master_merchant_id: '', initial_payin_pct: '' }) }
-  const issueKey = async (e: React.FormEvent) => { e.preventDefault(); const result = await call('/api/admin/api-keys', 'POST', key); if (result?.secret) { setShownSecret(result.secret); setKey({ merchant_id: '', key_name: '', environment: 'test' }) } }
-  const createOverride = async (e: React.FormEvent) => { e.preventDefault(); const result = await call('/api/admin/fees/hierarchy', 'POST', override); if (result) setOverride({ master_merchant_id: '', name: '', payin_commission_pct: '', payout_commission_pct: '0' }) }
-  const uploadBrand = async (e: React.FormEvent) => { e.preventDefault(); if (!brandFile || !brandKey) return; setSaving(true); setBrandMsg(null); try { const form = new FormData(); form.set('file', brandFile); form.set('asset_type', brandType); form.set('asset_key', brandKey); await api('/api/admin/branding/logo', { method: 'POST', body: form }); await refreshBrandLogos(); setBrandFile(null); setBrandMsg(t('تم رفع الشعار وتسجيل التغيير.', 'Logo uploaded and change logged.')) } catch (error) { setBrandMsg(error instanceof ApiError ? error.code : t('تعذر رفع الشعار.', 'Could not upload logo.')) } finally { setSaving(false) } }
-  const brandOptions = brandType === 'merchant' ? data?.merchants.map((row) => ({ key: row.name, label: row.name })) ?? [] : brandType === 'user' ? data?.users.map((row) => ({ key: row.username, label: row.display_name ?? row.username })) ?? [] : data?.methods.map((row) => ({ key: row.method_name, label: row.method_name })) ?? []
-  const visibleRoles=(data?.roles??[]).filter((role)=>roleFilter==='all'||(roleFilter==='core'&&['operator','operations_admin','admin','super_admin'].includes(role.role_key))||role.role_key===roleFilter)
-  return <PanelShell><section className="page-head"><h2>{t('الإدارة التشغيلية', 'Operations administration')}</h2><p className="page-sub">{t('إدارة المستخدمين، رسوم التجار، الصلاحيات، السعة ومفاتيح API.', 'Manage users, merchant fees, permissions, capacity, and API keys.')}</p></section>
-    <div className="filter-bar"><div className="filter-pills">{([['users', t('المستخدمون', 'Users')], ['merchants', t('تاجر جديد', 'New merchant')], ['branding', t('الشعارات', 'Logos')], ['permissions', t('الصلاحيات', 'Permissions')], ['fees', t('الرسوم', 'Fees')], ['capacity', t('سعة المحافظ', 'Wallet capacity')], ['keys', t('مفاتيح API', 'API keys')]] as [Tab,string][]).map(([id,label]) => <button key={id} className={`pill${tab===id?' active':''}`} onClick={() => navigate(tabPaths[id])}>{label}</button>)}</div></div>
-    {err && <div className="card warn">{err}</div>}{!data && !err && <p className="sidebar-hint">{t('جار التحميل…', 'Loading…')}</p>}
-    {data && tab === 'users' && <><section className="card control-row"><div><strong>{t('المستخدمون', 'Users')}</strong><p className="page-sub">{t('إدارة الحسابات والصلاحيات التشغيلية.', 'Manage operator accounts and access.')}</p></div><button className="btn-primary" onClick={()=>setUser({...user,username:'__open__',role:user.role || data.roles[0]?.role_key || ''})}>{t('إنشاء مستخدم', 'Create user')}</button></section>{user.username === '__open__' && <div className="modal-backdrop" role="dialog" aria-modal="true"><div className="modal-card user-create-modal"><div className="modal-head"><h3>{t('إضافة / تحديث مستخدم','Create / update user')}</h3><button className="btn-ghost btn-sm" onClick={()=>setUser({...user,username:''})}>✕</button></div><form className="user-create-grid" onSubmit={async(e)=>{e.preventDefault(); const result=await call('/api/admin/users','POST',{...user,username:user.email.split('@')[0] || user.display_name}); if(result)setUser({username:'',email:'',display_name:'',password:'',role:''})}}><label>First name<input required className="login-input" value={user.display_name.split(' ')[0]??''} onChange={e=>setUser({...user,display_name:`${e.target.value} ${user.display_name.split(' ').slice(1).join(' ')}`.trim()})}/></label><label>Last name<input className="login-input" value={user.display_name.split(' ').slice(1).join(' ')} onChange={e=>setUser({...user,display_name:`${user.display_name.split(' ')[0]} ${e.target.value}`.trim()})}/></label><label>Username<input required className="login-input" value={user.email.split('@')[0]} onChange={e=>setUser({...user,email:e.target.value})}/></label><label>Password<input required minLength={8} className="login-input" type="password" value={user.password} onChange={e=>setUser({...user,password:e.target.value})}/></label><label>Email<input required type="email" dir="ltr" className="login-input" value={user.email.includes('@')?user.email:''} onChange={e=>setUser({...user,email:e.target.value})}/></label><label>Phone number<input className="login-input" placeholder="01xxxxxxxxx"/></label><label>Role<select required className="login-input" value={user.role} onChange={e=>setUser({...user,role:e.target.value})}><option value="">Select role</option>{data.roles.map(role=><option key={role.role_key} value={role.role_key}>{role.label} ({role.role_key})</option>)}</select></label><label>Payment type<select className="login-input"><option>None selected</option><option>Mobile Wallet</option><option>Bank transfer</option></select></label><label className="user-active-row"><input type="checkbox" defaultChecked/> Is active</label><div className="drawer-actions modal-actions"><button className="btn-ghost" type="button" onClick={()=>setUser({...user,username:''})}>Close</button><button disabled={saving} className="btn-primary">{saving?'Saving…':'Submit'}</button></div></form></div></div>}{accountLink&&<section className="card warn"><strong>{accountLink.sent?t('تم إرسال الرابط بالبريد.','Link sent by email.'):t('البريد غير مهيأ — انسخ الرابط وأرسله بأمان.','Email is not configured — copy and send this link securely.')}</strong><div className="mono account-link-value">{accountLink.link}</div><button className="btn-primary btn-sm" onClick={()=>void navigator.clipboard.writeText(accountLink.link)}>{t('نسخ الرابط','Copy link')}</button><button className="btn-ghost btn-sm" onClick={()=>setAccountLink(null)}>{t('إغلاق','Close')}</button></section>}<section className="card recent-card"><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('المستخدم', 'User')}</th><th>{t('الدور', 'Role')}</th><th>{t('الحالة', 'Status')}</th><th>{t('استثناءات', 'Exceptions')}</th><th>{t('آخر دخول', 'Last login')}</th><th>{t('الإجراءات', 'Actions')}</th></tr></thead><tbody>{data.users.map((row)=>{const ovr=(data.userPermissions ?? []).filter((o)=>o.user_id===row.id).length; const loginLocked=Boolean(row.locked_until&&new Date(row.locked_until).getTime()>Date.now());const state=row.account_status??(row.active?'active':'inactive'); return <tr key={row.id}><td>{row.display_name ?? row.username}<div className="cell-sub mono">{row.username}</div>{row.email && row.email !== row.username && <div className="cell-sub mono">{row.email}</div>}</td><td className="mono">{row.role}</td><td><span className={`pay-status-badge ${state==='active'&&!loginLocked ? 'st-paid' : state==='frozen'?'st-pending':'st-declined'}`}>{loginLocked?'Login locked':state}</span>{row.frozen_until&&<div className="cell-sub">until {row.frozen_until}</div>}{row.status_reason&&<div className="cell-sub">{row.status_reason}</div>}</td><td className="mono">{ovr > 0 ? ovr : '—'}</td><td className="mono">{row.last_login_at ?? '—'}</td><td><div className="user-action-grid"><button className="btn-ghost btn-sm" onClick={()=>setEditing(row as UserRow)}>{t('تعديل','Update')}</button><button className="btn-ghost btn-sm" onClick={()=>void setAccountState(row,'active')}>Activate</button><button className="btn-ghost btn-sm" onClick={()=>void setAccountState(row,'inactive')}>Deactivate</button><button className="btn-ghost btn-sm" onClick={()=>void setAccountState(row,'frozen')}>Freeze</button><button className="btn-ghost danger btn-sm" onClick={()=>void setAccountState(row,'rejected')}>Reject</button><button className="btn-ghost btn-sm" onClick={()=>void unblockLogin(row as UserRow)}>Unblock login</button><button className="btn-primary btn-sm" onClick={()=>void sendUserLink(row,'magic_login')}>Send magic link</button><button className="btn-ghost btn-sm" onClick={()=>void sendUserLink(row,'password_reset')}>Send reset</button></div></td></tr>})}</tbody></table></div></section></>}
-    {editing && data && <UserEditor user={editing} roles={data.roles} rolePermissions={data.permissions as any} overrides={(data.userPermissions ?? []).filter((o)=>o.user_id===editing.id)} pages={pages} accessScopes={data.accessScopes??[]} teams={data.teams??[]} teamMembers={data.teamMembers??[]} onSaved={()=>void load()} onClose={()=>setEditing(null)} />}
-    {data && tab === 'merchants' && <form className="card control-row" onSubmit={createMerchant}><strong>{t('تاجر جديد', 'New merchant')}</strong><input required className="login-input" placeholder={t('اسم التاجر', 'Merchant name')} value={merchant.name} onChange={(e)=>setMerchant({...merchant,name:e.target.value})}/><input className="login-input" placeholder="CODE" value={merchant.code} onChange={(e)=>setMerchant({...merchant,code:e.target.value})}/><select className="login-input" value={merchant.master_merchant_id} onChange={(e)=>setMerchant({...merchant,master_merchant_id:e.target.value})}><option value="">{t('بدون master', 'No master')}</option>{data.masters.map((master)=><option key={master.id} value={master.id}>{master.name} ({master.code})</option>)}</select><input className="login-input" type="number" min="0" step=".01" placeholder={t('رسوم Payin % (اختياري)', 'Initial payin % (optional)')} value={merchant.initial_payin_pct} onChange={(e)=>setMerchant({...merchant,initial_payin_pct:e.target.value})}/><button disabled={saving} className="btn-primary btn-sm">{t('إنشاء', 'Create')}</button><p className="page-sub">{t('عند إدخال النسبة مع master، ينشأ override في merchants_hierarchy.', 'Entering a rate with a master creates a merchants_hierarchy override.')}</p></form>}
-    {data && tab === 'branding' && <section className="card recent-card"><div className="recent-head"><div><h3>{t('شعارات النظام', 'System logos')}</h3><p className="page-sub">{t('PNG/JPG/WebP فقط · حد أقصى 2MB · آخر ملف مرفوع هو المستخدم في كل الصفحات.', 'PNG/JPG/WebP only · 2MB maximum · the latest upload is used across all pages.')}</p></div></div><form className="brand-upload-form" onSubmit={uploadBrand}><label><span>{t('النوع', 'Type')}</span><select className="login-input" value={brandType} onChange={(e)=>{setBrandType(e.target.value as typeof brandType);setBrandKey('')}}><option value="merchant">{t('تاجر', 'Merchant')}</option><option value="user">{t('مستخدم', 'User')}</option><option value="method">{t('طريقة دفع', 'Payment method')}</option></select></label><label><span>{t('الهدف', 'Target')}</span><select required className="login-input" value={brandKey} onChange={(e)=>setBrandKey(e.target.value)}><option value="">{t('اختر', 'Select')}</option>{brandOptions.map((row)=><option key={row.key} value={row.key}>{row.label}</option>)}</select></label><label className="brand-file-field"><span>{t('ملف الشعار', 'Logo file')}</span><input required type="file" accept="image/png,image/jpeg,image/webp" onChange={(e)=>setBrandFile(e.target.files?.[0] ?? null)}/></label><button className="btn-primary" disabled={saving || !brandFile || !brandKey}>{saving ? t('جارٍ الرفع…','Uploading…') : t('رفع الشعار','Upload logo')}</button></form>{brandMsg && <div className="automation-inline-message">{brandMsg}</div>}<div className="brand-preview-grid">{brandType==='merchant'&&brandOptions.map((row)=><MerchantLogo key={row.key} merchant={row.key}/>)}{brandType==='method'&&brandOptions.map((row)=><MethodLogo key={row.key} method={row.key}/>)}{brandType==='user'&&data.users.map((row)=><UserLogo key={row.id} username={row.username} name={row.display_name}/>)}</div></section>}
-    {data && tab === 'permissions' && <><section className="card control-row"><strong>{t('عرض مصفوفة الدور','Role matrix view')}</strong><button className={`pill${roleFilter==='core'?' active':''}`} onClick={()=>setRoleFilter('core')}>Core 4</button><button className={`pill${roleFilter==='all'?' active':''}`} onClick={()=>setRoleFilter('all')}>All roles</button>{['operator','operations_admin','admin','super_admin'].map((role)=><button key={role} className={`pill${roleFilter===role?' active':''}`} onClick={()=>setRoleFilter(role)}>{role}</button>)}</section><form className="card control-row" onSubmit={async(e)=>{e.preventDefault();const res=await call('/api/admin/teams','POST',teamDraft);if(res)setTeamDraft({name:'',description:''})}}><strong>{t('فريق وصول جديد','New access team')}</strong><input required className="login-input" value={teamDraft.name} onChange={(e)=>setTeamDraft({...teamDraft,name:e.target.value})} placeholder={t('اسم الفريق','Team name')}/><input className="login-input" value={teamDraft.description} onChange={(e)=>setTeamDraft({...teamDraft,description:e.target.value})} placeholder={t('الوصف','Description')}/><button className="btn-primary btn-sm" disabled={saving}>{t('إنشاء فريق','Create team')}</button>{(data.teams??[]).map((team)=><span className="chip" key={team.id}>{team.name}</span>)}</form><section className="card recent-card"><p className="page-sub">{t('التغيير فوري على الواجهة والـ API بعد الانتقال/التحديث التالي. أي صلاحية إجراء تقتضي صلاحية العرض.', 'Changes take effect on UI and API after navigation or refresh. Every action permission requires page view access.')}</p><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('الدور', 'Role')}</th><th>{t('الصفحة', 'Page')}</th>{actions.map((a)=><th key={a} className="mono">{a.replace('can_','')}</th>)}</tr></thead><tbody>{visibleRoles.flatMap((role)=>pages.map((page)=>{ const row = data.permissions.find((p)=>p.role_key===role.role_key&&p.page_key===page) ?? { role_key:role.role_key,page_key:page,can_view:false,can_create:false,can_edit:false,can_delete:false,can_approve:false,can_export:false }; return <tr key={`${role.role_key}-${page}`}><td className="mono">{role.role_key}</td><td className="mono">{page}</td>{actions.map((action)=><td key={action}><button className={`pill${row[action]?' active':''}`} onClick={()=>void updatePerm(row,action)} aria-label={`${action} ${page}`}>{row[action]?'✓':'—'}</button></td>)}</tr>}))}</tbody></table></div></section></>}
-    {data && tab === 'fees' && <><section className="card recent-card"><div className="recent-head"><h3>{t('الافتراضيات حسب Master', 'Master defaults')}</h3></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Master</th><th>Payin %</th><th>Payout %</th><th>{t('رسم ثابت', 'Flat fee')}</th><th /></tr></thead><tbody>{data.feeDefaults.map((row)=>{const master=data.masters.find((m)=>m.id===row.master_merchant_id); return <tr key={row.id}><td>{master?.name ?? row.master_merchant_id}</td><td><input defaultValue={row.payin_commission_pct} className="login-input control-input mono" id={`pin-${row.id}`}/></td><td><input defaultValue={row.payout_commission_pct} className="login-input control-input mono" id={`pout-${row.id}`}/></td><td><input defaultValue={row.flat_fee_egp} className="login-input control-input mono" id={`flat-${row.id}`}/></td><td><button className="btn-primary btn-sm" onClick={()=>void call(`/api/admin/fees/defaults/${row.id}`,'PUT',{payin_commission_pct:(document.getElementById(`pin-${row.id}`) as HTMLInputElement).value,payout_commission_pct:(document.getElementById(`pout-${row.id}`) as HTMLInputElement).value,flat_fee_egp:(document.getElementById(`flat-${row.id}`) as HTMLInputElement).value,min_monthly_commitment_usd:row.min_monthly_commitment_usd,notes:row.notes})}>{t('حفظ','Save')}</button></td></tr>})}</tbody></table></div></section><form className="card control-row" onSubmit={createOverride}><strong>{t('استثناء تاجر فرعي', 'Sub-merchant override')}</strong><select required className="login-input" value={override.master_merchant_id} onChange={(e)=>setOverride({...override,master_merchant_id:e.target.value})}><option value="">Master</option>{data.masters.map((m)=><option key={m.id} value={m.id}>{m.code}</option>)}</select><input required className="login-input" placeholder={t('اسم التاجر', 'Merchant name')} value={override.name} onChange={(e)=>setOverride({...override,name:e.target.value})}/><input required className="login-input" type="number" step=".01" placeholder="Payin %" value={override.payin_commission_pct} onChange={(e)=>setOverride({...override,payin_commission_pct:e.target.value})}/><input required className="login-input" type="number" step=".01" placeholder="Payout %" value={override.payout_commission_pct} onChange={(e)=>setOverride({...override,payout_commission_pct:e.target.value})}/><button className="btn-primary btn-sm">{t('إضافة','Add')}</button></form><section className="card recent-card"><div className="recent-head"><h3>{t('استثناءات التجار الفرعيين', 'Sub-merchant overrides')}</h3></div><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('التاجر', 'Merchant')}</th><th>Master</th><th>Payin %</th><th>Payout %</th><th>{t('نشط', 'Active')}</th><th /></tr></thead><tbody>{data.hierarchy.map((row)=>{const master=data.masters.find((m)=>m.id===row.master_merchant_id);return <tr key={row.id}><td>{row.name}</td><td>{master?.code ?? '—'}</td><td><input id={`hpin-${row.id}`} className="login-input control-input mono" defaultValue={row.payin_commission_pct ?? row.commission_rate ?? 0}/></td><td><input id={`hpout-${row.id}`} className="login-input control-input mono" defaultValue={row.payout_commission_pct ?? 0}/></td><td><input id={`hactive-${row.id}`} type="checkbox" defaultChecked={row.active}/></td><td><button className="btn-primary btn-sm" onClick={()=>void call(`/api/admin/fees/hierarchy/${row.id}`,'PUT',{payin_commission_pct:(document.getElementById(`hpin-${row.id}`) as HTMLInputElement).value,payout_commission_pct:(document.getElementById(`hpout-${row.id}`) as HTMLInputElement).value,active:(document.getElementById(`hactive-${row.id}`) as HTMLInputElement).checked})}>{t('حفظ','Save')}</button></td></tr>})}</tbody></table></div></section></>}
-    {data && tab === 'capacity' && <section className="card recent-card"><p className="page-sub">{t('حد مرجعي يومي للحسابات؛ لا يغير wallet_device_map أو مطابقة SMS.', 'A daily reference limit; it does not change wallet_device_map or SMS matching.')}</p><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('الحساب', 'Account')}</th><th>{t('الجهاز', 'Device')}</th><th>{t('الحد اليومي', 'Daily limit')}</th><th>{t('المستخدم', 'Used')}</th><th /></tr></thead><tbody>{data.accounts.map((row)=>{const limit=data.capacities.find((x)=>x.payment_account_id===row.id);return <tr key={row.id}><td className="mono">{row.account_number}<div className="cell-sub">{row.label}</div></td><td>{row.device_name ?? '—'}</td><td><input defaultValue={limit?.daily_limit ?? 10000} id={`limit-${row.id}`} className="login-input control-input mono" type="number" min="0"/></td><td className="mono">{limit?.current_daily_used ?? 0}</td><td><button className="btn-primary btn-sm" onClick={()=>void call(`/api/admin/capacity/${row.id}`,'PUT',{daily_limit:(document.getElementById(`limit-${row.id}`) as HTMLInputElement).value})}>{t('حفظ','Save')}</button></td></tr>})}</tbody></table></div></section>}
-    {data && tab === 'keys' && <><form className="card control-row" onSubmit={issueKey}><strong>{t('إصدار مفتاح API', 'Issue API key')}</strong><select required className="login-input" value={key.merchant_id} onChange={(e)=>setKey({...key,merchant_id:e.target.value})}><option value="">{t('اختر التاجر', 'Choose merchant')}</option>{data.merchants.map((m)=><option key={m.id} value={m.id}>{m.name}</option>)}</select><input required className="login-input" placeholder={t('اسم المفتاح', 'Key name')} value={key.key_name} onChange={(e)=>setKey({...key,key_name:e.target.value})}/><select className="login-input" value={key.environment} onChange={(e)=>setKey({...key,environment:e.target.value})}><option value="test">test</option><option value="live">live</option></select><button disabled={saving} className="btn-primary btn-sm">{t('إصدار','Issue')}</button></form>{shownSecret&&<div className="card warn"><strong>{t('انسخ السر الآن — لن يظهر مرة ثانية:', 'Copy this secret now — it will not be shown again:')}</strong><div className="mono" style={{wordBreak:'break-all'}}>{shownSecret}</div><button className="btn-ghost btn-sm" onClick={()=>setShownSecret(null)}>{t('أغلق','Dismiss')}</button></div>}<section className="card recent-card"><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('الاسم','Name')}</th><th>API key</th><th>{t('البيئة','Environment')}</th><th>{t('الحالة','Status')}</th><th /></tr></thead><tbody>{data.apiKeys.map((row)=><tr key={row.id}><td>{row.key_name}</td><td className="mono">{row.api_key}</td><td>{row.environment}</td><td>{row.is_active?t('نشط','Active'):t('ملغى','Revoked')}</td><td>{row.is_active&&<button className="btn-ghost danger btn-sm" onClick={()=>void call(`/api/admin/api-keys/${row.id}/revoke`,'POST')}>{t('إلغاء','Revoke')}</button>}</td></tr>)}</tbody></table></div></section></>}
-  </PanelShell>
+    if (
+      !window.confirm(
+        t(
+          `إلغاء حظر تسجيل الدخول لـ ${row.display_name ?? row.username}؟`,
+          `Unblock login for ${row.display_name ?? row.username}?`,
+        ),
+      )
+    )
+      return;
+    await call(`/api/admin/users/${row.id}/unblock-login`, "POST");
+  };
+  const setAccountState = async (
+    row: UserRow,
+    state: "active" | "inactive" | "frozen" | "rejected",
+  ) => {
+    const reason =
+      state === "active"
+        ? null
+        : (window.prompt(t("سبب الإجراء (اختياري)", "Reason (optional)")) ??
+          null);
+    if (state !== "active" && reason === null) return;
+    const freeze_hours =
+      state === "frozen"
+        ? Number(
+            window.prompt(
+              t("مدة التجميد بالساعات", "Freeze duration in hours"),
+              "24",
+            ) || 24,
+          )
+        : undefined;
+    await call(`/api/admin/users/${row.id}/state`, "POST", {
+      state,
+      reason,
+      freeze_hours,
+    });
+  };
+  const sendUserLink = async (
+    row: UserRow,
+    purpose: "magic_login" | "password_reset",
+  ) => {
+    if (!row.email) {
+      setErr(
+        t("أضف بريداً للمستخدم أولاً.", "Add an email to the user first."),
+      );
+      return;
+    }
+    const res = await call(`/api/admin/users/${row.id}/send-link`, "POST", {
+      purpose,
+    });
+    if (res?.link)
+      setAccountLink({
+        link: res.link,
+        purpose,
+        sent: res.delivery?.sent === true,
+      });
+  };
+  const createMerchant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const result = await call("/api/admin/merchants", "POST", merchant);
+    if (result)
+      setMerchant({
+        name: "",
+        code: "",
+        master_merchant_id: "",
+        initial_payin_pct: "",
+      });
+  };
+  const issueKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const result = await call("/api/admin/api-keys", "POST", key);
+    if (result?.secret) {
+      setShownSecret(result.secret);
+      setKey({ merchant_id: "", key_name: "", environment: "test" });
+    }
+  };
+  const createOverride = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const result = await call("/api/admin/fees/hierarchy", "POST", override);
+    if (result)
+      setOverride({
+        master_merchant_id: "",
+        name: "",
+        payin_commission_pct: "",
+        payout_commission_pct: "0",
+      });
+  };
+  const uploadBrand = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!brandFile || !brandKey) return;
+    setSaving(true);
+    setBrandMsg(null);
+    try {
+      const form = new FormData();
+      form.set("file", brandFile);
+      form.set("asset_type", brandType);
+      form.set("asset_key", brandKey);
+      await api("/api/admin/branding/logo", { method: "POST", body: form });
+      await refreshBrandLogos();
+      setBrandFile(null);
+      setBrandMsg(
+        t("تم رفع الشعار وتسجيل التغيير.", "Logo uploaded and change logged."),
+      );
+    } catch (error) {
+      setBrandMsg(
+        error instanceof ApiError
+          ? error.code
+          : t("تعذر رفع الشعار.", "Could not upload logo."),
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+  const brandOptions =
+    brandType === "merchant"
+      ? (data?.merchants.map((row) => ({ key: row.name, label: row.name })) ??
+        [])
+      : brandType === "user"
+        ? (data?.users.map((row) => ({
+            key: row.username,
+            label: row.display_name ?? row.username,
+          })) ?? [])
+        : (data?.methods.map((row) => ({
+            key: row.method_name,
+            label: row.method_name,
+          })) ?? []);
+  const visibleRoles = (data?.roles ?? []).filter(
+    (role) =>
+      roleFilter === "all" ||
+      (roleFilter === "core" &&
+        ["operator", "operations_admin", "admin", "super_admin"].includes(
+          role.role_key,
+        )) ||
+      role.role_key === roleFilter,
+  );
+  return (
+    <PanelShell>
+      <section className="page-head">
+        <h2>{t("الإدارة التشغيلية", "Operations administration")}</h2>
+        <p className="page-sub">
+          {t(
+            "إدارة المستخدمين، رسوم التجار، الصلاحيات، السعة ومفاتيح API.",
+            "Manage users, merchant fees, permissions, capacity, and API keys.",
+          )}
+        </p>
+      </section>
+      <div className="filter-bar">
+        <div className="filter-pills">
+          {(
+            [
+              ["users", t("المستخدمون", "Users")],
+              ["merchants", t("تاجر جديد", "New merchant")],
+              ["branding", t("الشعارات", "Logos")],
+              ["permissions", t("الصلاحيات", "Permissions")],
+              ["fees", t("الرسوم", "Fees")],
+              ["capacity", t("سعة المحافظ", "Wallet capacity")],
+              ["keys", t("مفاتيح API", "API keys")],
+            ] as [Tab, string][]
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              className={`pill${tab === id ? " active" : ""}`}
+              onClick={() => navigate(tabPaths[id])}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {err && <div className="card warn">{err}</div>}
+      {!data && !err && (
+        <p className="sidebar-hint">{t("جار التحميل…", "Loading…")}</p>
+      )}
+      {data && tab === "users" && (
+        <>
+          <section className="card control-row">
+            <div>
+              <strong>{t("المستخدمون", "Users")}</strong>
+              <p className="page-sub">
+                {t(
+                  "إدارة الحسابات والصلاحيات التشغيلية.",
+                  "Manage operator accounts and access.",
+                )}
+              </p>
+            </div>
+            <button
+              className="btn-primary"
+              onClick={() =>
+                setUser({
+                  ...user,
+                  username: "__open__",
+                  role: user.role || data.roles[0]?.role_key || "",
+                })
+              }
+            >
+              {t("إنشاء مستخدم", "Create user")}
+            </button>
+          </section>
+          {user.username === "__open__" && (
+            <div className="modal-backdrop" role="dialog" aria-modal="true">
+              <div className="modal-card user-create-modal">
+                <div className="modal-head">
+                  <h3>{t("إضافة / تحديث مستخدم", "Create / update user")}</h3>
+                  <button
+                    className="btn-ghost btn-sm"
+                    onClick={() => setUser({ ...user, username: "" })}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <form
+                  className="user-create-grid"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const result = await call("/api/admin/users", "POST", {
+                      ...user,
+                      username: user.email.split("@")[0] || user.display_name,
+                    });
+                    if (result)
+                      setUser({
+                        username: "",
+                        email: "",
+                        display_name: "",
+                        password: "",
+                        role: "",
+                      });
+                  }}
+                >
+                  <label>
+                    First name
+                    <input
+                      required
+                      className="login-input"
+                      value={user.display_name.split(" ")[0] ?? ""}
+                      onChange={(e) =>
+                        setUser({
+                          ...user,
+                          display_name:
+                            `${e.target.value} ${user.display_name.split(" ").slice(1).join(" ")}`.trim(),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Last name
+                    <input
+                      className="login-input"
+                      value={user.display_name.split(" ").slice(1).join(" ")}
+                      onChange={(e) =>
+                        setUser({
+                          ...user,
+                          display_name:
+                            `${user.display_name.split(" ")[0]} ${e.target.value}`.trim(),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Username
+                    <input
+                      required
+                      className="login-input"
+                      value={user.email.split("@")[0]}
+                      onChange={(e) =>
+                        setUser({ ...user, email: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Password
+                    <div className="password-input-wrap">
+                      <input
+                        required
+                        minLength={8}
+                        className="login-input"
+                        type={showUserPassword ? "text" : "password"}
+                        autoComplete="new-password"
+                        value={user.password}
+                        onChange={(e) =>
+                          setUser({ ...user, password: e.target.value })
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="password-toggle"
+                        onClick={() => setShowUserPassword((visible) => !visible)}
+                        aria-label={showUserPassword ? t("إخفاء كلمة المرور", "Hide password") : t("إظهار كلمة المرور", "Show password")}
+                        title={showUserPassword ? t("إخفاء كلمة المرور", "Hide password") : t("إظهار كلمة المرور", "Show password")}
+                      >
+                        {showUserPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
+                      </button>
+                    </div>
+                  </label>
+                  <label>
+                    Email
+                    <input
+                      required
+                      type="email"
+                      dir="ltr"
+                      className="login-input"
+                      value={user.email.includes("@") ? user.email : ""}
+                      onChange={(e) =>
+                        setUser({ ...user, email: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Phone number
+                    <input className="login-input" placeholder="01xxxxxxxxx" />
+                  </label>
+                  <label>
+                    Role
+                    <select
+                      required
+                      className="login-input"
+                      value={user.role}
+                      onChange={(e) =>
+                        setUser({ ...user, role: e.target.value })
+                      }
+                    >
+                      <option value="">Select role</option>
+                      {data.roles.map((role) => (
+                        <option key={role.role_key} value={role.role_key}>
+                          {role.label} ({role.role_key})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Payment type
+                    <select className="login-input">
+                      <option>None selected</option>
+                      <option>Mobile Wallet</option>
+                      <option>Bank transfer</option>
+                    </select>
+                  </label>
+                  <label className="user-active-row">
+                    <input type="checkbox" defaultChecked /> Is active
+                  </label>
+                  <div className="drawer-actions modal-actions">
+                    <button
+                      className="btn-ghost"
+                      type="button"
+                      onClick={() => setUser({ ...user, username: "" })}
+                    >
+                      Close
+                    </button>
+                    <button disabled={saving} className="btn-primary">
+                      {saving ? "Saving…" : "Submit"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+          {accountLink && (
+            <section className="card warn">
+              <strong>
+                {accountLink.sent
+                  ? t("تم إرسال الرابط بالبريد.", "Link sent by email.")
+                  : t(
+                      "البريد غير مهيأ — انسخ الرابط وأرسله بأمان.",
+                      "Email is not configured — copy and send this link securely.",
+                    )}
+              </strong>
+              <div className="mono account-link-value">{accountLink.link}</div>
+              <button
+                className="btn-primary btn-sm"
+                onClick={() =>
+                  void navigator.clipboard.writeText(accountLink.link)
+                }
+              >
+                {t("نسخ الرابط", "Copy link")}
+              </button>
+              <button
+                className="btn-ghost btn-sm"
+                onClick={() => setAccountLink(null)}
+              >
+                {t("إغلاق", "Close")}
+              </button>
+            </section>
+          )}
+          <section className="card recent-card">
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t("المستخدم", "User")}</th>
+                    <th>{t("الدور", "Role")}</th>
+                    <th>{t("الحالة", "Status")}</th>
+                    <th>{t("استثناءات", "Exceptions")}</th>
+                    <th>{t("آخر دخول", "Last login")}</th>
+                    <th>{t("الإجراءات", "Actions")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.users.map((row) => {
+                    const ovr = (data.userPermissions ?? []).filter(
+                      (o) => o.user_id === row.id,
+                    ).length;
+                    const loginLocked = Boolean(
+                      row.locked_until &&
+                        new Date(row.locked_until).getTime() > Date.now(),
+                    );
+                    const state =
+                      row.account_status ??
+                      (row.active ? "active" : "inactive");
+                    return (
+                      <tr key={row.id}>
+                        <td>
+                          {row.display_name ?? row.username}
+                          <div className="cell-sub mono">{row.username}</div>
+                          {row.email && row.email !== row.username && (
+                            <div className="cell-sub mono">{row.email}</div>
+                          )}
+                        </td>
+                        <td className="mono">{row.role}</td>
+                        <td>
+                          <span
+                            className={`pay-status-badge ${state === "active" && !loginLocked ? "st-paid" : state === "frozen" ? "st-pending" : "st-declined"}`}
+                          >
+                            {loginLocked ? "Login locked" : state}
+                          </span>
+                          {row.frozen_until && (
+                            <div className="cell-sub">
+                              until {row.frozen_until}
+                            </div>
+                          )}
+                          {row.status_reason && (
+                            <div className="cell-sub">{row.status_reason}</div>
+                          )}
+                        </td>
+                        <td className="mono">{ovr > 0 ? ovr : "—"}</td>
+                        <td className="mono">{row.last_login_at ?? "—"}</td>
+                        <td>
+                          <div className="user-action-grid">
+                            <button
+                              className="btn-ghost btn-sm"
+                              onClick={() => setEditing(row as UserRow)}
+                            >
+                              {t("تعديل", "Update")}
+                            </button>
+                            <button
+                              className="btn-ghost btn-sm"
+                              onClick={() =>
+                                void setAccountState(row, "active")
+                              }
+                            >
+                              Activate
+                            </button>
+                            <button
+                              className="btn-ghost btn-sm"
+                              onClick={() =>
+                                void setAccountState(row, "inactive")
+                              }
+                            >
+                              Deactivate
+                            </button>
+                            <button
+                              className="btn-ghost btn-sm"
+                              onClick={() =>
+                                void setAccountState(row, "frozen")
+                              }
+                            >
+                              Freeze
+                            </button>
+                            <button
+                              className="btn-ghost danger btn-sm"
+                              onClick={() =>
+                                void setAccountState(row, "rejected")
+                              }
+                            >
+                              Reject
+                            </button>
+                            <button
+                              className="btn-ghost btn-sm"
+                              onClick={() => void unblockLogin(row as UserRow)}
+                            >
+                              Unblock login
+                            </button>
+                            <button
+                              className="btn-primary btn-sm"
+                              onClick={() =>
+                                void sendUserLink(row, "magic_login")
+                              }
+                            >
+                              Send magic link
+                            </button>
+                            <button
+                              className="btn-ghost btn-sm"
+                              onClick={() =>
+                                void sendUserLink(row, "password_reset")
+                              }
+                            >
+                              Send reset
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+      {editing && data && (
+        <UserEditor
+          user={editing}
+          roles={data.roles}
+          rolePermissions={data.permissions as any}
+          overrides={(data.userPermissions ?? []).filter(
+            (o) => o.user_id === editing.id,
+          )}
+          pages={pages}
+          accessScopes={data.accessScopes ?? []}
+          teams={data.teams ?? []}
+          teamMembers={data.teamMembers ?? []}
+          onSaved={() => void load()}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {data && tab === "merchants" && (
+        <form className="card control-row" onSubmit={createMerchant}>
+          <strong>{t("تاجر جديد", "New merchant")}</strong>
+          <input
+            required
+            className="login-input"
+            placeholder={t("اسم التاجر", "Merchant name")}
+            value={merchant.name}
+            onChange={(e) => setMerchant({ ...merchant, name: e.target.value })}
+          />
+          <input
+            className="login-input"
+            placeholder="CODE"
+            value={merchant.code}
+            onChange={(e) => setMerchant({ ...merchant, code: e.target.value })}
+          />
+          <select
+            className="login-input"
+            value={merchant.master_merchant_id}
+            onChange={(e) =>
+              setMerchant({ ...merchant, master_merchant_id: e.target.value })
+            }
+          >
+            <option value="">{t("بدون master", "No master")}</option>
+            {data.masters.map((master) => (
+              <option key={master.id} value={master.id}>
+                {master.name} ({master.code})
+              </option>
+            ))}
+          </select>
+          <input
+            className="login-input"
+            type="number"
+            min="0"
+            step=".01"
+            placeholder={t(
+              "رسوم Payin % (اختياري)",
+              "Initial payin % (optional)",
+            )}
+            value={merchant.initial_payin_pct}
+            onChange={(e) =>
+              setMerchant({ ...merchant, initial_payin_pct: e.target.value })
+            }
+          />
+          <button disabled={saving} className="btn-primary btn-sm">
+            {t("إنشاء", "Create")}
+          </button>
+          <p className="page-sub">
+            {t(
+              "عند إدخال النسبة مع master، ينشأ override في merchants_hierarchy.",
+              "Entering a rate with a master creates a merchants_hierarchy override.",
+            )}
+          </p>
+        </form>
+      )}
+      {data && tab === "branding" && (
+        <section className="card recent-card">
+          <div className="recent-head">
+            <div>
+              <h3>{t("شعارات النظام", "System logos")}</h3>
+              <p className="page-sub">
+                {t(
+                  "PNG/JPG/WebP فقط · حد أقصى 2MB · آخر ملف مرفوع هو المستخدم في كل الصفحات.",
+                  "PNG/JPG/WebP only · 2MB maximum · the latest upload is used across all pages.",
+                )}
+              </p>
+            </div>
+          </div>
+          <form className="brand-upload-form" onSubmit={uploadBrand}>
+            <label>
+              <span>{t("النوع", "Type")}</span>
+              <select
+                className="login-input"
+                value={brandType}
+                onChange={(e) => {
+                  setBrandType(e.target.value as typeof brandType);
+                  setBrandKey("");
+                }}
+              >
+                <option value="merchant">{t("تاجر", "Merchant")}</option>
+                <option value="user">{t("مستخدم", "User")}</option>
+                <option value="method">
+                  {t("طريقة دفع", "Payment method")}
+                </option>
+              </select>
+            </label>
+            <label>
+              <span>{t("الهدف", "Target")}</span>
+              <select
+                required
+                className="login-input"
+                value={brandKey}
+                onChange={(e) => setBrandKey(e.target.value)}
+              >
+                <option value="">{t("اختر", "Select")}</option>
+                {brandOptions.map((row) => (
+                  <option key={row.key} value={row.key}>
+                    {row.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="brand-file-field">
+              <span>{t("ملف الشعار", "Logo file")}</span>
+              <input
+                required
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(e) => setBrandFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            <button
+              className="btn-primary"
+              disabled={saving || !brandFile || !brandKey}
+            >
+              {saving
+                ? t("جارٍ الرفع…", "Uploading…")
+                : t("رفع الشعار", "Upload logo")}
+            </button>
+          </form>
+          {brandMsg && (
+            <div className="automation-inline-message">{brandMsg}</div>
+          )}
+          <div className="brand-preview-grid">
+            {brandType === "merchant" &&
+              brandOptions.map((row) => (
+                <MerchantLogo key={row.key} merchant={row.key} />
+              ))}
+            {brandType === "method" &&
+              brandOptions.map((row) => (
+                <MethodLogo key={row.key} method={row.key} />
+              ))}
+            {brandType === "user" &&
+              data.users.map((row) => (
+                <UserLogo
+                  key={row.id}
+                  username={row.username}
+                  name={row.display_name}
+                />
+              ))}
+          </div>
+        </section>
+      )}
+      {data && tab === "permissions" && (
+        <>
+          <section className="card control-row">
+            <strong>{t("عرض مصفوفة الدور", "Role matrix view")}</strong>
+            <button
+              className={`pill${roleFilter === "core" ? " active" : ""}`}
+              onClick={() => setRoleFilter("core")}
+            >
+              Core 4
+            </button>
+            <button
+              className={`pill${roleFilter === "all" ? " active" : ""}`}
+              onClick={() => setRoleFilter("all")}
+            >
+              All roles
+            </button>
+            {["operator", "operations_admin", "admin", "super_admin"].map(
+              (role) => (
+                <button
+                  key={role}
+                  className={`pill${roleFilter === role ? " active" : ""}`}
+                  onClick={() => setRoleFilter(role)}
+                >
+                  {role}
+                </button>
+              ),
+            )}
+          </section>
+          <form
+            className="card control-row"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const res = await call("/api/admin/teams", "POST", teamDraft);
+              if (res) setTeamDraft({ name: "", description: "" });
+            }}
+          >
+            <strong>{t("فريق وصول جديد", "New access team")}</strong>
+            <input
+              required
+              className="login-input"
+              value={teamDraft.name}
+              onChange={(e) =>
+                setTeamDraft({ ...teamDraft, name: e.target.value })
+              }
+              placeholder={t("اسم الفريق", "Team name")}
+            />
+            <input
+              className="login-input"
+              value={teamDraft.description}
+              onChange={(e) =>
+                setTeamDraft({ ...teamDraft, description: e.target.value })
+              }
+              placeholder={t("الوصف", "Description")}
+            />
+            <button className="btn-primary btn-sm" disabled={saving}>
+              {t("إنشاء فريق", "Create team")}
+            </button>
+            {(data.teams ?? []).map((team) => (
+              <span className="chip" key={team.id}>
+                {team.name}
+              </span>
+            ))}
+          </form>
+          <section className="card recent-card">
+            <p className="page-sub">
+              {t(
+                "التغيير فوري على الواجهة والـ API بعد الانتقال/التحديث التالي. أي صلاحية إجراء تقتضي صلاحية العرض.",
+                "Changes take effect on UI and API after navigation or refresh. Every action permission requires page view access.",
+              )}
+            </p>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t("الدور", "Role")}</th>
+                    <th>{t("الصفحة", "Page")}</th>
+                    {actions.map((a) => (
+                      <th key={a} className="mono">
+                        {a.replace("can_", "")}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleRoles.flatMap((role) =>
+                    pages.map((page) => {
+                      const row = data.permissions.find(
+                        (p) =>
+                          p.role_key === role.role_key && p.page_key === page,
+                      ) ?? {
+                        role_key: role.role_key,
+                        page_key: page,
+                        can_view: false,
+                        can_create: false,
+                        can_edit: false,
+                        can_delete: false,
+                        can_approve: false,
+                        can_export: false,
+                      };
+                      return (
+                        <tr key={`${role.role_key}-${page}`}>
+                          <td className="mono">{role.role_key}</td>
+                          <td className="mono">{page}</td>
+                          {actions.map((action) => (
+                            <td key={action}>
+                              <button
+                                className={`pill${row[action] ? " active" : ""}`}
+                                onClick={() => void updatePerm(row, action)}
+                                aria-label={`${action} ${page}`}
+                              >
+                                {row[action] ? "✓" : "—"}
+                              </button>
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    }),
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+      {data && tab === "fees" && (
+        <>
+          <section className="card recent-card">
+            <div className="recent-head">
+              <h3>{t("الافتراضيات حسب Master", "Master defaults")}</h3>
+            </div>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Master</th>
+                    <th>Payin %</th>
+                    <th>Payout %</th>
+                    <th>{t("رسم ثابت", "Flat fee")}</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.feeDefaults.map((row) => {
+                    const master = data.masters.find(
+                      (m) => m.id === row.master_merchant_id,
+                    );
+                    return (
+                      <tr key={row.id}>
+                        <td>{master?.name ?? row.master_merchant_id}</td>
+                        <td>
+                          <input
+                            defaultValue={row.payin_commission_pct}
+                            className="login-input control-input mono"
+                            id={`pin-${row.id}`}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            defaultValue={row.payout_commission_pct}
+                            className="login-input control-input mono"
+                            id={`pout-${row.id}`}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            defaultValue={row.flat_fee_egp}
+                            className="login-input control-input mono"
+                            id={`flat-${row.id}`}
+                          />
+                        </td>
+                        <td>
+                          <button
+                            className="btn-primary btn-sm"
+                            onClick={() =>
+                              void call(
+                                `/api/admin/fees/defaults/${row.id}`,
+                                "PUT",
+                                {
+                                  payin_commission_pct: (
+                                    document.getElementById(
+                                      `pin-${row.id}`,
+                                    ) as HTMLInputElement
+                                  ).value,
+                                  payout_commission_pct: (
+                                    document.getElementById(
+                                      `pout-${row.id}`,
+                                    ) as HTMLInputElement
+                                  ).value,
+                                  flat_fee_egp: (
+                                    document.getElementById(
+                                      `flat-${row.id}`,
+                                    ) as HTMLInputElement
+                                  ).value,
+                                  min_monthly_commitment_usd:
+                                    row.min_monthly_commitment_usd,
+                                  notes: row.notes,
+                                },
+                              )
+                            }
+                          >
+                            {t("حفظ", "Save")}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <form className="card control-row" onSubmit={createOverride}>
+            <strong>{t("استثناء تاجر فرعي", "Sub-merchant override")}</strong>
+            <select
+              required
+              className="login-input"
+              value={override.master_merchant_id}
+              onChange={(e) =>
+                setOverride({ ...override, master_merchant_id: e.target.value })
+              }
+            >
+              <option value="">Master</option>
+              {data.masters.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.code}
+                </option>
+              ))}
+            </select>
+            <input
+              required
+              className="login-input"
+              placeholder={t("اسم التاجر", "Merchant name")}
+              value={override.name}
+              onChange={(e) =>
+                setOverride({ ...override, name: e.target.value })
+              }
+            />
+            <input
+              required
+              className="login-input"
+              type="number"
+              step=".01"
+              placeholder="Payin %"
+              value={override.payin_commission_pct}
+              onChange={(e) =>
+                setOverride({
+                  ...override,
+                  payin_commission_pct: e.target.value,
+                })
+              }
+            />
+            <input
+              required
+              className="login-input"
+              type="number"
+              step=".01"
+              placeholder="Payout %"
+              value={override.payout_commission_pct}
+              onChange={(e) =>
+                setOverride({
+                  ...override,
+                  payout_commission_pct: e.target.value,
+                })
+              }
+            />
+            <button className="btn-primary btn-sm">{t("إضافة", "Add")}</button>
+          </form>
+          <section className="card recent-card">
+            <div className="recent-head">
+              <h3>
+                {t("استثناءات التجار الفرعيين", "Sub-merchant overrides")}
+              </h3>
+            </div>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t("التاجر", "Merchant")}</th>
+                    <th>Master</th>
+                    <th>Payin %</th>
+                    <th>Payout %</th>
+                    <th>{t("نشط", "Active")}</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.hierarchy.map((row) => {
+                    const master = data.masters.find(
+                      (m) => m.id === row.master_merchant_id,
+                    );
+                    return (
+                      <tr key={row.id}>
+                        <td>{row.name}</td>
+                        <td>{master?.code ?? "—"}</td>
+                        <td>
+                          <input
+                            id={`hpin-${row.id}`}
+                            className="login-input control-input mono"
+                            defaultValue={
+                              row.payin_commission_pct ??
+                              row.commission_rate ??
+                              0
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            id={`hpout-${row.id}`}
+                            className="login-input control-input mono"
+                            defaultValue={row.payout_commission_pct ?? 0}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            id={`hactive-${row.id}`}
+                            type="checkbox"
+                            defaultChecked={row.active}
+                          />
+                        </td>
+                        <td>
+                          <button
+                            className="btn-primary btn-sm"
+                            onClick={() =>
+                              void call(
+                                `/api/admin/fees/hierarchy/${row.id}`,
+                                "PUT",
+                                {
+                                  payin_commission_pct: (
+                                    document.getElementById(
+                                      `hpin-${row.id}`,
+                                    ) as HTMLInputElement
+                                  ).value,
+                                  payout_commission_pct: (
+                                    document.getElementById(
+                                      `hpout-${row.id}`,
+                                    ) as HTMLInputElement
+                                  ).value,
+                                  active: (
+                                    document.getElementById(
+                                      `hactive-${row.id}`,
+                                    ) as HTMLInputElement
+                                  ).checked,
+                                },
+                              )
+                            }
+                          >
+                            {t("حفظ", "Save")}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+      {data && tab === "capacity" && (
+        <section className="card recent-card">
+          <p className="page-sub">
+            {t(
+              "حد مرجعي يومي للحسابات؛ لا يغير wallet_device_map أو مطابقة SMS.",
+              "A daily reference limit; it does not change wallet_device_map or SMS matching.",
+            )}
+          </p>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>{t("الحساب", "Account")}</th>
+                  <th>{t("الجهاز", "Device")}</th>
+                  <th>{t("الحد اليومي", "Daily limit")}</th>
+                  <th>{t("المستخدم", "Used")}</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {data.accounts.map((row) => {
+                  const limit = data.capacities.find(
+                    (x) => x.payment_account_id === row.id,
+                  );
+                  return (
+                    <tr key={row.id}>
+                      <td className="mono">
+                        {row.account_number}
+                        <div className="cell-sub">{row.label}</div>
+                      </td>
+                      <td>{row.device_name ?? "—"}</td>
+                      <td>
+                        <input
+                          defaultValue={limit?.daily_limit ?? 10000}
+                          id={`limit-${row.id}`}
+                          className="login-input control-input mono"
+                          type="number"
+                          min="0"
+                        />
+                      </td>
+                      <td className="mono">{limit?.current_daily_used ?? 0}</td>
+                      <td>
+                        <button
+                          className="btn-primary btn-sm"
+                          onClick={() =>
+                            void call(`/api/admin/capacity/${row.id}`, "PUT", {
+                              daily_limit: (
+                                document.getElementById(
+                                  `limit-${row.id}`,
+                                ) as HTMLInputElement
+                              ).value,
+                            })
+                          }
+                        >
+                          {t("حفظ", "Save")}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+      {data && tab === "keys" && (
+        <>
+          <form className="card control-row" onSubmit={issueKey}>
+            <strong>{t("إصدار مفتاح API", "Issue API key")}</strong>
+            <select
+              required
+              className="login-input"
+              value={key.merchant_id}
+              onChange={(e) => setKey({ ...key, merchant_id: e.target.value })}
+            >
+              <option value="">{t("اختر التاجر", "Choose merchant")}</option>
+              {data.merchants.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            <input
+              required
+              className="login-input"
+              placeholder={t("اسم المفتاح", "Key name")}
+              value={key.key_name}
+              onChange={(e) => setKey({ ...key, key_name: e.target.value })}
+            />
+            <select
+              className="login-input"
+              value={key.environment}
+              onChange={(e) => setKey({ ...key, environment: e.target.value })}
+            >
+              <option value="test">test</option>
+              <option value="live">live</option>
+            </select>
+            <button disabled={saving} className="btn-primary btn-sm">
+              {t("إصدار", "Issue")}
+            </button>
+          </form>
+          {shownSecret && (
+            <div className="card warn">
+              <strong>
+                {t(
+                  "انسخ السر الآن — لن يظهر مرة ثانية:",
+                  "Copy this secret now — it will not be shown again:",
+                )}
+              </strong>
+              <div className="mono" style={{ wordBreak: "break-all" }}>
+                {shownSecret}
+              </div>
+              <button
+                className="btn-ghost btn-sm"
+                onClick={() => setShownSecret(null)}
+              >
+                {t("أغلق", "Dismiss")}
+              </button>
+            </div>
+          )}
+          <section className="card recent-card">
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t("الاسم", "Name")}</th>
+                    <th>API key</th>
+                    <th>{t("البيئة", "Environment")}</th>
+                    <th>{t("الحالة", "Status")}</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.apiKeys.map((row) => (
+                    <tr key={row.id}>
+                      <td>{row.key_name}</td>
+                      <td className="mono">{row.api_key}</td>
+                      <td>{row.environment}</td>
+                      <td>
+                        {row.is_active
+                          ? t("نشط", "Active")
+                          : t("ملغى", "Revoked")}
+                      </td>
+                      <td>
+                        {row.is_active && (
+                          <button
+                            className="btn-ghost danger btn-sm"
+                            onClick={() =>
+                              void call(
+                                `/api/admin/api-keys/${row.id}/revoke`,
+                                "POST",
+                              )
+                            }
+                          >
+                            {t("إلغاء", "Revoke")}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+    </PanelShell>
+  );
 }

@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth, loginErrorMessage } from './AuthContext'
 import { useLocale } from '../lib/locale'
+import { Eye, EyeOff } from 'lucide-react'
 
 function Check() {
   return (
@@ -20,6 +21,7 @@ export default function LoginPage() {
   const location = useLocation()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [remember, setRemember] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -84,7 +86,12 @@ export default function LoginPage() {
 
           <div className="login-field">
             <label className="login-label" htmlFor="password">{t('كلمة المرور', 'Password')}</label>
-            <input id="password" className="login-input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
+            <div className="password-input-wrap">
+              <input id="password" className="login-input" type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
+              <button type="button" className="password-toggle" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? t('إخفاء كلمة المرور', 'Hide password') : t('إظهار كلمة المرور', 'Show password')} title={showPassword ? t('إخفاء كلمة المرور', 'Hide password') : t('إظهار كلمة المرور', 'Show password')}>
+                {showPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
+              </button>
+            </div>
           </div>
 
           <label className="login-remember">

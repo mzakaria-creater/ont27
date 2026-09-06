@@ -280,6 +280,11 @@ body {
 }
 .login-input:disabled { opacity: 0.6; }
 
+.password-input-wrap { position: relative; }
+.password-input-wrap .login-input { padding-inline-end: 42px; }
+.password-toggle { position: absolute; inset-inline-end: 7px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 7px; background: transparent; color: var(--text-dim); cursor: pointer; }
+.password-toggle:hover, .password-toggle:focus-visible { background: var(--hover); color: var(--text); outline: none; }
+
 .access-scope-editor { display:grid;gap:10px;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface); }
 .access-scope-editor>label { display:grid;gap:6px;color:var(--text-dim);font-size:11px;font-weight:700; }
 .access-scope-editor fieldset { margin:0;padding:10px;border:1px solid var(--border);border-radius:9px;display:flex;flex-wrap:wrap;gap:10px; }
