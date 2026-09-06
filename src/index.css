@@ -2282,6 +2282,9 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 }
 .dep-sms-top { display: grid; gap: 3px; margin-block-end: 8px; border-inline-start: 3px solid var(--status-paid); }
 .dep-sms-top code { color: var(--text); font: 10px/1.45 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-block-size: 48px; overflow: auto; }
+.dep-sms-top.is-missing { color: var(--status-pending); background: var(--amber-bg); border-inline-start-color: var(--status-pending); }
+.dep-sms-top.is-missing a { color: inherit; text-decoration: underline; }
+.tx-sms-missing .tx-sms-raw { color: var(--status-pending); background: var(--amber-bg); }
 
 /* All four actions stay on one line even in the narrowest 4-up column — the
    approve/decline pair shares whatever the two icon buttons leave over. */

@@ -61,6 +61,12 @@ export default function DepositCard({
           {(row.sms.raw_sms ?? row.sms.message ?? row.sms.sms_first_line) && <code>{row.sms.raw_sms ?? row.sms.message ?? row.sms.sms_first_line}</code>}
         </div>
       )}
+      {!row.sms && (
+        <div className="dep-sms dep-sms-top is-missing">
+          ⚠️ {t('لا توجد رسالة SMS مرتبطة بهذه المعاملة', 'No SMS linked to this transaction')}
+          <a href={`/sms?amount=${row.amount ?? ''}`}>{t('البحث عن رسالة', 'Search SMS')}</a>
+        </div>
+      )}
 
       <div className="dep-amount">
         <span className="mono">{money(row.amount, '')}</span>
