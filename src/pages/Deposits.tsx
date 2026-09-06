@@ -442,6 +442,7 @@ export default function Deposits() {
                       />
                     </th>
                   )}
+                  <th>إجراء</th>
                   <th>رقم العملية</th>
                   <th>المبلغ</th>
                   <th>المُرسِل</th>
@@ -452,7 +453,6 @@ export default function Deposits() {
                   <th>الحالة</th>
                   <th>اعتمد بواسطة</th>
                   <th>الوقت</th>
-                  <th>إجراء</th>
                 </tr>
               </thead>
               <tbody>
@@ -475,6 +475,17 @@ export default function Deposits() {
                           )}
                         </td>
                       )}
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <div className="row-actions">
+                          <button className="btn-ghost btn-sm" title="تفاصيل المعاملة" onClick={() => void openDetail(r.tx_id)}>👁</button>
+                          {!r.sms && <a className="btn-ghost btn-sm" title="دور على رسالة بنفس المبلغ" href={`/sms?amount=${r.amount ?? ''}`}>🔎</a>}
+                          {r.proof_image_url && <ProofIconButton url={r.proof_image_url} onOpen={setProofUrl} compact />}
+                          {r.status === 'PENDING' && can('deposits', 'can_approve') && <>
+                            <button className="btn-primary btn-sm" disabled={rowBusy !== null || retryLocked} onClick={() => void quickDecide(r.tx_id, 'approve')}>{rowBusy?.id === r.tx_id && rowBusy.action === 'approve' ? '⏳' : '✅'}</button>
+                            <button className="btn-ghost danger btn-sm" disabled={rowBusy !== null || retryLocked} onClick={() => void quickDecide(r.tx_id, 'decline')}>{rowBusy?.id === r.tx_id && rowBusy.action === 'decline' ? '⏳' : '❌'}</button>
+                          </>}
+                        </div>
+                      </td>
                       <td className="mono">
                         {r.ontarget_ref ?? r.tx_id}
                         {(r.merchant_reference ?? r.merchant_tx_reference) && (
@@ -524,45 +535,6 @@ export default function Deposits() {
                       </td>
                       <td>{r.status === 'PENDING' ? '—' : (!r.approved_by || r.approved_by === 'Manual' ? 'النظام (آلي)' : r.approved_by)}</td>
                       <td className="mono">{depositTime(r)}</td>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        <div className="row-actions">
-                          <button
-                            className="btn-ghost btn-sm"
-                            title="تفاصيل المعاملة"
-                            onClick={() => void openDetail(r.tx_id)}
-                          >
-                            👁
-                          </button>
-                          {!r.sms && (
-                            <a
-                              className="btn-ghost btn-sm"
-                              title="دور على رسالة بنفس المبلغ"
-                              href={`/sms?amount=${r.amount ?? ''}`}
-                            >
-                              🔎
-                            </a>
-                          )}
-                          {r.proof_image_url && <ProofIconButton url={r.proof_image_url} onOpen={setProofUrl} compact />}
-                          {r.status === 'PENDING' && can('deposits', 'can_approve') && (
-                            <>
-                              <button
-                                className="btn-primary btn-sm"
-                                disabled={rowBusy !== null || retryLocked}
-                                onClick={() => void quickDecide(r.tx_id, 'approve')}
-                              >
-                                {rowBusy?.id === r.tx_id && rowBusy.action === 'approve' ? '⏳' : '✅'}
-                              </button>
-                              <button
-                                className="btn-ghost danger btn-sm"
-                                disabled={rowBusy !== null || retryLocked}
-                                onClick={() => void quickDecide(r.tx_id, 'decline')}
-                              >
-                                {rowBusy?.id === r.tx_id && rowBusy.action === 'decline' ? '⏳' : '❌'}
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
                     </tr>
                   )
                 })}
