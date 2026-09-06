@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { CATEGORIES, categoryFor } from '../nav/pageCatalog'
@@ -318,7 +318,6 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   const { permissions, can, refreshPermissions, user } = useAuth()
   const { locale, t } = useLocale()
   const { pathname } = useLocation()
-  const navigate = useNavigate()
   const activeGroup = BUILT_LINKS.find((link) => link.to === pathname)?.group ?? 'overview'
   const modules = usePermittedModules()
   const permsLoaded = permissions.length > 0
@@ -399,11 +398,10 @@ export default function PanelShell({ children }: { children: ReactNode }) {
     if (user?.id) localStorage.setItem(`ontarget:${user.id}:sms-last-seen`, String(smsLatestRef.current))
     setSmsUnread(0); setSmsOpen(true); setTelegramOpen(false)
   }
-  const openSmsToday = () => {
-    openSms()
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(new Date())
-    navigate(`/sms?from=${today}&to=${today}`)
-  }
+  // The floating launcher is an overlay control: it must not replace the
+  // current page. The sidebar link remains the intentional route to today's
+  // full SMS page.
+  const openSmsRail = () => openSms()
   const openTelegram = () => {
     if (user?.id) localStorage.setItem(`ontarget:${user.id}:telegram-last-seen`, String(telegramLatestRef.current))
     setTelegramUnread(0); setTelegramOpen(true); setSmsOpen(false)
@@ -490,7 +488,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
       </nav>
       <main id="main-workspace" className="dash-main">{children}</main>
       {canTelegramLive && !telegramOpen && <button type="button" className={`telegram-widget-launcher${telegramUnread ? ' has-unread' : ''}`} onClick={openTelegram} aria-expanded="false" aria-controls="live-telegram-widget" aria-label={t('إظهار Telegram المباشر', 'Show Telegram Live')} title={t('إظهار Telegram المباشر', 'Show Telegram Live')}><span className="telegram-widget-pulse"/><Send size={19} aria-hidden="true"/><span className="sms-widget-label">Telegram Live</span>{telegramUnread > 0 && <span className="live-widget-badge">{telegramUnread > 99 ? '99+' : telegramUnread}</span>}</button>}
-      {can('sms_live') && !smsOpen && <button type="button" className={`sms-widget-launcher${smsUnread ? ' has-unread' : ''}${smsUnlinked ? ' has-unlinked' : ''}`} onClick={openSmsToday} aria-expanded="false" aria-controls="live-sms-widget" aria-label={t('فتح كل رسائل اليوم', 'Open all SMS today')} title={t('فتح كل رسائل اليوم', 'Open all SMS today')}><span className="sms-widget-pulse" /><MessageSquareText size={20} aria-hidden="true" /><span className="sms-widget-label">Live SMS</span>{(smsUnread > 0 || smsUnlinked > 0) && <span className={`live-widget-badge${smsUnlinked ? ' unlinked-badge' : ''}`}>{smsUnlinked > 99 ? '99+' : smsUnlinked || smsUnread}</span>}</button>}
+      {can('sms_live') && !smsOpen && <button type="button" className={`sms-widget-launcher${smsUnread ? ' has-unread' : ''}${smsUnlinked ? ' has-unlinked' : ''}`} onClick={openSmsRail} aria-expanded="false" aria-controls="live-sms-widget" aria-label={t('إظهار شريط SMS المباشر', 'Show Live SMS bar')} title={t('إظهار شريط SMS المباشر', 'Show Live SMS bar')}><span className="sms-widget-pulse" /><MessageSquareText size={20} aria-hidden="true" /><span className="sms-widget-label">Live SMS</span>{(smsUnread > 0 || smsUnlinked > 0) && <span className={`live-widget-badge${smsUnlinked ? ' unlinked-badge' : ''}`}>{smsUnlinked > 99 ? '99+' : smsUnlinked || smsUnread}</span>}</button>}
       {can('sms_live') && smsOpen && <SmsRail onMinimize={() => setSmsOpen(false)} />}
       {canTelegramLive && telegramOpen && <TelegramRail onMinimize={() => setTelegramOpen(false)} />}
     </div>
