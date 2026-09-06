@@ -284,11 +284,18 @@ export default function Automation() {
             {t('هذا هو المحرّك الحقيقي على هذا المشروع — يُقيّم كل معاملة NGPay معلّقة كل دقيقة (cron) وينفّذ القرار فعلياً عبر ngpay-approve. المشروع القديم أدناه لم يعد يُستخدَم.', 'This is the real engine on this project — it evaluates every pending NGPay transaction every minute (cron) and executes decisions for real through ngpay-approve. The old-project section below is no longer used.')}
           </p>
           <div className="control-row">
-            <label className="login-remember" style={{ margin: 0 }}>
-              <input type="checkbox" checked={settings.automation_enabled === true} disabled={!canControl || settingsBusy === 'automation_enabled'} onChange={(e) => void toggleGlobalSetting('automation_enabled', e.target.checked)} />
-              <strong>{t('تشغيل الأتمتة (الموافقة/الرفض التلقائي)', 'Automation on (auto approve/decline)')}</strong>
-            </label>
-            <span className={`pay-status-badge ${settings.automation_enabled ? 'st-paid' : 'st-dim'}`}>{settings.automation_enabled ? t('حي الآن', 'Live now') : t('متوقف', 'Off')}</span>
+            <button
+              type="button"
+              className={`automation-master-toggle ${settings.automation_enabled ? 'is-on' : 'is-off'}`}
+              role="switch"
+              aria-checked={settings.automation_enabled === true}
+              disabled={!canControl || settingsBusy === 'automation_enabled'}
+              onClick={() => void toggleGlobalSetting('automation_enabled', settings.automation_enabled !== true)}
+            >
+              <span className="automation-toggle-track"><span className="automation-toggle-thumb" /></span>
+              <span><strong>{t('الأتمتة: موافق / إيقاف', 'Automation: ON / OFF')}</strong><small>{settings.automation_enabled ? t('ON — موافقة ورفض تلقائي', 'ON — auto approve and decline') : t('OFF — مراجعة يدوية فقط', 'OFF — manual review only')}</small></span>
+              <b>{settings.automation_enabled ? 'ON' : 'OFF'}</b>
+            </button>
           </div>
           <div className="control-row">
             <label className="login-remember" style={{ margin: 0 }}>

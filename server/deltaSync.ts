@@ -515,6 +515,9 @@ deltaSyncRoutes.get('/auto-decline', async (c) => {
   const secret = process.env.CRON_SECRET
   if (!secret || c.req.header('authorization') !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401)
   if (!(await claimDistributedLease(50, 'provider_auto_decline_v2'))) return c.json({ ok: true, skipped: 'distributed_lease' })
+  const { data: settings, error: settingsError } = await db.from('automation_settings').select('automation_enabled').eq('id', 1).maybeSingle()
+  if (settingsError) return c.json({ ok: false, error: settingsError.message }, 502)
+  if (settings?.automation_enabled !== true) return c.json({ ok: true, skipped: 'automation_disabled', at: new Date().toISOString() })
   const { data, error } = await db.rpc('sweep_auto_decline_stale_unmatched', { p_grace_minutes: null, p_score_threshold: null })
   if (error) return c.json({ ok: false, error: error.message }, 502)
   return c.json({ ok: true, results: data ?? [] , at: new Date().toISOString() })

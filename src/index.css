@@ -1759,6 +1759,19 @@ a.stat-card:hover { border-color: var(--accent); }
 
 /* Quick control */
 .control-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.automation-master-toggle { display: inline-flex; align-items: center; gap: 10px; min-width: 300px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); color: var(--text); text-align: start; cursor: pointer; }
+.automation-master-toggle:disabled { opacity: .6; cursor: not-allowed; }
+.automation-master-toggle > span:nth-child(2) { display: grid; gap: 2px; flex: 1; }
+.automation-master-toggle small { color: var(--text-dim); font-size: 10px; }
+.automation-master-toggle > b { font: 800 12px ui-monospace, monospace; }
+.automation-master-toggle.is-on { border-color: color-mix(in srgb, var(--status-paid) 55%, var(--border)); background: color-mix(in srgb, var(--green-bg) 70%, var(--surface-2)); }
+.automation-master-toggle.is-on > b { color: var(--status-paid); }
+.automation-master-toggle.is-off { border-color: color-mix(in srgb, var(--status-danger) 45%, var(--border)); }
+.automation-master-toggle.is-off > b { color: var(--status-danger); }
+.automation-toggle-track { position: relative; inline-size: 38px; block-size: 22px; border-radius: 99px; background: var(--text-muted); flex: none; }
+.automation-toggle-thumb { position: absolute; inset-block-start: 3px; inset-inline-start: 3px; inline-size: 16px; block-size: 16px; border-radius: 50%; background: white; transition: transform .18s ease; }
+.automation-master-toggle.is-on .automation-toggle-track { background: var(--status-paid); }
+.automation-master-toggle.is-on .automation-toggle-thumb { transform: translateX(16px); }
 .control-sep { width: 1px; height: 24px; background: var(--border-soft); margin: 0 4px; }
 .control-input { width: 130px; padding: 7px 10px; }
 
