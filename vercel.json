@@ -5,7 +5,7 @@
     { "source": "/((?!api).*)", "destination": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/cron/delta-sync", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/delta-sync", "schedule": "* * * * *" },
     { "path": "/api/cron/auto-decline", "schedule": "*/5 * * * *" }
   ]
 }
