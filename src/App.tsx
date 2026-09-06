@@ -376,7 +376,7 @@ export default function App() {
             <Route path="/crm" element={<PageGate keys={['client_crm']}><Crm /></PageGate>} />
             <Route path="/risk" element={<PageGate keys={['risk','risk_audit','flagged','exceptions','manual_review','velocity','compliance']}><Risk /></PageGate>} />
             <Route path="/automation" element={<PageGate keys={['automation','automation_rules']}><Automation /></PageGate>} />
-            <Route path="/automation-control" element={<PageGate keys={['automation','automation_rules']}><Automation /></PageGate>} />
+            <Route path="/automation-control" element={<Navigate to="/automation" replace />} />
             <Route path="/integration-guide" element={<PageGate keys={['api-keys','settings','merchants']}><IntegrationGuide /></PageGate>} />
             <Route path="/audit" element={<PageGate keys={['audit_log','audit-logs']}><Audit /></PageGate>} />
             <Route path="/reports" element={<PageGate keys={['reports','advanced_analysis']}><Reports /></PageGate>} />

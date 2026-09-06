@@ -113,7 +113,6 @@ const BUILT_LINKS: NavLinkDef[] = [
   // Risk & automation
   { to: '/risk', icon: '🛡️', labelAr: 'المخاطر', labelEn: 'Risk & compliance', keys: ['risk', 'risk_audit', 'flagged', 'exceptions', 'manual_review', 'velocity', 'compliance'], group: 'automation' },
   { to: '/automation', icon: '🤖', labelAr: 'الأتمتة', labelEn: 'Automation', keys: ['automation', 'telegram_bot', 'binance_p2p', 'treasury', 'allocation_engine', 'capacity_monitor', 'workspace_hub', 'launchpad', 'ai_team'], group: 'automation' },
-  { to: '/automation-control', icon: '⚙️', labelAr: 'لوحة تحكم الأتمتة', labelEn: 'Automation control', keys: ['automation'], group: 'automation' },
   { to: '/replay-lab', icon: '🧪', labelAr: 'مختبر Replay', labelEn: 'Replay lab', keys: ['automation', 'sms_live', 'webhooks'], group: 'automation' },
   { to: '/webhooks', icon: '↗', labelAr: 'مركز Webhooks', labelEn: 'Webhook Center', keys: ['webhooks', 'developers'], group: 'admin' },
   { to: '/telegram', icon: '✈️', labelAr: 'Telegram مباشر', labelEn: 'Telegram Live', keys: ['telegram_bot', 'automation'], group: 'automation' },
