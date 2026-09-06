@@ -1476,6 +1476,9 @@ a.stat-card:hover { border-color: var(--accent); }
 
 /* Drawer extras: matched SMS + client history + timeline */
 .sms-match-card { border: 1px solid var(--green-border); border-radius: 14px; padding: 14px; margin-top: 14px; }
+.sms-process-card { border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); border-radius: 14px; padding: 14px; margin-top: 14px; }
+.sms-process-grid { margin-top: 4px; grid-template-columns: minmax(170px, auto) minmax(0, 1fr); }
+.sms-process-value { color: var(--accent); font-weight: 700; }
 .sms-match-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .sms-match-title { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; }
 .match-pct { font-size: 10px; padding: 3px 9px; border-radius: 7px; background: var(--green-bg); color: var(--status-paid); font-weight: 600; }

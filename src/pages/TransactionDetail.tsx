@@ -84,6 +84,24 @@ function smsFirstLine(s: MatchedSms): string {
   return raw.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('From :'))[0] ?? '—'
 }
 
+function elapsedSeconds(start: string | null | undefined, end: string | null | undefined): number | null {
+  if (!start || !end) return null
+  const startMs = Date.parse(start)
+  const endMs = Date.parse(end)
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) return null
+  return Math.round((endMs - startMs) / 1_000)
+}
+
+function formatElapsed(seconds: number | null, t: (ar: string, en: string) => string): string {
+  if (seconds == null) return '—'
+  if (seconds < 60) return `${seconds}${t('ث', 's')}`
+  const minutes = Math.floor(seconds / 60)
+  const remainder = seconds % 60
+  if (minutes < 60) return `${minutes}${t('د', 'm')} ${remainder}${t('ث', 's')}`
+  const hours = Math.floor(minutes / 60)
+  return `${hours}${t('س', 'h')} ${minutes % 60}${t('د', 'm')}`
+}
+
 function masterChip(master: string | null | undefined) {
   if (!master) return null
   const m = master.toLowerCase()
@@ -305,6 +323,23 @@ export default function TransactionDetail() {
                   <dt>{t('المخاطر', 'Risk')}</dt><dd>{data.sms.risk_score ?? 0} · {data.sms.risk_reason ?? t('لا توجد إشارة', 'No flag')}{data.sms.suspicious && <> · {t('مشبوهة', 'Suspicious')}</>}{data.sms.is_duplicate && <> · {t('مكررة', 'Duplicate')}</>}</dd>
                 </dl>
                 {data.sms.raw_sms && <details className="sms-raw"><summary>{t('نص الرسالة الكامل', 'Full SMS text')}</summary><pre className="raw-json mono">{data.sms.raw_sms}</pre></details>}
+              </section>
+            )}
+
+            {data?.sms && (
+              <section className="sms-process-card card">
+                <div className="sms-match-head">
+                  <span className="sms-match-title"><Clock3 size={17} aria-hidden="true" /> {t('زمن معالجة مطابقة SMS', 'SMS match processing time')}</span>
+                  <span className="pay-status-badge st-paid">{t('تم الربط', 'Matched')}</span>
+                </div>
+                <dl className="detail-grid sms-process-grid">
+                  <dt>{t('استلام الرسالة', 'SMS received')}</dt><dd className="mono">{depositTime({ first_seen_at: data.sms.received_at })}</dd>
+                  <dt>{t('إتمام المطابقة', 'Match completed')}</dt><dd className="mono">{depositTime({ first_seen_at: data.sms.matched_at })}</dd>
+                  <dt>{t('مدة المعالجة', 'Processing time')}</dt><dd className="mono sms-process-value">{formatElapsed(elapsedSeconds(data.sms.received_at, data.sms.matched_at), t)}</dd>
+                  <dt>{t('وقت المعاملة حتى المطابقة', 'Transaction to match')}</dt><dd className="mono">{formatElapsed(elapsedSeconds(d.first_seen_at, data.sms.matched_at), t)}</dd>
+                  <dt>{t('فارق التوقيت المستخدم للمطابقة', 'Matching time difference')}</dt><dd className="mono">{data.sms.sec_diff != null ? `${data.sms.sec_diff}${t('ث', 's')}` : '—'}</dd>
+                  <dt>{t('قاعدة المطابقة', 'Match rule')}</dt><dd>{data.sms.match_status ?? t('مطابقة تلقائية', 'Automatic match')}</dd>
+                </dl>
               </section>
             )}
 
