@@ -217,6 +217,14 @@ function reportDate(value: string | undefined, fallback: string): string {
   return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : fallback
 }
 
+reportsRoutes.get('/attendance/me', requireAuth, async (c) => {
+  const actor = c.get('actor')
+  if (!STAFF_ROLES.has(actor.role)) return c.json({ active_session: null })
+  const { data, error } = await db.from('staff_attendance_sessions').select('id, user_id, wallet_number, checked_in_at, checked_out_at, note').eq('user_id', actor.sub).is('checked_out_at', null).order('checked_in_at', { ascending: false }).limit(1).maybeSingle()
+  if (error) return c.json({ error: 'attendance_status_failed', detail: error.message }, 500)
+  return c.json({ active_session: data ?? null })
+})
+
 reportsRoutes.get('/attendance', requireAnyPerm(['reports', 'advanced_analysis', 'users'], 'can_view'), async (c) => {
   const now = new Date()
   const from = reportDate(c.req.query('from'), now.toISOString().slice(0, 10))

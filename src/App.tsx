@@ -6,6 +6,7 @@ import PageGate from './auth/PageGate'
 import LoginPage from './auth/LoginPage'
 import type { NotifData } from './pages/Notifications'
 import { api } from './lib/api'
+import { LogIn, LogOut } from 'lucide-react'
 import { merchantChipCls, money } from './lib/deposits'
 import { SUPABASE_URL, SUPABASE_KEY } from './lib/supabase'
 import { LocaleProvider, useLocale } from './lib/locale'
@@ -279,6 +280,41 @@ function Topbar() {
   const [conn, setConn] = useState<Conn>('wait')
   const [checkedAt, setCheckedAt] = useState<Date | null>(null)
   const [ago, setAgo] = useState(0)
+  const isStaff = ['agent', 'operator', 'operations_admin', 'operator_admin', 'operation_admin'].includes(user?.role ?? '')
+  const [attendance, setAttendance] = useState<{ id: string; checked_in_at: string } | null>(null)
+  const [attendanceBusy, setAttendanceBusy] = useState(false)
+  const [attendanceError, setAttendanceError] = useState(false)
+
+  const loadAttendance = async () => {
+    if (!isStaff) return
+    try {
+      const result = await api<{ active_session: { id: string; checked_in_at: string } | null }>('/api/reports/attendance/me')
+      setAttendance(result.active_session)
+      setAttendanceError(false)
+    } catch {
+      setAttendanceError(true)
+    }
+  }
+
+  const toggleAttendance = async () => {
+    if (!user || !isStaff) return
+    setAttendanceBusy(true)
+    try {
+      await api(`/api/reports/attendance/${attendance ? 'check-out' : 'check-in'}`, { method: 'POST', body: JSON.stringify({}) })
+      await loadAttendance()
+    } catch {
+      setAttendanceError(true)
+    } finally {
+      setAttendanceBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    if (status !== 'authed' || !isStaff) return
+    void loadAttendance()
+    const iv = window.setInterval(() => void loadAttendance(), 60_000)
+    return () => window.clearInterval(iv)
+  }, [status, isStaff, user?.id])
 
   useEffect(() => {
     if (status !== 'authed') return
@@ -314,6 +350,12 @@ function Topbar() {
       <ChatTopIcon />
       {can('telegram_bot') || can('automation') ? <TelegramTopIcon /> : null}
       <Bell />
+      {isStaff && <div className="topbar-attendance" title={attendanceError ? t('تعذر قراءة حالة الحضور', 'Unable to read attendance status') : undefined}>
+        <span className={`topbar-attendance-state ${attendance ? 'is-in' : 'is-out'}`}><span className="dot" />{attendance ? t('داخل', 'In') : t('خارج', 'Out')}</span>
+        <button type="button" className={attendance ? 'btn-ghost btn-sm danger' : 'btn-primary btn-sm'} onClick={() => void toggleAttendance()} disabled={attendanceBusy || attendanceError}>
+          {attendance ? <><LogOut size={14} />{t('خروج', 'Check out')}</> : <><LogIn size={14} />{t('دخول', 'Check in')}</>}
+        </button>
+      </div>}
       <button className="theme-btn" onClick={toggleLocale} aria-label={t('تبديل اللغة', 'Switch language')}>
         <span className="theme-btn-label">{locale === 'ar' ? 'EN' : 'AR'}</span>
       </button>
