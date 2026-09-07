@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { db } from './db.js'
 import { requireAnyPerm, requireAuth } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
+import { sendTelegramAlert } from './notify.js'
 
 export const reportsRoutes = new Hono<AuthEnv>()
 reportsRoutes.use('*', requireAuth)
@@ -278,10 +279,22 @@ reportsRoutes.post('/attendance/check-out', requireAuth, async (c) => {
   const body = await c.req.json().catch(() => null)
   const targetId = typeof body?.user_id === 'string' ? body.user_id : actor.sub
   if (targetId !== actor.sub && !ADMIN_ROLES.has(actor.role)) return c.json({ error: 'attendance_scope_denied' }, 403)
-  const { data: open } = await db.from('staff_attendance_sessions').select('id').eq('user_id', targetId).is('checked_out_at', null).order('checked_in_at', { ascending: false }).limit(1).maybeSingle()
+  const { data: open } = await db.from('staff_attendance_sessions').select('id, checked_in_at, wallet_number').eq('user_id', targetId).is('checked_out_at', null).order('checked_in_at', { ascending: false }).limit(1).maybeSingle()
   if (!open) return c.json({ error: 'not_checked_in' }, 409)
   const { data, error } = await db.from('staff_attendance_sessions').update({ checked_out_at: new Date().toISOString() }).eq('id', open.id).is('checked_out_at', null).select().single()
   if (error) return c.json({ error: 'attendance_check_out_failed', detail: error.message }, 500)
   await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'staff.attendance_check_out', entity: 'staff_attendance_sessions', entity_id: open.id, after: { user_id: targetId } })
-  return c.json({ ok: true, session: data })
+  const checkedInAt = new Date(open.checked_in_at)
+  const checkedOutAt = new Date(data.checked_out_at)
+  const hours = Math.max(0, (checkedOutAt.getTime() - checkedInAt.getTime()) / 3_600_000)
+  const telegram = await sendTelegramAlert('staff_checkout_report', [
+    '✅ <b>Agent checkout report</b>',
+    `الموظف / Agent: <b>${String(actor.username).replace(/[<>&]/g, '')}</b>`,
+    `الحالة / Approval: <b>Employee approved checkout</b>`,
+    `دخول / Check-in: <code>${checkedInAt.toISOString()}</code>`,
+    `خروج / Check-out: <code>${checkedOutAt.toISOString()}</code>`,
+    `الساعات / Hours: <b>${hours.toFixed(2)}</b>`,
+    `المحفظة / Wallet: <code>${String(data.wallet_number ?? '—').replace(/[<>&]/g, '')}</code>`,
+  ].join('\n'))
+  return c.json({ ok: true, session: data, telegram: { sent: telegram.sent, error: telegram.error } })
 })
