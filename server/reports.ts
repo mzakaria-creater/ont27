@@ -209,3 +209,71 @@ reportsRoutes.get('/export', requireAnyPerm(['reports', 'advanced_analysis'], 'c
     return new Response(rows.map((row) => row.map(esc).join(',')).join('\n'), { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="ontarget-report.csv"' } })
   } catch (error) { return c.json({ error: 'db_error', detail: (error as Error).message }, 500) }
 })
+
+const STAFF_ROLES = new Set(['agent', 'operator', 'operations_admin', 'operator_admin', 'operation_admin'])
+const ADMIN_ROLES = new Set(['owner', 'admin', 'super_admin'])
+
+function reportDate(value: string | undefined, fallback: string): string {
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : fallback
+}
+
+reportsRoutes.get('/attendance', requireAnyPerm(['reports', 'advanced_analysis', 'users'], 'can_view'), async (c) => {
+  const now = new Date()
+  const from = reportDate(c.req.query('from'), now.toISOString().slice(0, 10))
+  const to = reportDate(c.req.query('to'), from)
+  const userId = c.req.query('user_id')?.trim() || null
+  const wallet = c.req.query('wallet')?.replace(/\D/g, '') || null
+  const [usersResult, sessionsResult, txResult, smsResult] = await Promise.all([
+    db.from('panel_users').select('id, username, display_name, role').in('role', [...STAFF_ROLES]).order('username'),
+    db.from('staff_attendance_sessions').select('id, user_id, wallet_number, checked_in_at, checked_out_at, note').gte('checked_in_at', `${from}T00:00:00+03:00`).lte('checked_in_at', `${to}T23:59:59.999+03:00`).order('checked_in_at', { ascending: false }).limit(5000),
+    db.from('maven_transactions').select('tx_id, amount, status, agent_name, receiving_wallet, to_account_number, first_seen_at').gte('first_seen_at', `${from}T00:00:00+03:00`).lte('first_seen_at', `${to}T23:59:59.999+03:00`).limit(50000),
+    db.from('inbound_sms').select('id, amount, sms_category, receiver_number, wallet_number, received_at').gte('received_at', `${from}T00:00:00+03:00`).lte('received_at', `${to}T23:59:59.999+03:00`).limit(50000),
+  ])
+  const firstError = usersResult.error || sessionsResult.error || txResult.error || smsResult.error
+  if (firstError) return c.json({ error: 'db_error', detail: firstError.message }, 500)
+  const users = usersResult.data ?? []
+  const sessions = (sessionsResult.data ?? []).filter((row) => !userId || row.user_id === userId).filter((row) => !wallet || String(row.wallet_number ?? '').replace(/\D/g, '') === wallet)
+  const nameOf = (user: typeof users[number]) => `${user.username} ${user.display_name ?? ''}`.toLowerCase().trim()
+  const stats = users.filter((user) => !userId || user.id === userId).map((user) => {
+    const names = nameOf(user)
+    const mine = sessions.filter((row) => row.user_id === user.id)
+    const wallets = new Set(mine.map((row) => String(row.wallet_number ?? '').replace(/\D/g, '')).filter(Boolean))
+    const txs = (txResult.data ?? []).filter((row) => {
+      const agent = String(row.agent_name ?? '').toLowerCase().trim()
+      const txWallet = String(row.receiving_wallet ?? row.to_account_number ?? '').replace(/\D/g, '')
+      return Boolean(agent && (agent === names || names.includes(agent) || agent.includes(names))) && (!wallet || txWallet === wallet)
+    })
+    const sms = (smsResult.data ?? []).filter((row) => !wallet || String(row.wallet_number ?? row.receiver_number ?? '').replace(/\D/g, '') === wallet)
+    const paid = txs.filter((row) => ['PAID', 'APPROVED'].includes(String(row.status ?? '').toUpperCase()))
+    const open = mine.find((row) => !row.checked_out_at)
+    return { user_id: user.id, username: user.username, display_name: user.display_name, role: user.role, active_session: open ?? null, sessions: mine.length, hours: mine.reduce((sum, row) => sum + (new Date(row.checked_out_at ?? now.toISOString()).getTime() - new Date(row.checked_in_at).getTime()) / 3_600_000, 0), transaction_count: txs.length, approved_count: paid.length, transaction_amount: txs.reduce((sum, row) => sum + Number(row.amount ?? 0), 0), approved_amount: paid.reduce((sum, row) => sum + Number(row.amount ?? 0), 0), sms_count: sms.length, wallets: [...wallets] }
+  })
+  return c.json({ from, to, wallet, users: stats, sessions })
+})
+
+reportsRoutes.post('/attendance/check-in', requireAuth, async (c) => {
+  const actor = c.get('actor')
+  const body = await c.req.json().catch(() => null)
+  const targetId = typeof body?.user_id === 'string' ? body.user_id : actor.sub
+  if (targetId !== actor.sub && !ADMIN_ROLES.has(actor.role)) return c.json({ error: 'attendance_scope_denied' }, 403)
+  const wallet = String(body?.wallet_number ?? '').replace(/\D/g, '') || null
+  const existing = await db.from('staff_attendance_sessions').select('id').eq('user_id', targetId).is('checked_out_at', null).maybeSingle()
+  if (existing.data) return c.json({ error: 'already_checked_in' }, 409)
+  const { data, error } = await db.from('staff_attendance_sessions').insert({ user_id: targetId, wallet_number: wallet, note: typeof body?.note === 'string' ? body.note.slice(0, 300) : null }).select().single()
+  if (error) return c.json({ error: 'attendance_check_in_failed', detail: error.message }, 500)
+  await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'staff.attendance_check_in', entity: 'staff_attendance_sessions', entity_id: data.id, after: { user_id: targetId, wallet_number: wallet } })
+  return c.json({ ok: true, session: data })
+})
+
+reportsRoutes.post('/attendance/check-out', requireAuth, async (c) => {
+  const actor = c.get('actor')
+  const body = await c.req.json().catch(() => null)
+  const targetId = typeof body?.user_id === 'string' ? body.user_id : actor.sub
+  if (targetId !== actor.sub && !ADMIN_ROLES.has(actor.role)) return c.json({ error: 'attendance_scope_denied' }, 403)
+  const { data: open } = await db.from('staff_attendance_sessions').select('id').eq('user_id', targetId).is('checked_out_at', null).order('checked_in_at', { ascending: false }).limit(1).maybeSingle()
+  if (!open) return c.json({ error: 'not_checked_in' }, 409)
+  const { data, error } = await db.from('staff_attendance_sessions').update({ checked_out_at: new Date().toISOString() }).eq('id', open.id).is('checked_out_at', null).select().single()
+  if (error) return c.json({ error: 'attendance_check_out_failed', detail: error.message }, 500)
+  await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'staff.attendance_check_out', entity: 'staff_attendance_sessions', entity_id: open.id, after: { user_id: targetId } })
+  return c.json({ ok: true, session: data })
+})
