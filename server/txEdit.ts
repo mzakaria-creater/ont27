@@ -6,9 +6,8 @@ import { notifyApprovedTransaction } from './approvalEmail.js'
 
 // Transaction edits: status and amount.
 //
-// Privileged admins can edit amounts directly. Operators can now edit status
-// directly as well; this is deliberately limited to status so a routine
-// approve/decline never becomes an amount re-pricing action.
+// Operators can edit a transaction status or locally correct its amount.
+// Provider-facing approval remains governed by the separate decision worker.
 //
 // Two things about a "status edit" that the UI has to keep honest:
 //
@@ -22,9 +21,7 @@ import { notifyApprovedTransaction } from './approvalEmail.js'
 //    mandatory reason so they are never mistaken for a provider action.
 //
 // Amounts are never pushed to the provider from here at all. UpdateTransaction
-// does take an amount, but re-pricing a transaction upstream is a materially
-// different and riskier action than approving one, and nobody has asked for
-// it.
+// Amount corrections remain local-only and are always written to the audit log.
 
 export const txEditRoutes = new Hono<AuthEnv>()
 
@@ -32,7 +29,7 @@ txEditRoutes.use('*', requireAuth)
 
 // "Operator admin" is stored as operations_admin in panel_users.
 const DIRECT_STATUS_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin', 'operator_admin', 'operation_admin', 'operator'])
-const AMOUNT_EDIT_ROLES = new Set(['super_admin', 'owner', 'admin'])
+const AMOUNT_EDIT_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin', 'operator_admin', 'operation_admin', 'operator'])
 const EDITABLE_STATUSES = ['PENDING', 'PAID', 'DECLINED', 'EXPIRED', 'EXPIRED_LOCAL', 'UNDERPAID', 'APPROVED']
 const PROVIDER_STATUSES = new Set(['PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID', 'OVERPAID'])
 
@@ -297,7 +294,7 @@ async function applyEdit(
   return { ok: true, localOnly, executed }
 }
 
-// ---- Direct edit (admins and operators for status; admins for amount) ----
+// ---- Direct edit (admins and operators for status and local amount correction) ----
 txEditRoutes.post('/:txId/edit', async (c) => {
   const actor = c.get('actor')
   if (!DIRECT_STATUS_ROLES.has(actor.role)) return c.json({ error: 'direct_edit_role_required', role: actor.role }, 403)
@@ -307,9 +304,8 @@ txEditRoutes.post('/:txId/edit', async (c) => {
 
   const parsed = readEdit(await c.req.json().catch(() => null))
   if ('error' in parsed) return c.json({ error: parsed.error }, 400)
-  // Amount corrections are materially higher risk than a status decision.
-  // Keep them restricted to the stewardship roles even when an operator can
-  // edit a status directly from the complaint or transactions page.
+  // Amount corrections are local-only; keep the role check explicit so this
+  // cannot accidentally become a provider re-pricing action.
   if (parsed.amount != null && !AMOUNT_EDIT_ROLES.has(actor.role)) {
     return c.json({ error: 'amount_edit_requires_admin' }, 403)
   }

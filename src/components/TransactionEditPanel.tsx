@@ -7,7 +7,7 @@ import { Pencil, Save, Send, X } from 'lucide-react'
 
 // Edit a transaction's status or amount.
 //
-// Stewards (super_admin / owner / admin / operations_admin) apply directly. Everyone
+// Stewards (super_admin / owner / admin / operations_admin / operator) apply directly. Everyone
 // else raises a request that goes to Mina and Eslam on Telegram and is applied
 // only once one of them approves it in the panel.
 //
@@ -17,7 +17,7 @@ import { Pencil, Save, Send, X } from 'lucide-react'
 //   · NGPay + still PENDING + target PAID/DECLINED → real execution on Maven.
 //   · anything else, and every amount change → local correction only.
 
-const STEWARD_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin'])
+const STEWARD_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin', 'operator'])
 
 interface Props {
   txId: number
@@ -109,7 +109,7 @@ export default function TransactionEditPanel({
       {!open && (
         <p className="cell-sub">
           {isSteward
-            ? t('يمكنك تعديل الحالة أو المبلغ مباشرة — كل تعديل يُسجَّل في سجل التدقيق.', 'You can change the status or amount directly — every edit is written to the audit log.')
+            ? t('يمكنك تعديل الحالة أو إضافة/تصحيح المبلغ مباشرة — تعديل المبلغ محلي فقط وكل تعديل يُسجَّل في سجل التدقيق.', 'You can change the status or add/correct the amount directly — amount edits are local-only and every edit is written to the audit log.')
             : t('دورك لا يسمح بالتعديل المباشر. يمكنك إرسال طلب إلى مينا وإسلام على تيليجرام.', 'Your role cannot edit directly. You can send a request to Mina and Eslam on Telegram.')}
         </p>
       )}
