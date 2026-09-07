@@ -373,6 +373,7 @@ export default function App() {
             <Route path="/operator-handbook" element={<PageGate keys={['support']}><OperatorHandbook /></PageGate>} />
             <Route path="/merchants" element={<PageGate keys={['merchants']}><Merchants /></PageGate>} />
             <Route path="/wallets" element={<PageGate keys={['wallets']}><Wallets /></PageGate>} />
+            <Route path="/mavenwallets" element={<PageGate keys={['wallets']}><Wallets /></PageGate>} />
             <Route path="/sms" element={<PageGate keys={['sms_live']}><SmsLive /></PageGate>} />
             <Route path="/settlements" element={<PageGate keys={['settlements','settlements_list','settlement_recon','fees']}><Settlements /></PageGate>} />
             <Route path="/crm" element={<PageGate keys={['client_crm']}><Crm /></PageGate>} />
