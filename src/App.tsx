@@ -6,7 +6,6 @@ import PageGate from './auth/PageGate'
 import LoginPage from './auth/LoginPage'
 import type { NotifData } from './pages/Notifications'
 import { api } from './lib/api'
-import { UserRoundCheck, UserRoundX } from 'lucide-react'
 import { merchantChipCls, money } from './lib/deposits'
 import { SUPABASE_URL, SUPABASE_KEY } from './lib/supabase'
 import { LocaleProvider, useLocale } from './lib/locale'
@@ -353,7 +352,7 @@ function Topbar() {
       {isStaff && <div className="topbar-attendance" title={attendanceError ? t('تعذر قراءة حالة الحضور', 'Unable to read attendance status') : undefined}>
         <span className={`topbar-attendance-state ${attendance ? 'is-in' : 'is-out'}`}><span className="dot" />{attendance ? t('داخل', 'In') : t('خارج', 'Out')}</span>
         <button type="button" className={attendance ? 'btn-ghost btn-sm danger' : 'btn-primary btn-sm'} onClick={() => void toggleAttendance()} disabled={attendanceBusy || attendanceError}>
-          {attendance ? <><UserRoundX size={14} />{t('خروج', 'Check out')}</> : <><UserRoundCheck size={14} />{t('دخول', 'Check in')}</>}
+          {attendance ? <><span aria-hidden="true">🚪</span>{t('خروج', 'Check out')}</> : <><span aria-hidden="true">✅</span>{t('دخول', 'Check in')}</>}
         </button>
       </div>}
       <button className="theme-btn" onClick={toggleLocale} aria-label={t('تبديل اللغة', 'Switch language')}>
