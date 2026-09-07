@@ -357,7 +357,9 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
           // action, not an automation/agent decision. Preserve that identity
           // on the mirrored transaction so every UI can render the same actor.
           for (const row of providerActions) {
-            if (['PAID', 'APPROVED', 'DECLINED'].includes(String(row.status ?? '').toUpperCase()) && (row.approved_by == null || row.approved_by === 'Manual')) {
+            const actor = String(row.approved_by ?? '').trim().toLowerCase()
+            const isAutomationMarker = !actor || actor === 'manual' || actor === 'auto' || actor === 'auto_trigger' || actor === 'automation' || actor.startsWith('auto_') || actor.startsWith('system')
+            if (['PAID', 'APPROVED', 'DECLINED'].includes(String(row.status ?? '').toUpperCase()) && isAutomationMarker) {
               row.approved_by = 'Maven Team'
             }
           }
