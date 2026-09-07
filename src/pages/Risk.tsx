@@ -1,248 +1,46 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Activity, Ban, CheckCircle2, MessageSquareWarning, Plus, RefreshCw, Search, ShieldAlert, Trash2, UsersRound } from 'lucide-react'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useAuth } from '../auth/AuthContext'
 import { useLocale } from '../lib/locale'
 
-// Risk & compliance — blacklist, suspicious SMS, clients flagged for review,
-// and sender-number velocity/fraud detection.
-
+type Tab = 'overview' | 'blacklist' | 'abuse' | 'sms'
+type BlockType = 'phone' | 'country' | 'city'
 interface BlacklistRow { id: string; merchant_id: string | null; type: string | null; value: string | null; reason: string | null; created_at: string | null }
 interface RiskSms { id: number; received_at: string | null; device_name: string | null; sender_name: string | null; sender_number: string | null; receiver_number: string | null; amount: number | null; risk_score: number | null; risk_reason: string | null; suspicious: boolean | null; is_duplicate: boolean | null; sms_category: string | null }
-interface RiskClient { id: string; client_name: string | null; phone_no: string | null; merchant_name: string | null; risk_score: number | null; approval_rate: number | null; total_transactions: number | null }
-// What being on the list actually does, over the last 7 days. Shown because
-// a list of 80 numbers says nothing about whether listing changed an outcome
-// — and until the approval gate went in, it changed nothing at all.
-interface Enforcement {
-  days: number; listedNumbers: number
-  humanApprovedFromListed: number; autoApprovedFromListed: number
-  declinedFromListed: number; pendingFromListed: number
-  totalFromListed: number; totalDecisions: number
-  byNumber: { phone: string; total: number; approved: number; declined: number; pending: number; volume: number }[]
-}
-interface RiskData { blacklist: BlacklistRow[]; sms: RiskSms[]; clients: RiskClient[]; enforcement: Enforcement | null }
-interface Offender { sender_number: string; sender_names: string[] | null; merchant: string | null; txns: number; declined: number; approved: number; decline_rate: number | null; total_amount: number | null; distinct_names: number; first_seen: string | null; last_seen: string | null; blacklisted: boolean }
+interface Enforcement { days: number; humanApprovedFromListed: number; declinedFromListed: number; pendingFromListed: number; totalFromListed: number }
+interface RiskData { blacklist: BlacklistRow[]; sms: RiskSms[]; clients: unknown[]; enforcement: Enforcement | null }
+interface Offender { sender_number: string; sender_names: string[] | null; merchant: string | null; txns: number; declined: number; decline_rate: number | null; total_amount: number | null; distinct_names: number; blacklisted: boolean }
+const tabs: { id: Tab; ar: string; en: string; icon: typeof ShieldAlert }[] = [
+  { id: 'overview', ar: 'نظرة عامة', en: 'Overview', icon: ShieldAlert }, { id: 'blacklist', ar: 'العملاء المحظورون', en: 'Blacklisted clients', icon: Ban }, { id: 'abuse', ar: 'إشارات الإساءة', en: 'Abuse signals', icon: Activity }, { id: 'sms', ar: 'SMS مشبوهة', en: 'Suspicious SMS', icon: MessageSquareWarning },
+]
 
 export default function Risk() {
-  const { can } = useAuth()
-  const { t } = useLocale()
-  const [data, setData] = useState<RiskData | null>(null)
-  const [vel, setVel] = useState<{ offenders: Offender[]; min_txns: number; window_days: number } | null>(null)
-  const [minTxns, setMinTxns] = useState(20); const [windowDays, setWindowDays] = useState(30)
-  const [err, setErr] = useState<string | null>(null)
-  const [blockValue, setBlockValue] = useState(''); const [blockType, setBlockType] = useState<'phone'|'country'|'city'>('phone'); const [blockReason, setBlockReason] = useState('')
-  const canEdit = can('risk', 'can_edit')
-
-  const loadRisk = useCallback(() => {
-    api<RiskData>('/api/risk')
-      .then(setData)
-      .catch((e) => setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض المخاطر.', 'You do not have permission to view risk data.') : t('تعذّر تحميل بيانات المخاطر.', 'Failed to load risk data.')))
-  }, [])
-  const loadVelocity = useCallback(() => {
-    api<{ offenders: Offender[]; min_txns: number; window_days: number }>(`/api/risk/velocity?min_txns=${minTxns}&window_days=${windowDays}`)
-      .then(setVel).catch(() => setVel(null))
-  }, [minTxns, windowDays])
-  useEffect(() => { loadRisk() }, [loadRisk])
-  useEffect(() => { loadVelocity() }, [loadVelocity])
-
-  const blacklistNumber = async (o: Offender) => {
-    try {
-      await api('/api/risk/blacklist', { method: 'POST', body: JSON.stringify({ value: o.sender_number, type: 'phone', reason: `Velocity: ${o.txns} txns / ${o.decline_rate}% declined` }) })
-      loadVelocity(); loadRisk()
-    } catch { setErr(t('تعذّر الإضافة للقائمة السوداء.', 'Failed to add to the blacklist.')) }
-  }
-  const addBlock = async () => {
-    if (!blockValue.trim() || !canEdit) return
-    try { await api('/api/risk/blacklist', { method:'POST', body: JSON.stringify({ type: blockType, value: blockValue.trim(), reason: blockReason.trim() || `Manual ${blockType} block` }) }); setBlockValue(''); setBlockReason(''); loadRisk() }
-    catch (e) { setErr(e instanceof ApiError && e.status === 409 ? t('القيمة محظورة بالفعل.', 'Already blocked.') : t('تعذّرت إضافة الحظر.', 'Could not add block.')) }
-  }
-  const removeBlock = async (id: string) => { if (!canEdit || !window.confirm(t('إزالة الحظر؟','Remove this block?'))) return; try { await api(`/api/risk/blacklist/${id}`, { method:'DELETE' }); loadRisk() } catch { setErr(t('تعذّرت إزالة الحظر.','Could not remove block.')) } }
-
-  return (
-    <PanelShell>
-      <section className="page-head">
-        <h2>🛡️ {t('المخاطر والامتثال', 'Risk & compliance')}</h2>
-        <p className="page-sub">
-          {data && <>{data.blacklist.length} {t('في القائمة السوداء', 'blacklisted')} · {data.sms.length} {t('رسالة مشبوهة', 'suspicious SMS')} · {data.clients.length} {t('عميل يحتاج مراجعة', 'clients need review')}</>}
-        </p>
-      </section>
-
-      {err && <div className="card warn">{err}</div>}
-      {!data && !err && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
-
-      {data?.enforcement && (
-        <section className="card">
-          <div className="section-label">{t('أثر القائمة على القرارات', 'What the list is doing')}</div>
-          <div className="kpi-grid">
-            <div className="kpi-card">
-              <div className="kpi-value">{data.enforcement.totalFromListed}</div>
-              <div className="kpi-label">{t('قرارات من أرقام مُدرَجة', 'Decisions from listed numbers')}</div>
-              <div className="cell-sub">{t(`من ${data.enforcement.totalDecisions} خلال ${data.enforcement.days} أيام`, `of ${data.enforcement.totalDecisions} over ${data.enforcement.days} days`)}</div>
-            </div>
-            <div className="kpi-card">
-              <div className="kpi-value">{data.enforcement.autoApprovedFromListed}</div>
-              <div className="kpi-label">{t('كانت تُعتمد آلياً', 'Were auto-approving')}</div>
-              <div className="cell-sub">{t('تذهب الآن لقرار بشري', 'now routed to a human')}</div>
-            </div>
-            <div className="kpi-card">
-              <div className="kpi-value">{data.enforcement.humanApprovedFromListed}</div>
-              <div className="kpi-label">{t('اعتمدها مشغّل بشري', 'A human approved')}</div>
-              <div className="cell-sub">{t('كان الرفض التلقائي سيرفضها', 'an auto-decline would have refused these')}</div>
-            </div>
-            <div className="kpi-card">
-              <div className="kpi-value">{data.enforcement.declinedFromListed}</div>
-              <div className="kpi-label">{t('مرفوضة', 'Declined')}</div>
-              <div className="cell-sub">{data.enforcement.pendingFromListed} {t('قيد المراجعة', 'pending')}</div>
-            </div>
-          </div>
-          <p className="cell-sub">
-            {t(
-              'الإدراج يمنع الاعتماد التلقائي فقط ولا يرفض أبداً: سلسلة رفض قد تكون عميلاً لديه مشكلة دفع حقيقية، وجعل القائمة ترفضه يجعل الحظر ذاتي التغذية.',
-              'Listing withholds automatic approval and never declines: a run of declines can be a customer with a real payment problem, and letting the list decline them makes the block self-feeding.',
-            )}
-          </p>
-          {data.enforcement.byNumber.length > 0 && (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>{t('الرقم', 'Number')}</th>
-                    <th>{t('الإجمالي', 'Total')}</th>
-                    <th>{t('معتمدة', 'Approved')}</th>
-                    <th>{t('مرفوضة', 'Declined')}</th>
-                    <th>{t('معلّقة', 'Pending')}</th>
-                    <th>{t('حجم معتمد', 'Approved volume')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.enforcement.byNumber.slice(0, 15).map((n) => (
-                    <tr key={n.phone}>
-                      <td className="mono"><Link to={`/client/${n.phone}`}>{n.phone}</Link></td>
-                      <td className="mono">{n.total}</td>
-                      <td className="mono">{n.approved}</td>
-                      <td className="mono">{n.declined}</td>
-                      <td className="mono">{n.pending}</td>
-                      <td className="mono">{money(n.volume, 'EGP')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      )}
-
-      <section className="card recent-card">
-        <div className="recent-head"><h3>🚀 {t('كثافة المُرسِلين (Velocity / كشف الاحتيال)', 'Sender velocity (fraud detection)')}</h3>
-          <span className="cell-sub">{t('أرقام أرسلت معاملات كثيرة خلال النافذة، مرتبة حسب نسبة الرفض', 'Numbers with many transactions in the window, ranked by decline rate')}</span>
-        </div>
-        <div className="filter-bar">
-          <label className="filter-field">{t('حد أدنى للمعاملات', 'Min transactions')} <input className="login-input" type="number" min={2} max={500} value={minTxns} onChange={(e) => setMinTxns(Number(e.target.value) || 20)} /></label>
-          <label className="filter-field">{t('النافذة (يوم)', 'Window (days)')} <input className="login-input" type="number" min={1} max={365} value={windowDays} onChange={(e) => setWindowDays(Number(e.target.value) || 30)} /></label>
-        </div>
-        {!vel && <p className="sidebar-hint">{t('جارٍ الحساب…', 'Calculating…')}</p>}
-        {vel && vel.offenders.length === 0 && <p>{t('لا يوجد أرقام تتجاوز الحد في هذه النافذة.', 'No numbers exceed the threshold in this window.')}</p>}
-        {vel && vel.offenders.length > 0 && (
-          <div className="table-wrap"><table className="data-table">
-            <thead><tr><th>{t('الرقم', 'Number')}</th><th>{t('الأسماء', 'Names')}</th><th>{t('المزوّد', 'Provider')}</th><th>{t('المعاملات', 'Txns')}</th><th>{t('رفض %', 'Decline %')}</th><th>{t('الإجمالي', 'Total')}</th><th>{t('القائمة السوداء', 'Blacklist')}</th></tr></thead>
-            <tbody>{vel.offenders.map((o) => {
-              const hot = (o.decline_rate ?? 0) >= 70 || o.distinct_names > 1
-              return <tr key={o.sender_number}>
-                <td className="mono">{o.sender_number}</td>
-                <td>{(o.sender_names ?? []).join('، ') || '—'}{o.distinct_names > 1 && <span className="pay-status-badge st-pending"> {o.distinct_names} {t('أسماء', 'names')}</span>}</td>
-                <td>{o.merchant ?? '—'}</td>
-                <td className="mono">{o.txns} <span className="cell-sub">({o.declined} {t('رفض', 'declined')})</span></td>
-                <td><span className={`pay-status-badge ${hot ? 'st-declined' : 'st-dim'}`}>{o.decline_rate ?? 0}%</span></td>
-                <td className="mono">{money(o.total_amount, 'EGP')}</td>
-                <td>{o.blacklisted ? <span className="pay-status-badge st-declined">{t('محظور', 'Blocked')}</span> : (canEdit ? <button className="btn-ghost btn-sm" onClick={() => void blacklistNumber(o)}>{t('حظر', 'Block')}</button> : '—')}</td>
-              </tr>
-            })}</tbody>
-          </table></div>
-        )}
-      </section>
-
-      {data && (
-        <>
-          <section className="card recent-card">
-            <div className="recent-head"><h3>🚫 {t('حظر رقم محفظة','Block wallet number')}</h3><span className="cell-sub">{t('أي معاملة من الرقم المحظور تُرفض فوراً بدون مطابقة SMS.','Transactions from a blocked number are declined immediately without SMS matching.')}</span></div>
-            <div className="filter-bar"><select className="filter-select" value={blockType} onChange={e => setBlockType(e.target.value as typeof blockType)} disabled={!canEdit}><option value="phone">Wallet / phone</option><option value="country">Country</option><option value="city">City</option></select><input className="login-input" value={blockValue} onChange={e=>setBlockValue(e.target.value)} placeholder={blockType === 'phone' ? '01xxxxxxxxx' : blockType === 'country' ? 'EG' : 'City'} disabled={!canEdit}/><input className="login-input" value={blockReason} onChange={e=>setBlockReason(e.target.value)} placeholder="Reason" disabled={!canEdit}/><button className="btn-primary btn-sm" onClick={()=>void addBlock()} disabled={!canEdit || !blockValue.trim()}>🚫 {t('حظر فوري','Block now')}</button></div>
-          </section>
-          <section className="card recent-card">
-            <div className="recent-head"><h3>📋 {t('الأرقام والقيم المحظورة', 'Blocked numbers and values')}</h3><button className="btn-ghost btn-sm" onClick={loadRisk}>🔄 {t('تحديث','Refresh')}</button></div>
-            {data.blacklist.length === 0 && <p>{t('القائمة فارغة.', 'The list is empty.')}</p>}
-            {data.blacklist.length > 0 && (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead><tr><th>{t('النوع', 'Type')}</th><th>{t('القيمة', 'Value')}</th><th>{t('السبب', 'Reason')}</th><th>{t('أضيفت', 'Added')}</th><th>{t('إجراء','Action')}</th></tr></thead>
-                  <tbody>
-                    {data.blacklist.map((r) => (
-                      <tr key={r.id}>
-                        <td><span className="pay-status-badge st-declined">{r.type ?? '—'}</span></td>
-                        <td className="mono">{r.value ?? '—'}</td>
-                        <td>{r.reason ?? '—'}</td>
-                        <td className="mono">{depositTime({ first_seen_at: r.created_at })}</td><td>{canEdit && <button className="btn-ghost danger btn-sm" onClick={()=>void removeBlock(r.id)}>{t('إلغاء الحظر','Unblock')}</button>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
-          <section className="card recent-card">
-            <div className="recent-head"><h3>⚠️ {t('رسائل SMS مشبوهة / مكررة', 'Suspicious / duplicate SMS')}</h3></div>
-            {data.sms.length === 0 && <p>{t('لا توجد رسائل مشبوهة.', 'No suspicious messages.')}</p>}
-            {data.sms.length > 0 && (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead><tr><th>#</th><th>{t('المُرسِل ← المحفظة', 'Sender ← wallet')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('السبب', 'Reason')}</th><th>{t('الجهاز', 'Device')}</th><th>{t('الوقت', 'Time')}</th></tr></thead>
-                  <tbody>
-                    {data.sms.map((r) => (
-                      <tr key={r.id}>
-                        <td className="mono">{r.id}</td>
-                        <td>{r.sender_name ?? r.sender_number ?? '—'}<div className="cell-sub mono">← {r.receiver_number ?? '—'}</div></td>
-                        <td className="mono">{money(r.amount, 'EGP')}</td>
-                        <td>
-                          {r.is_duplicate && <span className="pay-status-badge st-pending">{t('مكررة', 'Duplicate')}</span>}{' '}
-                          {r.suspicious && <span className="pay-status-badge st-declined">{t('مشبوهة', 'Suspicious')}</span>}
-                          {r.risk_reason && <div className="cell-sub">{r.risk_reason}</div>}
-                        </td>
-                        <td className="mono">{r.device_name ?? '—'}</td>
-                        <td className="mono">{depositTime({ first_seen_at: r.received_at })}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
-          <section className="card recent-card">
-            <div className="recent-head"><h3>👥 {t('عملاء بحاجة لمراجعة', 'Clients needing review')}</h3></div>
-            {data.clients.length === 0 && <p>{t('لا يوجد عملاء بانتظار المراجعة.', 'No clients awaiting review.')}</p>}
-            {data.clients.length > 0 && (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead><tr><th>{t('العميل', 'Client')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('المعاملات', 'Txns')}</th><th>{t('نسبة القبول', 'Approval rate')}</th><th>{t('درجة الخطورة', 'Risk score')}</th></tr></thead>
-                  <tbody>
-                    {data.clients.map((r) => (
-                      <tr key={r.id}>
-                        <td>{r.client_name ?? '—'}<div className="cell-sub mono">{r.phone_no ?? '—'}</div></td>
-                        <td>{r.merchant_name ?? '—'}</td>
-                        <td className="mono">{r.total_transactions ?? 0}</td>
-                        <td className="mono">{r.approval_rate != null ? `${Math.round(Number(r.approval_rate))}%` : '—'}</td>
-                        <td className="mono">{r.risk_score ?? '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        </>
-      )}
-    </PanelShell>
-  )
+  const { can } = useAuth(); const { t } = useLocale(); const canEdit = can('risk', 'can_edit')
+  const [data, setData] = useState<RiskData | null>(null); const [vel, setVel] = useState<{ offenders: Offender[] } | null>(null); const [tab, setTab] = useState<Tab>('overview'); const [query, setQuery] = useState(''); const [minTxns, setMinTxns] = useState(20); const [windowDays, setWindowDays] = useState(30); const [blockType, setBlockType] = useState<BlockType>('phone'); const [blockValue, setBlockValue] = useState(''); const [blockReason, setBlockReason] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState<string | null>(null)
+  const loadRisk = useCallback(() => api<RiskData>('/api/risk').then(setData).catch((e) => setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض المخاطر.', 'You do not have permission to view risk data.') : t('تعذّر تحميل بيانات المخاطر.', 'Failed to load risk data.'))), [t])
+  const loadVelocity = useCallback(() => api<{ offenders: Offender[] }>(`/api/risk/velocity?min_txns=${minTxns}&window_days=${windowDays}`).then(setVel).catch(() => setVel(null)), [minTxns, windowDays])
+  useEffect(() => { void loadRisk() }, [loadRisk]); useEffect(() => { void loadVelocity() }, [loadVelocity])
+  const search = query.trim().toLowerCase(); const filtered = <T extends Record<string, unknown>>(rows: T[], keys: string[]) => rows.filter((row) => keys.some((key) => String(row[key] ?? '').toLowerCase().includes(search)))
+  const blacklist = useMemo(() => filtered((data?.blacklist ?? []) as unknown as Record<string, unknown>[], ['value', 'type', 'reason']) as unknown as BlacklistRow[], [data, search])
+  const sms = useMemo(() => filtered((data?.sms ?? []) as unknown as Record<string, unknown>[], ['id', 'sender_name', 'sender_number', 'receiver_number', 'risk_reason']) as unknown as RiskSms[], [data, search])
+  const offenders = useMemo(() => filtered((vel?.offenders ?? []) as unknown as Record<string, unknown>[], ['sender_number', 'sender_names', 'merchant']) as unknown as Offender[], [vel, search])
+  const addBlock = async (value = blockValue, reason = blockReason || `Manual ${blockType} block`, type = blockType) => { if (!value.trim() || !canEdit) return; setBusy(true); setErr(null); try { await api('/api/risk/blacklist', { method: 'POST', body: JSON.stringify({ type, value: value.trim(), reason: reason.trim() }) }); setBlockValue(''); setBlockReason(''); await Promise.all([loadRisk(), loadVelocity()]) } catch (e) { setErr(e instanceof ApiError && e.status === 409 ? t('القيمة محظورة بالفعل.', 'Already blocked.') : t('تعذّرت إضافة الحظر.', 'Could not add block.')) } finally { setBusy(false) } }
+  const removeBlock = async (id: string) => { if (!canEdit || !window.confirm(t('إزالة الحظر؟', 'Remove this block?'))) return; setBusy(true); try { await api(`/api/risk/blacklist/${id}`, { method: 'DELETE' }); await loadRisk() } catch { setErr(t('تعذّرت إزالة الحظر.', 'Could not remove block.')) } finally { setBusy(false) } }
+  const enforcement = data?.enforcement
+  const kpis = [{ label: t('عملاء محظورون', 'Blacklisted clients'), value: data?.blacklist.filter((r) => r.type === 'phone').length ?? 0, icon: Ban, tone: 'danger' }, { label: t('إشارات إساءة', 'Abuse signals'), value: vel?.offenders.length ?? 0, icon: Activity, tone: 'warn' }, { label: t('SMS تحتاج مراجعة', 'SMS needing review'), value: data?.sms.length ?? 0, icon: MessageSquareWarning, tone: 'blue' }, { label: t('قرارات من القائمة', 'Decisions from list'), value: enforcement?.totalFromListed ?? 0, icon: CheckCircle2, tone: 'good' }]
+  return <PanelShell><section className="risk-page-head"><div><span className="risk-eyebrow"><ShieldAlert size={14} /> {t('حماية العمليات', 'Operations protection')}</span><h2>{t('الحظر والإساءة', 'Blacklist & abuse')}</h2><p>{t('تحكم في العملاء المحظورين، إشارات الاحتيال، والرسائل التي تحتاج تدخلاً.', 'Control blocked clients, fraud signals, and messages that need intervention.')}</p></div><button className="btn-ghost btn-sm" onClick={() => { void Promise.all([loadRisk(), loadVelocity()]) }} disabled={busy}><RefreshCw size={14} className={busy ? 'spin' : ''} /> {t('تحديث البيانات', 'Refresh data')}</button></section>{err && <div className="card warn">{err}</div>}<div className="risk-kpis">{kpis.map((k) => <div className={`risk-kpi ${k.tone}`} key={k.label}><span className="risk-kpi-icon"><k.icon size={18} /></span><div><strong>{k.value}</strong><span>{k.label}</span></div></div>)}</div><div className="risk-tabs" role="tablist">{tabs.map(({ id, ar, en, icon: Icon }) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}><Icon size={15} /> {t(ar, en)}</button>)}</div>
+    {tab === 'overview' && <><section className="risk-command-grid"><div className="card risk-action-card"><div className="risk-card-heading"><span className="risk-card-icon danger"><Ban size={18} /></span><div><h3>{t('حظر عميل أو قيمة', 'Block a client or value')}</h3><p>{t('أوقف الاعتماد الآلي للرقم أو الدولة أو المدينة.', 'Withhold automatic approval for a phone, country, or city.')}</p></div></div><div className="risk-form-row"><select className="filter-select" value={blockType} onChange={(e) => setBlockType(e.target.value as BlockType)} disabled={!canEdit}><option value="phone">{t('رقم العميل', 'Client phone')}</option><option value="country">{t('الدولة', 'Country')}</option><option value="city">{t('المدينة', 'City')}</option></select><input className="login-input" value={blockValue} onChange={(e) => setBlockValue(e.target.value)} placeholder={blockType === 'phone' ? '01xxxxxxxxx' : blockType === 'country' ? 'EG' : 'City'} disabled={!canEdit} /><input className="login-input" value={blockReason} onChange={(e) => setBlockReason(e.target.value)} placeholder={t('سبب الحظر', 'Reason')} disabled={!canEdit} /><button className="btn-primary btn-sm" onClick={() => void addBlock()} disabled={!canEdit || !blockValue.trim() || busy}><Plus size={14} /> {t('إضافة حظر', 'Add block')}</button></div>{!canEdit && <p className="risk-permission-note">{t('صلاحية العرض فقط — لا يمكنك تعديل القائمة.', 'View-only access — you cannot change the list.')}</p>}</div><div className="card risk-impact-card"><div className="risk-card-heading"><span className="risk-card-icon good"><UsersRound size={18} /></span><div><h3>{t('أثر الحظر', 'Blacklist impact')}</h3><p>{enforcement ? t(`آخر ${enforcement.days} يوم`, `Last ${enforcement.days} days`) : '—'}</p></div></div><div className="risk-impact-stats"><div><strong>{enforcement?.humanApprovedFromListed ?? 0}</strong><span>{t('اعتماد بشري', 'Human approved')}</span></div><div><strong>{enforcement?.declinedFromListed ?? 0}</strong><span>{t('مرفوضة', 'Declined')}</span></div><div><strong>{enforcement?.pendingFromListed ?? 0}</strong><span>{t('معلقة', 'Pending')}</span></div></div><p className="risk-card-foot">{t('الحظر يمنع الاعتماد الآلي ولا يرفض المعاملة تلقائياً.', 'Blocking withholds automatic approval; it does not auto-decline the transaction.')}</p></div></section><section className="card"><div className="risk-section-head"><div><h3>{t('أعلى أرقام تحتاج تدخلاً', 'Top numbers needing intervention')}</h3><p>{t('مرتبة حسب كثافة المعاملات ونسبة الرفض.', 'Ranked by volume and decline rate.')}</p></div><button className="btn-ghost btn-sm" onClick={() => setTab('abuse')}>{t('عرض الكل', 'View all')} →</button></div><AbuseTable rows={offenders.slice(0, 5)} canEdit={canEdit} onBlock={(row) => void addBlock(row.sender_number, `Velocity: ${row.txns} txns / ${row.decline_rate ?? 0}% declined`, 'phone')} t={t} /></section></>}
+    {tab === 'blacklist' && <section className="card"><SectionHead title={t('العملاء والقيم المحظورة', 'Blacklisted clients and values')} count={blacklist.length} query={query} setQuery={setQuery} placeholder={t('بحث في القائمة…', 'Search blacklist…')} t={t} /><BlacklistTable rows={blacklist} canEdit={canEdit} busy={busy} onRemove={(id) => void removeBlock(id)} t={t} /></section>}
+    {tab === 'abuse' && <section className="card"><div className="risk-section-head"><div><h3>{t('كشف إساءة الاستخدام', 'Abuse detection')}</h3><p>{t('أرقام كثيرة الاستخدام أو متعددة الأسماء.', 'High-volume numbers or identity variation.')}</p></div><div className="risk-inline-filters"><label>{t('الحد الأدنى', 'Min txns')}<input className="login-input" type="number" min={2} max={500} value={minTxns} onChange={(e) => setMinTxns(Number(e.target.value) || 20)} /></label><label>{t('النافذة بالأيام', 'Window days')}<input className="login-input" type="number" min={1} max={365} value={windowDays} onChange={(e) => setWindowDays(Number(e.target.value) || 30)} /></label><label className="risk-search"><Search size={15} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('بحث…', 'Search…')} /></label></div></div><AbuseTable rows={offenders} canEdit={canEdit} onBlock={(row) => void addBlock(row.sender_number, `Velocity: ${row.txns} txns / ${row.decline_rate ?? 0}% declined`, 'phone')} t={t} /></section>}
+    {tab === 'sms' && <section className="card"><SectionHead title={t('رسائل SMS المشبوهة والمكررة', 'Suspicious and duplicate SMS')} count={sms.length} query={query} setQuery={setQuery} placeholder={t('بحث بالرقم أو SMS ID…', 'Search phone or SMS ID…')} t={t} /><SmsTable rows={sms} t={t} /></section>}
+  </PanelShell>
 }
+function SectionHead({ title, count, query, setQuery, placeholder, t }: { title: string; count: number; query: string; setQuery: (value: string) => void; placeholder: string; t: (ar: string, en: string) => string }) { return <div className="risk-section-head"><div><h3>{title}</h3><p>{count} {t('نتيجة', 'results')}</p></div><label className="risk-search"><Search size={15} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={placeholder} /></label></div> }
+function AbuseTable({ rows, canEdit, onBlock, t }: { rows: Offender[]; canEdit: boolean; onBlock: (row: Offender) => void; t: (ar: string, en: string) => string }) { return <div className="table-wrap"><table className="data-table risk-table"><thead><tr><th>{t('العميل', 'Client')}</th><th>{t('المعاملات', 'Txns')}</th><th>{t('نسبة الرفض', 'Decline rate')}</th><th>{t('الإجمالي', 'Volume')}</th><th>{t('الحالة', 'Action')}</th></tr></thead><tbody>{rows.map((r) => <tr key={r.sender_number}><td><Link to={`/client/${r.sender_number}`} className="mono">{r.sender_number}</Link><div className="cell-sub">{(r.sender_names ?? []).join('، ') || '—'}{r.distinct_names > 1 && ` · ${r.distinct_names} ${t('أسماء', 'names')}`}</div></td><td className="mono">{r.txns}<div className="cell-sub">{r.declined} {t('رفض', 'declined')}</div></td><td><span className={`pay-status-badge ${(r.decline_rate ?? 0) >= 70 ? 'st-declined' : 'st-pending'}`}>{r.decline_rate ?? 0}%</span></td><td className="mono">{money(r.total_amount, 'EGP')}</td><td>{r.blacklisted ? <span className="pay-status-badge st-declined">{t('محظور', 'Blocked')}</span> : canEdit ? <button className="btn-ghost btn-sm" onClick={() => onBlock(r)}><Ban size={13} /> {t('حظر', 'Block')}</button> : '—'}</td></tr>)}{rows.length === 0 && <Empty t={t} />}</tbody></table></div> }
+function BlacklistTable({ rows, canEdit, busy, onRemove, t }: { rows: BlacklistRow[]; canEdit: boolean; busy: boolean; onRemove: (id: string) => void; t: (ar: string, en: string) => string }) { return <div className="table-wrap"><table className="data-table risk-table"><thead><tr><th>{t('النوع', 'Type')}</th><th>{t('القيمة', 'Value')}</th><th>{t('السبب', 'Reason')}</th><th>{t('أُضيفت', 'Added')}</th><th>{t('إجراء', 'Action')}</th></tr></thead><tbody>{rows.map((r) => <tr key={r.id}><td><span className="pay-status-badge st-declined">{r.type ?? '—'}</span></td><td className="mono">{r.value ?? '—'}</td><td>{r.reason ?? '—'}</td><td className="mono">{depositTime({ first_seen_at: r.created_at })}</td><td>{canEdit && <button className="btn-ghost danger btn-sm" disabled={busy} onClick={() => onRemove(r.id)}><Trash2 size={13} /> {t('رفع الحظر', 'Unblock')}</button>}</td></tr>)}{rows.length === 0 && <Empty t={t} />}</tbody></table></div> }
+function SmsTable({ rows, t }: { rows: RiskSms[]; t: (ar: string, en: string) => string }) { return <div className="table-wrap"><table className="data-table risk-table"><thead><tr><th>SMS ID</th><th>{t('المرسل ← المحفظة', 'Sender ← wallet')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('الإشارة', 'Signal')}</th><th>{t('الجهاز', 'Device')}</th><th>{t('الوقت', 'Time')}</th></tr></thead><tbody>{rows.map((r) => <tr key={r.id}><td className="mono">#{r.id}</td><td>{r.sender_name ?? r.sender_number ?? '—'}<div className="cell-sub mono">← {r.receiver_number ?? '—'}</div></td><td className="mono">{money(r.amount, 'EGP')}</td><td>{r.is_duplicate && <span className="pay-status-badge st-pending">{t('مكررة', 'Duplicate')}</span>} {r.suspicious && <span className="pay-status-badge st-declined">{t('مشبوهة', 'Suspicious')}</span>}<div className="cell-sub">{r.risk_reason ?? '—'}</div></td><td className="mono">{r.device_name ?? '—'}</td><td className="mono">{depositTime({ first_seen_at: r.received_at })}</td></tr>)}{rows.length === 0 && <Empty t={t} />}</tbody></table></div> }
+function Empty({ t }: { t: (ar: string, en: string) => string }) { return <tr><td colSpan={8} className="cell-sub risk-empty">{t('لا توجد بيانات مطابقة.', 'No matching data.')}</td></tr> }

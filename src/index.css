@@ -2364,6 +2364,28 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .page-shell,.content-shell,.panel-main{min-width:0;max-width:100%;}.card,.recent-card,.kpi-card{min-width:0;max-width:100%;}.table-wrap{max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain}.data-table{width:max-content;min-width:100%}.data-table th,.data-table td{vertical-align:middle}.kpi-grid,.stat-grid{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}@media(max-width:720px){.page-head{gap:10px}.page-head h2{font-size:16px}.card{border-radius:12px}.data-table{font-size:11px}.data-table th,.data-table td{padding:7px 8px}.filter-bar{flex-wrap:wrap}.filter-bar>*{max-width:100%}.settlement-month-filter{margin-inline-start:0}}
 .dot-st-dim { background: var(--text-muted); }
 
+/* Risk operations workspace */
+.risk-page-head { display:flex; align-items:flex-end; justify-content:space-between; gap:18px; margin-bottom:14px; }
+.risk-page-head h2 { margin:6px 0 3px; font-size:clamp(24px,3vw,34px); }
+.risk-page-head p,.risk-card-heading p,.risk-section-head p { margin:0; color:var(--text-dim); font-size:11px; }
+.risk-eyebrow { display:inline-flex; align-items:center; gap:6px; color:var(--accent); font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+.risk-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:14px; }
+.risk-kpi { display:flex; align-items:center; gap:11px; min-height:82px; padding:13px; border:1px solid var(--border); border-radius:14px; background:var(--surface); }
+.risk-kpi-icon,.risk-card-icon { display:grid; place-items:center; width:36px; height:36px; flex:none; border-radius:11px; color:var(--accent); background:color-mix(in srgb,var(--accent) 12%,var(--surface)); }
+.risk-kpi.danger .risk-kpi-icon,.risk-card-icon.danger { color:var(--status-declined); background:var(--red-bg); }
+.risk-kpi.warn .risk-kpi-icon { color:var(--status-pending); background:var(--amber-bg); }
+.risk-kpi.blue .risk-kpi-icon { color:#38bdf8; background:color-mix(in srgb,#38bdf8 12%,var(--surface)); }
+.risk-kpi.good .risk-kpi-icon,.risk-card-icon.good { color:var(--status-paid); background:var(--green-bg); }
+.risk-kpi strong { display:block; font:800 22px ui-monospace,monospace; }.risk-kpi span:not(.risk-kpi-icon) { display:block; margin-top:2px; color:var(--text-dim); font-size:10px; }
+.risk-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; padding:5px; border:1px solid var(--border); border-radius:12px; background:var(--surface); }
+.risk-tabs button { display:inline-flex; align-items:center; gap:6px; border:0; border-radius:8px; padding:9px 12px; color:var(--text-dim); background:transparent; font:700 11px inherit; cursor:pointer; }.risk-tabs button.active { color:var(--text); background:color-mix(in srgb,var(--accent) 16%,var(--surface)); box-shadow:inset 0 -2px var(--accent); }
+.risk-command-grid { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(280px,.8fr); gap:12px; margin-bottom:14px; }.risk-action-card,.risk-impact-card { min-width:0; }
+.risk-card-heading { display:flex; gap:10px; align-items:flex-start; margin-bottom:14px; }.risk-card-heading h3,.risk-section-head h3 { margin:0 0 3px; font-size:14px; }.risk-form-row { display:grid; grid-template-columns:130px minmax(130px,1fr) minmax(130px,1fr) auto; gap:8px; align-items:center; }.risk-permission-note,.risk-card-foot { margin:10px 0 0; color:var(--text-muted); font-size:10px; }
+.risk-impact-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }.risk-impact-stats div { padding:10px; border-radius:9px; background:var(--hover); }.risk-impact-stats strong { display:block; font:800 18px ui-monospace,monospace; }.risk-impact-stats span { color:var(--text-dim); font-size:9px; }
+.risk-section-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:13px; }.risk-search { display:flex; align-items:center; gap:7px; min-width:min(100%,260px); padding:0 9px; border:1px solid var(--border); border-radius:8px; color:var(--text-muted); background:var(--input-bg,var(--surface-2)); }.risk-search input { width:100%; min-height:32px; border:0; outline:0; color:var(--text); background:transparent; font:11px inherit; }.risk-inline-filters { display:flex; align-items:end; gap:8px; }.risk-inline-filters label { display:grid; gap:4px; color:var(--text-dim); font-size:9px; }.risk-inline-filters input { width:100px; }.risk-table td,.risk-table th { vertical-align:middle; }.risk-empty { padding:28px!important; text-align:center; }
+@media(max-width:900px){.risk-kpis{grid-template-columns:repeat(2,1fr)}.risk-command-grid{grid-template-columns:1fr}.risk-form-row{grid-template-columns:repeat(2,1fr)}.risk-form-row button{width:100%}.risk-section-head{align-items:flex-start; flex-direction:column}.risk-section-head>.risk-search{width:100%}.risk-inline-filters{width:100%; flex-wrap:wrap}.risk-inline-filters .risk-search{flex:1 1 180px}}
+@media(max-width:560px){.risk-page-head{align-items:flex-start; flex-direction:column}.risk-page-head .btn-ghost{width:100%}.risk-kpis{gap:7px}.risk-kpi{min-height:72px; padding:9px}.risk-kpi strong{font-size:17px}.risk-form-row{grid-template-columns:1fr}.risk-tabs{display:grid; grid-template-columns:1fr 1fr}.risk-tabs button{justify-content:center}.risk-impact-stats strong{font-size:15px}}
+
 /* Payment method mark + name, so the column reads at a glance. The mark is a
    drawn placeholder in the provider's colour, never the provider's real logo. */
 .method-cell {
