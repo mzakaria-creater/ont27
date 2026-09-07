@@ -646,6 +646,14 @@ export default function AdminPage() {
                             >
                               Unblock login
                             </button>
+                            {["agent", "operator", "operations_admin", "operator_admin", "operation_admin"].includes(row.role) && (
+                              <button
+                                className="btn-primary btn-sm"
+                                onClick={() => navigate(`/hr?user=${encodeURIComponent(row.id)}`)}
+                              >
+                                {t("HR · حضور", "HR · Attendance")}
+                              </button>
+                            )}
                             <button
                               className="btn-primary btn-sm"
                               onClick={() =>

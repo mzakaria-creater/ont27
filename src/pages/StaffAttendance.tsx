@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarDays, Clock3, LogIn, LogOut, RefreshCw, WalletCards } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { CalendarDays, Clock3, Download, LogIn, LogOut, RefreshCw, WalletCards } from 'lucide-react'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
@@ -12,14 +13,25 @@ const today = () => new Date().toISOString().slice(0, 10)
 
 export default function StaffAttendance() {
   const { t, locale } = useLocale()
-  const [from, setFrom] = useState(today); const [to, setTo] = useState(today); const [wallet, setWallet] = useState(''); const [selected, setSelected] = useState<string | null>(null); const [data, setData] = useState<Attendance | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
+  const [from, setFrom] = useState(today); const [to, setTo] = useState(today); const [wallet, setWallet] = useState(''); const [selected, setSelected] = useState<string | null>(() => searchParams.get('user')); const [data, setData] = useState<Attendance | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null)
   const load = useCallback(async () => { setBusy(true); try { const q = new URLSearchParams({ from, to }); if (wallet) q.set('wallet', wallet); setData(await api<Attendance>(`/api/reports/attendance?${q}`)); setError(null) } catch (e) { setError(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية التقرير.', 'You do not have report permission.') : t('تعذر تحميل الحضور.', 'Unable to load attendance.')) } finally { setBusy(false) } }, [from, to, wallet, t])
   useEffect(() => { void load() }, [load])
   const action = async (userId: string, kind: 'check-in' | 'check-out') => { setBusy(true); try { await api(`/api/reports/attendance/${kind}`, { method: 'POST', body: JSON.stringify({ user_id: userId, wallet_number: wallet || undefined }) }); await load() } catch (e) { setError(e instanceof ApiError ? e.code : 'attendance_failed') } finally { setBusy(false) } }
   const wallets = useMemo(() => [...new Set((data?.users ?? []).flatMap((row) => row.wallets))].sort(), [data])
   const totals = useMemo(() => (data?.users ?? []).reduce((a, r) => ({ tx: a.tx + r.transaction_count, approved: a.approved + r.approved_count, amount: a.amount + r.approved_amount, sms: a.sms + r.sms_count, hours: a.hours + r.hours }), { tx: 0, approved: 0, amount: 0, sms: 0, hours: 0 }), [data])
+  const exportCsv = () => {
+    if (!data) return
+    const esc = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`
+    const rows = [
+      ['employee', 'username', 'role', 'work_hours', 'transactions', 'approved_transactions', 'approved_amount_egp', 'sms_count'],
+      ...data.users.map((row) => [row.display_name || row.username, row.username, row.role, row.hours.toFixed(2), row.transaction_count, row.approved_count, row.approved_amount.toFixed(2), row.sms_count]),
+    ]
+    const blob = new Blob([rows.map((row) => row.map(esc).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `ont27-hr-${data.from}-${data.to}.csv`; link.click(); URL.revokeObjectURL(url)
+  }
   const monthly = from.slice(0, 7) !== to.slice(0, 7) ? t('نطاق مخصص', 'Custom range') : from.slice(8) === '01' && to.slice(8) === '01' ? t('شهري', 'Monthly') : t('يومي', 'Daily')
-  return <PanelShell><section className="page-head"><div><h2>{t('حضور وأداء الفريق', 'Staff attendance & performance')}</h2><p className="page-sub">{t('تسجيل دخول وخروج كل agent/operator وربط ساعات العمل بالمحافظ والمعاملات والتدفق النقدي.', 'Check in/out every agent/operator and connect work hours to wallets, transactions, and cash flow.')}</p></div></section>
+  return <PanelShell><section className="page-head"><div><h2>{t('الموارد البشرية', 'HR workspace')}</h2><p className="page-sub">{t('حضور وانصراف كل agent/operator مع أداء المعاملات والتدفق النقدي حسب الموظف والمحفظة.', 'Check in/out every agent/operator with employee, wallet, transaction, and cash-flow performance.')}</p></div><button className="btn-ghost btn-sm" onClick={exportCsv} disabled={!data || busy}><Download size={15}/>{t('تصدير HR', 'Export HR')}</button></section>
     <section className="card reports-filter-card"><div className="reports-scope-grid"><label>{t('من', 'From')}<input className="login-input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label>{t('إلى', 'To')}<input className="login-input" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label><label>{t('المحفظة', 'Wallet')}<select className="login-input" value={wallet} onChange={(e) => setWallet(e.target.value)}><option value="">{t('كل المحافظ', 'All wallets')}</option>{wallets.map((value) => <option key={value} value={value}>{value}</option>)}</select></label><button className="btn-ghost btn-sm reports-refresh" onClick={() => void load()} disabled={busy}><RefreshCw size={15} className={busy ? 'spin' : ''}/>{t('تحديث', 'Refresh')}</button><span className="reports-range"><CalendarDays size={14}/>{monthly}</span></div></section>
     {error && <div className="card warn">{error}</div>}
     <div className="reports-kpis live-financial-kpis"><article><span className="reports-kpi-icon"><Clock3 size={18}/></span><small>{t('ساعات العمل', 'Work hours')}</small><strong>{totals.hours.toFixed(1)}</strong><em>{t('ضمن النطاق', 'in selected range')}</em></article><article><span className="reports-kpi-icon"><WalletCards size={18}/></span><small>{t('المعاملات', 'Transactions')}</small><strong>{totals.tx}</strong><em>{totals.approved} {t('معتمدة', 'approved')}</em></article><article><span className="reports-kpi-icon positive"><WalletCards size={18}/></span><small>{t('التدفق النقدي المعتمد', 'Approved cash flow')}</small><strong>{money(totals.amount, 'EGP')}</strong><em>{totals.sms} SMS</em></article></div>

@@ -124,7 +124,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   // System — reporting, audit, admin
   { to: '/reports', icon: '📊', labelAr: 'التقارير الشاملة', labelEn: 'Full reports', keys: ['reports', 'advanced_analysis'], group: 'insights' },
   { to: '/reportspage', icon: '▤', labelAr: 'صفحة التقارير', labelEn: 'Reports page', keys: ['reports', 'advanced_analysis'], group: 'insights' },
-  { to: '/staff-attendance', icon: '🕒', labelAr: 'حضور وأداء الفريق', labelEn: 'Staff attendance', keys: ['reports', 'users'], group: 'insights' },
+  { to: '/hr', icon: '🕒', labelAr: 'الموارد البشرية', labelEn: 'HR workspace', keys: ['reports', 'users'], group: 'insights' },
   { to: '/audit', icon: '🕵️', labelAr: 'سجل التدقيق', labelEn: 'Audit log', keys: ['audit_log', 'audit-logs'], group: 'admin' },
   { to: '/notifications', icon: '🔔', labelAr: 'الإشعارات', labelEn: 'Notifications', keys: ['notifications'], group: 'admin' },
   { to: '/integration-guide', icon: '📘', labelAr: 'دليل ربط API', labelEn: 'API integration guide', keys: ['api-keys', 'settings', 'merchants'], group: 'admin' },

@@ -384,7 +384,8 @@ export default function App() {
             <Route path="/audit" element={<PageGate keys={['audit_log','audit-logs']}><Audit /></PageGate>} />
             <Route path="/reports" element={<PageGate keys={['reports','advanced_analysis']}><Reports /></PageGate>} />
             <Route path="/reportspage" element={<PageGate keys={['reports','advanced_analysis']}><Reports /></PageGate>} />
-            <Route path="/staff-attendance" element={<PageGate keys={['reports','users']}><StaffAttendance /></PageGate>} />
+            <Route path="/hr" element={<PageGate keys={['reports','users']}><StaffAttendance /></PageGate>} />
+            <Route path="/staff-attendance" element={<Navigate to="/hr" replace />} />
             <Route path="/review" element={<PageGate keys={['review','audit_log','audit-logs']}><Review /></PageGate>} />
             <Route path="/mismatch" element={<PageGate keys={['review','audit_log','audit-logs','risk','risk_audit','compliance']}><Mismatch /></PageGate>} />
             <Route path="/telegram" element={<PageGate keys={['telegram_bot','automation']}><Telegram /></PageGate>} />
