@@ -16,7 +16,7 @@ import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
 import DepositKindBadge from '../components/DepositKindBadge'
 import { syncProviders } from '../lib/providerSync'
-import { Search, X } from 'lucide-react'
+import { AlertTriangle, Search, X } from 'lucide-react'
 import SmsMatchQueues, { type QueueSms } from '../components/SmsMatchQueues'
 
 const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
@@ -458,10 +458,11 @@ export default function Deposits() {
               <tbody>
                 {data.rows.map((r) => {
                   const st = statusMeta(r.status)
+                  const approvedWithoutSms = !r.sms && (r.status === 'PAID' || r.status === 'APPROVED')
                   return (
                     <tr
                       key={r.tx_id}
-                      className={r.status === 'PENDING' ? 'row-pending' : undefined}
+                      className={`${r.status === 'PENDING' ? 'row-pending' : ''}${approvedWithoutSms ? ' row-sms-warning' : ''}`}
                       onClick={() => void openDetail(r.tx_id)}
                     >
                       {can('deposits', 'can_approve') && (
@@ -487,6 +488,7 @@ export default function Deposits() {
                         </div>
                       </td>
                       <td className="mono">
+                        {approvedWithoutSms && <span className="sms-missing-warning-dot" title="Approved transaction without linked SMS" aria-label="Approved transaction without linked SMS"><AlertTriangle size={11} aria-hidden="true" /></span>}
                         {r.ontarget_ref ?? r.tx_id}
                         {(r.merchant_reference ?? r.merchant_tx_reference) && (
                           <div className="cell-sub mono" title="NGPay merchant reference">{r.merchant_reference ?? r.merchant_tx_reference}</div>
@@ -515,7 +517,7 @@ export default function Deposits() {
                             </div>
                           </>
                         ) : (
-                          <span className="cell-sub">— بدون رسالة</span>
+                          <span className={approvedWithoutSms ? 'sms-missing-cell' : 'cell-sub'}>{approvedWithoutSms && <AlertTriangle size={13} aria-hidden="true" />} {approvedWithoutSms ? 'تحذير: بدون SMS' : '— بدون رسالة'}</span>
                         )}
                       </td>
                       <td><MethodLogo method={r.payment_method ?? r.gateway} /></td>

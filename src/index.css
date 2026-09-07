@@ -2291,6 +2291,13 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .dep-sms-top { display: grid; gap: 3px; margin-block-end: 8px; border-inline-start: 3px solid var(--status-paid); }
 .dep-sms-top code { color: var(--text); font: 10px/1.45 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-block-size: 48px; overflow: auto; }
 .dep-sms-top.is-missing { color: var(--status-pending); background: var(--amber-bg); border-inline-start-color: var(--status-pending); }
+.dep-sms-top.is-missing.is-critical { color: #ff6671; background: color-mix(in srgb, #ef4444 12%, var(--surface)); border-inline-start-color: #ef4444; }
+.dep-sms-top.is-missing > span, .sms-missing-warning, .sms-missing-cell { display: inline-flex; align-items: center; gap: 5px; }
+.sms-missing-warning { color: #ff6671; background: color-mix(in srgb, #ef4444 15%, var(--surface)); border: 1px solid color-mix(in srgb, #ef4444 42%, var(--border)); border-radius: 999px; padding: 3px 7px; font-size: 10px; font-weight: 750; }
+.sms-missing-warning-dot { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-inline-end: 5px; color: #fff; background: #dc3545; border-radius: 50%; vertical-align: middle; box-shadow: 0 0 0 2px color-mix(in srgb, #dc3545 22%, transparent); }
+.data-table tbody tr.row-sms-warning td { background: color-mix(in srgb, #ef4444 7%, var(--surface)); border-block-color: color-mix(in srgb, #ef4444 30%, var(--border)); }
+.data-table tbody tr.row-sms-warning:hover td { background: color-mix(in srgb, #ef4444 12%, var(--surface)); }
+.sms-missing-cell { color: #ff6671; font-weight: 750; }
 .dep-sms-top.is-missing a { color: inherit; text-decoration: underline; }
 .tx-sms-missing .tx-sms-raw { color: var(--status-pending); background: var(--amber-bg); }
 

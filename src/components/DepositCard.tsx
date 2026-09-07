@@ -3,6 +3,7 @@ import MethodLogo from './MethodLogo'
 import { depositTime, gatewayChipCls, methodIcon, money, statusMeta } from '../lib/deposits'
 import type { DepositRow } from '../lib/deposits'
 import DepositKindBadge from './DepositKindBadge'
+import { AlertTriangle } from 'lucide-react'
 
 // Card layout for the deposit review queue — an alternative to the row table
 // for fast visual scanning of several pending transactions at once.
@@ -32,19 +33,21 @@ export default function DepositCard({
   const { t } = useLocale()
   const st = statusMeta(row.status)
   const pending = row.status === 'PENDING'
+  const approvedWithoutSms = !row.sms && (row.status === 'PAID' || row.status === 'APPROVED')
   const anyBusy = busy !== null
   const channel = row.gateway ?? row.master_merchant
   const email = row.email?.trim()
   const agent = row.agent_name?.trim()
 
   return (
-    <article className={`dep-card${pending ? ' is-pending' : ''}`}>
+    <article className={`dep-card${pending ? ' is-pending' : ''}${approvedWithoutSms ? ' is-sms-warning' : ''}`}>
       <header className="dep-card-head">
         <button className="dep-ref mono" onClick={onOpen} title={t('فتح التفاصيل', 'Open details')}>
           {row.ontarget_ref ?? row.tx_id}
         </button>
         <div className="dep-status-stack">
           <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
+          {approvedWithoutSms && <span className="sms-missing-warning" title={t('معاملة معتمدة بدون SMS مرتبطة', 'Approved transaction without linked SMS')}><AlertTriangle size={12} aria-hidden="true" /> {t('بدون SMS', 'No SMS')}</span>}
           {row.ngpay_status && (
             <span className={`provider-row-status ${st.cls}`} title={t('الحالة القادمة من NagoPay', 'Status received from NagoPay')}>
               NagoPay · {row.ngpay_status}
@@ -62,8 +65,8 @@ export default function DepositCard({
         </div>
       )}
       {!row.sms && (
-        <div className="dep-sms dep-sms-top is-missing">
-          ⚠️ {t('لا توجد رسالة SMS مرتبطة بهذه المعاملة', 'No SMS linked to this transaction')}
+        <div className={`dep-sms dep-sms-top is-missing${approvedWithoutSms ? ' is-critical' : ''}`}>
+          <span><AlertTriangle size={13} aria-hidden="true" /> {t('لا توجد رسالة SMS مرتبطة بهذه المعاملة', 'No SMS linked to this transaction')}</span>
           <a href={`/sms?amount=${row.amount ?? ''}`}>{t('البحث عن رسالة', 'Search SMS')}</a>
         </div>
       )}
