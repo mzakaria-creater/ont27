@@ -20,6 +20,7 @@ const CATEGORY_META: Record<string, { ar: string; en: string; cls: string }> = {
   balance: { ar: 'رصيد', en: 'Balance', cls: 'st-dim' },
   otp: { ar: 'OTP', en: 'OTP', cls: 'st-dim' },
   promotion: { ar: 'دعاية', en: 'Promo', cls: 'st-dim' },
+  smslive: { ar: 'SMS مباشر', en: 'SMS Live', cls: 'st-paid' },
   unknown: { ar: 'غير معروف', en: 'Unknown', cls: 'st-under' },
 }
 
@@ -499,7 +500,7 @@ export default function SmsLive() {
           >
             {t('الكل', 'All')}
           </button>
-          {['deposit', 'withdrawal', 'unknown'].map((c) => (
+          {['deposit', 'withdrawal', 'smslive', 'unknown'].map((c) => (
             <button
               key={c}
               className={`chip${category === c ? ' chip-active' : ''}`}

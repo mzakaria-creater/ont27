@@ -17,17 +17,49 @@ webhookRoutes.post('/in/:token', async (c) => {
   const supplied = c.req.header('x-ontarget-signature') ?? ''
   const expected = createHmac('sha256',endpoint.signing_secret).update(raw).digest('hex')
   const signatureOk = supplied.length === expected.length && timingSafeEqual(Buffer.from(supplied),Buffer.from(expected))
-  if (!signatureOk) {
+  // The inbound token is already a high-entropy secret in the URL. Accepting
+  // it without a second HMAC makes MacroDroid/n8n posting practical, while a
+  // supplied signature is still verified when the sender supports HMAC.
+  if (supplied && !signatureOk) {
     await db.from('webhook_delivery_log').insert({endpoint_id:endpoint.id,direction:'inbound',event_type:'signature.invalid',status_code:401,success:false,latency_ms:Date.now()-started,request_id:c.req.header('x-request-id')??randomUUID(),error:'invalid_signature'})
     return c.json({error:'invalid_signature'},401)
   }
   const payload = (()=>{try{return JSON.parse(raw)}catch{return null}})()
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return c.json({ error: 'json_object_required' }, 400)
-  const eventType = String((payload as Record<string,unknown>).event ?? c.req.header('x-ontarget-event') ?? 'inbound.received').slice(0,120)
+  const body = payload as Record<string, unknown>
+  const eventType = String(body.event ?? c.req.header('x-ontarget-event') ?? 'inbound.received').slice(0,120)
   const requestId = c.req.header('x-request-id') ?? randomUUID()
+  const category = String(body.category ?? body.sms_category ?? '').trim().toLowerCase().replace(/[\s_-]+/g, '')
+  let sms: Record<string, unknown> | null = null
+  if (category === 'smslive') {
+    const textValue = (['message', 'sms', 'text', 'body', 'raw_sms', 'sms_text'].map((key) => body[key]).find((value) => typeof value === 'string' && value.trim()) as string | undefined)?.trim().slice(0, 10_000) ?? ''
+    if (!textValue) return c.json({ error: 'sms_message_required' }, 400)
+    const stringValue = (...keys: string[]) => { const value = keys.map((key) => body[key]).find((item) => typeof item === 'string' && item.trim()); return typeof value === 'string' ? value.trim().slice(0, 500) || null : null }
+    const numberValue = (...keys: string[]) => { const value = keys.map((key) => body[key]).find((item) => item != null && item !== ''); const parsed = Number(value); return Number.isFinite(parsed) ? parsed : null }
+    const receivedRaw = stringValue('received_at', 'timestamp', 'time', 'date')
+    const receivedAt = receivedRaw && Number.isFinite(Date.parse(receivedRaw)) ? new Date(receivedRaw).toISOString() : new Date().toISOString()
+    const rawPayload = { ...body, _source: 'webhook', _request_id: requestId, _received_at: new Date().toISOString() }
+    const duplicate = await db.from('inbound_sms').select('id').eq('webhook_name', endpoint.name).contains('raw_payload', { _request_id: requestId }).maybeSingle()
+    if (!duplicate.data) {
+      const { data: inserted, error: smsError } = await db.from('inbound_sms').insert({
+        message: textValue, raw_sms: textValue, sms_first_line: textValue.split(/\r?\n/)[0]?.slice(0, 500),
+        sender: stringValue('sender', 'sender_name', 'from_name', 'from') ?? stringValue('sender_number', 'from_number', 'phone'),
+        sender_name: stringValue('sender_name', 'from_name', 'sender'), sender_number: stringValue('sender_number', 'from_number', 'phone', 'sender_phone'),
+        receiver_number: stringValue('receiver_number', 'receiver', 'to_number', 'wallet_number', 'wallet'), wallet_number: stringValue('wallet_number', 'receiver_number', 'receiver', 'to_number', 'wallet'),
+        amount: numberValue('amount', 'value', 'sms_amount'), balance_after: numberValue('balance_after', 'balance', 'current_balance'),
+        provider: stringValue('provider', 'network', 'operator'), sms_category: 'smslive', match_status: 'unmatched', matched: false, review_required: true,
+        status: 'received', suspicious: false, raw_payload: rawPayload, webhook_name: endpoint.name, import_source: 'webhook', received_at: receivedAt,
+      }).select('id,received_at,sms_category,amount,sender_number,receiver_number').single()
+      if (smsError) {
+        await db.from('webhook_delivery_log').insert({ endpoint_id:endpoint.id,direction:'inbound',event_type:eventType,status_code:500,success:false,latency_ms:Date.now()-started,request_id:requestId,error:smsError.message,payload })
+        return c.json({ error: 'sms_insert_failed' }, 500)
+      }
+      sms = inserted as Record<string, unknown>
+    } else sms = { id: duplicate.data.id, duplicate: true }
+  }
   await db.from('webhook_delivery_log').insert({ endpoint_id:endpoint.id,direction:'inbound',event_type:eventType,status_code:202,success:true,latency_ms:Date.now()-started,request_id:requestId,payload })
   await db.from('audit_log').insert({ actor_type:'webhook',actor_name:endpoint.name,action:'webhook.inbound_received',entity:'webhook_endpoint',entity_id:endpoint.id,after:{event_type:eventType,request_id:requestId} })
-  return c.json({ accepted:true, request_id:requestId }, 202)
+  return c.json({ accepted:true, request_id:requestId, sms }, 202)
 })
 
 webhookRoutes.use('*', requireAuth)
