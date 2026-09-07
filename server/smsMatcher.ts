@@ -1,4 +1,5 @@
 import { db } from './db.js'
+import { notifyApprovedTransaction } from './approvalEmail.js'
 
 type SmsRow = { id: number; trx_id: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; received_at: string | null; receiver_number: string | null; balance_after?: number | null; provider?: string | null; raw_sms?: string | null; message?: string | null; is_blocked?: boolean | null }
 type TxRow = { tx_id: number; guid: string | null; ontarget_ref: string | null; merchant_tx_reference: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; receiving_wallet: string | null; to_account_number: string | null; payment_method: string | null; gateway: string | null; status: string | null; first_seen_at: string | null }
@@ -201,6 +202,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
               const { error: mirrorError } = await db.from('maven_transactions').update({ status: 'PAID', approved_by: 'Auto', last_status_change: nowApproved, updated_at: nowApproved }).eq('tx_id', tx.tx_id).eq('status', 'PENDING')
               if (mirrorError) errors.push(`auto approve mirror ${tx.tx_id}: ${mirrorError.message}`)
               await db.from('audit_log').insert({ actor_type: 'system', actor_name: 'Auto', action: 'deposit.auto_approve_sms_match', entity: 'maven_transactions', entity_id: String(tx.tx_id), before: { status: 'PENDING' }, after: { status: 'PAID', sms_id: sms.id, provider_execution: true } })
+              await notifyApprovedTransaction({ ...tx, status: 'PAID', approved_by: 'Auto', approved_at: nowApproved, provider_confirmed: true })
               autoApproved++
             } catch (error) {
               errors.push(`auto approve ${tx.tx_id}: ${error instanceof Error ? error.message : 'worker_failed'}`)

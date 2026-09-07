@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { db } from './db.js'
 import { requireAuth } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
+import { notifyApprovedTransaction } from './approvalEmail.js'
 
 // Transaction edits: status and amount.
 //
@@ -288,6 +289,10 @@ async function applyEdit(
       executed_on_provider: executed ?? false,
     },
   })
+
+  if (edit.status === 'PAID' || edit.status === 'APPROVED') {
+    await notifyApprovedTransaction({ ...tx, tx_id: txId, amount: edit.amount ?? tx.amount, status: edit.status, approved_by: actorName, approved_at: new Date().toISOString(), provider_confirmed: executed === true })
+  }
 
   return { ok: true, localOnly, executed }
 }

@@ -7,6 +7,7 @@ import { applyDepositScopes, rowAllowed } from './accessScopes.js'
 import type { AuthEnv } from './rbac.js'
 import { MAX_PAGE } from './paging.js'
 import { learnTrustedSmsName } from './clientIdentity.js'
+import { notifyApprovedTransaction } from './approvalEmail.js'
 
 // Deposits = maven_transactions (ground truth for the deposit flow).
 // Real statuses observed in panel-v2 data: PENDING | PAID | APPROVED |
@@ -459,6 +460,7 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
       })
       if (auditErr) console.error('deposit decision audit mirror failed', { txId, error: auditErr.message })
       if (action !== 'approve' || !executed) return
+      await notifyApprovedTransaction({ ...before, tx_id: txId, status: target, approved_by: actor.username, approved_at: mirrorNow, provider_confirmed: executed })
       const learnedIdentity = await learnTrustedSmsName(Number(txId))
       if (learnedIdentity.learned) await db.from('audit_log').insert({
         actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
@@ -540,5 +542,8 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
     action: 'crm.sms_name_learned', entity: 'maven_transactions', entity_id: txId,
     after: { purpose: 'retention_matching' },
   })
+  if (action === 'approve') {
+    await notifyApprovedTransaction({ ...before, tx_id: txId, status: target, approved_by: actor.username, approved_at: nowIso, provider_confirmed: oldSync === 'ok' })
+  }
   return c.json({ ok: true, status: target, old_sync: oldSync, learned_sms_name: learnedIdentity })
 })
