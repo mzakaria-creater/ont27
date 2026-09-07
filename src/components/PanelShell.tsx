@@ -96,6 +96,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/wallet-investigation', icon: '🔎', labelAr: 'تحقيق المحفظة', labelEn: 'Wallet investigation', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/withdrawal-sms-report', icon: '🧾', labelAr: 'تقرير SMS السحب', labelEn: 'Withdrawal SMS report', keys: ['reports', 'advanced_analysis', 'sms_live'], group: 'payments' },
   { to: '/wallet-movements', icon: '💱', labelAr: 'حركة المحافظ', labelEn: 'Wallet movements', keys: ['wallets', 'treasury', 'reports', 'sms_live'], group: 'payments' },
+  { to: '/walletflow', icon: '↔', labelAr: 'تدفق المحافظ', labelEn: 'Wallet flow', keys: ['wallets', 'treasury', 'reports', 'sms_live'], group: 'payments' },
   { to: '/tv', icon: '🖥️', labelAr: 'شاشة TV', labelEn: 'TV screen', keys: ['sms_live'], group: 'overview' },
   { to: '/complaints', icon: '🛎️', labelAr: 'الشكاوى', labelEn: 'Complaints', keys: ['support'], roles: COMPLAINT_ROLES, group: 'customers' },
   { to: '/chat', icon: '💬', labelAr: 'محادثات الفريق', labelEn: 'Internal Chat', keys: [], group: 'customers' },
@@ -121,6 +122,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/binance/p2p-history', icon: '🧾', labelAr: 'سجل P2P', labelEn: 'P2P History', keys: ['binance_p2p', 'treasury'], group: 'automation' },
   // System — reporting, audit, admin
   { to: '/reports', icon: '📊', labelAr: 'التقارير الشاملة', labelEn: 'Full reports', keys: ['reports', 'advanced_analysis'], group: 'insights' },
+  { to: '/reportspage', icon: '▤', labelAr: 'صفحة التقارير', labelEn: 'Reports page', keys: ['reports', 'advanced_analysis'], group: 'insights' },
   { to: '/staff-attendance', icon: '🕒', labelAr: 'حضور وأداء الفريق', labelEn: 'Staff attendance', keys: ['reports', 'users'], group: 'insights' },
   { to: '/audit', icon: '🕵️', labelAr: 'سجل التدقيق', labelEn: 'Audit log', keys: ['audit_log', 'audit-logs'], group: 'admin' },
   { to: '/notifications', icon: '🔔', labelAr: 'الإشعارات', labelEn: 'Notifications', keys: ['notifications'], group: 'admin' },

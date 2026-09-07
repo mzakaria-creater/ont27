@@ -360,6 +360,7 @@ export default function App() {
             <Route path="/performance" element={<PageGate keys={['reports','analytics','dashboard','transactions','merchants']}><Performance /></PageGate>} />
             <Route path="/revenue" element={<PageGate keys={['revenue_center']}><RevenueCenter /></PageGate>} />
             <Route path="/wallet-movements" element={<PageGate keys={['wallets','treasury','reports','sms_live']}><WalletMovements /></PageGate>} />
+            <Route path="/walletflow" element={<PageGate keys={['wallets','treasury','reports','sms_live']}><WalletMovements /></PageGate>} />
             <Route path="/client" element={<PageGate keys={['client_crm']}><ClientProfile /></PageGate>} />
             <Route path="/client/:phone" element={<PageGate keys={['client_crm']}><ClientProfile /></PageGate>} />
             <Route path="/deposits" element={<PageGate keys={['deposits']}><Deposits /></PageGate>} />
@@ -381,6 +382,7 @@ export default function App() {
             <Route path="/integration-guide" element={<PageGate keys={['api-keys','settings','merchants']}><IntegrationGuide /></PageGate>} />
             <Route path="/audit" element={<PageGate keys={['audit_log','audit-logs']}><Audit /></PageGate>} />
             <Route path="/reports" element={<PageGate keys={['reports','advanced_analysis']}><Reports /></PageGate>} />
+            <Route path="/reportspage" element={<PageGate keys={['reports','advanced_analysis']}><Reports /></PageGate>} />
             <Route path="/staff-attendance" element={<PageGate keys={['reports','users']}><StaffAttendance /></PageGate>} />
             <Route path="/review" element={<PageGate keys={['review','audit_log','audit-logs']}><Review /></PageGate>} />
             <Route path="/mismatch" element={<PageGate keys={['review','audit_log','audit-logs','risk','risk_audit','compliance']}><Mismatch /></PageGate>} />
