@@ -11,6 +11,7 @@ import { SUPABASE_URL, SUPABASE_KEY } from './lib/supabase'
 import { LocaleProvider, useLocale } from './lib/locale'
 import { installNotificationAudioUnlock, playNotificationTone } from './lib/notificationSounds'
 import WrongfulDeclineRealtimePopup from './components/WrongfulDeclineRealtimePopup'
+import SmsFreezeRealtimePopup from './components/SmsFreezeRealtimePopup'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Monitor = lazy(() => import('./pages/Monitor'))
@@ -41,6 +42,7 @@ const WalletReport = lazy(() => import('./pages/WalletReport'))
 const WalletInvestigation = lazy(() => import('./pages/WalletInvestigation'))
 const WithdrawalSmsReport = lazy(() => import('./pages/WithdrawalSmsReport'))
 const Notifications = lazy(() => import('./pages/Notifications'))
+const SmsNotifications = lazy(() => import('./pages/SmsNotifications'))
 const TvScreen = lazy(() => import('./pages/TvScreen'))
 const Complaints = lazy(() => import('./pages/Complaints'))
 const LinkGenerator = lazy(() => import('./pages/LinkGenerator'))
@@ -382,6 +384,7 @@ export default function App() {
         <div className="shell">
           <Topbar />
           <WrongfulDeclineRealtimePopup />
+          <SmsFreezeRealtimePopup />
         <Suspense fallback={<div className="route-loading" role="status"><span className="ld" /> Loading…</div>}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -443,6 +446,7 @@ export default function App() {
             <Route path="/admin-transactions" element={<PageGate keys={['transactions']}><AdminTransactions /></PageGate>} />
             <Route path="/chat" element={<InternalChat />} />
             <Route path="/notifications" element={<PageGate keys={['notifications']}><Notifications /></PageGate>} />
+            <Route path="/sms-notifications" element={<PageGate keys={['sms_live', 'notifications']}><SmsNotifications /></PageGate>} />
             <Route path="/tv" element={<PageGate keys={['sms_live']}><TvScreen /></PageGate>} />
             <Route path="/complaints" element={<PageGate keys={['support']}><Complaints /></PageGate>} />
             <Route path="/merchant-link-generator" element={<PageGate keys={['checkout-builder']}><LinkGenerator /></PageGate>} />

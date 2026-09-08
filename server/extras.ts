@@ -4,6 +4,7 @@ import { oldDb } from './oldDb.js'
 import { requireAuth, requirePerm, requireAnyPerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 import { MAX_PAGE } from './paging.js'
+import { listSmsAlerts, processWalletFreezeAlerts } from './smsAlerts.js'
 
 // The remaining §5 module pages, one route each. Sensitive columns
 // (api_key, secret_hash, password_hash, raw_profile, tokens) are NEVER selected.
@@ -1191,6 +1192,18 @@ extraRoutes.get('/notifications', async (c) => {
       pendingDeposits + pendingPayouts + (smsReview > 0 ? 1 : 0) +
       (offlineDevices.length > 0 ? 1 : 0) + myEditRequests.length,
   })
+})
+
+// SMS warning center. Freeze alerts are processed here as a recovery path in
+// addition to the delta-sync hook, so opening the page also catches a recent
+// SMS if the sync worker was briefly unavailable.
+extraRoutes.get('/sms-notifications', requireAnyPerm(['sms_live', 'notifications'], 'can_view'), async (c) => {
+  const severity = c.req.query('severity')
+  const q = c.req.query('q')?.trim().toLowerCase() ?? ''
+  const hours = Math.min(Math.max(Number(c.req.query('hours')) || 72, 1), 168)
+  const [alerts, processed] = await Promise.all([listSmsAlerts(hours), processWalletFreezeAlerts().catch((error) => ({ scanned: 0, sent: 0, errors: [error instanceof Error ? error.message : 'alert_processing_failed'] }))])
+  const rows = alerts.filter((row) => (!severity || row.severity === severity) && (!q || [row.message, row.raw_sms, row.device_name, row.provider, row.wallet_number, row.receiver_number, row.id].join(' ').toLowerCase().includes(q)))
+  return c.json({ alerts: rows, counts: { freeze: alerts.filter((row) => row.severity === 'freeze').length, warning: alerts.filter((row) => row.severity === 'warning').length }, processed })
 })
 
 // ---- Payment methods: live channel configuration plus 30-day transaction health ----

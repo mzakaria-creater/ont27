@@ -7,6 +7,7 @@ import { repairPaidSmsMatches } from './smsMatcher.js'
 import { produceRiskAlerts } from './riskAlerts.js'
 import { autoLinkWithdrawalSms } from './payoutSmsMatcher.js'
 import { oldDb } from './oldDb.js'
+import { processWalletFreezeAlerts } from './smsAlerts.js'
 
 // Pulls new rows from the OLD prod Supabase (where the Maven workers still
 // write) into the panel-v2 DB. Same overlap-window upsert idea as
@@ -473,6 +474,16 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
   } catch (e) {
     results['risk_alerts_sent'] = `error: ${(e as Error).message}`
     console.error('risk alert producers failed:', e)
+  }
+
+  try {
+    const smsAlerts = await processWalletFreezeAlerts()
+    results['sms_freeze_alerts_scanned'] = smsAlerts.scanned
+    results['sms_freeze_alerts_sent'] = smsAlerts.sent
+    if (smsAlerts.errors.length) console.error('SMS freeze alert partial errors:', smsAlerts.errors)
+  } catch (e) {
+    results['sms_freeze_alerts_sent'] = `error: ${(e as Error).message}`
+    console.error('SMS freeze alert producer failed:', e)
   }
 
   // Legacy auto-decline execution is disabled during the v2 cutover. The old

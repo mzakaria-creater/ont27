@@ -127,6 +127,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/hr', icon: '🕒', labelAr: 'الموارد البشرية', labelEn: 'HR workspace', keys: ['reports', 'users'], group: 'insights' },
   { to: '/audit', icon: '🕵️', labelAr: 'سجل التدقيق', labelEn: 'Audit log', keys: ['audit_log', 'audit-logs'], group: 'admin' },
   { to: '/notifications', icon: '🔔', labelAr: 'الإشعارات', labelEn: 'Notifications', keys: ['notifications'], group: 'admin' },
+  { to: '/sms-notifications', icon: '🚨', labelAr: 'تنبيهات SMS', labelEn: 'SMS alerts', keys: ['sms_live', 'notifications'], group: 'admin' },
   { to: '/integration-guide', icon: '📘', labelAr: 'دليل ربط API', labelEn: 'API integration guide', keys: ['api-keys', 'settings', 'merchants'], group: 'admin' },
   // 'settings' alone is not enough here: 19 of 21 roles hold it, but the API
   // is behind requireAdminRole. Both conditions must hold for the link to draw.
@@ -158,6 +159,7 @@ const BUILT_PAGE_KEYS = new Set([
   'users', 'permissions', 'api-keys', 'webhooks', 'developers', 'settings',
   'reports', 'advanced_analysis',
   'support', 'notifications',
+  'sms_alerts',
   'sms_live',
   'checkout-builder',
 ])
