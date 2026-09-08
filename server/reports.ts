@@ -12,6 +12,11 @@ const PAYOUT_STATUSES = ['PENDING', 'APPROVED', 'DECLINED', 'PAID', 'EXPIRED', '
 type Tx = { tx_id: number; ontarget_ref: string | null; amount: number | null; status: string | null; merchant: string | null; sub_merchant: string | null; master_merchant: string | null; payment_method: string | null; gateway: string | null; receiving_wallet: string | null; to_account_number: string | null; first_seen_at: string | null }
 type Payout = { amount: number | null; status: string | null; merchant: string | null; first_seen_at: string | null }
 type GroupKpi = { key: string; label: string; count: number; amount: number; linked: number; unlinked: number; latest_balance: number | null }
+const digits = (value: unknown) => String(value ?? '').replace(/\D/g, '')
+const within = (value: unknown, start: Date, end: Date) => {
+  const time = Date.parse(String(value ?? ''))
+  return Number.isFinite(time) && time >= start.getTime() && time <= end.getTime()
+}
 
 // Withdrawal SMS reports are read frequently while operators work the queue.
 // Keep a very short, per-actor cache so refreshes/navigation do not re-scan
@@ -232,30 +237,60 @@ reportsRoutes.get('/attendance', requireAnyPerm(['reports', 'advanced_analysis',
   const to = reportDate(c.req.query('to'), from)
   const userId = c.req.query('user_id')?.trim() || null
   const wallet = c.req.query('wallet')?.replace(/\D/g, '') || null
-  const [usersResult, sessionsResult, txResult, smsResult] = await Promise.all([
+  const [usersResult, sessionsResult, txResult, payoutResult, smsResult] = await Promise.all([
     db.from('panel_users').select('id, username, display_name, role').in('role', [...STAFF_ROLES]).order('username'),
     db.from('staff_attendance_sessions').select('id, user_id, wallet_number, checked_in_at, checked_out_at, note').gte('checked_in_at', `${from}T00:00:00+03:00`).lte('checked_in_at', `${to}T23:59:59.999+03:00`).order('checked_in_at', { ascending: false }).limit(5000),
-    db.from('maven_transactions').select('tx_id, amount, status, agent_name, receiving_wallet, to_account_number, first_seen_at').gte('first_seen_at', `${from}T00:00:00+03:00`).lte('first_seen_at', `${to}T23:59:59.999+03:00`).limit(50000),
-    db.from('inbound_sms').select('id, amount, sms_category, receiver_number, wallet_number, received_at').gte('received_at', `${from}T00:00:00+03:00`).lte('received_at', `${to}T23:59:59.999+03:00`).limit(50000),
+    db.from('maven_transactions').select('tx_id, amount, status, approved_by, agent_name, receiving_wallet, to_account_number, first_seen_at').gte('first_seen_at', `${from}T00:00:00+03:00`).lte('first_seen_at', `${to}T23:59:59.999+03:00`).limit(50000),
+    db.from('maven_payout_transactions').select('maven_id, amount, status, agent_name, mobile_no, first_seen_at').gte('first_seen_at', `${from}T00:00:00+03:00`).lte('first_seen_at', `${to}T23:59:59.999+03:00`).limit(50000),
+    db.from('inbound_sms').select('id, amount, sms_category, receiver_number, wallet_number, balance_after, received_at').gte('received_at', `${from}T00:00:00+03:00`).lte('received_at', `${to}T23:59:59.999+03:00`).limit(50000),
   ])
-  const firstError = usersResult.error || sessionsResult.error || txResult.error || smsResult.error
+  const firstError = usersResult.error || sessionsResult.error || txResult.error || payoutResult.error || smsResult.error
   if (firstError) return c.json({ error: 'db_error', detail: firstError.message }, 500)
   const users = usersResult.data ?? []
   const sessions = (sessionsResult.data ?? []).filter((row) => !userId || row.user_id === userId).filter((row) => !wallet || String(row.wallet_number ?? '').replace(/\D/g, '') === wallet)
   const nameOf = (user: typeof users[number]) => `${user.username} ${user.display_name ?? ''}`.toLowerCase().trim()
+  const nameMatches = (value: unknown, names: string) => {
+    const candidate = String(value ?? '').toLowerCase().trim()
+    return Boolean(candidate && (candidate === names || names.includes(candidate) || candidate.includes(names)))
+  }
   const stats = users.filter((user) => !userId || user.id === userId).map((user) => {
     const names = nameOf(user)
     const mine = sessions.filter((row) => row.user_id === user.id)
     const wallets = new Set(mine.map((row) => String(row.wallet_number ?? '').replace(/\D/g, '')).filter(Boolean))
-    const txs = (txResult.data ?? []).filter((row) => {
-      const agent = String(row.agent_name ?? '').toLowerCase().trim()
-      const txWallet = String(row.receiving_wallet ?? row.to_account_number ?? '').replace(/\D/g, '')
-      return Boolean(agent && (agent === names || names.includes(agent) || agent.includes(names))) && (!wallet || txWallet === wallet)
-    })
+    const txs = (txResult.data ?? []).filter((row) => nameMatches(row.agent_name, names) && (!wallet || digits(row.receiving_wallet ?? row.to_account_number) === wallet))
     const sms = (smsResult.data ?? []).filter((row) => !wallet || String(row.wallet_number ?? row.receiver_number ?? '').replace(/\D/g, '') === wallet)
     const paid = txs.filter((row) => ['PAID', 'APPROVED'].includes(String(row.status ?? '').toUpperCase()))
     const open = mine.find((row) => !row.checked_out_at)
-    return { user_id: user.id, username: user.username, display_name: user.display_name, role: user.role, active_session: open ?? null, sessions: mine.length, hours: mine.reduce((sum, row) => sum + (new Date(row.checked_out_at ?? now.toISOString()).getTime() - new Date(row.checked_in_at).getTime()) / 3_600_000, 0), transaction_count: txs.length, approved_count: paid.length, transaction_amount: txs.reduce((sum, row) => sum + Number(row.amount ?? 0), 0), approved_amount: paid.reduce((sum, row) => sum + Number(row.amount ?? 0), 0), sms_count: sms.length, wallets: [...wallets] }
+    const sessionReports = mine.map((session) => {
+      const start = new Date(session.checked_in_at)
+      const end = new Date(session.checked_out_at ?? now.toISOString())
+      const sessionWallet = digits(session.wallet_number)
+      const sessionTxs = txs.filter((row) => within(row.first_seen_at, start, end))
+      const sessionPaid = sessionTxs.filter((row) => ['PAID', 'APPROVED'].includes(String(row.status ?? '').toUpperCase()))
+      const sessionAuto = sessionPaid.filter((row) => /^(auto|automation|system)/i.test(String(row.approved_by ?? '').trim()))
+      const sessionWithdrawals = (payoutResult.data ?? []).filter((row) => nameMatches(row.agent_name, names) && within(row.first_seen_at, start, end))
+      const balanceRows = (smsResult.data ?? []).filter((row) => row.balance_after != null && (!sessionWallet || digits(row.wallet_number ?? row.receiver_number) === sessionWallet)).sort((a, b) => Date.parse(String(a.received_at ?? '')) - Date.parse(String(b.received_at ?? '')))
+      const beforeStart = balanceRows.filter((row) => Date.parse(String(row.received_at ?? '')) <= start.getTime()).at(-1)
+      const beforeEnd = balanceRows.filter((row) => Date.parse(String(row.received_at ?? '')) <= end.getTime()).at(-1)
+      const balanceStart = beforeStart?.balance_after == null ? null : Number(beforeStart.balance_after)
+      const balanceEnd = beforeEnd?.balance_after == null ? null : Number(beforeEnd.balance_after)
+      return {
+        ...session,
+        metrics: {
+          approved_count: sessionPaid.length,
+          approved_amount: sessionPaid.reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
+          automation_count: sessionAuto.length,
+          automation_amount: sessionAuto.reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
+          withdrawal_count: sessionWithdrawals.length,
+          withdrawal_amount: sessionWithdrawals.reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
+          wallet: session.wallet_number,
+          balance_start: balanceStart,
+          balance_end: balanceEnd,
+          net_balance: balanceStart == null || balanceEnd == null ? null : balanceEnd - balanceStart,
+        },
+      }
+    })
+    return { user_id: user.id, username: user.username, display_name: user.display_name, role: user.role, active_session: open ?? null, sessions: mine.length, hours: mine.reduce((sum, row) => sum + (new Date(row.checked_out_at ?? now.toISOString()).getTime() - new Date(row.checked_in_at).getTime()) / 3_600_000, 0), transaction_count: txs.length, approved_count: paid.length, transaction_amount: txs.reduce((sum, row) => sum + Number(row.amount ?? 0), 0), approved_amount: paid.reduce((sum, row) => sum + Number(row.amount ?? 0), 0), sms_count: sms.length, wallets: [...wallets], session_reports: sessionReports }
   })
   return c.json({ from, to, wallet, users: stats, sessions })
 })
@@ -271,7 +306,16 @@ reportsRoutes.post('/attendance/check-in', requireAuth, async (c) => {
   const { data, error } = await db.from('staff_attendance_sessions').insert({ user_id: targetId, wallet_number: wallet, note: typeof body?.note === 'string' ? body.note.slice(0, 300) : null }).select().single()
   if (error) return c.json({ error: 'attendance_check_in_failed', detail: error.message }, 500)
   await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'staff.attendance_check_in', entity: 'staff_attendance_sessions', entity_id: data.id, after: { user_id: targetId, wallet_number: wallet } })
-  return c.json({ ok: true, session: data })
+  const { data: target } = await db.from('panel_users').select('username, display_name, role').eq('id', targetId).maybeSingle()
+  const telegram = await sendTelegramAlert('staff_checkin_report', [
+    '🟢 <b>Agent check-in report</b>',
+    `الموظف / Agent: <b>${String(target?.display_name || target?.username || targetId).replace(/[<>&]/g, '')}</b>`,
+    `الدور / Role: <b>${String(target?.role ?? '—').replace(/[<>&]/g, '')}</b>`,
+    `اعتماد الموظف / Employee approval: <b>Checked in</b>`,
+    `الوقت / Time: <code>${new Date(data.checked_in_at).toISOString()}</code>`,
+    `المحفظة / Wallet: <code>${String(wallet ?? '—').replace(/[<>&]/g, '')}</code>`,
+  ].join('\n'))
+  return c.json({ ok: true, session: data, telegram: { sent: telegram.sent, error: telegram.error } })
 })
 
 reportsRoutes.post('/attendance/check-out', requireAuth, async (c) => {
