@@ -38,7 +38,6 @@ interface NavLinkDef {
 // Mirrors ADMIN_ROLES in server/rbac.ts. Kept in sync by hand — the server
 // stays the enforcement point; this only decides whether to draw the link.
 const ADMIN_ROLES = ['owner', 'admin', 'super_admin']
-const TRANSACTION_ADMIN_ROLES = [...ADMIN_ROLES, 'operations_admin']
 // Mirrors the ALLOWED set in server/complaints.ts, which is also role-gated
 // rather than permission-gated — every role holds can_view on 'support', so
 // the key alone would keep showing the link to the 16 roles the API refuses.
@@ -85,7 +84,6 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/payouts', icon: '📤', labelAr: 'السحوبات', labelEn: 'Payouts', keys: ['payouts'], group: 'transactions' },
   { to: '/payout-requests', icon: '⚡', labelAr: 'طلبات السحب اليدوية', labelEn: 'Manual payout requests', keys: ['payouts'], group: 'transactions' },
   { to: '/transactions', icon: '📋', labelAr: 'كل المعاملات', labelEn: 'All transactions', keys: ['transactions', 'all_transactions', 'refunds', 'reversals'], group: 'transactions' },
-  { to: '/admin-transactions', icon: '🧰', labelAr: 'معاملات الإدارة', labelEn: 'Admin Transactions', keys: ['transactions'], roles: TRANSACTION_ADMIN_ROLES, group: 'transactions' },
   { to: '/review', icon: '🧐', labelAr: 'مراجعة القرارات', labelEn: 'Decision review', keys: ['review', 'audit_log', 'audit-logs'], group: 'transactions' },
   { to: '/mismatch', icon: '🎯', labelAr: 'كشف عدم التطابق', labelEn: 'Mismatch detector', keys: ['review', 'audit_log', 'audit-logs', 'risk', 'risk_audit', 'compliance'], group: 'transactions' },
   { to: '/operations-archive', icon: '🗄️', labelAr: 'أرشيف العمليات', labelEn: 'Operations archive', keys: ['audit_log', 'audit-logs', 'transactions'], group: 'transactions' },
@@ -96,7 +94,6 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/wallet-investigation', icon: '🔎', labelAr: 'تحقيق المحفظة', labelEn: 'Wallet investigation', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/withdrawal-sms-report', icon: '🧾', labelAr: 'تقرير SMS السحب', labelEn: 'Withdrawal SMS report', keys: ['reports', 'advanced_analysis', 'sms_live'], group: 'payments' },
   { to: '/wallet-movements', icon: '💱', labelAr: 'حركة المحافظ', labelEn: 'Wallet movements', keys: ['wallets', 'treasury', 'reports', 'sms_live'], group: 'payments' },
-  { to: '/walletflow', icon: '↔', labelAr: 'تدفق المحافظ', labelEn: 'Wallet flow', keys: ['wallets', 'treasury', 'reports', 'sms_live'], group: 'payments' },
   { to: '/tv', icon: '🖥️', labelAr: 'شاشة TV', labelEn: 'TV screen', keys: ['sms_live'], group: 'overview' },
   { to: '/complaints', icon: '🛎️', labelAr: 'الشكاوى', labelEn: 'Complaints', keys: ['support'], roles: COMPLAINT_ROLES, group: 'customers' },
   { to: '/chat', icon: '💬', labelAr: 'محادثات الفريق', labelEn: 'Internal Chat', keys: [], group: 'customers' },
@@ -104,7 +101,6 @@ const BUILT_LINKS: NavLinkDef[] = [
   // Management — merchants, wallets, money movement
   { to: '/merchants', icon: '🏬', labelAr: 'التجار', labelEn: 'Merchants', keys: ['merchants'], group: 'customers' },
   { to: '/wallets', icon: '👛', labelAr: 'المحافظ', labelEn: 'Wallets', keys: ['wallets'], group: 'payments' },
-  { to: '/mavenwallets', icon: '📶', labelAr: 'المحافظ الحية', labelEn: 'Live wallets', keys: ['wallets'], group: 'payments' },
   { to: '/payment-methods', icon: '💳', labelAr: 'طرق الدفع', labelEn: 'Payment Methods', keys: ['wallets', 'payment_methods'], group: 'payments' },
   { to: '/merchant-payment-setup', icon: '🧩', labelAr: 'إعداد دفع التجار', labelEn: 'Merchant Payment Setup', keys: ['wallets', 'payment_methods'], group: 'payments' },
   { to: '/known-recipients', icon: '🎯', labelAr: 'المستلمون المعروفون', labelEn: 'Known Recipients', keys: ['wallets', 'payouts'], group: 'payments' },
@@ -123,7 +119,6 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/binance/p2p-history', icon: '🧾', labelAr: 'سجل P2P', labelEn: 'P2P History', keys: ['binance_p2p', 'treasury'], group: 'automation' },
   // System — reporting, audit, admin
   { to: '/reports', icon: '📊', labelAr: 'التقارير الشاملة', labelEn: 'Full reports', keys: ['reports', 'advanced_analysis'], group: 'insights' },
-  { to: '/reportspage', icon: '▤', labelAr: 'صفحة التقارير', labelEn: 'Reports page', keys: ['reports', 'advanced_analysis'], group: 'insights' },
   { to: '/hr', icon: '🕒', labelAr: 'الموارد البشرية', labelEn: 'HR workspace', keys: ['reports', 'users'], group: 'insights' },
   { to: '/audit', icon: '🕵️', labelAr: 'سجل التدقيق', labelEn: 'Audit log', keys: ['audit_log', 'audit-logs'], group: 'admin' },
   { to: '/notifications', icon: '🔔', labelAr: 'الإشعارات', labelEn: 'Notifications', keys: ['notifications'], group: 'admin' },

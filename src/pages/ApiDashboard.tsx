@@ -11,11 +11,15 @@ type Data = { generatedAt: string; lastSync: string | null; api: { ok: boolean; 
 type RailwayStatus = { connected: boolean; baseUrl: string; docsUrl: string; version: string | null; remoteTimestamp: string | null; latencyMs: number | null; apiKeyConfigured: boolean; protectedAccess: boolean | null }
 
 const modules = [
-  ['/admin-transactions', 'Transactions', 'Full administrative transaction ledger'], ['/approvals', 'Approvals', 'Pending deposit decisions'],
+  ['/transactions', 'Transactions', 'Full transaction ledger'], ['/approvals', 'Approvals', 'Pending deposit decisions'],
   ['/merchants', 'Merchants', 'Merchant accounts and performance'], ['/settlements', 'Settlements', 'Settlement requests and reconciliation'],
   ['/wallets', 'Wallets', 'Capacity and allocation engine'], ['/payment-methods', 'Payment methods', 'Channels and assigned accounts'],
   ['/analytics-dashboard', 'Analytics', 'Live performance and conversion'], ['/sms', 'SMS logs', 'Realtime messages and matching'],
   ['/merchant-link-generator', 'Checkout', 'Payment links and conversion'], ['/admin', 'Access control', 'Users, roles, API keys and permissions'],
+  ['/integration-guide', 'API docs', 'Authentication, checkout, webhooks and errors'], ['/webhooks', 'Webhook center', 'Inbound and outbound webhook delivery'],
+  ['/payouts', 'Payouts', 'Provider payout status and proof'], ['/complaints', 'Support tickets', 'Complaint investigation and actions'],
+  ['/devices', 'Device fleet', 'SMS device health and last sync'], ['/reports', 'Reports', 'Financial reporting and exports'],
+  ['/telegram', 'Telegram live', 'Realtime alerts and operational messages'], ['/automation', 'Automation', 'Rules, queues and execution health'],
 ] as const
 const when = (value: string | null) => value ? new Date(value).toLocaleString() : '—'
 
@@ -77,7 +81,7 @@ export default function ApiDashboard() {
     </section>
 
     <div className="api-dash-layout">
-      <section className="card recent-card"><div className="recent-head"><div><h3>Recent transactions</h3><span className="cell-sub">Live monitoring sample</span></div><Link className="pay-status-link" to="/admin-transactions">Open ledger →</Link></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Our TRX</th><th>Provider ID</th><th>Merchant</th><th>Gateway</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead><tbody>{(data?.transactions??[]).slice(0,12).map((row)=><tr key={row.tx_id}><td className="mono">{row.ontarget_ref??'—'}</td><td className="mono">{row.tx_id}</td><td>{row.merchant??'—'}</td><td>{row.gateway??'—'}</td><td className="mono">{money(row.amount,row.currency)}</td><td><span className={`pay-status-badge ${['PAID','APPROVED'].includes(row.status)?'st-paid':row.status==='DECLINED'?'st-declined':'st-pending'}`}>{row.status}</span></td><td className="mono">{when(row.first_seen_at)}</td></tr>)}{data&&data.transactions.length===0&&<tr><td colSpan={7}>No recent transactions.</td></tr>}</tbody></table></div></section>
+      <section className="card recent-card"><div className="recent-head"><div><h3>Recent transactions</h3><span className="cell-sub">Live monitoring sample</span></div><Link className="pay-status-link" to="/transactions">Open ledger →</Link></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Our TRX</th><th>Provider ID</th><th>Merchant</th><th>Gateway</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead><tbody>{(data?.transactions??[]).slice(0,12).map((row)=><tr key={row.tx_id}><td className="mono">{row.ontarget_ref??'—'}</td><td className="mono">{row.tx_id}</td><td>{row.merchant??'—'}</td><td>{row.gateway??'—'}</td><td className="mono">{money(row.amount,row.currency)}</td><td><span className={`pay-status-badge ${['PAID','APPROVED'].includes(row.status)?'st-paid':row.status==='DECLINED'?'st-declined':'st-pending'}`}>{row.status}</span></td><td className="mono">{when(row.first_seen_at)}</td></tr>)}{data&&data.transactions.length===0&&<tr><td colSpan={7}>No recent transactions.</td></tr>}</tbody></table></div></section>
       <aside className="card api-module-card"><div className="recent-head"><div><h3>Platform modules</h3><span className="cell-sub">Merged from the supplied API console</span></div></div><div className="api-module-list">{modules.map(([to,title,description])=><Link key={to} to={to}><div><strong>{title}</strong><span>{description}</span></div><ExternalLink size={14}/></Link>)}</div></aside>
     </div>
 

@@ -61,7 +61,6 @@ const WalletMovements = lazy(() => import('./pages/WalletMovements'))
 const ClientProfile = lazy(() => import('./pages/ClientProfile'))
 const ReplayLab = lazy(() => import('./pages/ReplayLab'))
 const AirDroid = lazy(() => import('./pages/AirDroid'))
-const AdminTransactions = lazy(() => import('./pages/AdminTransactions'))
 const ApiDashboard = lazy(() => import('./pages/ApiDashboard'))
 const InternalChat = lazy(() => import('./pages/InternalChat'))
 const IntegrationGuide = lazy(() => import('./pages/IntegrationGuide'))
@@ -414,7 +413,7 @@ export default function App() {
             <Route path="/performance" element={<PageGate keys={['reports','analytics','dashboard','transactions','merchants']}><Performance /></PageGate>} />
             <Route path="/revenue" element={<PageGate keys={['revenue_center']}><RevenueCenter /></PageGate>} />
             <Route path="/wallet-movements" element={<PageGate keys={['wallets','treasury','reports','sms_live']}><WalletMovements /></PageGate>} />
-            <Route path="/walletflow" element={<PageGate keys={['wallets','treasury','reports','sms_live']}><WalletMovements /></PageGate>} />
+            <Route path="/walletflow" element={<Navigate to="/wallet-movements" replace />} />
             <Route path="/client" element={<PageGate keys={['client_crm']}><ClientProfile /></PageGate>} />
             <Route path="/client/:phone" element={<PageGate keys={['client_crm']}><ClientProfile /></PageGate>} />
             <Route path="/deposits" element={<PageGate keys={['deposits']}><Deposits /></PageGate>} />
@@ -427,7 +426,7 @@ export default function App() {
             <Route path="/operator-handbook" element={<PageGate keys={['support']}><OperatorHandbook /></PageGate>} />
             <Route path="/merchants" element={<PageGate keys={['merchants']}><Merchants /></PageGate>} />
             <Route path="/wallets" element={<PageGate keys={['wallets']}><Wallets /></PageGate>} />
-            <Route path="/mavenwallets" element={<PageGate keys={['wallets']}><Wallets /></PageGate>} />
+            <Route path="/mavenwallets" element={<Navigate to="/wallets" replace />} />
             <Route path="/sms" element={<PageGate keys={['sms_live']}><SmsLive /></PageGate>} />
             <Route path="/settlements" element={<PageGate keys={['settlements','settlements_list','settlement_recon','fees']}><Settlements /></PageGate>} />
             <Route path="/crm" element={<PageGate keys={['client_crm']}><Crm /></PageGate>} />
@@ -437,7 +436,7 @@ export default function App() {
             <Route path="/integration-guide" element={<PageGate keys={['api-keys','settings','merchants']}><IntegrationGuide /></PageGate>} />
             <Route path="/audit" element={<PageGate keys={['audit_log','audit-logs']}><Audit /></PageGate>} />
             <Route path="/reports" element={<PageGate keys={['reports','advanced_analysis']}><Reports /></PageGate>} />
-            <Route path="/reportspage" element={<PageGate keys={['reports','advanced_analysis']}><Reports /></PageGate>} />
+            <Route path="/reportspage" element={<Navigate to="/reports" replace />} />
             <Route path="/hr" element={<PageGate keys={['reports','users']}><StaffAttendance /></PageGate>} />
             <Route path="/staff-attendance" element={<Navigate to="/hr" replace />} />
             <Route path="/review" element={<PageGate keys={['review','audit_log','audit-logs']}><Review /></PageGate>} />
@@ -453,7 +452,7 @@ export default function App() {
             <Route path="/withdrawal-sms-report" element={<PageGate keys={['reports','advanced_analysis','sms_live']}><WithdrawalSmsReport /></PageGate>} />
             <Route path="/admin" element={<PageGate keys={['settings','users','permissions']}><AdminPage /></PageGate>} />
             <Route path="/admin/*" element={<PageGate keys={['settings','users','permissions']}><AdminPage /></PageGate>} />
-            <Route path="/admin-transactions" element={<PageGate keys={['transactions']}><AdminTransactions /></PageGate>} />
+            <Route path="/admin-transactions" element={<Navigate to="/transactions" replace />} />
             <Route path="/chat" element={<InternalChat />} />
             <Route path="/notifications" element={<PageGate keys={['notifications']}><Notifications /></PageGate>} />
             <Route path="/sms-notifications" element={<PageGate keys={['sms_live', 'notifications']}><SmsNotifications /></PageGate>} />
