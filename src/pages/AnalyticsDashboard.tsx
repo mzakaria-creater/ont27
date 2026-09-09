@@ -7,6 +7,7 @@ import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { RotateCcw, Search } from 'lucide-react'
+import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectFilter'
 
 type Tab = 'overview' | 'transactions' | 'wallets' | 'merchants' | 'reports'
 interface WindowStats { depositCount: number; depositVolume: number; payoutCount: number; payoutVolume: number; declined: number; attempts: number }
@@ -102,12 +103,8 @@ export default function AnalyticsDashboard() {
         <Search size={16} aria-hidden="true" />
         <input value={filterDraft.q} onChange={(event) => setFilterDraft({ ...filterDraft, q: event.target.value })} placeholder={t('مرجع، اسم، هاتف أو تاجر…', 'Reference, name, phone, or merchant…')} aria-label={t('بحث المعاملات', 'Search transactions')} />
       </label>
-      <select className="filter-select" value={filterDraft.type} onChange={(event) => setFilterDraft({ ...filterDraft, type: event.target.value })} aria-label={t('نوع المعاملة', 'Transaction type')}>
-        <option value="">{t('كل الأنواع', 'All types')}</option><option value="deposit">{t('إيداع', 'Deposit')}</option><option value="payout">{t('سحب', 'Payout')}</option>
-      </select>
-      <select className="filter-select" value={filterDraft.status} onChange={(event) => setFilterDraft({ ...filterDraft, status: event.target.value })} aria-label={t('الحالة', 'Status')}>
-        <option value="">{t('كل الحالات', 'All statuses')}</option>{['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID'].map((status) => <option key={status} value={status}>{status}</option>)}
-      </select>
+      <MultiSelectFilter label={t('نوع المعاملة','Transaction type')} allLabel={t('كل الأنواع','All types')} options={[{value:'deposit',label:t('إيداع','Deposit')},{value:'payout',label:t('سحب','Payout')}]} value={splitFilterValues(filterDraft.type)} onChange={(values)=>setFilterDraft({...filterDraft,type:values.join(',')})}/>
+      <MultiSelectFilter label={t('الحالة','Status')} allLabel={t('كل الحالات','All statuses')} options={['PENDING','PAID','APPROVED','DECLINED','EXPIRED','UNDERPAID'].map((value)=>({value,label:value}))} value={splitFilterValues(filterDraft.status)} onChange={(values)=>setFilterDraft({...filterDraft,status:values.join(',')})}/>
       <input className="login-input" value={filterDraft.merchant} onChange={(event) => setFilterDraft({ ...filterDraft, merchant: event.target.value })} placeholder={t('التاجر', 'Merchant')} aria-label={t('التاجر', 'Merchant')} />
       <input className="login-input" value={filterDraft.method} onChange={(event) => setFilterDraft({ ...filterDraft, method: event.target.value })} placeholder={t('الطريقة', 'Method')} aria-label={t('طريقة الدفع', 'Payment method')} />
       <label className="analytics-date-field"><span>{t('من', 'From')}</span><input className="login-input" type="date" value={filterDraft.from} onChange={(event) => setFilterDraft({ ...filterDraft, from: event.target.value })} /></label>

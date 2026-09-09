@@ -88,7 +88,7 @@ const PROOF_BUCKET = "pop";
 const PROOF_PREFIX = "payout-proofs/";
 
 payoutRoutes.get("/", requirePerm("payouts", "can_view"), async (c) => {
-  const status = c.req.query("status")?.toUpperCase();
+  const statuses = [...new Set((c.req.query("status") ?? "").split(",").map((value) => value.trim().toUpperCase()).filter(Boolean))];
   const q = c.req.query("q")?.trim();
   const from = c.req.query("from")?.trim();
   const to = c.req.query("to")?.trim();
@@ -105,7 +105,7 @@ payoutRoutes.get("/", requirePerm("payouts", "can_view"), async (c) => {
     .range(offset, offset + limit - 1);
   query = await applyPayoutScopes(query,c.get("actor"),"view");
 
-  if (status) query = query.eq("status", status);
+  if (statuses.length) query = query.in("status", [...new Set(statuses.flatMap((value) => value === "PAID" ? ["PAID", "APPROVED"] : [value]))]);
   if (from && /^\d{4}-\d{2}-\d{2}$/.test(from))
     query = query.gte("first_seen_at", `${from}T00:00:00+03:00`);
   if (to && /^\d{4}-\d{2}-\d{2}$/.test(to))

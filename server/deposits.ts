@@ -183,8 +183,8 @@ depositRoutes.get('/stats', requirePerm('dashboard', 'can_view'), async (c) => {
 })
 
 depositRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
-  const status = c.req.query('status')?.toUpperCase()
-  const master = c.req.query('master')?.trim()
+  const statuses = [...new Set((c.req.query('status') ?? '').split(',').map((value) => value.trim().toUpperCase()).filter(Boolean))]
+  const masters = [...new Set((c.req.query('master') ?? '').split(',').map((value) => value.trim()).filter(Boolean))]
   const q = c.req.query('q')?.trim()
   const limit = Math.min(Number(c.req.query('limit')) || 25, MAX_PAGE)
   const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
@@ -197,9 +197,8 @@ depositRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
     .range(offset, offset + limit - 1)
   query = await applyDepositScopes(query,c.get('actor'),'view')
 
-  if (status === 'PAID') query = query.in('status', ['PAID', 'APPROVED'])
-  else if (status) query = query.eq('status', status)
-  if (master) query = query.ilike('master_merchant', `%${master}%`)
+  if (statuses.length) query = query.in('status', [...new Set(statuses.flatMap((value) => value === 'PAID' ? ['PAID', 'APPROVED'] : [value]))])
+  if (masters.length) query = query.in('master_merchant', masters)
   if (q) {
     const like = `%${q.replaceAll(',', ' ')}%`
     const ors = [

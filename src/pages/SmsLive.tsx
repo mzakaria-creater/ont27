@@ -9,6 +9,7 @@ import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
 import { LayoutGrid, TableProperties } from 'lucide-react'
 import MethodLogo from '../components/MethodLogo'
+import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectFilter'
 
 // SMS Live — the inbound_sms queue with its Maven links, auto-refreshing.
 
@@ -174,6 +175,7 @@ export default function SmsLive() {
   const { t } = useLocale()
   const [params, setParams] = useSearchParams()
   const category = params.get('category') ?? ''
+  const categoryValues = splitFilterValues(category)
   const match = params.get('match') ?? ''
   const page = Math.max(Number(params.get('page')) || 1, 1)
   const from = params.get('from') ?? ''
@@ -521,21 +523,7 @@ export default function SmsLive() {
 
       <div className="filter-bar">
         <div className="chip-row">
-          <button
-            className={`chip${category === '' ? ' chip-active' : ''}`}
-            onClick={() => setFilter({ category: '' })}
-          >
-            {t('الكل', 'All')}
-          </button>
-          {['deposit', 'withdrawal', 'smslive', 'unknown'].map((c) => (
-            <button
-              key={c}
-              className={`chip${category === c ? ' chip-active' : ''}`}
-              onClick={() => setFilter({ category: category === c ? '' : c })}
-            >
-              {t(CATEGORY_META[c].ar, CATEGORY_META[c].en)}
-            </button>
-          ))}
+          <MultiSelectFilter label={t('التصنيف','Category')} allLabel={t('كل التصنيفات','All categories')} options={['deposit','withdrawal','smslive','unknown'].map((value)=>({value,label:t(CATEGORY_META[value].ar,CATEGORY_META[value].en)}))} value={categoryValues} onChange={(values)=>setFilter({category:values.join(',')})}/>
           <span className="chip-sep" />
           {MATCH_FILTERS.map((f) => (
             <button

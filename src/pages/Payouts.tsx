@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { Eye, MessageSquare, Pencil, Save, Search, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import PanelShell from "../components/PanelShell";
+import MultiSelectFilter, { splitFilterValues } from "../components/MultiSelectFilter";
 import MerchantLogo from "../components/MerchantLogo";
 import MethodLogo from "../components/MethodLogo";
 import { api, ApiError } from "../lib/api";
@@ -102,6 +103,7 @@ export default function Payouts() {
   const { t } = useLocale();
   const [params, setParams] = useSearchParams();
   const status = params.get("status") ?? "";
+  const statusValues = splitFilterValues(status);
   const page = Math.max(Number(params.get("page")) || 1, 1);
   const [q, setQ] = useState(params.get("q") ?? "");
   const [data, setData] = useState<ListResponse | null>(null);
@@ -674,23 +676,7 @@ export default function Payouts() {
         </form>
       </section>
       <div className="filter-bar">
-        <div className="chip-row">
-          <button
-            className={`chip${status === "" ? " chip-active" : ""}`}
-            onClick={() => setFilter({ status: "" })}
-          >
-            {t("الكل", "All")}
-          </button>
-          {STATUS_FILTERS.map((s) => (
-            <button
-              key={s}
-              className={`chip${status === s ? " chip-active" : ""}`}
-              onClick={() => setFilter({ status: s })}
-            >
-              {statusMeta(s).label}
-            </button>
-          ))}
-        </div>
+        <MultiSelectFilter label={t("الحالة", "Status")} allLabel={t("كل الحالات", "All statuses")} options={STATUS_FILTERS.map((value)=>({value,label:statusMeta(value).label}))} value={statusValues} onChange={(values)=>setFilter({status:values.join(",")})}/>
       </div>
       {can("payouts", "can_approve") && selectedIds.size > 0 && (
         <section className="card payout-bulk-bar">

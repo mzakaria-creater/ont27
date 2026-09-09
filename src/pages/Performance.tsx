@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CalendarDays, RotateCcw, Search } from 'lucide-react'
 import PanelShell from '../components/PanelShell'
 import MethodLogo from '../components/MethodLogo'
+import MultiSelectFilter from '../components/MultiSelectFilter'
 import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -129,6 +130,7 @@ export default function Performance() {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [search, setSearch] = useState('')
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([])
   const [data, setData] = useState<Slice | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -146,14 +148,19 @@ export default function Performance() {
 
   const visibleGroups = useMemo(() => {
     const needle = search.trim().toLowerCase()
-    return (data?.groups ?? []).filter((g) => !needle || g.key.toLowerCase().includes(needle))
-  }, [data, search])
+    return (data?.groups ?? []).filter((g) => {
+      if (selectedGroups.length > 0 && !selectedGroups.includes(g.key)) return false
+      return !needle || g.key.toLowerCase().includes(needle)
+    })
+  }, [data, search, selectedGroups])
 
   useEffect(() => {
     load()
     const iv = setInterval(load, 30_000)
     return () => clearInterval(iv)
   }, [load])
+
+  useEffect(() => setSelectedGroups([]), [dimension, gateway])
 
   const totals = useMemo(() => {
     const g = visibleGroups
@@ -213,11 +220,18 @@ export default function Performance() {
             <span><CalendarDays size={13} /> {t('إلى تاريخ', 'To date')}</span>
             <input className="login-input" type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} />
           </label>
+          <MultiSelectFilter
+            label={DIMENSIONS.find((item) => item.id === dimension)?.[t('ar', 'en') as 'ar' | 'en'] ?? t('النتائج', 'Results')}
+            allLabel={t('كل النتائج', 'All results')}
+            options={(data?.groups ?? []).map((group) => ({ value: group.key, label: group.key, count: group.total }))}
+            value={selectedGroups}
+            onChange={setSelectedGroups}
+          />
           <label className="analytics-filter-search" aria-label={t('بحث في المجموعات', 'Search groups')}>
             <Search size={15} />
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('ابحث في النتائج…', 'Search results…')} />
           </label>
-          <button className="btn-ghost btn-sm" onClick={() => { setFrom(''); setTo(''); setSearch('') }}>
+          <button className="btn-ghost btn-sm" onClick={() => { setFrom(''); setTo(''); setSearch(''); setSelectedGroups([]) }}>
             <RotateCcw size={14} /> {t('مسح', 'Clear')}
           </button>
           <span className="cell-sub">{from || to ? `${from || '…'} → ${to || '…'}` : t('آخر 7 أيام', 'Last 7 days')}</span>

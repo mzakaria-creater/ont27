@@ -80,7 +80,8 @@ function applySmsFilters(query: any, filters: SmsFilterInput) {
   // Only approved financial inbox senders belong in Live SMS or matching.
   // Unsupported messages are retained for audit but hidden from operations.
   query = query.or('is_blocked.eq.false,is_blocked.is.null')
-  if (category) query = query.eq('sms_category', category)
+  const categories = (category ?? '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean)
+  if (categories.length) query = query.in('sms_category', categories)
   if (from) query = query.gte('received_at', `${from}T00:00:00Z`)
   if (to) query = query.lte('received_at', `${to}T23:59:59.999Z`)
   // Link state is derived from every authoritative/legacy link column. The

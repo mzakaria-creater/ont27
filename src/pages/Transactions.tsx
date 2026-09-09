@@ -15,6 +15,7 @@ import { AlertTriangle, ChevronDown, ChevronRight, Eye, Image, LayoutGrid, Penci
 import TransactionEditDialog from '../components/TransactionEditDialog'
 import { supabase } from '../lib/supabase'
 import { syncProviders } from '../lib/providerSync'
+import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectFilter'
 
 // All transactions — deposits + payouts merged, sorted by our ref.
 
@@ -68,11 +69,14 @@ export default function Transactions() {
   const [params, setParams] = useSearchParams()
   const type = params.get('type') ?? ''
   const status = params.get('status') ?? ''
+  const statusValues = splitFilterValues(status)
+  const typeValues = splitFilterValues(type)
   const from = params.get('from') ?? ''
   const to = params.get('to') ?? ''
   const merchant = params.get('merchant') ?? ''
   const method = params.get('method') ?? ''
   const currency = params.get('currency') ?? ''
+  const currencyValues = splitFilterValues(currency)
   const minAmount = params.get('min_amount') ?? ''
   const maxAmount = params.get('max_amount') ?? ''
   const view = params.get('view') === 'cards' ? 'cards' : 'table'
@@ -142,7 +146,7 @@ export default function Transactions() {
 
   // Status summary counts (respects the deposit/payout filter, ignores search).
   useEffect(() => {
-    const qp = type ? `?type=${type}` : ''
+    const qp = typeValues.length === 1 ? `?type=${typeValues[0]}` : ''
     api<{ counts: { status: string; count: number }[] }>(`/api/transactions/status-counts${qp}`)
       .then((r) => setCounts(Object.fromEntries(r.counts.map((c) => [c.status, c.count]))))
       .catch(() => setCounts({}))
@@ -206,22 +210,8 @@ export default function Transactions() {
       </section>
 
       <div className="filter-bar transaction-filter-toolbar">
-        <div className="filter-pills">
-          <button className={`pill${type === '' ? ' active' : ''}`} onClick={() => setFilter({ type: '' })}>{t('الكل', 'All')}</button>
-          <button className={`pill${type === 'deposit' ? ' active' : ''}`} onClick={() => setFilter({ type: 'deposit' })}>💰 {t('إيداعات', 'Deposits')}</button>
-          <button className={`pill${type === 'payout' ? ' active' : ''}`} onClick={() => setFilter({ type: 'payout' })}>📤 {t('سحوبات', 'Payouts')}</button>
-        </div>
-        <div className="chip-row">
-          <button className={`chip${status === '' ? ' chip-active' : ''}`} onClick={() => setFilter({ status: '' })}>
-            {t('الكل', 'All')}{Object.keys(counts).length > 0 && <span className="chip-count">{Object.values(counts).reduce((a, b) => a + b, 0).toLocaleString('en-US')}</span>}
-          </button>
-          {STATUS_FILTERS.map((s) => (
-            <button key={s} className={`chip status-chip st-${statusMeta(s).cls.replace('st-', '')}${status === s ? ' chip-active' : ''}`} onClick={() => setFilter({ status: status === s ? '' : s })}>
-              <span className={`dot-${statusMeta(s).cls}`} />{statusMeta(s).label}
-              {counts[s] != null && <span className="chip-count">{counts[s].toLocaleString('en-US')}</span>}
-            </button>
-          ))}
-        </div>
+        <MultiSelectFilter label={t('نوع المعاملة','Transaction type')} allLabel={t('كل الأنواع','All types')} options={[{value:'deposit',label:t('إيداعات','Deposits')},{value:'payout',label:t('سحوبات','Payouts')}]} value={typeValues} onChange={(values)=>setFilter({type:values.join(',')})}/>
+        <MultiSelectFilter label={t('الحالة','Status')} allLabel={t('كل الحالات','All statuses')} options={STATUS_FILTERS.map((value)=>({value,label:statusMeta(value).label,count:counts[value]}))} value={statusValues} onChange={(values)=>setFilter({status:values.join(',')})}/>
         <form className="search-row transaction-search-row trx-search-bar" role="search" onSubmit={(e) => { e.preventDefault(); setFilter({ q: q.trim() }) }}>
           <Search size={16} aria-hidden="true" />
           <input type="search" className="login-input search-input" aria-label={t('بحث المعاملات', 'Search transactions')} placeholder={t('بحث: مبلغ / مرسل / رقم عملية / مرجع تاجر / مستخدم…', 'Search: amount / sender / transaction / merchant ref / user…')} value={q} onChange={(e) => setQ(e.target.value)} />
@@ -233,7 +223,7 @@ export default function Transactions() {
           <label className="filter-field">{t('إلى', 'To')}<input className="login-input" type="date" value={to} onChange={(e) => setFilter({ to: e.target.value })} /></label>
           <label className="filter-field">{t('التاجر', 'Merchant')}<input className="login-input" value={merchant} onChange={(e) => setFilter({ merchant: e.target.value })} /></label>
           <label className="filter-field">{t('الطريقة', 'Method')}<input className="login-input" value={method} onChange={(e) => setFilter({ method: e.target.value })} /></label>
-          <label className="filter-field">{t('العملة', 'Currency')}<select className="login-input" value={currency} onChange={(e) => setFilter({ currency: e.target.value })}><option value="">{t('الكل', 'All')}</option><option value="EGP">EGP</option><option value="USD">USD</option><option value="USDT">USDT</option></select></label>
+          <MultiSelectFilter label={t('العملة','Currency')} allLabel={t('كل العملات','All currencies')} options={['EGP','USD','USDT'].map((value)=>({value,label:value}))} value={currencyValues} onChange={(values)=>setFilter({currency:values.join(',')})}/>
           <label className="filter-field">{t('أدنى مبلغ', 'Min amount')}<input className="login-input" type="number" min="0" value={minAmount} onChange={(e) => setFilter({ min_amount: e.target.value })} /></label>
           <label className="filter-field">{t('أقصى مبلغ', 'Max amount')}<input className="login-input" type="number" min="0" value={maxAmount} onChange={(e) => setFilter({ max_amount: e.target.value })} /></label>
           <button className="btn-ghost btn-sm" onClick={() => setFilter({ from: '', to: '', merchant: '', method: '', currency: '', min_amount: '', max_amount: '', status: '', type: '', q: '' })}>{t('مسح الفلاتر', 'Clear filters')}</button>

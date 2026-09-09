@@ -5,6 +5,7 @@ import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { useAuth } from '../auth/AuthContext'
 import { Filter, Search, X } from 'lucide-react'
+import MultiSelectFilter from '../components/MultiSelectFilter'
 
 interface AutomationTemplate { id: string; settings: Record<string, number | boolean> }
 // Bilingual copy lives client-side so it follows the language switcher; the
@@ -124,9 +125,9 @@ export default function Automation() {
   const [ruleConflict, setRuleConflict] = useState<{ id: string; action_type: string; priority: number }[] | null>(null)
   const [settingsBusy, setSettingsBusy] = useState<string | null>(null)
   const [ruleSearch, setRuleSearch] = useState('')
-  const [ruleProvider, setRuleProvider] = useState('all')
-  const [ruleStatus, setRuleStatus] = useState('all')
-  const [ruleAction, setRuleAction] = useState('all')
+  const [ruleProviders, setRuleProviders] = useState<string[]>([])
+  const [ruleStatuses, setRuleStatuses] = useState<string[]>([])
+  const [ruleActions, setRuleActions] = useState<string[]>([])
 
   const reloadAutomation = () => api<NonNullable<typeof data>>('/api/automation').then(setData).catch(() => {})
 
@@ -256,14 +257,13 @@ export default function Automation() {
     const query = ruleSearch.trim().toLowerCase()
     const searchable = [rule.scope_type, rule.master_merchant, rule.merchant, rule.sub_merchant, rule.account_wallet, rule.provider].filter(Boolean).join(' ').toLowerCase()
     if (query && !searchable.includes(query)) return false
-    if (ruleProvider !== 'all' && (rule.master_merchant ?? rule.provider) !== ruleProvider) return false
-    if (ruleStatus === 'active' && !rule.enabled) return false
-    if (ruleStatus === 'disabled' && rule.enabled) return false
-    if (ruleAction !== 'all' && rule.action_type !== ruleAction) return false
+    if (ruleProviders.length > 0 && !ruleProviders.includes(String(rule.master_merchant ?? rule.provider ?? '').toLowerCase())) return false
+    if (ruleStatuses.length > 0 && !ruleStatuses.includes(rule.enabled ? 'active' : 'disabled')) return false
+    if (ruleActions.length > 0 && !ruleActions.includes(String(rule.action_type ?? ''))) return false
     return true
   })
-  const resetRuleFilters = () => { setRuleSearch(''); setRuleProvider('all'); setRuleStatus('all'); setRuleAction('all') }
-  const hasRuleFilters = Boolean(ruleSearch || ruleProvider !== 'all' || ruleStatus !== 'all' || ruleAction !== 'all')
+  const resetRuleFilters = () => { setRuleSearch(''); setRuleProviders([]); setRuleStatuses([]); setRuleActions([]) }
+  const hasRuleFilters = Boolean(ruleSearch || ruleProviders.length || ruleStatuses.length || ruleActions.length)
 
   return (
     <PanelShell>
@@ -390,21 +390,9 @@ export default function Automation() {
             <Search size={16} />
             <input value={ruleSearch} onChange={(e) => setRuleSearch(e.target.value)} placeholder={t('بحث بالتاجر، المحفظة أو النطاق', 'Search merchant, wallet or scope')} />
           </label>
-          <select value={ruleProvider} onChange={(e) => setRuleProvider(e.target.value)} aria-label={t('المزوّد', 'Provider')}>
-            <option value="all">{t('كل المزوّدين', 'All providers')}</option>
-            <option value="ngpay">NGPay</option>
-            <option value="payfuture">PayFuture</option>
-          </select>
-          <select value={ruleStatus} onChange={(e) => setRuleStatus(e.target.value)} aria-label={t('الحالة', 'Status')}>
-            <option value="all">{t('كل الحالات', 'All statuses')}</option>
-            <option value="active">{t('مفعّلة', 'Enabled')}</option>
-            <option value="disabled">{t('موقوفة', 'Disabled')}</option>
-          </select>
-          <select value={ruleAction} onChange={(e) => setRuleAction(e.target.value)} aria-label={t('الإجراء', 'Action')}>
-            <option value="all">{t('كل الإجراءات', 'All actions')}</option>
-            <option value="approve">{t('موافقة', 'Approve')}</option>
-            <option value="decline">{t('رفض', 'Decline')}</option>
-          </select>
+          <MultiSelectFilter label={t('المزوّد', 'Provider')} allLabel={t('كل المزوّدين', 'All providers')} options={[{value:'ngpay',label:'NGPay'},{value:'payfuture',label:'PayFuture'}]} value={ruleProviders} onChange={setRuleProviders}/>
+          <MultiSelectFilter label={t('الحالة', 'Status')} allLabel={t('كل الحالات', 'All statuses')} options={[{value:'active',label:t('مفعّلة','Enabled')},{value:'disabled',label:t('موقوفة','Disabled')}]} value={ruleStatuses} onChange={setRuleStatuses}/>
+          <MultiSelectFilter label={t('الإجراء', 'Action')} allLabel={t('كل الإجراءات', 'All actions')} options={[{value:'approve',label:t('موافقة','Approve')},{value:'decline',label:t('رفض','Decline')}]} value={ruleActions} onChange={setRuleActions}/>
           <span className="automation-filter-count">{filteredRules.length} / {data?.rules.length ?? 0}</span>
           {hasRuleFilters && <button className="btn-ghost btn-sm" onClick={resetRuleFilters}><X size={14} /> {t('مسح', 'Clear')}</button>}
         </div>

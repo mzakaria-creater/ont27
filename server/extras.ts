@@ -75,14 +75,14 @@ extraRoutes.get(
   '/transactions',
   requireAnyPerm(['transactions', 'all_transactions', 'refunds', 'reversals'], 'can_view'),
   async (c) => {
-    const type = c.req.query('type') // deposit | payout | ''
-    const status = c.req.query('status')?.toUpperCase()
+    const types = (c.req.query('type') ?? '').split(',').map((value) => value.trim()).filter((value) => value === 'deposit' || value === 'payout')
+    const statuses = [...new Set((c.req.query('status') ?? '').split(',').map((value) => value.trim().toUpperCase()).filter(Boolean))]
     const q = c.req.query('q')?.trim()
     const from = c.req.query('from')?.trim()
     const to = c.req.query('to')?.trim()
     const merchant = c.req.query('merchant')?.trim()
     const method = c.req.query('method')?.trim()
-    const currency = c.req.query('currency')?.trim().toUpperCase()
+    const currencies = [...new Set((c.req.query('currency') ?? '').split(',').map((value) => value.trim().toUpperCase()).filter(Boolean))]
     const minAmount = Number(c.req.query('min_amount'))
     const maxAmount = Number(c.req.query('max_amount'))
     const limit = Math.min(Number(c.req.query('limit')) || 25, MAX_PAGE)
@@ -106,13 +106,12 @@ extraRoutes.get(
         .select(DEPOSIT_COLS, { count: 'exact' })
         .order('created_utc', { ascending: false, nullsFirst: false })
         .range(0, fetchTo - 1)
-      if (status === 'PAID') query = query.in('status', ['PAID', 'APPROVED'])
-      else if (status) query = query.eq('status', status)
+      if (statuses.length) query = query.in('status', [...new Set(statuses.flatMap((value) => value === 'PAID' ? ['PAID', 'APPROVED'] : [value]))])
       if (from) query = query.gte('first_seen_at', `${from}T00:00:00Z`)
       if (to) query = query.lte('first_seen_at', `${to}T23:59:59.999Z`)
       if (merchant) query = query.ilike('merchant', `%${merchant.replaceAll(',', ' ')}%`)
       if (method) query = query.ilike('payment_method', `%${method.replaceAll(',', ' ')}%`)
-      if (currency) query = query.eq('currency', currency)
+      if (currencies.length) query = query.in('currency', currencies)
       if (Number.isFinite(minAmount)) query = query.gte('amount', minAmount)
       if (Number.isFinite(maxAmount)) query = query.lte('amount', maxAmount)
       if (q) {
@@ -131,13 +130,12 @@ extraRoutes.get(
         .select(PAYOUT_COLS, { count: 'exact' })
         .order('created_utc', { ascending: false, nullsFirst: false })
         .range(0, fetchTo - 1)
-      if (status === 'PAID') query = query.in('status', ['PAID', 'APPROVED'])
-      else if (status) query = query.eq('status', status)
+      if (statuses.length) query = query.in('status', [...new Set(statuses.flatMap((value) => value === 'PAID' ? ['PAID', 'APPROVED'] : [value]))])
       if (from) query = query.gte('first_seen_at', `${from}T00:00:00Z`)
       if (to) query = query.lte('first_seen_at', `${to}T23:59:59.999Z`)
       if (merchant) query = query.ilike('merchant', `%${merchant.replaceAll(',', ' ')}%`)
       if (method) query = query.ilike('pay_by', `%${method.replaceAll(',', ' ')}%`)
-      if (currency && currency !== 'EGP') query = query.eq('maven_id', -1)
+      if (currencies.length && !currencies.includes('EGP')) query = query.eq('maven_id', -1)
       if (Number.isFinite(minAmount)) query = query.gte('amount', minAmount)
       if (Number.isFinite(maxAmount)) query = query.lte('amount', maxAmount)
       if (q) {
@@ -150,8 +148,8 @@ extraRoutes.get(
       return query
     }
 
-    const wantDep = type !== 'payout'
-    const wantPay = type !== 'deposit'
+    const wantDep = types.length === 0 || types.includes('deposit')
+    const wantPay = types.length === 0 || types.includes('payout')
     const [dep, pay] = await Promise.all([
       wantDep ? depQuery() : Promise.resolve({ data: [], count: 0, error: null }),
       wantPay ? payQuery() : Promise.resolve({ data: [], count: 0, error: null }),

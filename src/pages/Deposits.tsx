@@ -18,6 +18,7 @@ import DepositKindBadge from '../components/DepositKindBadge'
 import { syncProviders } from '../lib/providerSync'
 import { AlertTriangle, Search, X } from 'lucide-react'
 import SmsMatchQueues, { type QueueSms } from '../components/SmsMatchQueues'
+import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectFilter'
 
 const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
 const MASTER_PILLS = [
@@ -66,6 +67,8 @@ export default function Deposits() {
   const [params, setParams] = useSearchParams()
   const status = params.get('status') ?? ''
   const master = params.get('master') ?? ''
+  const statusValues = splitFilterValues(status)
+  const masterValues = splitFilterValues(master)
   const view = params.get('view') === 'cards' ? 'cards' : 'table'
   const page = Math.max(Number(params.get('page')) || 1, 1)
   const [q, setQ] = useState(params.get('q') ?? '')
@@ -315,38 +318,8 @@ export default function Deposits() {
       </div>
 
       <div className="filter-bar transaction-filter-toolbar">
-        <div className="filter-pills">
-          <button className={`pill${master === '' ? ' active' : ''}`} onClick={() => setFilter({ master: '' })}>
-            الكل
-          </button>
-          {MASTER_PILLS.map((m) => (
-            <button
-              key={m.key}
-              className={`pill${master === m.key ? ' active' : ''}`}
-              onClick={() => setFilter({ master: master === m.key ? '' : m.key })}
-            >
-              <span className="pill-dot" style={{ background: `var(--${m.cls})` }} />
-              {m.key}
-            </button>
-          ))}
-        </div>
-        <div className="chip-row">
-          <button
-            className={`chip${status === '' ? ' chip-active' : ''}`}
-            onClick={() => setFilter({ status: '' })}
-          >
-            الكل
-          </button>
-          {STATUS_FILTERS.map((s) => (
-            <button
-              key={s}
-              className={`chip${status === s ? ' chip-active' : ''}`}
-              onClick={() => setFilter({ status: s })}
-            >
-              {statusMeta(s).label}
-            </button>
-          ))}
-        </div>
+        <MultiSelectFilter label={t('المزوّد','Provider')} allLabel={t('كل المزوّدين','All providers')} options={MASTER_PILLS.map((item)=>({value:item.key,label:item.key}))} value={masterValues} onChange={(values)=>setFilter({master:values.join(',')})}/>
+        <MultiSelectFilter label={t('الحالة','Status')} allLabel={t('كل الحالات','All statuses')} options={STATUS_FILTERS.map((value)=>({value,label:statusMeta(value).label}))} value={statusValues} onChange={(values)=>setFilter({status:values.join(',')})}/>
         <form
           className="search-row trx-search-bar"
           role="search"

@@ -15,10 +15,10 @@ adminRoutes.use('*', async (c, next) => {
 })
 
 adminRoutes.get('/transactions', requirePerm('transactions', 'can_view'), async (c) => {
-  const status = c.req.query('status')?.trim().toUpperCase()
+  const statuses = [...new Set((c.req.query('status') ?? '').split(',').map((value) => value.trim().toUpperCase()).filter(Boolean))]
   const q = c.req.query('q')?.trim()
   const merchant = c.req.query('merchant')?.trim()
-  const method = c.req.query('method')?.trim()
+  const methods = [...new Set((c.req.query('method') ?? '').split(',').map((value) => value.trim()).filter(Boolean))]
   const from = c.req.query('from')?.trim()
   const to = c.req.query('to')?.trim()
   const ascending = c.req.query('sort') === 'asc'
@@ -30,17 +30,15 @@ adminRoutes.get('/transactions', requirePerm('transactions', 'can_view'), async 
   let summaryQuery = db.from('maven_transactions').select('status, amount').limit(10_000)
   query = await applyDepositScopes(query,c.get('actor'),'view')
   summaryQuery = await applyDepositScopes(summaryQuery,c.get('actor'),'view')
-  if (status === 'PAID') {
-    query = query.in('status', ['PAID', 'APPROVED'])
-    summaryQuery = summaryQuery.in('status', ['PAID', 'APPROVED'])
-  } else if (status) {
-    query = query.eq('status', status)
-    summaryQuery = summaryQuery.eq('status', status)
+  if (statuses.length) {
+    const expanded = [...new Set(statuses.flatMap((value) => value === 'PAID' ? ['PAID', 'APPROVED'] : [value]))]
+    query = query.in('status', expanded)
+    summaryQuery = summaryQuery.in('status', expanded)
   }
   if (merchant) query = query.ilike('merchant', `%${merchant.replaceAll(',', ' ')}%`)
   if (merchant) summaryQuery = summaryQuery.ilike('merchant', `%${merchant.replaceAll(',', ' ')}%`)
-  if (method) query = query.eq('payment_method', method)
-  if (method) summaryQuery = summaryQuery.eq('payment_method', method)
+  if (methods.length) query = query.in('payment_method', methods)
+  if (methods.length) summaryQuery = summaryQuery.in('payment_method', methods)
   if (from) query = query.gte('first_seen_at', `${from}T00:00:00Z`)
   if (from) summaryQuery = summaryQuery.gte('first_seen_at', `${from}T00:00:00Z`)
   if (to) query = query.lte('first_seen_at', `${to}T23:59:59.999Z`)
