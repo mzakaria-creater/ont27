@@ -82,6 +82,19 @@ interface SmsRow {
   withdrawal_assigned_at?: string | null
   provider: string | null
   sms_first_line: string | null
+  raw_sms?: string | null
+  sms_sender?: string | null
+  raw_payload?: Record<string, unknown> | null
+  webhook_name?: string | null
+  webhook_address?: string | null
+  method?: string | null
+  ocr_text?: string | null
+  score?: number | null
+  auto_match_score?: number | null
+  processed_at?: string | null
+  maven_synced?: boolean | null
+  maven_synced_at?: string | null
+  maven_status_sent?: string | null
 }
 
 interface SmsDetail extends SmsRow {
@@ -139,6 +152,20 @@ function firstLine(r: SmsRow): string {
     .map((l) => l.trim())
     .filter((l) => l && !l.startsWith('From :'))[0]
   return line ?? '—'
+}
+
+function payloadValue(row: SmsDetail, keys: string[]): unknown {
+  const payload = row.raw_payload
+  if (!payload || typeof payload !== 'object') return null
+  const wanted = keys.map((key) => key.toLowerCase().replace(/[^a-z0-9]/g, ''))
+  const entry = Object.entries(payload).find(([key, value]) => value != null && wanted.includes(key.toLowerCase().replace(/[^a-z0-9]/g, '')))
+  return entry?.[1] ?? null
+}
+
+function displayValue(value: unknown): string {
+  if (value == null || value === '') return '—'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
 }
 
 export default function SmsLive() {
@@ -707,10 +734,18 @@ export default function SmsLive() {
                   </div>
                 )}
 
+                <section className="sms-detail-evidence">
+                  <div className="sms-detail-evidence-head"><strong>{t('بيانات الرسالة الخام', 'SMS evidence')}</strong><span className="cell-sub">{selected.raw_sms ? 'raw_sms' : 'message'}</span></div>
+                  <pre className="sms-raw-block" dir="auto">{selected.raw_sms ?? selected.message ?? selected.sms_first_line ?? '—'}</pre>
+                  <details className="sms-json-details"><summary>{t('عرض JSON المستخرج', 'Show extracted JSON')}</summary><pre>{JSON.stringify(selected.raw_payload ?? {}, null, 2)}</pre></details>
+                </section>
+
                 <dl className="detail-grid">
                   <dt>{t('المُرسِل', 'Sender')}</dt><dd>{selected.sender_name ?? '—'} {selected.sender_number && <span className="mono">({selected.sender_number})</span>}</dd>
                   <dt>{selected.sms_category === 'withdrawal' ? t('المحفظة الدافعة', 'Paying wallet') : t('المحفظة المستقبِلة', 'Receiving wallet')}</dt><dd className="mono">{selected.sms_category === 'withdrawal' ? selected.linked_wallet_number ?? selected.wallet_number ?? '—' : selected.confirmed_wallet_number ?? selected.receiver_number ?? selected.wallet_number ?? selected.wallet ?? '—'}{selected.sms_category !== 'withdrawal' && selected.receiver_number && (selected.confirmed_wallet_number ?? selected.receiver_number) !== selected.receiver_number && <div className="cell-sub">SMS receiver {selected.receiver_number}</div>}</dd>
                   <dt>{t('المزوّد', 'Provider')}</dt><dd>{selected.provider ?? '—'} · <span className="mono">{selected.sms_sender ?? '—'}</span></dd>
+                  <dt>{t('التاجر', 'Merchant')}</dt><dd>{selected.matched_master_merchant ?? displayValue(payloadValue(selected, ['merchant', 'merchant_name', 'MerchantName']))}</dd>
+                  <dt>{t('الطريقة', 'Method')}</dt><dd>{selected.method ?? displayValue(payloadValue(selected, ['method', 'payment_method', 'iPayinfo']))}</dd>
                   <dt>{t('الجهاز', 'Device')}</dt><dd className="mono">{selected.device_name ?? '—'}{selected.sim_slot != null && <> · SIM {selected.sim_slot}</>}</dd>
                   <dt>{t('رقم العملية (SMS)', 'Tx id (SMS)')}</dt><dd className="mono">{selected.trx_id ?? '—'}</dd>
                   {selected.sms_category !== 'withdrawal' && <><dt>{t('معاملة OnTarget', 'OnTarget tx')}</dt><dd className="mono">{selected.matched_ontarget_ref ?? selected.matched_tx_id ?? '—'}</dd></>}
@@ -724,15 +759,26 @@ export default function SmsLive() {
                   <dt>{t('حالة الربط', 'Link status')}</dt><dd className="mono">{selected.sms_category === 'withdrawal' ? selected.matched_payout_id ? t('مرتبطة بمعاملة سحب','Linked to payout') : selected.linked_wallet_number ? t('مرتبطة بالمحفظة فقط','Wallet only') : t('غير مرتبطة','Unlinked') : selected.match_status ?? '—'}{selected.review_required && !selected.matched && selected.sms_category !== 'withdrawal' && <> · ⚠ {t('تحتاج مراجعة', 'needs review')}</>}</dd>
                   {selected.is_blocked && <><dt>{t('حظر SMS', 'SMS block')}</dt><dd className="danger-text">🚫 {selected.block_reason ?? t('محظورة يدوياً', 'Blocked manually')} · {selected.blocked_by ?? '—'}</dd></>}
                   <dt>{t('الرصيد بعد العملية', 'Balance after')}</dt><dd className="mono">{money(selected.balance_after, 'EGP')}</dd>
+                  <dt>{t('الرسوم', 'Fees')}</dt><dd className="mono">{selected.raw_payload ? money(Number(payloadValue(selected, ['fees', 'fee', 'commission'])), 'EGP') : '—'}</dd>
+                  <dt>{t('المخاطر', 'Risk')}</dt><dd>{selected.risk_score != null ? <span className={selected.risk_score > 0 ? 'danger-text' : ''}>{selected.risk_score}{selected.risk_reason && <> · {selected.risk_reason}</>}</span> : t('غير متاح','Not available')}</dd>
+                  <dt>Webhook</dt><dd className="mono">{selected.webhook_name ?? '—'}{selected.webhook_address && <div className="cell-sub">{selected.webhook_address}</div>}</dd>
+                  <dt>SIM</dt><dd className="mono">{selected.sim_slot ?? displayValue(payloadValue(selected, ['sim', 'sim_number', 'sim_slot']))}</dd>
+                  <dt>GPS</dt><dd className="mono">{displayValue(payloadValue(selected, ['gps', 'location', 'coordinates']))}{payloadValue(selected, ['latitude']) != null && <> · {displayValue(payloadValue(selected, ['latitude']))}, {displayValue(payloadValue(selected, ['longitude']))}</>}</dd>
+                  <dt>IP</dt><dd className="mono">{displayValue(payloadValue(selected, ['ip', 'ip_address', 'client_ip']))}</dd>
                   {selected.sms_category === 'withdrawal' && <><dt>{t('حساب الرصيد', 'Balance calculation')}</dt><dd className="mono">{selected.wallet_balance_before != null ? money(selected.wallet_balance_before, 'EGP') : '—'} − {money(selected.amount, 'EGP')} = {selected.wallet_balance_after != null ? money(selected.wallet_balance_after, 'EGP') : '—'}</dd></>}
-                  {selected.risk_score != null && selected.risk_score > 0 && (
-                    <><dt>{t('درجة الخطورة', 'Risk score')}</dt><dd className="mono">{selected.risk_score}{selected.risk_reason && <> — {selected.risk_reason}</>}</dd></>
-                  )}
                   {selected.is_duplicate && <><dt>{t('تكرار', 'Duplicate')}</dt><dd>⚠ {t('رسالة مكررة', 'Duplicate message')}</dd></>}
                   <dt>{t('المشغّل المسؤول', 'Assigned operator')}</dt><dd>{selected.assigned_operator ?? '—'}</dd>
                   {selected.notes && <><dt>{t('ملاحظات', 'Notes')}</dt><dd>{selected.notes}</dd></>}
                   <dt>{t('وقت الاستلام', 'Received at')}</dt><dd className="mono">{depositTime({ first_seen_at: selected.received_at })}</dd>
                 </dl>
+
+                <section className="sms-detail-timeline"><h4>{t('الخط الزمني', 'Timeline')}</h4><ol>{[
+                  [t('استلام SMS', 'SMS received'), selected.received_at],
+                  [t('إنشاء السجل', 'Record created'), selected.created_at],
+                  [t('معالجة الرسالة', 'Processed'), selected.processed_at],
+                  [t('مزامنة Maven', 'Maven synced'), selected.maven_synced_at],
+                  [t('تعيين السحب', 'Withdrawal assigned'), selected.withdrawal_assigned_at],
+                ].filter(([, at]) => at).map(([label, at]) => <li key={String(label) + String(at)}><span className="timeline-dot"/><div><strong>{label}</strong><time className="mono">{new Date(String(at)).toLocaleString('en-GB', { timeZone: 'Africa/Cairo' })}</time></div></li>)}</ol></section>
 
                 {selected.sms_category !== 'withdrawal' && selected.matched_tx_id == null && selected.consumed_by_tx_id == null && !selected.is_blocked && can('sms_live', 'can_edit') && (
                   <section className="link-section unlinked-annotation-editor">
