@@ -1601,6 +1601,23 @@ a.stat-card:hover { border-color: var(--accent); }
 .reports-kpis small, .reports-kpis em { overflow: hidden; color: var(--text-dim); font-size: 10px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 .reports-kpis strong { overflow: hidden; font-size: clamp(16px, 1.7vw, 22px); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 .reports-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.reports-management-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, .65fr); gap: 14px; align-items: start; }
+.reports-management-grid > * { min-width: 0; }
+.reports-management-hero, .reports-management-channels { grid-column: 1 / -1; }
+.reports-management-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.reports-management-title h3 { margin: 8px 0 4px; font-size: 18px; }
+.reports-fee-calculator h3 { display: flex; align-items: center; gap: 7px; }
+.reports-fee-results { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 16px 0 0; }
+.reports-fee-results div { padding: 11px; border: 1px solid var(--border); border-radius: 9px; background: color-mix(in srgb, var(--surface) 86%, var(--accent) 14%); }
+.reports-fee-results dt { color: var(--text-dim); font-size: 11px; }
+.reports-fee-results dd { margin: 5px 0 0; font: 800 15px ui-monospace, monospace; }
+.reports-channel-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.reports-channel-card { padding: 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.reports-channel-card > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.reports-channel-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reports-channel-card span, .reports-channel-card small { color: var(--text-dim); font-size: 10px; }
+.reports-channel-card b { display: block; margin: 12px 0 4px; font: 800 15px ui-monospace, monospace; }
+.reports-channel-card small { display: block; }
 .reports-grid > * { min-width: 0; max-inline-size: none; margin: 0; }
 .reports-span-2 { grid-column: 1 / -1; }
 .reports-table { min-width: 560px; }
@@ -1616,7 +1633,8 @@ a.stat-card:hover { border-color: var(--accent); }
 .reports-breakdown .bar-track { height: 6px; }
 .reports-note { margin-top: 12px; }
 @media (max-width: 1050px) { .reports-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }.reports-date-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }.reports-range { justify-content: flex-start; } }
-@media (max-width: 720px) { .reports-page-head { flex-direction: column; }.reports-grid, .reports-kpis, .reports-date-row { grid-template-columns: minmax(0, 1fr); }.reports-span-2 { grid-column: auto; }.reports-export, .reports-refresh { width: 100%; }.reports-range { min-height: auto; }.reports-presets button { flex: 1 1 calc(50% - 7px); } }
+@media (max-width: 900px) { .reports-management-grid { grid-template-columns: minmax(0, 1fr); }.reports-channel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 720px) { .reports-page-head { flex-direction: column; }.reports-grid, .reports-management-grid, .reports-kpis, .reports-date-row { grid-template-columns: minmax(0, 1fr); }.reports-channel-grid, .reports-fee-results { grid-template-columns: minmax(0, 1fr); }.reports-span-2 { grid-column: auto; }.reports-export, .reports-refresh { width: 100%; }.reports-range { min-height: auto; }.reports-presets button { flex: 1 1 calc(50% - 7px); } }
 
 /* ===== Fluid / auto layout ===== */
 .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
