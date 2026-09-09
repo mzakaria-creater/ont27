@@ -193,11 +193,16 @@ async function applyEdit(
 
   // A status change that IS the deposit decision goes through the real worker.
   const currentStatus = String(tx.status ?? '').toUpperCase()
+  // An amount-only edit still has to go through Maven. The panel may omit
+  // status when the operator only changes the amount, so use the current
+  // provider status as the decision in that case.
+  const providerDecisionStatus = edit.status ?? currentStatus
   const isProviderDecision =
-    edit.status != null &&
     isNgPayGateway(tx) &&
-    PROVIDER_STATUSES.has(edit.status) &&
-    (currentStatus === 'PENDING' || (currentStatus === 'DECLINED' && edit.status === 'PAID') || (currentStatus === edit.status && edit.amount != null))
+    PROVIDER_STATUSES.has(providerDecisionStatus) &&
+    (currentStatus === 'PENDING' ||
+      (currentStatus === 'DECLINED' && providerDecisionStatus === 'PAID') ||
+      (currentStatus === providerDecisionStatus && edit.amount != null))
 
   if (isProviderDecision) {
     const baseUrl = process.env.SUPABASE_URL
@@ -208,11 +213,11 @@ async function applyEdit(
       headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
       body: JSON.stringify({
         tx_id: txId,
-        decision: edit.status,
+        decision: providerDecisionStatus,
         actor_name: actorName,
         remark: edit.reason,
-        source: currentStatus === 'DECLINED' && edit.status === 'PAID' ? 'direct_edit' : 'panel_decision',
-        allow_reversal: currentStatus === 'DECLINED' && edit.status === 'PAID',
+        source: currentStatus === 'DECLINED' && providerDecisionStatus === 'PAID' ? 'direct_edit' : 'panel_decision',
+        allow_reversal: currentStatus === 'DECLINED' && providerDecisionStatus === 'PAID',
         override_amount: edit.amount ?? undefined,
       }),
     })
@@ -226,7 +231,7 @@ async function applyEdit(
     // now so the queue does not wait for a later provider sync repaint.
     const mirrorNow = new Date().toISOString()
     const { error: mirrorErr } = await db.from('maven_transactions').update({
-      status: edit.status,
+      status: providerDecisionStatus,
       approved_by: actorName,
       last_status_change: mirrorNow,
       updated_at: mirrorNow,
