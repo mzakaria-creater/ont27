@@ -29,6 +29,25 @@ type Dimension = (typeof DIMENSIONS)[number]
 // quietly move a live approval rate.
 const GATEWAYS = ['NagupayP2P', 'RSC', 'AVADAPAY', 'ALL'] as const
 
+const CAIRO_TIME_ZONE = 'Africa/Cairo'
+function cairoOffset(date: string): string {
+  const guess = new Date(`${date}T12:00:00Z`)
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: CAIRO_TIME_ZONE,
+    hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  }).formatToParts(guess)
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  const asUtc = Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day), Number(values.hour), Number(values.minute))
+  const offsetMinutes = Math.round((asUtc - guess.getTime()) / 60_000)
+  const sign = offsetMinutes >= 0 ? '+' : '-'
+  const absolute = Math.abs(offsetMinutes)
+  return `${sign}${String(Math.floor(absolute / 60)).padStart(2, '0')}:${String(absolute % 60).padStart(2, '0')}`
+}
+function cairoBoundary(date: string, end = false): string {
+  return `${date}T${end ? '23:59:59.999' : '00:00:00'}${cairoOffset(date)}`
+}
+
 performanceRoutes.get(
   '/',
   requireAnyPerm(['reports', 'analytics', 'dashboard', 'transactions', 'merchants'], 'can_view'),
@@ -45,13 +64,25 @@ performanceRoutes.get(
     // but a rejected value should not travel that far to be ignored.
     const days = Math.min(Math.max(Number(c.req.query('days')) || 7, 0.5), 90)
     const bucket = c.req.query('bucket') === 'hour' ? 'hour' : 'day'
+    const from = (c.req.query('from') ?? '').trim() || null
+    const to = (c.req.query('to') ?? '').trim() || null
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/
+    if ((from && !datePattern.test(from)) || (to && !datePattern.test(to)) || (from && to && from > to)) {
+      return c.json({ error: 'invalid_date_range' }, 400)
+    }
 
-    const { data, error } = await db.rpc('panel_performance_slice', {
+    const rpcName = from || to ? 'panel_performance_slice_range' : 'panel_performance_slice'
+    const rpcParams = {
       p_dimension: dimension,
       p_gateway: gateway,
       p_days: days,
       p_bucket: bucket,
-    })
+      ...(rpcName === 'panel_performance_slice_range' ? {
+        p_from: from ? cairoBoundary(from) : null,
+        p_to: to ? cairoBoundary(to, true) : null,
+      } : {}),
+    }
+    const { data, error } = await db.rpc(rpcName, rpcParams)
     if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
 
     return c.json({

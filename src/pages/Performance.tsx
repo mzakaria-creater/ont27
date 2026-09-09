@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { CalendarDays, RotateCcw, Search } from 'lucide-react'
 import PanelShell from '../components/PanelShell'
 import MethodLogo from '../components/MethodLogo'
 import { api } from '../lib/api'
@@ -125,18 +126,28 @@ export default function Performance() {
   const [dimension, setDimension] = useState<string>('payment_method')
   const [win, setWin] = useState<(typeof WINDOWS)[number]>(WINDOWS[2])
   const [gateway, setGateway] = useState<string>('NagupayP2P')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [search, setSearch] = useState('')
   const [data, setData] = useState<Slice | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(() => {
     setBusy(true)
-    const qs = `dimension=${dimension}&gateway=${gateway}&days=${win.days}&bucket=${win.bucket}`
-    api<Slice>(`/api/performance?${qs}`)
+    const params = new URLSearchParams({ dimension, gateway, days: String(win.days), bucket: win.bucket })
+    if (from) params.set('from', from)
+    if (to) params.set('to', to)
+    api<Slice>(`/api/performance?${params.toString()}`)
       .then((d) => { setData(d); setErr(null) })
       .catch(() => setErr(t('تعذّر تحميل مقاييس الأداء.', 'Could not load performance metrics.')))
       .finally(() => setBusy(false))
-  }, [dimension, gateway, win, t])
+  }, [dimension, gateway, win, from, to, t])
+
+  const visibleGroups = useMemo(() => {
+    const needle = search.trim().toLowerCase()
+    return (data?.groups ?? []).filter((g) => !needle || g.key.toLowerCase().includes(needle))
+  }, [data, search])
 
   useEffect(() => {
     load()
@@ -145,22 +156,22 @@ export default function Performance() {
   }, [load])
 
   const totals = useMemo(() => {
-    const g = data?.groups ?? []
+    const g = visibleGroups
     const paid = g.reduce((a, b) => a + b.paid, 0)
     const declined = g.reduce((a, b) => a + b.declined, 0)
     const volume = g.reduce((a, b) => a + b.volume, 0)
     const decided = paid + declined
     return { paid, declined, volume, decided, rate: decided ? (paid / decided) * 100 : null }
-  }, [data])
+  }, [visibleGroups])
 
   // Only groups the deviation score actually judged. A "small sample" row is
   // not evidence of health, and surfacing it as an alert would be noise.
   const alerts = useMemo(
-    () => (data?.groups ?? []).filter((g) => g.signal === 'down').sort((a, b) => (a.z ?? 0) - (b.z ?? 0)),
-    [data],
+    () => visibleGroups.filter((g) => g.signal === 'down').sort((a, b) => (a.z ?? 0) - (b.z ?? 0)),
+    [visibleGroups],
   )
 
-  const maxVolume = Math.max(1, ...(data?.groups ?? []).map((g) => g.volume))
+  const maxVolume = Math.max(1, ...visibleGroups.map((g) => g.volume))
 
   return (
     <PanelShell>
@@ -192,6 +203,24 @@ export default function Performance() {
           <button className={gateway === 'NagupayP2P' ? 'btn-primary btn-sm' : 'btn-ghost btn-sm'} onClick={() => setGateway('NagupayP2P')}>NGPay</button>
           <button className={gateway === 'AVADAPAY' ? 'btn-primary btn-sm' : 'btn-ghost btn-sm'} onClick={() => setGateway('AVADAPAY')}>{t('اختبار', 'Test')}</button>
           <button className="btn-ghost btn-sm" onClick={load} disabled={busy}>{t('تحديث', 'Refresh')}</button>
+        </div>
+        <div className="filter-bar analytics-filter-bar performance-filter-bar">
+          <label className="analytics-date-field">
+            <span><CalendarDays size={13} /> {t('من تاريخ', 'From date')}</span>
+            <input className="login-input" type="date" value={from} max={to || undefined} onChange={(event) => setFrom(event.target.value)} />
+          </label>
+          <label className="analytics-date-field">
+            <span><CalendarDays size={13} /> {t('إلى تاريخ', 'To date')}</span>
+            <input className="login-input" type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} />
+          </label>
+          <label className="analytics-filter-search" aria-label={t('بحث في المجموعات', 'Search groups')}>
+            <Search size={15} />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('ابحث في النتائج…', 'Search results…')} />
+          </label>
+          <button className="btn-ghost btn-sm" onClick={() => { setFrom(''); setTo(''); setSearch('') }}>
+            <RotateCcw size={14} /> {t('مسح', 'Clear')}
+          </button>
+          <span className="cell-sub">{from || to ? `${from || '…'} → ${to || '…'}` : t('آخر 7 أيام', 'Last 7 days')}</span>
         </div>
       </section>
 
@@ -244,7 +273,7 @@ export default function Performance() {
               <div className="cell-sub">{data.windowCount} {t('إجمالي', 'total')}</div>
             </div>
             <div className="kpi-card">
-              <div className="kpi-value">{data.groups.length}</div>
+            <div className="kpi-value">{visibleGroups.length}</div>
               <div className="kpi-label">{t('مجموعات نشطة', 'Active groups')}</div>
               <div className="cell-sub">{data.regimeFrom ? t(`بيانات متّصلة منذ ${data.regimeFrom}`, `continuous since ${data.regimeFrom}`) : '—'}</div>
             </div>
@@ -273,10 +302,10 @@ export default function Performance() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.groups.length === 0 && (
+                  {visibleGroups.length === 0 && (
                     <tr><td colSpan={7} className="cell-sub">{t('لا توجد بيانات في هذه النافذة.', 'No data in this window.')}</td></tr>
                   )}
-                  {data.groups.map((g) => (
+                  {visibleGroups.map((g) => (
                     <tr key={g.key}>
                       <td>
                         {dimension === 'payment_method'

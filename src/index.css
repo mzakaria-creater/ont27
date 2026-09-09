@@ -1752,6 +1752,9 @@ a.stat-card:hover { border-color: var(--accent); }
 .analytics-filter-bar > .login-input, .analytics-filter-bar > .filter-select { width: auto; min-width: 125px; min-height: 38px; }
 .analytics-date-field { display: grid; gap: 3px; color: var(--text-dim); font-size: 10px; }
 .analytics-date-field .login-input { width: 142px; min-height: 38px; }
+.performance-filter-bar { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
+.performance-filter-bar .analytics-date-field span { display: inline-flex; align-items: center; gap: 5px; }
+.performance-filter-bar .cell-sub { align-self: center; }
 @media (max-width: 700px) { .analytics-filter-bar { position: static; } .analytics-filter-search { flex-basis: 100%; } .analytics-filter-bar > .login-input, .analytics-filter-bar > .filter-select, .analytics-date-field { flex: 1 1 135px; min-width: 0; } .analytics-date-field .login-input { width: 100%; } }
 .filter-bar { flex-wrap: wrap; }
 .drawer { width: min(480px, 94vw); }
