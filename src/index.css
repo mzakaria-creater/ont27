@@ -544,6 +544,16 @@ input[placeholder*="ابحث"]:focus-visible,
 .wallet-timeline-dot { flex: 0 0 9px; inline-size: 9px; block-size: 9px; margin-top: 5px; border-radius: 50%; background: var(--accent); }
 .wallet-timeline-dot.sms { background: #2da8e8; }
 .wallet-timeline-dot.trx { background: #8e6be8; }
+.txd-proof-card { margin-top: 18px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft, var(--surface)); }
+.txd-proof-card.is-empty { opacity: .82; }
+.txd-proof-head, .txd-proof-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.txd-proof-head { justify-content: space-between; font-weight: 700; }
+.txd-proof-head > span:first-child { display: inline-flex; align-items: center; gap: 7px; }
+.txd-proof-preview { display: flex; align-items: center; gap: 12px; inline-size: 100%; margin-top: 12px; padding: 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--text); cursor: pointer; text-align: start; }
+.txd-proof-preview:hover { border-color: var(--accent); }
+.txd-proof-preview img { display: block; inline-size: 82px; block-size: 58px; object-fit: cover; border-radius: 6px; }
+.txd-proof-preview span { color: var(--accent); font-weight: 700; }
+.txd-proof-meta { margin-top: 10px; color: var(--text-dim); font-size: .82rem; }
 .tx-live-balance { color: var(--status-paid, #4ade80); font-weight: 700; }
 .tv-live-balance { margin-top: 5px; color: #86efac; font-weight: 700; }
 @media (max-width: 680px) {

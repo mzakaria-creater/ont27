@@ -299,15 +299,18 @@ export default function TransactionDetail() {
                 </section>
               </div>
 
-              {d.proof_image_url && (
-                <button type="button" className="btn-ghost btn-sm" onClick={() => setProofOpen(true)} aria-label={t('عرض إثبات الدفع', 'View payment proof')}>🧾 {t('عرض إثبات الدفع', 'View payment proof')}</button>
-              )}
+              <div className={`txd-proof-card${d.proof_image_url ? '' : ' is-empty'}`}>
+                <div className="txd-proof-head"><span><Database size={17} aria-hidden="true" /> {t('إثبات المعاملة', 'Transaction proof')}</span><span className={`pay-status-badge ${d.proof_image_url ? 'st-paid' : 'st-dim'}`}>{d.proof_image_url ? t('مرفق', 'Attached') : t('غير مرفق', 'Not attached')}</span></div>
+                {d.proof_image_url ? <button type="button" className="txd-proof-preview" onClick={() => setProofOpen(true)} aria-label={t('فتح إثبات الدفع', 'Open payment proof')}><img src={d.proof_image_url} alt={t('إثبات الدفع', 'Payment proof')} /><span>{t('فتح الإثبات بالحجم الكامل', 'Open full-size proof')}</span></button> : <p className="drawer-note">{t('لا توجد صورة إثبات مرفقة بهذه المعاملة.', 'No payment proof image is attached to this transaction.')}</p>}
+                <div className="txd-proof-meta"><span className="mono">TRX #{d.ontarget_ref ?? d.tx_id}</span><span>{d.gateway ?? '—'}</span><span>{money(d.amount, d.currency)}</span></div>
+              </div>
             </section>
 
             {data?.sms && (
               <section className="sms-match-card card">
                 <div className="sms-match-head">
-                  <span className="sms-match-title"><MessageSquareText size={17} aria-hidden="true" /> {t('رسالة SMS مطابقة', 'Matched SMS')}</span>
+                  <span className="sms-match-title"><MessageSquareText size={17} aria-hidden="true" /> {t('بطاقة SMS المرتبطة', 'Assigned SMS proof card')}</span>
+                  <span className="pay-status-badge st-paid">{t('مرتبطة 1:1', 'Assigned 1:1')}</span>
                   {data.sms.sec_diff != null && <span className="match-pct mono">{t('فارق', 'diff')} {data.sms.sec_diff}{t('ث', 's')}</span>}
                 </div>
                 {d.status === 'DECLINED' && <div className="declined-sms-warning-line"><AlertTriangle size={13} aria-hidden="true" /> {t('تحذير: SMS مرتبطة بمعاملة مرفوضة', 'Warning: SMS is linked to a declined transaction')}</div>}
