@@ -21,6 +21,7 @@ interface TvSms {
   sender_name: string | null
   sender_number: string | null
   amount: number | null
+  balance_after: number | null
   sms_category: string | null
   matched: boolean | null
   match_status: string | null
@@ -59,6 +60,7 @@ export default function TvScreen() {
   const [payouts, setPayouts] = useState<TvPayout[]>([])
   const [telegram, setTelegram] = useState<TvTelegram[]>([])
   const [walletBalance, setWalletBalance] = useState<number | null>(null)
+  const [latestSmsBalance, setLatestSmsBalance] = useState<{ balance: number; received_at: string | null } | null>(null)
   const [now, setNow] = useState(new Date())
   const [actionBusy, setActionBusy] = useState<number | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
@@ -78,7 +80,7 @@ export default function TvScreen() {
       api<{ rows: TvPayout[] }>('/api/payouts?limit=6'),
       api<ControlStats>('/api/control/status'),
       api<{ alerts: TvTelegram[] }>(`/api/telegram/live?limit=500&since=${encodeURIComponent(new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString())}`),
-      api<{ balances: { balance: number }[] }>('/api/sms/balances'),
+      api<{ balances: { balance: number; received_at: string | null }[] }>('/api/sms/balances'),
     ])
     if (results[0].status === 'fulfilled') setStats(results[0].value)
     if (results[1].status === 'fulfilled') setPendingDeposits(results[1].value.rows)
@@ -87,7 +89,12 @@ export default function TvScreen() {
     if (results[4].status === 'fulfilled') setPayouts(results[4].value.rows)
     if (results[5].status === 'fulfilled') setControl(results[5].value)
     if (results[6].status === 'fulfilled') setTelegram(results[6].value.alerts)
-    if (results[7].status === 'fulfilled') setWalletBalance(results[7].value.balances.reduce((sum, row) => sum + Number(row.balance ?? 0), 0))
+    if (results[7].status === 'fulfilled') {
+      const balances = results[7].value.balances
+      setWalletBalance(balances.reduce((sum, row) => sum + Number(row.balance ?? 0), 0))
+      const latest = balances[0]
+      setLatestSmsBalance(latest ? { balance: Number(latest.balance), received_at: latest.received_at ?? null } : null)
+    }
   }, [])
 
   useEffect(() => {
@@ -146,6 +153,7 @@ export default function TvScreen() {
     { label: t('طابور التحكم', 'Control queue'), value: control ? control.queue.length : '—', cls: 'amber' },
     { label: t('نُفّذ اليوم', 'Executed today'), value: (cStats.jobs_completed_today as number | undefined) ?? '—', cls: 'green' },
     { label: t('الرصيد الحالي', 'Current balance'), value: walletBalance == null ? '…' : money(walletBalance, 'EGP'), cls: 'green' },
+    { label: t('آخر رصيد من SMS', 'Latest SMS balance'), value: latestSmsBalance == null ? '…' : money(latestSmsBalance.balance, 'EGP'), cls: 'green' },
   ]
 
   const clock = now.toLocaleTimeString('en-US', { timeZone: 'Africa/Cairo', hour12: true })
@@ -190,6 +198,7 @@ export default function TvScreen() {
                   {' '}{s.sms_category === 'withdrawal' ? '📤' : '📥'}{' '}
                   {s.sender_name ?? s.sender_number ?? '—'}
                 </div>
+                {s.balance_after != null && <div className="tv-item-sub tv-live-balance mono">رصيدك الحالي {money(s.balance_after, 'EGP')}</div>}
               </div>
             ))}
           </div>

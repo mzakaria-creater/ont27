@@ -145,7 +145,7 @@ extraRoutes.get(
     const [depositHistory, payoutHistory, linkedSms] = await Promise.all([
       depositPhones.length ? db.from('maven_transactions').select('sender_number, status, first_seen_at').in('sender_number', depositPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
       payoutPhones.length ? db.from('maven_payout_transactions').select('mobile_no').in('mobile_no', payoutPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
-      depositIds.length ? db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, received_at, amount, sender_name, sender_number, receiver_number, sms_first_line, raw_sms, raw_payload, message, device_name, sms_category, match_status, matched').or(`consumed_by_tx_id.in.(${depositIds.join(',')}),matched_transaction_id.in.(${depositIds.join(',')})`).order('received_at', { ascending: false, nullsFirst: false }).limit(2000) : Promise.resolve({ data: [], error: null }),
+      depositIds.length ? db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, received_at, amount, balance_after, sender_name, sender_number, receiver_number, sms_first_line, raw_sms, raw_payload, message, device_name, sms_category, match_status, matched').or(`consumed_by_tx_id.in.(${depositIds.join(',')}),matched_transaction_id.in.(${depositIds.join(',')})`).order('received_at', { ascending: false, nullsFirst: false }).limit(2000) : Promise.resolve({ data: [], error: null }),
     ])
     const clientCounts = new Map<string, number>()
     const approvedHistory = new Map<string, { at: number; count: number }[]>()
