@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
 import { useAuth } from './auth/AuthContext'
 import ProtectedRoute from './auth/ProtectedRoute'
 import PageGate from './auth/PageGate'
@@ -12,6 +12,7 @@ import { LocaleProvider, useLocale } from './lib/locale'
 import { installNotificationAudioUnlock, playNotificationTone } from './lib/notificationSounds'
 import WrongfulDeclineRealtimePopup from './components/WrongfulDeclineRealtimePopup'
 import SmsFreezeRealtimePopup from './components/SmsFreezeRealtimePopup'
+import AppErrorBoundary from './components/AppErrorBoundary'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Monitor = lazy(() => import('./pages/Monitor'))
@@ -377,6 +378,14 @@ function Topbar() {
   )
 }
 
+
+function RouteResetBoundary({ children }: { children: ReactNode }) {
+  // Keep the route boundary below the global shell boundary so a page error
+  // can be cleared by navigation without taking down the panel chrome.
+  const location = useLocation()
+  return <AppErrorBoundary resetKey={location.key}>{children}</AppErrorBoundary>
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -385,6 +394,7 @@ export default function App() {
           <Topbar />
           <WrongfulDeclineRealtimePopup />
           <SmsFreezeRealtimePopup />
+        <RouteResetBoundary>
         <Suspense fallback={<div className="route-loading" role="status"><span className="ld" /> Loading…</div>}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -463,6 +473,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </Suspense>
+        </RouteResetBoundary>
         </div>
       </LocaleProvider>
     </BrowserRouter>

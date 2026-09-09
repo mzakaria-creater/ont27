@@ -1,10 +1,19 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 
-interface Props { children: ReactNode }
+interface Props { children: ReactNode; resetKey?: string }
 interface State { error: Error | null; recovering: boolean }
 
 export default class AppErrorBoundary extends Component<Props, State> {
   state: State = { error: null, recovering: false }
+
+  componentDidUpdate(previousProps: Props) {
+    // A page error must not poison the next route. React Router changes the
+    // route without remounting the root boundary, so clear a stale fallback
+    // as soon as navigation gives us a new reset key.
+    if (previousProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null, recovering: false })
+    }
+  }
 
   static getDerivedStateFromError(error: Error): State { return { error, recovering: false } }
 
