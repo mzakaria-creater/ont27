@@ -74,11 +74,14 @@ const PAGE = 1000
 // an upstream flip is never missed. That is a much bigger read, and running it
 // at the fast cadence would multiply load for no gain in how fast new rows
 // appear.
-const FAST_THROTTLE_MS = 5_000
+// Keep the panel mirror close to the provider's arrival time. The browser
+// pump is shared across tabs and the distributed lease prevents duplicate
+// pulls, so a one-second cadence does not create one request per tab.
+const FAST_THROTTLE_MS = 1_000
 // Provider collectors update an existing row when NagoPay/PayFuture changes
 // its status. Re-read a bounded recent window on every fast pass so those
 // changes are live too; the wider full pass remains the repair safety net.
-const FAST_UPDATED_LOOKBACK_MS = 10 * 60_000
+const FAST_UPDATED_LOOKBACK_MS = 2 * 60_000
 // The old auto-decline sweep was repaired at this instant. Never consume its
 // historical backlog: those rows predate the repaired safeguards and require
 // human review. Only fresh decisions created by the repaired sweep may cross
@@ -571,7 +574,7 @@ deltaSyncRoutes.post('/delta-sync', async (c) => {
   // The full cron can legitimately hold its lease for several minutes while
   // walking status changes; sharing that lease made every fast request return
   // `distributed_lease` and left fresh provider rows invisible until cron ran.
-  if (!(await claimDistributedLease(10, 'provider_delta_sync_fast'))) return c.json({ ok: true, skipped: 'distributed_lease' })
+  if (!(await claimDistributedLease(2, 'provider_delta_sync_fast'))) return c.json({ ok: true, skipped: 'distributed_lease' })
 
   const mode = 'fast'
   lastFastRunAt = now
