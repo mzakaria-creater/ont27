@@ -15,6 +15,7 @@ export async function autoLinkWithdrawalSms(limit = 300) {
       .is('matched_sms_id', null).gte('first_seen_at', since).order('first_seen_at', { ascending: false }).limit(limit),
     db.from('inbound_sms').select('id, amount, receiver_number, received_at, consumed_by_tx_id, matched, message, sender_name, notes, manual_entry_note')
       .eq('sms_category', 'withdrawal').gte('received_at', since)
+      .or('is_blocked.eq.false,is_blocked.is.null')
       .order('received_at', { ascending: false }).limit(limit * 2),
   ])
   if (payoutErr) throw new Error(`payout lookup: ${payoutErr.message}`)

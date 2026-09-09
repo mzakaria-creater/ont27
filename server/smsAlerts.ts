@@ -56,6 +56,7 @@ const SMS_ALERT_COLUMNS = 'id, received_at, device_name, provider, sender_name, 
 
 export async function listSmsAlerts(hours = 72, limit = 500): Promise<SmsAlertRow[]> {
   const { data, error } = await db.from('inbound_sms').select(SMS_ALERT_COLUMNS)
+    .or('is_blocked.eq.false,is_blocked.is.null')
     .gte('received_at', new Date(Date.now() - hours * 3_600_000).toISOString())
     .order('received_at', { ascending: false, nullsFirst: false }).limit(limit)
   if (error) throw new Error(`sms alert scan: ${error.message}`)

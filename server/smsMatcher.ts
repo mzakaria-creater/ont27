@@ -50,7 +50,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
       .select('id, trx_id, amount, sender_name, sender_number, received_at, receiver_number, balance_after, provider, raw_sms, message')
       .eq('sms_category', 'deposit')
       .is('consumed_by_tx_id', null)
-      .eq('is_blocked', false)
+      .or('is_blocked.eq.false,is_blocked.is.null')
       .order('received_at', { ascending: false, nullsFirst: false })
       .limit(limit),
     db.from('maven_transactions')
@@ -64,7 +64,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
 
   const { data: walletRows, error: walletError } = await db.from('wallet_device_map').select('to_account_number')
   if (walletError) throw new Error(`wallet exclusion lookup: ${walletError.message}`)
-  const { data: balanceHistory, error: balanceHistoryError } = await db.from('inbound_sms').select('id, amount, receiver_number, balance_after, received_at').not('balance_after', 'is', null).gte('received_at', new Date(Date.now() - 7 * 86_400_000).toISOString()).limit(10_000)
+  const { data: balanceHistory, error: balanceHistoryError } = await db.from('inbound_sms').select('id, amount, receiver_number, balance_after, received_at').not('balance_after', 'is', null).or('is_blocked.eq.false,is_blocked.is.null').gte('received_at', new Date(Date.now() - 7 * 86_400_000).toISOString()).limit(10_000)
   if (balanceHistoryError) throw new Error(`balance continuity lookup: ${balanceHistoryError.message}`)
   const ourWallets = new Set((walletRows ?? []).map((row) => phone(row.to_account_number)).filter(Boolean))
   const smsRows = (smsData ?? []) as SmsRow[]

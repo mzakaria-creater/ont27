@@ -77,6 +77,9 @@ function isPotentialDeposit(sms: QueueSms) {
 // cards was the reason their numbers previously looked stale/wrong.
 function applySmsFilters(query: any, filters: SmsFilterInput) {
   const { category, match, q, amount, from, to } = filters
+  // Only approved financial inbox senders belong in Live SMS or matching.
+  // Unsupported messages are retained for audit but hidden from operations.
+  query = query.or('is_blocked.eq.false,is_blocked.is.null')
   if (category) query = query.eq('sms_category', category)
   if (from) query = query.gte('received_at', `${from}T00:00:00Z`)
   if (to) query = query.lte('received_at', `${to}T23:59:59.999Z`)
