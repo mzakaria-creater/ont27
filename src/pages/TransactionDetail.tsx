@@ -8,7 +8,7 @@ import { api, ApiError } from '../lib/api'
 import { depositTime, isAutomaticApprovalActor, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import type { DepositDetail } from '../lib/deposits'
-import { Activity, Bot, CheckCircle2, CircleDollarSign, Clock3, Database, FileJson, History, MessageSquareText, Pencil, UserRound, Workflow } from 'lucide-react'
+import { Activity, AlertTriangle, Bot, CheckCircle2, CircleDollarSign, Clock3, Database, FileJson, History, MessageSquareText, Pencil, UserRound, Workflow } from 'lucide-react'
 import DepositKindBadge from '../components/DepositKindBadge'
 
 // تفاصيل المعاملة — full-page detail view keyed by OUR ontarget_ref.
@@ -310,7 +310,8 @@ export default function TransactionDetail() {
                   <span className="sms-match-title"><MessageSquareText size={17} aria-hidden="true" /> {t('رسالة SMS مطابقة', 'Matched SMS')}</span>
                   {data.sms.sec_diff != null && <span className="match-pct mono">{t('فارق', 'diff')} {data.sms.sec_diff}{t('ث', 's')}</span>}
                 </div>
-                <div className="sms-match-text">{smsFirstLine(data.sms)}</div>
+                {d.status === 'DECLINED' && <div className="declined-sms-warning-line"><AlertTriangle size={13} aria-hidden="true" /> {t('تحذير: SMS مرتبطة بمعاملة مرفوضة', 'Warning: SMS is linked to a declined transaction')}</div>}
+                <div className={d.status === 'DECLINED' ? 'sms-match-text is-warning-raw' : 'sms-match-text'}>{smsFirstLine(data.sms)}</div>
                 <dl className="detail-grid sms-detail-grid">
                   <dt>SMS ID / TRX</dt><dd className="mono">#{data.sms.id} · {data.sms.trx_id ?? '—'}</dd>
                   <dt>{t('المرسل', 'Sender')}</dt><dd>{data.sms.sender_name ?? '—'} {data.sms.sender_number && <span className="mono">({data.sms.sender_number})</span>}</dd>
@@ -322,7 +323,7 @@ export default function TransactionDetail() {
                   <dt>{t('استُلمت', 'Received')}</dt><dd className="mono">{depositTime({ first_seen_at: data.sms.received_at })}</dd>
                   <dt>{t('المخاطر', 'Risk')}</dt><dd>{data.sms.risk_score ?? 0} · {data.sms.risk_reason ?? t('لا توجد إشارة', 'No flag')}{data.sms.suspicious && <> · {t('مشبوهة', 'Suspicious')}</>}{data.sms.is_duplicate && <> · {t('مكررة', 'Duplicate')}</>}</dd>
                 </dl>
-                {data.sms.raw_sms && <details className="sms-raw"><summary>{t('نص الرسالة الكامل', 'Full SMS text')}</summary><pre className="raw-json mono">{data.sms.raw_sms}</pre></details>}
+                {data.sms.raw_sms && <details className={`sms-raw${d.status === 'DECLINED' ? ' is-declined-warning' : ''}`}><summary>{t('نص الرسالة الكامل', 'Full SMS text')}</summary><pre className="raw-json mono">{data.sms.raw_sms}</pre></details>}
               </section>
             )}
 

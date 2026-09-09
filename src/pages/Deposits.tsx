@@ -459,10 +459,11 @@ export default function Deposits() {
                 {data.rows.map((r) => {
                   const st = statusMeta(r.status)
                   const approvedWithoutSms = !r.sms && (r.status === 'PAID' || r.status === 'APPROVED')
+                  const declinedWithSms = Boolean(r.sms) && r.status === 'DECLINED'
                   return (
                     <tr
                       key={r.tx_id}
-                      className={`${r.status === 'PENDING' ? 'row-pending' : ''}${approvedWithoutSms ? ' row-sms-warning' : ''}`}
+                      className={`${r.status === 'PENDING' ? 'row-pending' : ''}${approvedWithoutSms ? ' row-sms-warning' : ''}${declinedWithSms ? ' row-declined-sms-warning' : ''}`}
                       onClick={() => void openDetail(r.tx_id)}
                     >
                       {can('deposits', 'can_approve') && (
@@ -510,8 +511,9 @@ export default function Deposits() {
                       <td>
                         {r.sms ? (
                           <>
-                            <span className="pay-status-badge st-paid">✅ #{r.sms.id}</span>
+                            <span className={`pay-status-badge ${declinedWithSms ? 'st-declined' : 'st-paid'}`}>{declinedWithSms && <AlertTriangle size={12} aria-hidden="true" />} {declinedWithSms ? 'SMS مع معاملة مرفوضة' : `✅ #${r.sms.id}`}</span>
                             <div className="cell-sub">
+                              {declinedWithSms && <div className="declined-sms-warning-line"><AlertTriangle size={12} aria-hidden="true" /> SMS #{r.sms.id} مرتبطة بمعاملة مرفوضة</div>}
                               {r.sms.sender_name ?? ''}
                               {r.sms.balance_after != null && <span className="mono"> · رصيد {money(r.sms.balance_after, '')}</span>}
                             </div>

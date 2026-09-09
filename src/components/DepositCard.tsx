@@ -34,13 +34,14 @@ export default function DepositCard({
   const st = statusMeta(row.status)
   const pending = row.status === 'PENDING'
   const approvedWithoutSms = !row.sms && (row.status === 'PAID' || row.status === 'APPROVED')
+  const declinedWithSms = Boolean(row.sms) && row.status === 'DECLINED'
   const anyBusy = busy !== null
   const channel = row.gateway ?? row.master_merchant
   const email = row.email?.trim()
   const agent = row.agent_name?.trim()
 
   return (
-    <article className={`dep-card${pending ? ' is-pending' : ''}${approvedWithoutSms ? ' is-sms-warning' : ''}`}>
+    <article className={`dep-card${pending ? ' is-pending' : ''}${approvedWithoutSms ? ' is-sms-warning' : ''}${declinedWithSms ? ' is-declined-sms-warning' : ''}`}>
       <header className="dep-card-head">
         <button className="dep-ref mono" onClick={onOpen} title={t('فتح التفاصيل', 'Open details')}>
           {row.ontarget_ref ?? row.tx_id}
@@ -61,7 +62,8 @@ export default function DepositCard({
           📨 {t('رسالة المعاملة', 'Transaction SMS')} <span className="mono">#{row.sms.id}</span>
           <span>{row.sms.sender_name ?? row.sms.sender_number ?? '—'} → {row.sms.receiver_number ?? '—'}</span>
           <span className="mono">{money(row.sms.amount, row.currency ?? 'EGP')} · {row.sms.received_at ? depositTime({ first_seen_at: row.sms.received_at }) : '—'}</span>
-          {(row.sms.raw_sms ?? row.sms.message ?? row.sms.sms_first_line) && <code>{row.sms.raw_sms ?? row.sms.message ?? row.sms.sms_first_line}</code>}
+          {declinedWithSms && <span className="declined-sms-warning-line"><AlertTriangle size={12} aria-hidden="true" /> {t('تحذير: SMS مرتبطة مع معاملة مرفوضة', 'Warning: linked SMS with declined transaction')}</span>}
+          {(row.sms.raw_sms ?? row.sms.message ?? row.sms.sms_first_line) && <code className={declinedWithSms ? 'is-warning-raw' : undefined}>{row.sms.raw_sms ?? row.sms.message ?? row.sms.sms_first_line}</code>}
         </div>
       )}
       {!row.sms && (
