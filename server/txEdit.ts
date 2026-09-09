@@ -16,9 +16,8 @@ import { notifyApprovedTransaction } from './approvalEmail.js'
 //    really executes on Maven. Writing the new status straight into our table
 //    instead would manufacture exactly the undocumented divergence the
 //    mismatch detector exists to catch.
-//  * Any other status change, and every amount change, is a LOCAL correction.
-//    The provider is not told. These are recorded with local_only: true and a
-//    mandatory reason so they are never mistaken for a provider action.
+//  * Amount changes for NGPay are sent through ngpay-approve and verified by
+//    reading Maven back. Other providers remain local-only.
 //
 // Amounts are never pushed to the provider from here at all. UpdateTransaction
 // Amount corrections remain local-only and are always written to the audit log.
@@ -198,7 +197,7 @@ async function applyEdit(
     edit.status != null &&
     isNgPayGateway(tx) &&
     PROVIDER_STATUSES.has(edit.status) &&
-    (currentStatus === 'PENDING' || (currentStatus === 'DECLINED' && edit.status === 'PAID'))
+    (currentStatus === 'PENDING' || (currentStatus === 'DECLINED' && edit.status === 'PAID') || (currentStatus === edit.status && edit.amount != null))
 
   if (isProviderDecision) {
     const baseUrl = process.env.SUPABASE_URL
@@ -214,6 +213,7 @@ async function applyEdit(
         remark: edit.reason,
         source: currentStatus === 'DECLINED' && edit.status === 'PAID' ? 'direct_edit' : 'panel_decision',
         allow_reversal: currentStatus === 'DECLINED' && edit.status === 'PAID',
+        override_amount: edit.amount ?? undefined,
       }),
     })
     const out = await res.json().catch(() => ({ error: 'worker_invalid_response' })) as Record<string, unknown>
@@ -304,8 +304,9 @@ txEditRoutes.post('/:txId/edit', async (c) => {
 
   const parsed = readEdit(await c.req.json().catch(() => null))
   if ('error' in parsed) return c.json({ error: parsed.error }, 400)
-  // Amount corrections are local-only; keep the role check explicit so this
-  // cannot accidentally become a provider re-pricing action.
+  // Amount edits require an operator/admin role; NGPay amount edits are sent
+  // to Maven and verified by the provider worker before the local mirror is
+  // updated.
   if (parsed.amount != null && !AMOUNT_EDIT_ROLES.has(actor.role)) {
     return c.json({ error: 'amount_edit_requires_admin' }, 403)
   }
