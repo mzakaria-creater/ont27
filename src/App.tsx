@@ -401,7 +401,7 @@ export default function App() {
           <Route path="/payment-status" element={<PaymentStatus />} />
           <Route path="/account-action" element={<AccountAction />} />
           <Route element={<ProtectedRoute />}>
-            <Route path="/" element={<PageGate keys={['dashboard']}><AnalyticsDashboard /></PageGate>} />
+            <Route path="/" element={<PageGate keys={['dashboard']}><LiveMonitorControl /></PageGate>} />
             <Route path="/welcome" element={<Welcome />} />
             <Route path="/control-room" element={<PageGate keys={['dashboard']}><Dashboard /></PageGate>} />
             <Route path="/monitor" element={<PageGate keys={['dashboard']}><Monitor /></PageGate>} />

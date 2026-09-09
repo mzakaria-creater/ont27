@@ -6,6 +6,7 @@ import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { supabase } from '../lib/supabase'
+import { syncProviders } from '../lib/providerSync'
 
 type Tx = { tx_id: number; ontarget_ref: string | null; status: string; amount: number | null; currency: string | null; merchant: string | null; master_merchant: string | null; gateway: string | null; first_seen_at: string | null; last_status_change: string | null }
 type Sms = { id: number; received_at: string | null; sms_category: string | null; amount: number | null; assigned_tx_id: number | string | null }
@@ -41,9 +42,13 @@ export default function LiveMonitorControl() {
 
   useEffect(() => {
     if (!monitoring) return
-    void load()
+    const refresh = async () => {
+      await syncProviders()
+      await load()
+    }
+    void refresh()
     void loadPrices()
-    const interval = setInterval(() => void load(), 5_000)
+    const interval = setInterval(() => void refresh(), 5_000)
     const priceInterval = setInterval(() => void loadPrices(), 30_000)
     const channel = supabase.channel('ontarget-control-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'maven_transactions' }, () => void load())
