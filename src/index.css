@@ -532,7 +532,18 @@ input[placeholder*="ابحث"]:focus-visible,
 .reports-wallet-toolbar .wallet-report-search { flex: 1 1 280px; }
 .reports-wallet-toolbar .login-input { min-width: 150px; width: auto; }
 .reports-wallet-table { overflow: hidden; }
-.reports-wallet-table .data-table { min-width: 980px; }
+.reports-wallet-table .data-table { min-width: 1680px; }
+.wallet-limit-meter { display: block; inline-size: 92px; block-size: 7px; overflow: hidden; border-radius: 99px; background: var(--line); }
+.wallet-limit-meter i { display: block; block-size: 100%; border-radius: inherit; background: var(--accent); }
+.wallet-limit-meter.limit_soon i { background: #e5a11a; }
+.wallet-limit-meter.limit_reached i { background: var(--status-declined); }
+.wallet-limit-warning { color: #e5a11a; font-weight: 700; }
+.wallet-limit-meter.limit_reached + .wallet-limit-warning { color: var(--status-declined); }
+.wallet-timeline { display: grid; gap: 8px; margin: 0 0 18px; padding-inline-start: 4px; }
+.wallet-timeline-item { display: flex; gap: 9px; align-items: flex-start; padding: 8px 10px; border-inline-start: 2px solid var(--line); background: var(--surface-soft); border-radius: 8px; }
+.wallet-timeline-dot { flex: 0 0 9px; inline-size: 9px; block-size: 9px; margin-top: 5px; border-radius: 50%; background: var(--accent); }
+.wallet-timeline-dot.sms { background: #2da8e8; }
+.wallet-timeline-dot.trx { background: #8e6be8; }
 .tx-live-balance { color: var(--status-paid, #4ade80); font-weight: 700; }
 .tv-live-balance { margin-top: 5px; color: #86efac; font-weight: 700; }
 @media (max-width: 680px) {

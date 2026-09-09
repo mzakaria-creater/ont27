@@ -18,6 +18,34 @@ const DEPOSIT_COLS =
 const PAYOUT_COLS =
   'maven_id, ontarget_ref, status, amount, pay_by, merchant, account_name, mobile_no, agent_name, approved_by, image_url, first_seen_at, created_utc'
 
+const WALLET_DAILY_LIMIT = 60_000
+const WALLET_MONTHLY_LIMIT = 200_000
+const WALLET_LIMIT_WARNING_RATIO = 0.8
+const CAIRO_TIME_ZONE = 'Africa/Cairo'
+function cairoToday() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: CAIRO_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+}
+function cairoOffset(date: string) {
+  const guess = new Date(`${date}T00:00:00Z`)
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: CAIRO_TIME_ZONE, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(guess)
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  const localAsUtc = Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day), Number(values.hour) % 24, Number(values.minute))
+  const minutes = Math.round((localAsUtc - guess.getTime()) / 60000)
+  const sign = minutes >= 0 ? '+' : '-'; const absolute = Math.abs(minutes)
+  return `${sign}${String(Math.floor(absolute / 60)).padStart(2, '0')}:${String(absolute % 60).padStart(2, '0')}`
+}
+function cairoBoundary(date: string, end = false) {
+  return `${date}T${end ? '23:59:59.999' : '00:00:00'}${cairoOffset(date)}`
+}
+function walletDigits(value: unknown) {
+  return String(value ?? '').replace(/\D/g, '')
+}
+type WalletReportDbRow = {
+  wallet: string; device: string | null; merchant: string | null; sms_count: number; sms_amount: number | null
+  deposits_count: number; deposits_amount: number | null; withdrawals_count: number; withdrawals_amount: number | null
+  unconfirmed: number; balance: number | null; first_balance: number | null; last_sms: string | null
+}
+
 function withSenderAccount<T extends Record<string, unknown>>(row: T): Omit<T, 'maven_raw_row'> & { sender_account_number: string | null; sender_account_name: string | null; user_email: string | null; raw_preview: Record<string, unknown> | null } {
   const raw = row.maven_raw_row && typeof row.maven_raw_row === 'object' && !Array.isArray(row.maven_raw_row)
     ? row.maven_raw_row as Record<string, unknown>
@@ -409,11 +437,62 @@ extraRoutes.get('/wallet-report', requireAnyPerm(['sms_live', 'wallets'], 'can_v
   const days = Math.min(Math.max(Number(c.req.query('days')) || 30, 1), 365)
   const from = c.req.query('from')?.trim() || null
   const to = c.req.query('to')?.trim() || null
-  const { data, error } = from || to
-    ? await db.rpc('panel_wallet_sms_report_range', { p_from: from, p_to: to })
-    : await db.rpc('panel_wallet_sms_report', { p_days: days })
-  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  return c.json({ rows: data ?? [], days, from, to })
+  const today = cairoToday()
+  const monthStart = `${today.slice(0, 7)}-01`
+  const [report, mappings, monthTxns, todayPayouts] = await Promise.all([
+    from || to ? db.rpc('panel_wallet_sms_report_range', { p_from: from, p_to: to }) : db.rpc('panel_wallet_sms_report', { p_days: days }),
+    db.from('wallet_device_map').select('to_account_number, device, merchant, provider').limit(20_000),
+    db.from('maven_transactions').select('amount, status, receiving_wallet, to_account_number, fees, commission, first_seen_at').gte('first_seen_at', cairoBoundary(monthStart)).limit(20_000),
+    db.from('maven_payout_transactions').select('amount, status, mobile_no, commission, first_seen_at').gte('first_seen_at', cairoBoundary(today)).limit(20_000),
+  ])
+  if (report.error) return c.json({ error: 'db_error', detail: report.error.message }, 500)
+  if (mappings.error || monthTxns.error || todayPayouts.error) return c.json({ error: 'db_error', detail: mappings.error?.message ?? monthTxns.error?.message ?? todayPayouts.error?.message }, 500)
+  type Usage = { daily: number; monthly: number; profit: number }
+  const usage = new Map<string, Usage>()
+  const dayBoundary = new Date(cairoBoundary(today)).getTime()
+  for (const tx of monthTxns.data ?? []) {
+    const wallet = walletDigits(tx.receiving_wallet || tx.to_account_number)
+    if (!wallet || !['PENDING', 'PAID', 'APPROVED', 'SUCCESS', 'COMPLETED'].includes(String(tx.status ?? '').toUpperCase())) continue
+    const item = usage.get(wallet) ?? { daily: 0, monthly: 0, profit: 0 }
+    const amount = Number(tx.amount ?? 0); item.monthly += amount
+    if (tx.first_seen_at && new Date(tx.first_seen_at).getTime() >= dayBoundary) {
+      item.daily += amount; item.profit += Number(tx.fees ?? 0) + Number(tx.commission ?? 0)
+    }
+    usage.set(wallet, item)
+  }
+  for (const payout of todayPayouts.data ?? []) {
+    const wallet = walletDigits(payout.mobile_no)
+    if (!wallet || !['PAID', 'APPROVED', 'SUCCESS', 'COMPLETED'].includes(String(payout.status ?? '').toUpperCase())) continue
+    const item = usage.get(wallet) ?? { daily: 0, monthly: 0, profit: 0 }
+    item.profit += Number(payout.commission ?? 0); usage.set(wallet, item)
+  }
+  const reportData = (report.data ?? []) as WalletReportDbRow[]
+  const reportRows = new Map(reportData.map((row) => [walletDigits(row.wallet), row]))
+  const rows = (mappings.data ?? []).map((mapping) => {
+    const wallet = walletDigits(mapping.to_account_number); const row = reportRows.get(wallet)
+    const use = usage.get(wallet) ?? { daily: 0, monthly: 0, profit: 0 }
+    const received = Number(row?.deposits_amount ?? 0); const sent = Number(row?.withdrawals_amount ?? 0)
+    const dailyUtilization = use.daily / WALLET_DAILY_LIMIT; const monthlyUtilization = use.monthly / WALLET_MONTHLY_LIMIT
+    const limitWarning = dailyUtilization >= 1 || monthlyUtilization >= 1 ? 'limit_reached' : dailyUtilization >= WALLET_LIMIT_WARNING_RATIO || monthlyUtilization >= WALLET_LIMIT_WARNING_RATIO ? 'limit_soon' : null
+    const depositsCount = Number(row?.deposits_count ?? 0); const withdrawalsCount = Number(row?.withdrawals_count ?? 0)
+    return {
+      ...(row ?? { wallet, device: null, merchant: null, sms_count: 0, sms_amount: 0, deposits_count: 0, deposits_amount: 0, withdrawals_count: 0, withdrawals_amount: 0, unconfirmed: 0, balance: null, first_balance: null, last_sms: null }),
+      wallet, device: row?.device ?? mapping.device ?? null, merchant: row?.merchant ?? mapping.merchant ?? null, provider: mapping.provider ?? null,
+      sms_balance: row?.balance ?? null, received, sent, balance: Math.round((received - sent) * 100) / 100,
+      transaction_count: depositsCount + withdrawalsCount,
+      avg_deposit: depositsCount ? received / depositsCount : 0, avg_withdrawal: withdrawalsCount ? sent / withdrawalsCount : 0,
+      today_profit: Math.round(use.profit * 100) / 100, daily_used: Math.round(use.daily * 100) / 100, monthly_used: Math.round(use.monthly * 100) / 100,
+      daily_limit: WALLET_DAILY_LIMIT, monthly_limit: WALLET_MONTHLY_LIMIT,
+      daily_utilization_pct: Math.round(dailyUtilization * 10000) / 100, monthly_utilization_pct: Math.round(monthlyUtilization * 10000) / 100,
+      utilization_pct: Math.round(Math.max(dailyUtilization, monthlyUtilization) * 10000) / 100, limit_warning: limitWarning,
+    }
+  })
+  const mappedWallets = new Set(rows.map((row) => row.wallet))
+  for (const row of reportData) if (!mappedWallets.has(walletDigits(row.wallet))) {
+    const received = Number(row.deposits_amount ?? 0); const sent = Number(row.withdrawals_amount ?? 0); const depositsCount = Number(row.deposits_count ?? 0); const withdrawalsCount = Number(row.withdrawals_count ?? 0)
+    rows.push({ ...row, wallet: walletDigits(row.wallet), provider: null, sms_balance: row.balance, received, sent, balance: received - sent, transaction_count: depositsCount + withdrawalsCount, avg_deposit: depositsCount ? received / depositsCount : 0, avg_withdrawal: withdrawalsCount ? sent / withdrawalsCount : 0, today_profit: 0, daily_used: 0, monthly_used: 0, daily_limit: WALLET_DAILY_LIMIT, monthly_limit: WALLET_MONTHLY_LIMIT, daily_utilization_pct: 0, monthly_utilization_pct: 0, utilization_pct: 0, limit_warning: null })
+  }
+  return c.json({ rows, days, from, to, limits: { daily: WALLET_DAILY_LIMIT, monthly: WALLET_MONTHLY_LIMIT, warning_ratio: WALLET_LIMIT_WARNING_RATIO }, as_of: new Date().toISOString(), time_zone: CAIRO_TIME_ZONE })
 })
 
 // Per-wallet detail: recent SMS for the wallet + transactions that landed on
