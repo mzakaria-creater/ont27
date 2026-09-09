@@ -18,7 +18,11 @@ export default function StaffAttendance() {
   const [searchParams] = useSearchParams()
   const [from, setFrom] = useState(cairoToday); const [to, setTo] = useState(cairoToday); const [wallet, setWallet] = useState(''); const [agent, setAgent] = useState(() => searchParams.get('user') ?? ''); const [selected, setSelected] = useState<string | null>(() => searchParams.get('user')); const [data, setData] = useState<Attendance | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null)
   const load = useCallback(async () => { setBusy(true); try { const q = new URLSearchParams({ from, to }); if (wallet) q.set('wallet', wallet); if (agent) q.set('user_id', agent); setData(await api<Attendance>(`/api/reports/attendance?${q}`)); setError(null) } catch (e) { setError(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية التقرير.', 'You do not have report permission.') : t('تعذر تحميل الحضور.', 'Unable to load attendance.')) } finally { setBusy(false) } }, [from, to, wallet, agent, t])
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    void load()
+    const interval = window.setInterval(() => void load(), 60_000)
+    return () => window.clearInterval(interval)
+  }, [load])
   const action = async (userId: string, kind: 'check-in' | 'check-out') => { setBusy(true); try { await api(`/api/reports/attendance/${kind}`, { method: 'POST', body: JSON.stringify({ user_id: userId, wallet_number: wallet || undefined }) }); await load() } catch (e) { setError(e instanceof ApiError ? e.code : 'attendance_failed') } finally { setBusy(false) } }
   const wallets = useMemo(() => [...new Set((data?.users ?? []).flatMap((row) => row.wallets))].sort(), [data])
   const totals = useMemo(() => (data?.users ?? []).reduce((a, r) => ({ tx: a.tx + r.transaction_count, approved: a.approved + r.approved_count, amount: a.amount + r.approved_amount, sms: a.sms + r.sms_count, hours: a.hours + r.hours }), { tx: 0, approved: 0, amount: 0, sms: 0, hours: 0 }), [data])
