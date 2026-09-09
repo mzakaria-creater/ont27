@@ -223,6 +223,26 @@ function reportDate(value: string | undefined, fallback: string): string {
   return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : fallback
 }
 
+const CAIRO_TIME_ZONE = 'Africa/Cairo'
+function cairoDate(date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: CAIRO_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
+}
+function cairoOffset(date: string): string {
+  const guess = new Date(`${date}T00:00:00Z`)
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: CAIRO_TIME_ZONE, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(guess)
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  const localAsUtc = Date.UTC(Number(value.year), Number(value.month) - 1, Number(value.day), Number(value.hour) % 24, Number(value.minute))
+  const minutes = Math.round((localAsUtc - guess.getTime()) / 60000)
+  const sign = minutes >= 0 ? '+' : '-'; const absolute = Math.abs(minutes)
+  return `${sign}${String(Math.floor(absolute / 60)).padStart(2, '0')}:${String(absolute % 60).padStart(2, '0')}`
+}
+function cairoBoundary(date: string, end = false): string {
+  return `${date}T${end ? '23:59:59.999' : '00:00:00'}${cairoOffset(date)}`
+}
+function cairoDateTime(value: string | Date): string {
+  return new Intl.DateTimeFormat('en-GB', { timeZone: CAIRO_TIME_ZONE, dateStyle: 'short', timeStyle: 'medium' }).format(typeof value === 'string' ? new Date(value) : value)
+}
+
 reportsRoutes.get('/attendance/me', requireAuth, async (c) => {
   const actor = c.get('actor')
   if (!STAFF_ROLES.has(actor.role)) return c.json({ active_session: null })
@@ -233,16 +253,18 @@ reportsRoutes.get('/attendance/me', requireAuth, async (c) => {
 
 reportsRoutes.get('/attendance', requireAnyPerm(['reports', 'advanced_analysis', 'users'], 'can_view'), async (c) => {
   const now = new Date()
-  const from = reportDate(c.req.query('from'), now.toISOString().slice(0, 10))
+  const from = reportDate(c.req.query('from'), cairoDate(now))
   const to = reportDate(c.req.query('to'), from)
+  const fromBoundary = cairoBoundary(from)
+  const toBoundary = cairoBoundary(to, true)
   const userId = c.req.query('user_id')?.trim() || null
   const wallet = c.req.query('wallet')?.replace(/\D/g, '') || null
   const [usersResult, sessionsResult, txResult, payoutResult, smsResult] = await Promise.all([
     db.from('panel_users').select('id, username, display_name, role').in('role', [...STAFF_ROLES]).order('username'),
-    db.from('staff_attendance_sessions').select('id, user_id, wallet_number, checked_in_at, checked_out_at, note').gte('checked_in_at', `${from}T00:00:00+03:00`).lte('checked_in_at', `${to}T23:59:59.999+03:00`).order('checked_in_at', { ascending: false }).limit(5000),
-    db.from('maven_transactions').select('tx_id, amount, status, approved_by, agent_name, receiving_wallet, to_account_number, first_seen_at').gte('first_seen_at', `${from}T00:00:00+03:00`).lte('first_seen_at', `${to}T23:59:59.999+03:00`).limit(50000),
-    db.from('maven_payout_transactions').select('maven_id, amount, status, agent_name, mobile_no, first_seen_at').gte('first_seen_at', `${from}T00:00:00+03:00`).lte('first_seen_at', `${to}T23:59:59.999+03:00`).limit(50000),
-    db.from('inbound_sms').select('id, amount, sms_category, receiver_number, wallet_number, balance_after, received_at').gte('received_at', `${from}T00:00:00+03:00`).lte('received_at', `${to}T23:59:59.999+03:00`).limit(50000),
+    db.from('staff_attendance_sessions').select('id, user_id, wallet_number, checked_in_at, checked_out_at, note').gte('checked_in_at', fromBoundary).lte('checked_in_at', toBoundary).order('checked_in_at', { ascending: false }).limit(5000),
+    db.from('maven_transactions').select('tx_id, amount, status, approved_by, agent_name, receiving_wallet, to_account_number, first_seen_at').gte('first_seen_at', fromBoundary).lte('first_seen_at', toBoundary).limit(50000),
+    db.from('maven_payout_transactions').select('maven_id, amount, status, agent_name, mobile_no, first_seen_at').gte('first_seen_at', fromBoundary).lte('first_seen_at', toBoundary).limit(50000),
+    db.from('inbound_sms').select('id, amount, sms_category, receiver_number, wallet_number, balance_after, received_at').gte('received_at', fromBoundary).lte('received_at', toBoundary).limit(50000),
   ])
   const firstError = usersResult.error || sessionsResult.error || txResult.error || payoutResult.error || smsResult.error
   if (firstError) return c.json({ error: 'db_error', detail: firstError.message }, 500)
@@ -277,6 +299,8 @@ reportsRoutes.get('/attendance', requireAnyPerm(['reports', 'advanced_analysis',
       return {
         ...session,
         metrics: {
+          transaction_count: sessionTxs.length,
+          transaction_amount: sessionTxs.reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
           approved_count: sessionPaid.length,
           approved_amount: sessionPaid.reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
           automation_count: sessionAuto.length,
@@ -292,7 +316,30 @@ reportsRoutes.get('/attendance', requireAnyPerm(['reports', 'advanced_analysis',
     })
     return { user_id: user.id, username: user.username, display_name: user.display_name, role: user.role, active_session: open ?? null, sessions: mine.length, hours: mine.reduce((sum, row) => sum + (new Date(row.checked_out_at ?? now.toISOString()).getTime() - new Date(row.checked_in_at).getTime()) / 3_600_000, 0), transaction_count: txs.length, approved_count: paid.length, transaction_amount: txs.reduce((sum, row) => sum + Number(row.amount ?? 0), 0), approved_amount: paid.reduce((sum, row) => sum + Number(row.amount ?? 0), 0), sms_count: sms.length, wallets: [...wallets], session_reports: sessionReports }
   })
-  return c.json({ from, to, wallet, users: stats, sessions })
+  const staffById = new Map(users.map((user) => [user.id, user]))
+  const inactivityCutoff = now.getTime() - 15 * 60_000
+  for (const session of sessions.filter((row) => !row.checked_out_at)) {
+    const staff = staffById.get(session.user_id)
+    if (!staff) continue
+    const names = nameOf(staff)
+    const lastTransaction = (txResult.data ?? [])
+      .filter((row) => nameMatches(row.agent_name, names) && within(row.first_seen_at, new Date(session.checked_in_at), now))
+      .sort((a, b) => Date.parse(String(b.first_seen_at ?? '')) - Date.parse(String(a.first_seen_at ?? '')))[0]
+    const lastActivity = lastTransaction?.first_seen_at ? Date.parse(lastTransaction.first_seen_at) : Date.parse(session.checked_in_at)
+    if (!Number.isFinite(lastActivity) || lastActivity > inactivityCutoff) continue
+    const { data: existingAlert } = await db.from('audit_log').select('id').eq('action', 'staff.inactivity_alert').eq('entity', 'staff_attendance_sessions').eq('entity_id', session.id).limit(1).maybeSingle()
+    if (existingAlert) continue
+    const idleMinutes = Math.floor((now.getTime() - lastActivity) / 60_000)
+    const telegram = await sendTelegramAlert('staff_inactivity_report', [
+      '⚠️ <b>Agent inactivity alert</b>',
+      `الموظف / Agent: <b>${String(staff.display_name || staff.username).replace(/[<>&]/g, '')}</b>`,
+      `المحفظة / Wallet: <code>${String(session.wallet_number ?? '—').replace(/[<>&]/g, '')}</code>`,
+      `بدون معاملة لمدة / No transaction for: <b>${idleMinutes} min</b>`,
+      `آخر نشاط / Last activity: <code>${cairoDateTime(new Date(lastActivity))}</code>`,
+    ].join('\n'))
+    await db.from('audit_log').insert({ actor_type: 'system', actor_name: 'attendance_monitor', action: 'staff.inactivity_alert', entity: 'staff_attendance_sessions', entity_id: session.id, after: { user_id: session.user_id, idle_minutes: idleMinutes, telegram_sent: telegram.sent } })
+  }
+  return c.json({ from, to, timezone: CAIRO_TIME_ZONE, users: stats, sessions })
 })
 
 reportsRoutes.post('/attendance/check-in', requireAuth, async (c) => {
