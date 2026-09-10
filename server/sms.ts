@@ -331,7 +331,10 @@ smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
   const q = c.req.query('q')?.trim()
   const from = c.req.query('from')?.trim()
   const to = c.req.query('to')?.trim()
-  const limit = Math.min(Number(c.req.query('limit')) || 25, 100)
+  // The live P2P wall requests a full month so wallet totals and the latest
+  // SMS balance are correct. Keep a bounded server-side cap, while allowing
+  // the existing paginated screens to continue using their smaller limits.
+  const limit = Math.min(Number(c.req.query('limit')) || 25, 5000)
   const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
 
   let query = db
