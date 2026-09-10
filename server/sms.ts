@@ -28,6 +28,18 @@ type SmsFilterInput = {
   to?: string
 }
 
+const CAIRO_TIME_ZONE = 'Africa/Cairo'
+function cairoOffset(date: string): string {
+  const guess = new Date(`${date}T12:00:00Z`)
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: CAIRO_TIME_ZONE, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(guess)
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  const asUtc = Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day), Number(values.hour), Number(values.minute))
+  const offsetMinutes = Math.round((asUtc - guess.getTime()) / 60_000)
+  const sign = offsetMinutes >= 0 ? '+' : '-'; const absolute = Math.abs(offsetMinutes)
+  return `${sign}${String(Math.floor(absolute / 60)).padStart(2, '0')}:${String(absolute % 60).padStart(2, '0')}`
+}
+function cairoBoundary(date: string, end = false): string { return `${date}T${end ? '23:59:59.999' : '00:00:00'}${cairoOffset(date)}` }
+
 type QueueSms = Record<string, unknown> & { id: number; amount: number | null; received_at: string | null; sender_name: string | null; sender_number: string | null; receiver_number: string | null; provider: string | null }
 type QueueTx = { tx_id: number; amount: number | null; sender_name: string | null; sender_number: string | null; receiving_wallet: string | null; to_account_number: string | null; first_seen_at: string | null }
 const cents = (value: unknown) => Math.round(Number(value ?? 0) * 100)
@@ -82,8 +94,8 @@ function applySmsFilters(query: any, filters: SmsFilterInput) {
   query = query.or('is_blocked.eq.false,is_blocked.is.null')
   const categories = (category ?? '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean)
   if (categories.length) query = query.in('sms_category', categories)
-  if (from) query = query.gte('received_at', `${from}T00:00:00Z`)
-  if (to) query = query.lte('received_at', `${to}T23:59:59.999Z`)
+  if (from) query = query.gte('received_at', cairoBoundary(from))
+  if (to) query = query.lte('received_at', cairoBoundary(to, true))
   // Link state is derived from every authoritative/legacy link column. The
   // old filter only checked consumed_by_tx_id (and wallet_number for WD), so
   // repaired rows with matched_transaction_id/maven_transaction_id appeared
