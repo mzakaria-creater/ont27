@@ -2253,6 +2253,10 @@ a.command-metric:hover { border-color: var(--accent); transform: translateY(-1px
 .p2p-sms-list article { min-width: 0; padding: 13px 14px; border: 1px solid var(--border-soft); border-radius: 12px; background: var(--hover); }
 .p2p-sms-card.outgoing .p2p-sms-list article { border-inline-start: 3px solid var(--status-declined); }
 .p2p-sms-raw { margin-top: 9px; padding: 8px 9px; border: 1px solid var(--border-soft); border-radius: 9px; color: var(--text-dim); background: color-mix(in srgb, var(--bg) 72%, transparent); font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.p2p-live-balance-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.p2p-live-balance-strip > div { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 12px 14px; border: 1px solid var(--green-border); border-radius: 12px; background: var(--green-bg); }
+.p2p-live-balance-strip strong { overflow: hidden; color: var(--text-dim); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.p2p-live-balance-strip b { margin-inline-start: auto; color: var(--status-paid); font: 800 15px ui-monospace, monospace; white-space: nowrap; }
 .p2p-tv-card { min-width: 0; overflow: hidden; border: 1px solid var(--green-border); border-radius: 18px; background: linear-gradient(145deg, var(--surface-raised), var(--surface)); box-shadow: 0 10px 30px rgba(0,0,0,.18); }
 .p2p-tv-card.payout { border-color: var(--red-border); }
 .p2p-tv-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--border); }
