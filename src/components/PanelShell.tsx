@@ -408,21 +408,11 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   const openSmsRail = () => openSms()
   const openTelegram = () => {
     if (user?.id) localStorage.setItem(`ontarget:${user.id}:telegram-last-seen`, String(telegramLatestRef.current))
-    setTelegramUnread(0); setTelegramOpen(true); setSmsOpen(false)
+    setTelegramUnread(0); setTelegramOpen(true)
   }
-
-  // The feed is a floating widget, compact by default. It auto-minimizes after
-  // a short idle period so dense operations tables always retain full width.
-  useEffect(() => {
-    setSmsOpen(false)
-    setTelegramOpen(false)
-  }, [pathname])
 
   useEffect(() => {
     try { window.localStorage.setItem('ontarget:sms-widget', smsOpen ? 'expanded' : 'compact') } catch { /* optional preference */ }
-    if (!smsOpen) return
-    const timer = window.setTimeout(() => setSmsOpen(false), 30_000)
-    return () => window.clearTimeout(timer)
   }, [smsOpen])
 
   useEffect(() => {
