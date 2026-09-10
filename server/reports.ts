@@ -9,13 +9,42 @@ reportsRoutes.use('*', requireAuth)
 
 const DEPOSIT_STATUSES = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'EXPIRED_LOCAL', 'UNDERPAID']
 const PAYOUT_STATUSES = ['PENDING', 'APPROVED', 'DECLINED', 'PAID', 'EXPIRED', 'EXPIRED_LOCAL', 'UNDERPAID']
-type Tx = { tx_id: number; ontarget_ref: string | null; amount: number | null; status: string | null; merchant: string | null; sub_merchant: string | null; master_merchant: string | null; payment_method: string | null; gateway: string | null; receiving_wallet: string | null; to_account_number: string | null; first_seen_at: string | null }
+type Tx = { tx_id: number; ontarget_ref: string | null; amount: number | null; status: string | null; merchant: string | null; sub_merchant: string | null; master_merchant: string | null; payment_method: string | null; gateway: string | null; receiving_wallet: string | null; to_account_number: string | null; commission: number | null; fees: number | null; first_seen_at: string | null }
 type Payout = { amount: number | null; status: string | null; merchant: string | null; first_seen_at: string | null }
 type GroupKpi = { key: string; label: string; count: number; amount: number; linked: number; unlinked: number; latest_balance: number | null }
 const digits = (value: unknown) => String(value ?? '').replace(/\D/g, '')
 const within = (value: unknown, start: Date, end: Date) => {
   const time = Date.parse(String(value ?? ''))
   return Number.isFinite(time) && time >= start.getTime() && time <= end.getTime()
+}
+
+const PAYMENT_RAILS = [
+  { key: 'm_wallet_orange', label: 'M-Wallet · Orange Cash', family: 'M-Wallet', readiness: 'live' },
+  { key: 'm_wallet_vodafone', label: 'M-Wallet · Vodafone Cash', family: 'M-Wallet', readiness: 'live' },
+  { key: 'm_wallet_we', label: 'M-Wallet · WE Pay', family: 'M-Wallet', readiness: 'live' },
+  { key: 'm_wallet_etisalat', label: 'M-Wallet · Etisalat Cash', family: 'M-Wallet', readiness: 'live' },
+  { key: 'instapay', label: 'InstaPay', family: 'Instant transfer', readiness: 'live' },
+  { key: 'fawry_pay', label: 'Fawry Pay', family: 'Fawry', readiness: 'credentials_required' },
+  { key: 'fawry_cash', label: 'Fawry Cash', family: 'Fawry', readiness: 'credentials_required' },
+  { key: 'axis', label: 'Axis', family: 'Digital account', readiness: 'credentials_required' },
+  { key: 'meeza', label: 'Meeza', family: 'Card', readiness: 'credentials_required' },
+  { key: 'telda', label: 'Telda', family: 'Card', readiness: 'credentials_required' },
+] as const
+
+function paymentRail(row: Pick<Tx, 'payment_method' | 'gateway'>) {
+  const value = `${row.payment_method ?? ''} ${row.gateway ?? ''}`.toLowerCase().replace(/[_-]+/g, ' ')
+  if (/orange/.test(value)) return PAYMENT_RAILS[0]
+  if (/vodafone|vf cash/.test(value)) return PAYMENT_RAILS[1]
+  if (/\bwe\b|we pay/.test(value)) return PAYMENT_RAILS[2]
+  if (/etisalat|etissalat|e&/.test(value)) return PAYMENT_RAILS[3]
+  if (/insta\s*pay|instapay/.test(value)) return PAYMENT_RAILS[4]
+  if (/fawry.*cash/.test(value)) return PAYMENT_RAILS[6]
+  if (/fawry/.test(value)) return PAYMENT_RAILS[5]
+  if (/axis/.test(value)) return PAYMENT_RAILS[7]
+  if (/meeza/.test(value)) return PAYMENT_RAILS[8]
+  if (/telda/.test(value)) return PAYMENT_RAILS[9]
+  const label = row.payment_method ?? row.gateway ?? 'Unspecified'
+  return { key: `other:${label.toLowerCase()}`, label, family: 'Other', readiness: 'observed' as const }
 }
 
 // Withdrawal SMS reports are read frequently while operators work the queue.
@@ -29,10 +58,13 @@ const WITHDRAWAL_REPORT_CACHE_MAX = 40
 function params(c: any) {
   const from = c.req.query('from')?.trim() || null
   const to = c.req.query('to')?.trim() || null
-  const merchant = c.req.query('merchant')?.trim() || null
-  const status = c.req.query('status')?.trim().toUpperCase() || null
-  const sms = ['linked', 'unlinked'].includes(c.req.query('sms')) ? c.req.query('sms') : null
-  return { from, to, merchant, status, sms }
+  const split = (value: string | undefined) => [...new Set(String(value ?? '').split(',').map((item) => item.trim()).filter(Boolean))]
+  const merchants = split(c.req.query('merchant'))
+  const masters = split(c.req.query('master'))
+  const statuses = split(c.req.query('status')).map((value) => value.toUpperCase())
+  const sms = split(c.req.query('sms')).filter((value) => value === 'linked' || value === 'unlinked')
+  const methods = split(c.req.query('method'))
+  return { from, to, merchants, masters, statuses, sms, methods }
 }
 async function fetchAll<T>(query: any): Promise<T[]> {
   const rows: T[] = []
@@ -45,25 +77,29 @@ async function fetchAll<T>(query: any): Promise<T[]> {
   return rows
 }
 async function buildReport(c: any) {
-  const { from, to, merchant, status, sms } = params(c)
-  let deposits = db.from('maven_transactions').select('tx_id, ontarget_ref, amount, status, merchant, sub_merchant, master_merchant, payment_method, gateway, receiving_wallet, to_account_number, first_seen_at').order('first_seen_at', { ascending: true, nullsFirst: false })
+  const { from, to, merchants: merchantFilters, masters: masterFilters, statuses: statusFilters, sms: smsFilters, methods: methodFilters } = params(c)
+  let deposits = db.from('maven_transactions').select('tx_id, ontarget_ref, amount, status, merchant, sub_merchant, master_merchant, payment_method, gateway, receiving_wallet, to_account_number, commission, fees, first_seen_at').order('first_seen_at', { ascending: true, nullsFirst: false })
   let payouts = db.from('maven_payout_transactions').select('amount, status, merchant, first_seen_at').order('first_seen_at', { ascending: true, nullsFirst: false })
-  if (from) { deposits = deposits.gte('first_seen_at', `${from}T00:00:00Z`); payouts = payouts.gte('first_seen_at', `${from}T00:00:00Z`) }
-  if (to) { deposits = deposits.lte('first_seen_at', `${to}T23:59:59Z`); payouts = payouts.lte('first_seen_at', `${to}T23:59:59Z`) }
-  if (merchant) deposits = deposits.eq('merchant', merchant)
-  if (status) deposits = deposits.eq('status', status)
+  if (from) { deposits = deposits.gte('first_seen_at', cairoBoundary(from)); payouts = payouts.gte('first_seen_at', cairoBoundary(from)) }
+  if (to) { deposits = deposits.lte('first_seen_at', cairoBoundary(to, true)); payouts = payouts.lte('first_seen_at', cairoBoundary(to, true)) }
+  if (merchantFilters.length) deposits = deposits.in('merchant', merchantFilters)
+  if (masterFilters.length) deposits = deposits.in('master_merchant', masterFilters)
+  if (statusFilters.length) deposits = deposits.in('status', statusFilters)
   const [rawDeposits, payoutRows, wallets, smsRows] = await Promise.all([
     fetchAll<Tx>(deposits), fetchAll<Payout>(payouts),
     fetchAll<{ to_account_number: string | null }>(db.from('wallet_device_map').select('to_account_number').order('to_account_number')),
-    fetchAll<{ id: number; amount: number | null; sms_category: string | null; consumed_by_tx_id: number | null; received_at: string | null }>((() => { let q = db.from('inbound_sms').select('id, amount, sms_category, consumed_by_tx_id, received_at').order('received_at', { ascending: true, nullsFirst: false }); if (from) q = q.gte('received_at', `${from}T00:00:00Z`); if (to) q = q.lte('received_at', `${to}T23:59:59Z`); return q })()),
+    fetchAll<{ id: number; amount: number | null; sms_category: string | null; consumed_by_tx_id: number | null; received_at: string | null }>((() => { let q = db.from('inbound_sms').select('id, amount, sms_category, consumed_by_tx_id, received_at').order('received_at', { ascending: true, nullsFirst: false }); if (from) q = q.gte('received_at', cairoBoundary(from)); if (to) q = q.lte('received_at', cairoBoundary(to, true)); return q })()),
   ])
   const linkedIds = new Set(smsRows.filter((row) => row.consumed_by_tx_id != null).map((row) => Number(row.consumed_by_tx_id)))
-  const depRows = sms === 'linked' ? rawDeposits.filter((row) => linkedIds.has(row.tx_id)) : sms === 'unlinked' ? rawDeposits.filter((row) => !linkedIds.has(row.tx_id)) : rawDeposits
+  const methodRows = methodFilters.length ? rawDeposits.filter((row) => methodFilters.includes(paymentRail(row).key)) : rawDeposits
+  const depRows = smsFilters.length === 1 && smsFilters[0] === 'linked' ? methodRows.filter((row) => linkedIds.has(row.tx_id)) : smsFilters.length === 1 && smsFilters[0] === 'unlinked' ? methodRows.filter((row) => !linkedIds.has(row.tx_id)) : methodRows
   const empty = (statuses: string[]) => Object.fromEntries(statuses.map((status) => [status, { count: 0, amount: 0 }]))
   const depositStatuses = empty(DEPOSIT_STATUSES)
   const payoutStatuses = empty(PAYOUT_STATUSES)
-  const byMaster = new Map<string, { master: string; count: number; amount: number }>()
-  const byMethod = new Map<string, { method: string; master: string; count: number; amount: number }>()
+  type CompanyBucket = { master: string; count: number; amount: number; paid_count: number; paid_amount: number; commission: number; fees: number; merchants: Map<string, { merchant: string; count: number; amount: number; paid_count: number; paid_amount: number; commission: number; fees: number }> }
+  const byMaster = new Map<string, CompanyBucket>()
+  const byReceiver = new Map<string, { receiver: string; count: number; amount: number; merchants: Set<string>; methods: Set<string> }>()
+  const byMethod = new Map<string, { key: string; method: string; family: string; readiness: string; master: string; count: number; amount: number; paid_count: number; paid_amount: number }>()
   const daily = new Map<string, { date: string; deposits: number; payouts: number; count: number }>()
   let includesPayFuture = false
   let ngpayPaid = 0
@@ -78,12 +114,32 @@ async function buildReport(c: any) {
     depositStatuses[status].count += 1; depositStatuses[status].amount += amount
     const master = row.master_merchant ?? 'Unassigned'
     if (/payfuture/i.test(master)) includesPayFuture = true
-    const masterBucket = byMaster.get(master) ?? { master, count: 0, amount: 0 }
-    masterBucket.count += 1; masterBucket.amount += amount; byMaster.set(master, masterBucket)
-    const method = row.payment_method ?? row.gateway ?? 'Unspecified'
-    const key = `${method}||${master}`
-    const methodBucket = byMethod.get(key) ?? { method, master, count: 0, amount: 0 }
-    methodBucket.count += 1; methodBucket.amount += amount; byMethod.set(key, methodBucket)
+    const isPaid = status === 'PAID' || status === 'APPROVED'
+    const commission = Number(row.commission ?? 0)
+    const fees = Number(row.fees ?? 0)
+    const masterBucket = byMaster.get(master) ?? { master, count: 0, amount: 0, paid_count: 0, paid_amount: 0, commission: 0, fees: 0, merchants: new Map() }
+    masterBucket.count += 1; masterBucket.amount += amount
+    if (isPaid) { masterBucket.paid_count += 1; masterBucket.paid_amount += amount; masterBucket.commission += commission; masterBucket.fees += fees }
+    const merchantName = row.merchant ?? row.sub_merchant ?? 'Unassigned'
+    const merchantBucket = masterBucket.merchants.get(merchantName) ?? { merchant: merchantName, count: 0, amount: 0, paid_count: 0, paid_amount: 0, commission: 0, fees: 0 }
+    merchantBucket.count += 1; merchantBucket.amount += amount
+    if (isPaid) { merchantBucket.paid_count += 1; merchantBucket.paid_amount += amount; merchantBucket.commission += commission; merchantBucket.fees += fees }
+    masterBucket.merchants.set(merchantName, merchantBucket)
+    byMaster.set(master, masterBucket)
+    const receiver = String(row.receiving_wallet ?? row.to_account_number ?? '').trim()
+    if (isPaid && receiver) {
+      const receiverBucket = byReceiver.get(receiver) ?? { receiver, count: 0, amount: 0, merchants: new Set(), methods: new Set() }
+      receiverBucket.count += 1; receiverBucket.amount += amount
+      if (row.merchant) receiverBucket.merchants.add(row.merchant)
+      if (row.payment_method ?? row.gateway) receiverBucket.methods.add(String(row.payment_method ?? row.gateway))
+      byReceiver.set(receiver, receiverBucket)
+    }
+    const rail = paymentRail(row)
+    const key = `${rail.key}||${master}`
+    const methodBucket = byMethod.get(key) ?? { key: rail.key, method: rail.label, family: rail.family, readiness: rail.readiness, master, count: 0, amount: 0, paid_count: 0, paid_amount: 0 }
+    methodBucket.count += 1; methodBucket.amount += amount
+    if (isPaid) { methodBucket.paid_count += 1; methodBucket.paid_amount += amount }
+    byMethod.set(key, methodBucket)
     const date = row.first_seen_at?.slice(0, 10)
     if (date) { const bucket = daily.get(date) ?? { date, deposits: 0, payouts: 0, count: 0 }; bucket.deposits += amount; bucket.count += 1; daily.set(date, bucket) }
   }
@@ -116,7 +172,46 @@ async function buildReport(c: any) {
     matchedSms, outgoingAmount: outgoingRows.reduce((sum, row) => sum + Number(row.amount ?? 0), 0), outgoingCount: outgoingRows.length,
     recent: [...depRows].sort((a, b) => String(b.first_seen_at).localeCompare(String(a.first_seen_at))).slice(0, 30).map((row) => ({ ...row, sms_linked: linkedIds.has(row.tx_id) })),
   }
-  return { from, to, merchant, status, sms, merchants: [...merchants].sort(), hero, live, unassigned, depositStatuses, payoutStatuses, byMaster: [...byMaster.values()].sort((a, b) => b.amount - a.amount), byMethod: [...byMethod.values()].sort((a, b) => b.amount - a.amount), daily: [...daily.values()].sort((a, b) => b.date.localeCompare(a.date)), includesPayFuture }
+  const companyRows = [...byMaster.values()].map((row) => ({
+    master: row.master,
+    count: row.count,
+    amount: row.amount,
+    paid_count: row.paid_count,
+    paid_amount: row.paid_amount,
+    average_paid: row.paid_count ? row.paid_amount / row.paid_count : 0,
+    commission_collected: row.commission + row.fees,
+    conversion_rate: row.count ? row.paid_count / row.count * 100 : 0,
+    risk_level: row.count && row.paid_count / row.count >= .8 ? 'low' : row.count && row.paid_count / row.count >= .5 ? 'medium' : 'high',
+    merchants: [...row.merchants.values()].map((merchant) => ({
+      ...merchant,
+      average_paid: merchant.paid_count ? merchant.paid_amount / merchant.paid_count : 0,
+      commission_collected: merchant.commission + merchant.fees,
+      conversion_rate: merchant.count ? merchant.paid_count / merchant.count * 100 : 0,
+    })).sort((a, b) => b.paid_amount - a.paid_amount || b.count - a.count),
+  })).sort((a, b) => b.paid_amount - a.paid_amount || b.amount - a.amount)
+  const receiverPaidTotal = [...byReceiver.values()].reduce((sum, row) => sum + row.amount, 0)
+  const receiverRows = [...byReceiver.values()].map((row) => ({
+    receiver: row.receiver,
+    count: row.count,
+    amount: row.amount,
+    average_paid: row.count ? row.amount / row.count : 0,
+    share: receiverPaidTotal ? row.amount / receiverPaidTotal * 100 : 0,
+    merchants: [...row.merchants].sort(),
+    methods: [...row.methods].sort(),
+  })).sort((a, b) => b.amount - a.amount || b.count - a.count)
+  const observedMethods = [...byMethod.values()].map((row) => ({ ...row, average_paid: row.paid_count ? row.paid_amount / row.paid_count : 0, success_rate: row.count ? row.paid_count / row.count * 100 : 0 })).sort((a, b) => b.paid_amount - a.paid_amount || b.amount - a.amount)
+  const summarizeRail = (rail: { key: string; label: string; family: string; readiness: string }) => {
+    const matching = observedMethods.filter((row) => row.key === rail.key)
+    const count = matching.reduce((sum, row) => sum + row.count, 0)
+    const amount = matching.reduce((sum, row) => sum + row.amount, 0)
+    const paid_count = matching.reduce((sum, row) => sum + row.paid_count, 0)
+    const paid_amount = matching.reduce((sum, row) => sum + row.paid_amount, 0)
+    return { ...rail, count, amount, paid_count, paid_amount, average_paid: paid_count ? paid_amount / paid_count : 0, success_rate: count ? paid_count / count * 100 : 0, active: count > 0 }
+  }
+  const knownRailKeys = new Set<string>(PAYMENT_RAILS.map((rail) => rail.key))
+  const otherRails = [...new Map(observedMethods.filter((row) => !knownRailKeys.has(row.key)).map((row) => [row.key, { key: row.key, label: row.method, family: row.family, readiness: row.readiness }])).values()]
+  const paymentRails = [...PAYMENT_RAILS.map(summarizeRail), ...otherRails.map(summarizeRail)]
+  return { from, to, merchant: merchantFilters, master: masterFilters, status: statusFilters, sms: smsFilters, method: methodFilters, merchants: [...merchants].sort(), masters: companyRows.map((row) => row.master).sort(), methodOptions: paymentRails.map(({ key, label, family, readiness }) => ({ key, label, family, readiness })), hero, live, unassigned, depositStatuses, payoutStatuses, byMaster: companyRows, byReceiver: receiverRows, byMethod: observedMethods, paymentRails, daily: [...daily.values()].sort((a, b) => b.date.localeCompare(a.date)), includesPayFuture }
 }
 const esc = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`
 
@@ -209,6 +304,7 @@ reportsRoutes.get('/export', requireAnyPerm(['reports', 'advanced_analysis'], 'c
       ...Object.entries(report.depositStatuses).map(([status, value]) => ['deposits', '', '', status, value.count, value.amount]),
       ...Object.entries(report.payoutStatuses).map(([status, value]) => ['payouts', '', '', status, value.count, value.amount]),
       ...report.byMaster.map((row) => ['master_merchant', row.master, '', '', row.count, row.amount]),
+      ...report.byReceiver.map((row) => ['receiving_account', row.receiver, '', 'PAID', row.count, row.amount]),
       ...report.byMethod.map((row) => ['payment_method', row.method, row.master, '', row.count, row.amount]),
       ...report.daily.map((row) => ['daily', row.date, '', '', row.count, row.deposits - row.payouts]),
     ]

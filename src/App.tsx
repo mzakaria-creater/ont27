@@ -437,6 +437,9 @@ export default function App() {
             <Route path="/audit" element={<PageGate keys={['audit_log','audit-logs']}><Audit /></PageGate>} />
             <Route path="/reports" element={<PageGate keys={['reports','advanced_analysis']}><Reports /></PageGate>} />
             <Route path="/reportspage" element={<Navigate to="/reports" replace />} />
+            <Route path="/company-report" element={<Navigate to="/reports?tab=companies" replace />} />
+            <Route path="/receiving-report" element={<Navigate to="/reports?tab=receivers" replace />} />
+            <Route path="/payment-rail-report" element={<Navigate to="/reports?tab=payment-rails" replace />} />
             <Route path="/hr" element={<PageGate keys={['reports','users']}><StaffAttendance /></PageGate>} />
             <Route path="/staff-attendance" element={<Navigate to="/hr" replace />} />
             <Route path="/review" element={<PageGate keys={['review','audit_log','audit-logs']}><Review /></PageGate>} />
