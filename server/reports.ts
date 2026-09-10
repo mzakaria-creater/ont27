@@ -242,9 +242,11 @@ reportsRoutes.get('/withdrawal-sms', requireAnyPerm(['reports', 'advanced_analys
     return query
   }
   try {
-    const [pageResult, allRows] = await Promise.all([
+    const payoutQuery = (() => { let query = db.from('maven_payout_transactions').select('amount, status, pay_by, mobile_no, account_name, first_seen_at'); if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) query = query.gte('first_seen_at', `${from}T00:00:00+03:00`); if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) query = query.lte('first_seen_at', `${to}T23:59:59.999+03:00`); if (wallet) query = query.ilike('mobile_no', `%${wallet.replaceAll(',', ' ')}%`); if (provider) query = query.ilike('pay_by', `%${provider.replaceAll(',', ' ')}%`); if (q) query = query.or(`mobile_no.ilike.%${q.replaceAll(',', ' ')}%,account_name.ilike.%${q.replaceAll(',', ' ')}%,pay_by.ilike.%${q.replaceAll(',', ' ')}%`); return query })()
+    const [pageResult, allRows, payoutResult] = await Promise.all([
       apply(db.from('inbound_sms').select(columns, { count: 'exact' })).order('received_at', { ascending: false, nullsFirst: false }).range(offset, offset + limit - 1),
       fetchAll<any>(apply(db.from('inbound_sms').select('id, amount, balance_after, matched, consumed_by_tx_id, matched_transaction_id, confirmed_wallet_number, wallet_number, receiver_number, provider, sender_name, sender_number').order('id', { ascending: true }))),
+      fetchAll<any>(payoutQuery.order('first_seen_at', { ascending: true, nullsFirst: false })),
     ])
     if (pageResult.error) throw new Error(pageResult.error.message)
     const linked = (row: any) => row.matched === true || row.consumed_by_tx_id != null || row.matched_transaction_id != null
@@ -253,6 +255,9 @@ reportsRoutes.get('/withdrawal-sms', requireAnyPerm(['reports', 'advanced_analys
     const withBalance = allRows.filter((row) => row.balance_after != null).length
     const providers = [...new Set(allRows.map((row) => row.provider).filter(Boolean))].sort()
     const wallets = [...new Set(allRows.map((row) => row.confirmed_wallet_number ?? row.wallet_number ?? row.receiver_number).filter(Boolean))]
+    const approvedPayouts = payoutResult.filter((row: any) => ['PAID', 'APPROVED', 'SUCCESS', 'COMPLETED'].includes(String(row.status ?? '').toUpperCase()))
+    const classifyPayout = (row: any) => /usdt|crypto|binance|tether/i.test(String(row.pay_by ?? '')) ? 'usdt' : /cash|orange|vodafone|etisalat|we\b|wallet/i.test(String(row.pay_by ?? '')) ? 'cash' : 'other'
+    const payoutByType = (type: string) => approvedPayouts.filter((row: any) => classifyPayout(row) === type).reduce((sum: number, row: any) => sum + Number(row.amount ?? 0), 0)
     const grouped = (keyOf: (row: any) => string | null): GroupKpi[] => {
       const groups = new Map<string, GroupKpi>()
       for (const row of allRows) {
@@ -275,11 +280,15 @@ reportsRoutes.get('/withdrawal-sms', requireAnyPerm(['reports', 'advanced_analys
         linked: linkedCount,
         unlinked: allRows.length - linkedCount,
         coverage: allRows.length ? linkedCount / allRows.length * 100 : 0,
-        wallets: wallets.length,
+        wallets: wallets.length, wallet_used: wallets.length,
         with_balance: withBalance,
+        sms_out: allRows.length, sms_out_amount: allRows.reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
+        payout_amount: approvedPayouts.reduce((sum: number, row: any) => sum + Number(row.amount ?? 0), 0),
+        usdt_payout: payoutByType('usdt'), cash_payout: payoutByType('cash'), other_payout: payoutByType('other'),
       },
       wallet_kpis: grouped((row) => row.confirmed_wallet_number ?? row.wallet_number ?? row.receiver_number),
       sender_kpis: grouped((row) => row.sender_name || row.sender_number || null),
+      cash_sender_kpis: grouped((row) => row.sender_name || row.sender_number || null),
     }
     withdrawalReportCache.set(cacheKey, { expires: Date.now() + WITHDRAWAL_REPORT_TTL_MS, body })
     if (withdrawalReportCache.size > WITHDRAWAL_REPORT_CACHE_MAX) {

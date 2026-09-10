@@ -42,9 +42,11 @@ const OperationsArchive = lazy(() => import('./pages/OperationsArchive'))
 const WalletReport = lazy(() => import('./pages/WalletReport'))
 const WalletInvestigation = lazy(() => import('./pages/WalletInvestigation'))
 const WithdrawalSmsReport = lazy(() => import('./pages/WithdrawalSmsReport'))
+const CashSettlements = lazy(() => import('./pages/CashSettlements'))
 const Notifications = lazy(() => import('./pages/Notifications'))
 const SmsNotifications = lazy(() => import('./pages/SmsNotifications'))
 const TvScreen = lazy(() => import('./pages/TvScreen'))
+const P2PTv = lazy(() => import('./pages/P2PTv'))
 const Complaints = lazy(() => import('./pages/Complaints'))
 const LinkGenerator = lazy(() => import('./pages/LinkGenerator'))
 const PaymentCheckout = lazy(() => import('./pages/PaymentCheckout'))
@@ -453,6 +455,7 @@ export default function App() {
             <Route path="/wallet-report" element={<PageGate keys={['sms_live','wallets']}><WalletReport /></PageGate>} />
             <Route path="/wallet-investigation" element={<PageGate keys={['sms_live','wallets']}><WalletInvestigation /></PageGate>} />
             <Route path="/withdrawal-sms-report" element={<PageGate keys={['reports','advanced_analysis','sms_live']}><WithdrawalSmsReport /></PageGate>} />
+            <Route path="/cash-settlements" element={<PageGate keys={['reports','advanced_analysis','settlements','sms_live']}><CashSettlements /></PageGate>} />
             <Route path="/admin" element={<PageGate keys={['settings','users','permissions']}><AdminPage /></PageGate>} />
             <Route path="/admin/*" element={<PageGate keys={['settings','users','permissions']}><AdminPage /></PageGate>} />
             <Route path="/admin-transactions" element={<Navigate to="/transactions" replace />} />
@@ -460,6 +463,7 @@ export default function App() {
             <Route path="/notifications" element={<PageGate keys={['notifications']}><Notifications /></PageGate>} />
             <Route path="/sms-notifications" element={<PageGate keys={['sms_live', 'notifications']}><SmsNotifications /></PageGate>} />
             <Route path="/tv" element={<PageGate keys={['sms_live']}><TvScreen /></PageGate>} />
+            <Route path="/p2p-tv" element={<PageGate keys={['sms_live','binance_p2p','treasury']}><P2PTv /></PageGate>} />
             <Route path="/complaints" element={<PageGate keys={['support']}><Complaints /></PageGate>} />
             <Route path="/merchant-link-generator" element={<PageGate keys={['checkout-builder']}><LinkGenerator /></PageGate>} />
             <Route path="/payment-methods" element={<PageGate keys={['wallets','payment_methods']}><PaymentMethods /></PageGate>} />

@@ -17,8 +17,8 @@ interface Row {
 interface GroupKpi { key: string; label: string; count: number; amount: number; linked: number; unlinked: number; latest_balance: number | null }
 interface ReportData {
   rows: Row[]; total: number; limit: number; offset: number; providers: string[]
-  kpis: { count: number; amount: number; linked: number; unlinked: number; coverage: number; wallets: number; with_balance: number }
-  wallet_kpis: GroupKpi[]; sender_kpis: GroupKpi[]
+  kpis: { count: number; amount: number; linked: number; unlinked: number; coverage: number; wallets: number; wallet_used: number; with_balance: number; sms_out: number; sms_out_amount: number; payout_amount: number; usdt_payout: number; cash_payout: number; other_payout: number }
+  wallet_kpis: GroupKpi[]; sender_kpis: GroupKpi[]; cash_sender_kpis: GroupKpi[]
 }
 const dateValue = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
@@ -72,8 +72,12 @@ export default function WithdrawalSmsReport() {
     </section>
 
     <section className="withdrawal-kpi-grid">
-      <div className="kpi-card"><div className="kpi-value">{k ? k.count.toLocaleString('en-US') : '…'}</div><div className="kpi-label">WD SMS</div></div>
-      <div className="kpi-card"><div className="kpi-value">{k ? money(k.amount, 'EGP') : '…'}</div><div className="kpi-label">{t('إجمالي السحب', 'Withdrawal amount')}</div></div>
+      <div className="kpi-card"><div className="kpi-value">{k ? k.wallet_used.toLocaleString('en-US') : '…'}</div><div className="kpi-label">{t('المحافظ المستخدمة', 'Wallets used')}</div></div>
+      <div className="kpi-card"><div className="kpi-value">{k ? k.sms_out.toLocaleString('en-US') : '…'}</div><div className="kpi-label">{t('إجمالي SMS الخارج', 'Total outbound SMS')}</div></div>
+      <div className="kpi-card"><div className="kpi-value">{k ? money(k.sms_out_amount, 'EGP') : '…'}</div><div className="kpi-label">{t('إجمالي مبلغ SMS الخارج', 'Outbound SMS amount')}</div></div>
+      <div className="kpi-card"><div className="kpi-value">{k ? money(k.payout_amount, 'EGP') : '…'}</div><div className="kpi-label">{t('إجمالي السحوبات', 'Total payouts')}</div></div>
+      <div className="kpi-card"><div className="kpi-value">{k ? money(k.usdt_payout, 'EGP') : '…'}</div><div className="kpi-label">USDT payout</div></div>
+      <div className="kpi-card"><div className="kpi-value">{k ? money(k.cash_payout, 'EGP') : '…'}</div><div className="kpi-label">{t('سحب كاش', 'Cash payout')}</div></div>
       <div className="kpi-card"><div className="kpi-value">{k ? k.linked.toLocaleString('en-US') : '…'}</div><div className="kpi-label">{t('مرتبطة', 'Linked')}</div></div>
       <div className="kpi-card stat-pending"><div className="kpi-value">{k ? k.unlinked.toLocaleString('en-US') : '…'}</div><div className="kpi-label">{t('غير مرتبطة', 'Unlinked')}</div></div>
       <div className="kpi-card"><div className="kpi-value">{k ? `${k.coverage.toFixed(1)}%` : '…'}</div><div className="kpi-label">{t('تغطية الربط', 'Match coverage')}</div></div>
@@ -82,6 +86,7 @@ export default function WithdrawalSmsReport() {
     {data && <section className="withdrawal-group-kpis">
       <div className="card withdrawal-group-card"><div className="recent-head"><h3>👛 {t('KPI حسب محفظة الاستلام','Receiver wallet KPIs')}</h3><span className="cell-sub">{data.wallet_kpis.length} {t('محفظة','wallets')}</span></div><div className="withdrawal-group-list">{data.wallet_kpis.slice(0,12).map((g)=><div className="withdrawal-group-row" key={g.key}><div><strong className="mono">{g.label}</strong><span className="cell-sub">{g.count} SMS · {g.linked} {t('مرتبطة','linked')} · {g.unlinked} {t('غير مرتبطة','unlinked')}</span></div><strong className="mono">{money(g.amount,'EGP')}</strong></div>)}{!data.wallet_kpis.length&&<span className="cell-sub">{t('لا توجد بيانات','No data')}</span>}</div></div>
       <div className="card withdrawal-group-card"><div className="recent-head"><h3>👤 {t('KPI حسب المرسل','Sender KPIs')}</h3><span className="cell-sub">{data.sender_kpis.length} {t('مرسل','senders')}</span></div><div className="withdrawal-group-list">{data.sender_kpis.slice(0,12).map((g)=><div className="withdrawal-group-row" key={g.key}><div><strong>{g.label}</strong><span className="cell-sub">{g.count} SMS · {g.linked} {t('مرتبطة','linked')} · {g.unlinked} {t('غير مرتبطة','unlinked')}</span></div><strong className="mono">{money(g.amount,'EGP')}</strong></div>)}{!data.sender_kpis.length&&<span className="cell-sub">{t('لا توجد بيانات','No data')}</span>}</div></div>
+      <div className="card withdrawal-group-card"><div className="recent-head"><h3>💵 {t('الكاش المستلم حسب الاسم','Cash received by name')}</h3><span className="cell-sub">{t('اسم المستلم من SMS الخارج','Recipient name from outbound SMS')}</span></div><div className="withdrawal-group-list">{data.cash_sender_kpis.slice(0,12).map((g)=><div className="withdrawal-group-row" key={g.key}><div><strong>{g.label}</strong><span className="cell-sub">{g.count} SMS · {g.linked} {t('مرتبطة','linked')}</span></div><strong className="mono">{money(g.amount,'EGP')}</strong></div>)}{!data.cash_sender_kpis.length&&<span className="cell-sub">{t('لا توجد بيانات','No data')}</span>}</div></div>
     </section>}
 
     <section className="card withdrawal-report-filters transaction-filter-toolbar">

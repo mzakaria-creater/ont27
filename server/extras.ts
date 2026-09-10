@@ -197,6 +197,30 @@ extraRoutes.get(
   },
 )
 
+// Cash-out settlement ledger for withdrawal SMS reconciliation. These entries
+// are local operational records and never mutate Maven transactions.
+extraRoutes.get('/cash-settlements', requireAnyPerm(['reports', 'advanced_analysis', 'settlements', 'sms_live'], 'can_view'), async (c) => {
+  const from = c.req.query('from')?.trim(); const to = c.req.query('to')?.trim()
+  let query = db.from('cash_sms_settlements').select('*').order('settlement_at', { ascending: false }).limit(1000)
+  if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) query = query.gte('settlement_at', cairoBoundary(from))
+  if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) query = query.lte('settlement_at', cairoBoundary(to, true))
+  const { data, error } = await query
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  const rows = data ?? []; const totalIn = rows.filter((row) => row.direction === 'in').reduce((sum, row) => sum + Number(row.amount ?? 0), 0); const totalOut = rows.filter((row) => row.direction === 'out').reduce((sum, row) => sum + Number(row.amount ?? 0), 0)
+  return c.json({ rows, totals: { total_in: totalIn, total_out: totalOut, net: totalIn - totalOut }, from: from || null, to: to || null, time_zone: CAIRO_TIME_ZONE })
+})
+
+extraRoutes.post('/cash-settlements', requireAnyPerm(['reports', 'advanced_analysis', 'settlements', 'sms_live'], 'can_edit'), async (c) => {
+  const body = await c.req.json().catch(() => null); const actor = c.get('actor')
+  const recipientName = typeof body?.recipient_name === 'string' ? body.recipient_name.trim().slice(0, 120) : ''; const amount = Number(body?.amount); const method = typeof body?.method === 'string' ? body.method.trim().slice(0, 80) : ''; const direction = body?.direction === 'in' ? 'in' : body?.direction === 'out' ? 'out' : ''
+  if (!direction || recipientName.length < 2 || !Number.isFinite(amount) || amount <= 0 || method.length < 2) return c.json({ error: 'invalid_cash_settlement' }, 400)
+  const row = { direction, recipient_name: recipientName, amount, method, wallet: typeof body?.wallet === 'string' ? body.wallet.trim().slice(0, 40) || null : null, sms_id: Number.isInteger(Number(body?.sms_id)) && Number(body.sms_id) > 0 ? Number(body.sms_id) : null, note: typeof body?.note === 'string' ? body.note.trim().slice(0, 500) || null : null, created_by: actor.username }
+  const { data, error } = await db.from('cash_sms_settlements').insert(row).select('*').single()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  await db.from('audit_log').insert({ actor_type: 'panel_user', actor_id: actor.sub, actor_name: actor.username, action: 'cash_settlement.created', entity: 'cash_sms_settlements', entity_id: data.id, after: row })
+  return c.json({ settlement: data }, 201)
+})
+
 // Merchant settlement payments/holds. These are explicit ledger entries and
 // never mutate the underlying payin/payout transaction history.
 extraRoutes.get('/settlements/payments', requireAnyPerm(['settlements', 'settlements_list', 'settlement_recon'], 'can_view'), async (c) => {
@@ -481,6 +505,7 @@ extraRoutes.get('/wallet-report', requireAnyPerm(['sms_live', 'wallets'], 'can_v
       avg_deposit: depositsCount ? received / depositsCount : 0, avg_withdrawal: withdrawalsCount ? sent / withdrawalsCount : 0,
       today_profit: Math.round(use.profit * 100) / 100, daily_used: Math.round(use.daily * 100) / 100, monthly_used: Math.round(use.monthly * 100) / 100,
       daily_limit: WALLET_DAILY_LIMIT, monthly_limit: WALLET_MONTHLY_LIMIT,
+      daily_remaining: Math.max(0, Math.round((WALLET_DAILY_LIMIT - use.daily) * 100) / 100), monthly_remaining: Math.max(0, Math.round((WALLET_MONTHLY_LIMIT - use.monthly) * 100) / 100),
       daily_utilization_pct: Math.round(dailyUtilization * 10000) / 100, monthly_utilization_pct: Math.round(monthlyUtilization * 10000) / 100,
       utilization_pct: Math.round(Math.max(dailyUtilization, monthlyUtilization) * 10000) / 100, limit_warning: limitWarning,
     }
@@ -488,7 +513,7 @@ extraRoutes.get('/wallet-report', requireAnyPerm(['sms_live', 'wallets'], 'can_v
   const mappedWallets = new Set(rows.map((row) => row.wallet))
   for (const row of reportData) if (!mappedWallets.has(walletDigits(row.wallet))) {
     const received = Number(row.deposits_amount ?? 0); const sent = Number(row.withdrawals_amount ?? 0); const depositsCount = Number(row.deposits_count ?? 0); const withdrawalsCount = Number(row.withdrawals_count ?? 0)
-    rows.push({ ...row, wallet: walletDigits(row.wallet), provider: null, sms_balance: row.balance, received, sent, balance: received - sent, transaction_count: depositsCount + withdrawalsCount, avg_deposit: depositsCount ? received / depositsCount : 0, avg_withdrawal: withdrawalsCount ? sent / withdrawalsCount : 0, today_profit: 0, daily_used: 0, monthly_used: 0, daily_limit: WALLET_DAILY_LIMIT, monthly_limit: WALLET_MONTHLY_LIMIT, daily_utilization_pct: 0, monthly_utilization_pct: 0, utilization_pct: 0, limit_warning: null })
+    rows.push({ ...row, wallet: walletDigits(row.wallet), provider: null, sms_balance: row.balance, received, sent, balance: received - sent, transaction_count: depositsCount + withdrawalsCount, avg_deposit: depositsCount ? received / depositsCount : 0, avg_withdrawal: withdrawalsCount ? sent / withdrawalsCount : 0, today_profit: 0, daily_used: 0, monthly_used: 0, daily_limit: WALLET_DAILY_LIMIT, monthly_limit: WALLET_MONTHLY_LIMIT, daily_remaining: WALLET_DAILY_LIMIT, monthly_remaining: WALLET_MONTHLY_LIMIT, daily_utilization_pct: 0, monthly_utilization_pct: 0, utilization_pct: 0, limit_warning: null })
   }
   return c.json({ rows, days, from, to, limits: { daily: WALLET_DAILY_LIMIT, monthly: WALLET_MONTHLY_LIMIT, warning_ratio: WALLET_LIMIT_WARNING_RATIO }, as_of: new Date().toISOString(), time_zone: CAIRO_TIME_ZONE })
 })

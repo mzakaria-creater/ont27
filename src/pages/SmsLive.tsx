@@ -725,6 +725,7 @@ export default function SmsLive() {
                 <section className="sms-detail-evidence">
                   <div className="sms-detail-evidence-head"><strong>{t('بيانات الرسالة الخام', 'SMS evidence')}</strong><span className="cell-sub">{selected.raw_sms ? 'raw_sms' : 'message'}</span></div>
                   <pre className="sms-raw-block" dir="auto">{selected.raw_sms ?? selected.message ?? selected.sms_first_line ?? '—'}</pre>
+                  {selected.balance_after != null && <div className="sms-balance-line sms-drawer-balance"><span className="sms-balance-dot" aria-hidden="true" /><span>{t('الرصيد الحالي بعد الرسالة', 'Current balance after SMS')}</span><strong className="mono">{money(selected.balance_after, 'EGP')}</strong></div>}
                   <details className="sms-json-details"><summary>{t('عرض JSON المستخرج', 'Show extracted JSON')}</summary><pre>{JSON.stringify(selected.raw_payload ?? {}, null, 2)}</pre></details>
                 </section>
 

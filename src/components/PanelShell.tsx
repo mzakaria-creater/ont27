@@ -93,8 +93,10 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/wallet-report', icon: '📊', labelAr: 'تقرير المحافظ', labelEn: 'Wallet report', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/wallet-investigation', icon: '🔎', labelAr: 'تحقيق المحفظة', labelEn: 'Wallet investigation', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/withdrawal-sms-report', icon: '🧾', labelAr: 'تقرير SMS السحب', labelEn: 'Withdrawal SMS report', keys: ['reports', 'advanced_analysis', 'sms_live'], group: 'payments' },
+  { to: '/cash-settlements', icon: '💵', labelAr: 'تسوية كاش SMS', labelEn: 'Cash SMS settlement', keys: ['reports', 'advanced_analysis', 'settlements', 'sms_live'], group: 'payments' },
   { to: '/wallet-movements', icon: '💱', labelAr: 'حركة المحافظ', labelEn: 'Wallet movements', keys: ['wallets', 'treasury', 'reports', 'sms_live'], group: 'payments' },
   { to: '/tv', icon: '🖥️', labelAr: 'شاشة TV', labelEn: 'TV screen', keys: ['sms_live'], group: 'overview' },
+  { to: '/p2p-tv', icon: '📺', labelAr: 'شاشة P2P الحية', labelEn: 'P2P Live TV', keys: ['sms_live', 'binance_p2p', 'treasury'], group: 'overview' },
   { to: '/complaints', icon: '🛎️', labelAr: 'الشكاوى', labelEn: 'Complaints', keys: ['support'], roles: COMPLAINT_ROLES, group: 'customers' },
   { to: '/chat', icon: '💬', labelAr: 'محادثات الفريق', labelEn: 'Internal Chat', keys: [], group: 'customers' },
   { to: '/merchant-link-generator', icon: '🔗', labelAr: 'روابط الدفع', labelEn: 'Payment links', keys: ['checkout-builder'], group: 'payments' },
@@ -199,6 +201,7 @@ interface RailSms {
   matched_tx_id?: number | null
   matched_ontarget_ref?: string | null
   linked_wallet_number?: string | null
+  balance_after?: number | null
   wallet_balance_after?: number | null
   sms_first_line?: string | null
   raw_sms?: string | null
@@ -298,6 +301,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
           const walletLinked = r.sms_category === 'withdrawal' && r.linked_wallet_number != null
           const linked = walletLinked || r.matched_tx_id != null
           const rawText = r.raw_sms ?? r.message ?? r.sms_first_line
+          const balance = r.balance_after ?? r.wallet_balance_after
           return (
             <Link key={r.id} to={`/sms?sms_id=${r.id}`} className={`sms-feed-item${linked ? ' matched' : ''}${!linked && (r.sms_category === 'deposit' || r.sms_category === 'withdrawal') ? ' unlinked' : ''}${r.sms_category === 'withdrawal' ? ' withdrawal' : ''}`}>
               <div className="sms-feed-head">
@@ -306,7 +310,8 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
               </div>
               <div className="sms-feed-body">{r.sms_category === 'withdrawal' ? 'تحويل' : 'استلام'} {money(r.amount, 'EGP')}{' '}{r.sender_name ?? r.sender_number ? `— ${r.sender_name ?? r.sender_number}` : ''}</div>
               {rawText && <div className="sms-feed-raw" dir="auto">{rawText}</div>}
-              {walletLinked && <div className="cell-sub mono">{r.linked_wallet_number} · رصيد {money(r.wallet_balance_after, 'EGP')}</div>}
+              {balance != null && <div className="sms-balance-line"><span className="sms-balance-dot" aria-hidden="true" /> <span>{'الرصيد الحالي'}</span><strong className="mono">{money(balance, 'EGP')}</strong></div>}
+              {walletLinked && <div className="cell-sub mono">{r.linked_wallet_number}</div>}
               <div className={`sms-feed-status ${linked ? 'link' : r.sms_category === 'deposit' || r.sms_category === 'withdrawal' ? 'wait' : 'info'}`}>
                 {walletLinked ? <>👛 محفظة <span className="mono">{r.linked_wallet_number}</span></> : linked ? <>🔗 مرتبطة <span className="mono">{r.matched_ontarget_ref ?? r.matched_tx_id}</span></> : r.sms_category === 'deposit' ? '⏳ بانتظار مطابقة' : r.sms_category === 'withdrawal' ? '⚠ محفظة غير معروفة' : 'غير مالية'}
               </div>

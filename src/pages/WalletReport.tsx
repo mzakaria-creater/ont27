@@ -19,7 +19,7 @@ interface WalletRow {
   unconfirmed: number; balance: number | null; first_balance: number | null; last_sms: string | null
   provider?: string | null; sms_balance?: number | null; received?: number; sent?: number; transaction_count?: number
   avg_deposit?: number; avg_withdrawal?: number; today_profit?: number; daily_used?: number; monthly_used?: number
-  daily_limit?: number; monthly_limit?: number; daily_utilization_pct?: number; monthly_utilization_pct?: number; utilization_pct?: number; limit_warning?: string | null
+  daily_limit?: number; monthly_limit?: number; daily_remaining?: number; monthly_remaining?: number; daily_utilization_pct?: number; monthly_utilization_pct?: number; utilization_pct?: number; limit_warning?: string | null
 }
 
 // Balance diff = (balance change) − (deposits − withdrawals). Mirrors the old
@@ -137,7 +137,7 @@ export default function WalletReport() {
           <th>{t('المحفظة', 'Wallet')}</th><th>{t('الجهاز / التاجر', 'Device / merchant')}</th>
           <th>SMS</th><th>{t('مبلغ SMS', 'SMS amount')}</th>
           <th>{t('إيداعات', 'Deposits')}</th><th>{t('سحوبات', 'Withdrawals')}</th>
-          <th>{t('غير مؤكدة', 'Unconfirmed')}</th><th>{t('الوارد', 'Received')}</th><th>{t('الصادر', 'Sent')}</th><th>{t('الرصيد الحالي', 'Current balance')}</th><th>{t('استخدام الحد', 'Limit used')}</th><th>{t('الاستفادة', 'Utilization')}</th><th>{t('ربح اليوم', "Today's profit")}</th><th>{t('متوسط الإيداع', 'Avg deposit')}</th><th>{t('متوسط السحب', 'Avg withdrawal')}</th>
+          <th>{t('غير مؤكدة', 'Unconfirmed')}</th><th>{t('الوارد', 'Received')}</th><th>{t('الصادر', 'Sent')}</th><th>{t('الرصيد الحالي', 'Current balance')}</th><th>{t('استخدام الحد', 'Limit used')}</th><th>{t('المتاح حتى الحد', 'Remaining capacity')}</th><th>{t('الاستفادة', 'Utilization')}</th><th>{t('ربح اليوم', "Today's profit")}</th><th>{t('متوسط الإيداع', 'Avg deposit')}</th><th>{t('متوسط السحب', 'Avg withdrawal')}</th>
           <th title={t('فرق نشاط SMS عن تغيّر الرصيد — غالباً تحويلات للخزينة', 'SMS activity vs balance change — usually treasury sweeps')}>{t('فرق الرصيد', 'Balance diff')}</th><th /></tr></thead>
         <tbody>{filteredRows.map((r) => (
           <tr key={r.wallet} className="clickable-row" onClick={() => void openDetail(r.wallet)}>
@@ -152,6 +152,7 @@ export default function WalletReport() {
             <td className="mono negative-text">{money(r.sent ?? r.withdrawals_amount, 'EGP')}</td>
             <td className="mono">{money(r.balance, 'EGP')}<div className="cell-sub">SMS: {money(r.sms_balance, 'EGP')}</div></td>
             <td className="mono"><div>{money(r.daily_used ?? 0, 'EGP')} / {money(r.daily_limit ?? 60000, 'EGP')}</div><div className="cell-sub">M: {money(r.monthly_used ?? 0, 'EGP')} / {money(r.monthly_limit ?? 200000, 'EGP')}</div></td>
+            <td className={`mono wallet-remaining${r.limit_warning ? ` ${r.limit_warning}` : ''}`}><div>D: {money(r.daily_remaining ?? Math.max(0, (r.daily_limit ?? 60000) - (r.daily_used ?? 0)), 'EGP')}</div><div className="cell-sub">M: {money(r.monthly_remaining ?? Math.max(0, (r.monthly_limit ?? 200000) - (r.monthly_used ?? 0)), 'EGP')}</div></td>
             <td><div className={`wallet-limit-meter${r.limit_warning ? ` ${r.limit_warning}` : ''}`}><i style={{ width: `${Math.min(100, r.utilization_pct ?? 0)}%` }} /></div><span className={`cell-sub${r.limit_warning ? ' wallet-limit-warning' : ''}`}>{(r.utilization_pct ?? 0).toFixed(1)}%{r.limit_warning === 'limit_reached' ? ' · LIMIT' : r.limit_warning === 'limit_soon' ? ' · SOON' : ''}</span></td>
             <td className="mono positive-text">{money(r.today_profit ?? 0, 'EGP')}</td>
             <td className="mono">{money(r.avg_deposit ?? 0, 'EGP')}</td>
