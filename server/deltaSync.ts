@@ -574,7 +574,9 @@ deltaSyncRoutes.post('/delta-sync', async (c) => {
   // The full cron can legitimately hold its lease for several minutes while
   // walking status changes; sharing that lease made every fast request return
   // `distributed_lease` and left fresh provider rows invisible until cron ran.
-  if (!(await claimDistributedLease(2, 'provider_delta_sync_fast'))) return c.json({ ok: true, skipped: 'distributed_lease' })
+  // The database lease contract accepts 5–300 seconds. Keep this at the
+  // minimum so browser pumps stay responsive without generating invalid RPCs.
+  if (!(await claimDistributedLease(5, 'provider_delta_sync_fast'))) return c.json({ ok: true, skipped: 'distributed_lease' })
 
   const mode = 'fast'
   lastFastRunAt = now
