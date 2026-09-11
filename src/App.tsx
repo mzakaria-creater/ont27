@@ -284,7 +284,7 @@ function Topbar() {
   const [conn, setConn] = useState<Conn>('wait')
   const [checkedAt, setCheckedAt] = useState<Date | null>(null)
   const [ago, setAgo] = useState(0)
-  const isStaff = ['agent', 'operator', 'operations_admin', 'operator_admin', 'operation_admin'].includes(user?.role ?? '')
+  const isStaff = ['agent', 'ops_agent', 'agent_manager', 'operator', 'operations_admin', 'operator_admin', 'operation_admin'].includes(user?.role ?? '')
   const [attendance, setAttendance] = useState<{ id: string; checked_in_at: string } | null>(null)
   const [attendanceBusy, setAttendanceBusy] = useState(false)
   const [attendanceError, setAttendanceError] = useState(false)
