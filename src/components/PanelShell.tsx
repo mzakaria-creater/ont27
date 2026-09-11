@@ -45,13 +45,13 @@ const COMPLAINT_ROLES = ['owner', 'admin', 'super_admin', 'operator', 'operation
 
 // Ordered nav groups. Only groups with at least one visible link render.
 const NAV_GROUPS: { id: NavGroupId; ar: string; en: string }[] = [
-  { id: 'overview', ar: 'نظرة عامة', en: 'Overview' },
-  { id: 'transactions', ar: 'المعاملات', en: 'Transactions' },
+  { id: 'overview', ar: 'المراقبة الحية', en: 'Live overview' },
+  { id: 'transactions', ar: 'سير العمليات', en: 'Operations' },
   { id: 'payments', ar: 'المدفوعات والمحافظ', en: 'Payments & wallets' },
-  { id: 'customers', ar: 'العملاء والتجار', en: 'Customers & merchants' },
-  { id: 'automation', ar: 'الأتمتة والمخاطر', en: 'Automation & risk' },
+  { id: 'customers', ar: 'التجار والعملاء', en: 'Merchants & customers' },
+  { id: 'automation', ar: 'الأتمتة والحماية', en: 'Automation & risk' },
   { id: 'insights', ar: 'التقارير والتحليلات', en: 'Reports & insights' },
-  { id: 'admin', ar: 'النظام والإدارة', en: 'System & admin' },
+  { id: 'admin', ar: 'الإدارة والنظام', en: 'Admin & system' },
 ]
 
 const NAV_GROUP_ICONS: Record<NavGroupId, ReactNode> = {
@@ -92,8 +92,8 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/devices', icon: '📲', labelAr: 'أسطول الأجهزة', labelEn: 'Device fleet', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/wallet-report', icon: '📊', labelAr: 'تقرير المحافظ', labelEn: 'Wallet report', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/wallet-investigation', icon: '🔎', labelAr: 'تحقيق المحفظة', labelEn: 'Wallet investigation', keys: ['sms_live', 'wallets'], group: 'payments' },
-  { to: '/withdrawal-sms-report', icon: '🧾', labelAr: 'تقرير SMS السحب', labelEn: 'Withdrawal SMS report', keys: ['reports', 'advanced_analysis', 'sms_live'], group: 'payments' },
-  { to: '/cash-settlements', icon: '💵', labelAr: 'تسوية كاش SMS', labelEn: 'Cash SMS settlement', keys: ['reports', 'advanced_analysis', 'settlements', 'sms_live'], group: 'payments' },
+  { to: '/withdrawal-sms-report', icon: '🧾', labelAr: 'تقرير SMS السحب', labelEn: 'Withdrawal SMS report', keys: ['reports', 'advanced_analysis', 'sms_live'], group: 'insights' },
+  { to: '/cash-settlements', icon: '💵', labelAr: 'تسوية كاش SMS', labelEn: 'Cash SMS settlement', keys: ['reports', 'advanced_analysis', 'settlements', 'sms_live'], group: 'insights' },
   { to: '/wallet-movements', icon: '💱', labelAr: 'حركة المحافظ', labelEn: 'Wallet movements', keys: ['wallets', 'treasury', 'reports', 'sms_live'], group: 'payments' },
   { to: '/tv', icon: '🖥️', labelAr: 'شاشة TV', labelEn: 'TV screen', keys: ['sms_live'], group: 'overview' },
   { to: '/p2p-tv', icon: '📺', labelAr: 'شاشة P2P الحية', labelEn: 'P2P Live TV', keys: ['sms_live', 'binance_p2p', 'treasury'], group: 'overview' },
@@ -114,7 +114,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/risk', icon: '🛡️', labelAr: 'المخاطر', labelEn: 'Risk & compliance', keys: ['risk', 'risk_audit', 'flagged', 'exceptions', 'manual_review', 'velocity', 'compliance'], group: 'automation' },
   { to: '/automation', icon: '🤖', labelAr: 'الأتمتة', labelEn: 'Automation', keys: ['automation', 'telegram_bot', 'binance_p2p', 'treasury', 'allocation_engine', 'capacity_monitor', 'workspace_hub', 'launchpad', 'ai_team'], group: 'automation' },
   { to: '/replay-lab', icon: '🧪', labelAr: 'مختبر Replay', labelEn: 'Replay lab', keys: ['automation', 'sms_live', 'webhooks'], group: 'automation' },
-  { to: '/webhooks', icon: '↗', labelAr: 'مركز Webhooks', labelEn: 'Webhook Center', keys: ['webhooks', 'developers'], group: 'admin' },
+  { to: '/webhooks', icon: '↗', labelAr: 'مركز Webhooks', labelEn: 'Webhook Center', keys: ['webhooks', 'developers'], group: 'automation' },
   { to: '/telegram', icon: '✈️', labelAr: 'Telegram مباشر', labelEn: 'Telegram Live', keys: ['telegram_bot', 'automation'], group: 'automation' },
   { to: '/binance', icon: '🪙', labelAr: 'Binance P2P', labelEn: 'Binance P2P', keys: ['binance_p2p_config', 'binance_p2p', 'treasury'], group: 'automation' },
   { to: '/binance/p2p-ads', icon: '📣', labelAr: 'إعلانات P2P', labelEn: 'P2P Live Ads', keys: ['binance_p2p', 'treasury'], group: 'automation' },
@@ -490,6 +490,14 @@ export default function PanelShell({ children }: { children: ReactNode }) {
       {can('sms_live') && !smsOpen && <button type="button" className={`sms-widget-launcher${smsUnread ? ' has-unread' : ''}${smsUnlinked ? ' has-unlinked' : ''}`} onClick={openSmsRail} aria-expanded="false" aria-controls="live-sms-widget" aria-label={t('إظهار شريط SMS المباشر', 'Show Live SMS bar')} title={t('إظهار شريط SMS المباشر', 'Show Live SMS bar')}><span className="sms-widget-pulse" /><MessageSquareText size={20} aria-hidden="true" /><span className="sms-widget-label">Live SMS</span>{(smsUnread > 0 || smsUnlinked > 0) && <span className={`live-widget-badge${smsUnlinked ? ' unlinked-badge' : ''}`}>{smsUnlinked > 99 ? '99+' : smsUnlinked || smsUnread}</span>}</button>}
       {can('sms_live') && smsOpen && <SmsRail onMinimize={() => setSmsOpen(false)} />}
       {canTelegramLive && telegramOpen && <TelegramRail onMinimize={() => setTelegramOpen(false)} />}
+      <nav className="mobile-bottom-nav" aria-label={t('التنقل السريع', 'Quick navigation')}>
+        <Link to="/" className={pathname === '/' ? 'active' : ''}><LayoutDashboard size={18} /><span>{t('الرئيسية', 'Home')}</span></Link>
+        <Link to="/transactions" className={pathname.startsWith('/transactions') ? 'active' : ''}><CircleDollarSign size={18} /><span>{t('المعاملات', 'Transactions')}</span></Link>
+        {can('sms_live') && <Link to="/sms" className={pathname === '/sms' ? 'active' : ''}><MessageSquareText size={18} /><span>{t('SMS', 'SMS')}</span></Link>}
+        {can('wallets') && <Link to="/wallets" className={pathname === '/wallets' ? 'active' : ''}><WalletCards size={18} /><span>{t('المحافظ', 'Wallets')}</span></Link>}
+        {can('reports') && <Link to="/reports" className={pathname.startsWith('/reports') ? 'active' : ''}><BarChart3 size={18} /><span>{t('التقارير', 'Reports')}</span></Link>}
+        <button type="button" className={navOpen ? 'active' : ''} onClick={() => setNavOpen(true)}><Menu size={18} /><span>{t('المزيد', 'More')}</span></button>
+      </nav>
     </div>
   )
 }
