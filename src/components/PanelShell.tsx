@@ -496,7 +496,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
         {can('sms_live') && <Link to="/sms" className={pathname === '/sms' ? 'active' : ''}><MessageSquareText size={18} /><span>{t('SMS', 'SMS')}</span></Link>}
         {can('wallets') && <Link to="/wallets" className={pathname === '/wallets' ? 'active' : ''}><WalletCards size={18} /><span>{t('المحافظ', 'Wallets')}</span></Link>}
         {can('reports') && <Link to="/reports" className={pathname.startsWith('/reports') ? 'active' : ''}><BarChart3 size={18} /><span>{t('التقارير', 'Reports')}</span></Link>}
-        <button type="button" className={navOpen ? 'active' : ''} onClick={() => setNavOpen(true)}><Menu size={18} /><span>{t('المزيد', 'More')}</span></button>
+        <button type="button" className={navOpen ? 'active' : ''} onClick={() => setNavOpen(true)}><Menu size={18} /><span>{t('التطبيقات', 'Apps')}</span></button>
       </nav>
     </div>
   )
