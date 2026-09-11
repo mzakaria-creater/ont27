@@ -376,12 +376,20 @@ extraRoutes.get(
       const previousApproved = approvedHistory.get(normalizePhone(row.sender_number)) ?? 0
       const senderKey = normalizePhone(row.sender_number)
       const walletKey = String(row.receiving_wallet ?? row.to_account_number ?? '').replace(/\s/g, '')
+      // Keep the history card truthful even when the provider stores the same
+      // phone in a different presentation. Retention is proof of an earlier
+      // approved deposit; that count must never be rendered as 0/0/0.
+      const clientHistory = { ...(clientCounts.get(senderKey) ?? { paid: 0, declined: 0, pending: 0 }) }
+      if (previousApproved > clientHistory.paid) clientHistory.paid = previousApproved
+      if (row.status === 'PENDING' && clientHistory.pending === 0) clientHistory.pending = 1
+      const walletHistory = { ...(walletCounts.get(walletKey) ?? { paid: 0, declined: 0, pending: 0 }) }
+      if (row.status === 'PENDING' && walletHistory.pending === 0) walletHistory.pending = 1
       return {
         ...row,
         deposit_kind: previousApproved > 0 ? 'retention_deposit' : 'first_deposit',
         previous_approved_deposits: previousApproved,
-        client_status_counts: clientCounts.get(senderKey) ?? { paid: 0, declined: 0, pending: 0 },
-        wallet_status_counts: walletCounts.get(walletKey) ?? { paid: 0, declined: 0, pending: 0 },
+        client_status_counts: clientHistory,
+        wallet_status_counts: walletHistory,
         linked_sms: smsByTx.get(row.tx_id) ?? null,
         decision_context: reasonByTx.get(row.tx_id) ?? null,
         blacklisted_sender: blacklistedPhones.has(senderKey),

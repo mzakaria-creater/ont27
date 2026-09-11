@@ -9,7 +9,7 @@ import { depositTime, money } from '../lib/deposits'
 import { useBulk } from '../lib/useBulk'
 import { useLocale } from '../lib/locale'
 import { syncProviders } from '../lib/providerSync'
-import { LayoutGrid, Search, TableProperties, X } from 'lucide-react'
+import { Ban, LayoutGrid, Search, TableProperties, Unlock, X } from 'lucide-react'
 import MerchantLogo from '../components/MerchantLogo'
 import MethodLogo from '../components/MethodLogo'
 import SenderIdentity from '../components/SenderIdentity'
@@ -169,6 +169,20 @@ export default function Approvals() {
   }
 
   const canDep = can('deposits', 'can_approve')
+  const canClientProtection = can('risk', 'can_edit') || can('transactions', 'can_edit') || can('client_crm', 'can_edit')
+  const changeClientBlock = async (row: DepRow, action: 'block' | 'unblock') => {
+    const phone = row.sender_number?.trim()
+    if (!canClientProtection || !phone) return
+    const question = action === 'block' ? t('حظر هذا العميل؟', 'Block this client?') : t('رفع الحظر عن هذا العميل؟', 'Unblock this client?')
+    if (!window.confirm(`${question}\n${phone}`)) return
+    setRowBusy(`client-${row.tx_id}`)
+    try {
+      await api(action === 'block' ? '/api/risk/blacklist' : '/api/risk/blacklist/unblock-client', { method: 'POST', body: JSON.stringify(action === 'block' ? { type: 'phone', value: phone, reason: `Approval queue action for ${row.ontarget_ref ?? row.tx_id}` } : { value: phone }) })
+      await load()
+    } catch (e) {
+      setErr(e instanceof ApiError && e.status === 409 ? t('العميل محظور بالفعل.', 'Client is already blocked.') : t('تعذر تحديث حظر العميل.', 'Could not update client block.'))
+    } finally { setRowBusy(null) }
+  }
   const normalizedSearch = searchQuery.trim().toLocaleLowerCase()
   const visibleDeposits = deposits?.filter((row) => !normalizedSearch || [row.tx_id, row.ontarget_ref, row.merchant_tx_reference, row.amount, row.sender_name, row.sender_number, row.sender_account_number, row.receiving_wallet, row.to_account_number, row.merchant, row.master_merchant].some((value) => String(value ?? '').toLocaleLowerCase().includes(normalizedSearch))) ?? []
   const visiblePayouts = payouts?.filter((row) => !normalizedSearch || [row.maven_id, row.ontarget_ref, row.amount, row.account_name, row.mobile_no, row.pay_by, row.merchant].some((value) => String(value ?? '').toLocaleLowerCase().includes(normalizedSearch))) ?? []
@@ -303,10 +317,11 @@ export default function Approvals() {
                     <td><MerchantLogo merchant={r.merchant ?? r.master_merchant} /></td>
                     <td className="mono">{depositTime(r)}</td>
                     <td>
-                      {canDep && (
+                      {(canDep || (canClientProtection && r.sender_number)) && (
                         <div className="row-actions">
-                          <button className="btn-primary btn-sm" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'approve')}>✅</button>
-                          <button className="btn-ghost danger btn-sm" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'decline')}>❌</button>
+                          {canDep && <><button className="btn-primary btn-sm" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'approve')}>✅</button>
+                          <button className="btn-ghost danger btn-sm" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'decline')}>❌</button></>}
+                          {canClientProtection && r.sender_number && (r.blacklisted_sender ? <button className="btn-ghost btn-sm" disabled={rowBusy === `client-${r.tx_id}`} onClick={() => void changeClientBlock(r, 'unblock')} title={t('رفع حظر العميل', 'Unblock client')}>🔓 <Unlock size={13} /></button> : <button className="btn-ghost danger btn-sm" disabled={rowBusy === `client-${r.tx_id}`} onClick={() => void changeClientBlock(r, 'block')} title={t('حظر العميل', 'Block client')}>🚫 <Ban size={13} /></button>)}
                         </div>
                       )}
                     </td>
@@ -344,7 +359,7 @@ export default function Approvals() {
                 </div>
                 <AutomationCountdown row={r} now={now} />
                 {r.proof_image_url && <button className="approval-card-proof" onClick={() => setProof({ url: r.proof_image_url!, ref: String(r.ontarget_ref ?? r.tx_id) })}><img src={r.proof_image_url} alt="" loading="lazy" /><span>{t('عرض إثبات الدفع', 'View payment proof')}</span></button>}
-                {canDep && <div className="approval-card-actions"><button className="btn-primary" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'approve')}>{t('موافقة', 'Approve')}</button><button className="btn-ghost danger" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'decline')}>{t('رفض', 'Decline')}</button></div>}
+                {(canDep || (canClientProtection && r.sender_number)) && <div className="approval-card-actions">{canDep && <><button className="btn-primary" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'approve')}>{t('موافقة', 'Approve')}</button><button className="btn-ghost danger" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'decline')}>{t('رفض', 'Decline')}</button></>}{canClientProtection && r.sender_number && (r.blacklisted_sender ? <button className="btn-ghost" disabled={rowBusy === `client-${r.tx_id}`} onClick={() => void changeClientBlock(r, 'unblock')}>🔓 {t('رفع الحظر', 'Unblock')}</button> : <button className="btn-ghost danger" disabled={rowBusy === `client-${r.tx_id}`} onClick={() => void changeClientBlock(r, 'block')}>🚫 {t('حظر العميل', 'Block client')}</button>)}</div>}
               </article>
             ))}
           </div>
