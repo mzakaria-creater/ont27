@@ -35,6 +35,7 @@ export default function TransactionEditPanel({
   const { t } = useLocale()
   const { user } = useAuth()
   const isSteward = STEWARD_ROLES.has(user?.role ?? '')
+  const canEditAmount = new Set(['super_admin', 'owner', 'admin']).has(user?.role ?? '') || user?.username?.toLowerCase() === 'ahmedmano.solly'
 
   const [open, setOpen] = useState(false)
   const [nextStatus, setNextStatus] = useState('')
@@ -60,7 +61,7 @@ export default function TransactionEditPanel({
     setDone(null)
     const payload = {
       status: changingStatus ? nextStatus : null,
-      amount: changingAmount ? Number(nextAmount) : null,
+      amount: changingAmount && canEditAmount ? Number(nextAmount) : null,
       reason: reason.trim(),
     }
     try {
@@ -131,11 +132,11 @@ export default function TransactionEditPanel({
             ))}
           </select>
 
-          <label className="field-label">{t('المبلغ الجديد', 'New amount')}</label>
+          {canEditAmount && <><label className="field-label">{t('المبلغ الجديد', 'New amount')}</label>
           <input
             className="login-input" dir="ltr" inputMode="decimal" placeholder={String(amount ?? '')}
             value={nextAmount} onChange={(e) => setNextAmount(e.target.value)} disabled={busy}
-          />
+          /></>}
 
           <label className="field-label">{t('السبب (إلزامي)', 'Reason (required)')}</label>
           <input

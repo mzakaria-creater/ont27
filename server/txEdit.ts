@@ -29,8 +29,16 @@ txEditRoutes.use('*', requireAuth)
 // "Operator admin" is stored as operations_admin in panel_users.
 const DIRECT_STATUS_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin', 'operator_admin', 'operation_admin', 'operator'])
 const AMOUNT_EDIT_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin', 'operator_admin', 'operation_admin', 'operator'])
+// The named operator is explicitly allowed to correct amounts. Keep this
+// allow-list server-side because the browser must never be the authorization
+// boundary for financial edits.
+const AMOUNT_EDIT_USERNAMES = new Set(['ahmedmano.solly'])
 const EDITABLE_STATUSES = ['PENDING', 'PAID', 'DECLINED', 'EXPIRED', 'EXPIRED_LOCAL', 'UNDERPAID', 'APPROVED']
 const PROVIDER_STATUSES = new Set(['PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID', 'OVERPAID'])
+
+const canEditAmount = (actor: { role: string; username: string }) =>
+  ['super_admin', 'owner', 'admin'].includes(actor.role) ||
+  (AMOUNT_EDIT_ROLES.has(actor.role) && AMOUNT_EDIT_USERNAMES.has(actor.username.toLowerCase()))
 
 // Mina and Eslam, by label in telegram_chats. Resolved at send time rather
 // than hard-coding chat ids, so moving an account only touches that table.
@@ -312,7 +320,7 @@ txEditRoutes.post('/:txId/edit', async (c) => {
   // Amount edits require an operator/admin role; NGPay amount edits are sent
   // to Maven and verified by the provider worker before the local mirror is
   // updated.
-  if (parsed.amount != null && !AMOUNT_EDIT_ROLES.has(actor.role)) {
+  if (parsed.amount != null && !canEditAmount(actor)) {
     return c.json({ error: 'amount_edit_requires_admin' }, 403)
   }
 
