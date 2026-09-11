@@ -86,6 +86,7 @@ const presentPayout = (row: Record<string, unknown>) => {
 
 const PROOF_BUCKET = "pop";
 const PROOF_PREFIX = "payout-proofs/";
+const AUGUST_PENDING_PAYOUT_IDS = [30841644, 30841646, 30841645, 30841757, 30841810] as const;
 
 payoutRoutes.get("/", requirePerm("payouts", "can_view"), async (c) => {
   const statuses = [...new Set((c.req.query("status") ?? "").split(",").map((value) => value.trim().toUpperCase()).filter(Boolean))];
@@ -231,6 +232,46 @@ payoutRoutes.put("/settings/execution", requireSuperAdmin, async (c) => {
       after: update,
     });
   return c.json({ settings: data });
+});
+
+// A deliberately narrow, authenticated production path for the confirmed
+// August cleanup. It cannot be used for arbitrary IDs or approvals.
+payoutRoutes.post("/bulk-reject-august-2026", requireSuperAdmin, async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (body?.confirmation !== "REJECT AUGUST 2026 PENDING PAYOUTS")
+    return c.json({ error: "explicit_confirmation_required" }, 400);
+  const actor = c.get("actor");
+  const { data: rows, error } = await db
+    .from("maven_payout_transactions")
+    .select("maven_id, status, first_seen_at")
+    .in("maven_id", [...AUGUST_PENDING_PAYOUT_IDS]);
+  if (error) return c.json({ error: "db_error", detail: error.message }, 500);
+  const eligible = (rows ?? []).filter((row) => row.status === "PENDING" && row.first_seen_at && row.first_seen_at >= "2026-08-01T00:00:00+03:00" && row.first_seen_at < "2026-09-01T00:00:00+03:00");
+  const serviceKey = process.env.SUPABASE_SECRET_KEY;
+  const baseUrl = process.env.SUPABASE_URL;
+  if (!serviceKey || !baseUrl) return c.json({ error: "worker_not_configured" }, 500);
+  const results: Record<string, unknown>[] = [];
+  for (const row of eligible) {
+    const response = await fetch(`${baseUrl}/functions/v1/payout-execute-worker`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, "content-type": "application/json" },
+      body: JSON.stringify({
+        maven_id: row.maven_id,
+        decision: "DECLINED",
+        actor_name: actor.username,
+        mode: "batch_decline",
+        remark: "Confirmed one-time rejection of August 2026 pending payout",
+      }),
+    });
+    const result = await response.json().catch(() => ({ error: "worker_invalid_response" })) as Record<string, unknown>;
+    results.push({ maven_id: row.maven_id, http_status: response.status, ...result });
+  }
+  return c.json({
+    ok: results.length > 0 && results.every((result) => result.executed_on_provider === true),
+    requested_ids: AUGUST_PENDING_PAYOUT_IDS,
+    eligible_count: eligible.length,
+    results,
+  });
 });
 
 payoutRoutes.get("/:mavenId", requirePerm("payouts", "can_view"), async (c) => {

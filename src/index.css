@@ -1938,6 +1938,52 @@ a.stat-card:hover { border-color: var(--accent); }
   .bell-menu { position: fixed; inset-inline: 10px; top: 54px; min-width: 0; }
 }
 
+/* TV wall: keep four operational cards visible and scroll each feed inside
+   its own card instead of letting a long stream stretch the whole screen. */
+.tv-page {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.tv-cols {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+}
+.tv-col {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.tv-feed {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+@media (max-width: 1000px) {
+  .tv-page {
+    height: auto;
+    min-height: 100dvh;
+    overflow-y: auto;
+  }
+  .tv-cols {
+    overflow: visible;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: minmax(360px, 55dvh);
+  }
+  .tv-col { overflow: hidden; }
+}
+@media (max-width: 620px) {
+  .tv-cols {
+    grid-template-columns: 1fr;
+    grid-auto-rows: minmax(320px, 60dvh);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sms-rail { animation: none; }
   .live-dot .ld { animation: none; }
@@ -3351,4 +3397,56 @@ html, body { overflow-x: hidden; overflow-y: auto; }
   .p2p-tv-page { min-height: 100dvh; padding-inline: max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-right)); padding-bottom: calc(28px + env(safe-area-inset-bottom)); }
   .p2p-tv-card { overflow: visible; }
   .p2p-tv-card-head { padding: 15px; }
+}
+
+/* P2P TV wall: four data cards stay visible on desktop and each card owns
+   its stream scroll, so SMS or wallet history never pushes other cards away. */
+.p2p-live-sms-columns,
+.p2p-tv-columns {
+  align-items: stretch;
+}
+.p2p-tv-card {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.p2p-sms-list,
+.p2p-wallet-list,
+.p2p-payout-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+@media (min-width: 1001px) {
+  .p2p-live-sms-columns,
+  .p2p-tv-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .p2p-live-sms-columns .p2p-tv-card,
+  .p2p-tv-columns .p2p-tv-card {
+    max-height: min(560px, calc(100dvh - 330px));
+  }
+  .p2p-sms-list,
+  .p2p-wallet-list,
+  .p2p-payout-list {
+    max-height: 410px;
+  }
+}
+@media (max-width: 1000px) {
+  .p2p-live-sms-columns,
+  .p2p-tv-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .p2p-tv-card { max-height: 58dvh; }
+}
+@media (max-width: 620px) {
+  .p2p-live-sms-columns,
+  .p2p-tv-columns {
+    grid-template-columns: 1fr;
+  }
+  .p2p-tv-card { max-height: 62dvh; }
 }

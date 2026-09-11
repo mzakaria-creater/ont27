@@ -141,6 +141,8 @@ export default function Payouts() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
+  const [augustRejectBusy, setAugustRejectBusy] = useState(false);
+  const [augustRejectMessage, setAugustRejectMessage] = useState<string | null>(null);
   const appliedQ = params.get("q") ?? "";
   useEffect(() => setQ(appliedQ), [appliedQ]);
   const appliedFrom = params.get("from") ?? "";
@@ -555,6 +557,21 @@ export default function Payouts() {
     setBulkBusy(false);
     await load(true);
   };
+  const rejectConfirmedAugust = async () => {
+    if (!window.confirm(t("سيتم رفض عمليات أغسطس الخمس المحددة عبر Maven/NGPay بعد التحقق من حالتها. متابعة؟", "The five confirmed August payouts will be rejected through Maven/NGPay after status verification. Continue?"))) return;
+    setAugustRejectBusy(true); setAugustRejectMessage(null);
+    try {
+      const result = await api<{ ok: boolean; eligible_count: number; results: Array<{ maven_id: number; executed_on_provider?: boolean; error?: string }> }>("/api/payouts/bulk-reject-august-2026", {
+        method: "POST",
+        body: JSON.stringify({ confirmation: "REJECT AUGUST 2026 PENDING PAYOUTS" }),
+      });
+      const failed = result.results.filter((row) => row.executed_on_provider !== true);
+      setAugustRejectMessage(t(`تم تنفيذ ${result.results.length - failed.length} من ${result.eligible_count} — الفشل: ${failed.length}`, `${result.results.length - failed.length} of ${result.eligible_count} executed — failed: ${failed.length}`));
+      await load(true);
+    } catch (e) {
+      setAugustRejectMessage(e instanceof ApiError && e.status === 403 ? t("هذا الإجراء متاح لـ super_admin فقط.", "This action is available to super_admin only.") : t("تعذر تنفيذ الرفض الجماعي.", "Bulk rejection could not be completed."));
+    } finally { setAugustRejectBusy(false); }
+  };
 
   return (
     <PanelShell>
@@ -621,6 +638,14 @@ export default function Payouts() {
             </span>
           </div>
           {settingsMessage && <p className="drawer-note">{settingsMessage}</p>}
+          <div className="payout-one-time-action">
+            <div>
+              <strong>{t("رفض العمليات المعلقة القديمة — أغسطس 2026", "Reject old pending payouts — August 2026")}</strong>
+              <p className="page-sub">{t("إجراء موثّق ومحدود بالعمليات الخمس المؤكدة فقط، مع تحقق Maven قبل كل رفض.", "Audited one-time action limited to the five confirmed IDs, with Maven verification before each rejection.")}</p>
+            </div>
+            <button className="btn-ghost btn-sm danger" disabled={augustRejectBusy} onClick={() => void rejectConfirmedAugust()}>{augustRejectBusy ? t("جارٍ التحقق…", "Verifying…") : t("رفض عمليات أغسطس المؤكدة", "Reject confirmed August payouts")}</button>
+            {augustRejectMessage && <span className="cell-sub">{augustRejectMessage}</span>}
+          </div>
         </section>
       )}
       <section className="card payout-filter-panel transaction-filter-toolbar">

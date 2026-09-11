@@ -464,7 +464,7 @@ export default function App() {
             <Route path="/notifications" element={<PageGate keys={['notifications']}><Notifications /></PageGate>} />
             <Route path="/sms-notifications" element={<PageGate keys={['sms_live', 'notifications']}><SmsNotifications /></PageGate>} />
             <Route path="/tv" element={<PageGate keys={['sms_live']}><TvScreen /></PageGate>} />
-            <Route path="/p2p-tv" element={<PageGate keys={['sms_live','binance_p2p','treasury']}><PanelShell><P2PTv /></PanelShell></PageGate>} />
+            <Route path="/p2p-tv" element={<PageGate keys={['sms_live']}><PanelShell><P2PTv /></PanelShell></PageGate>} />
             <Route path="/complaints" element={<PageGate keys={['support']}><Complaints /></PageGate>} />
             <Route path="/merchant-link-generator" element={<PageGate keys={['checkout-builder']}><LinkGenerator /></PageGate>} />
             <Route path="/payment-methods" element={<PageGate keys={['wallets','payment_methods']}><PaymentMethods /></PageGate>} />

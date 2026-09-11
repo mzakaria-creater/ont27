@@ -68,6 +68,7 @@ async function readPayoutStatus(
   cookie: string,
   base: string,
   mavenId: number,
+  firstSeenAt?: string | null,
 ): Promise<string | null> {
   const months = [
     "Jan",
@@ -86,6 +87,9 @@ async function readPayoutStatus(
   const pad = (n: number) => String(n).padStart(2, "0");
   const fmt = (d: Date, time: string) =>
     `${pad(d.getUTCDate())}-${months[d.getUTCMonth()]}-${d.getUTCFullYear()} ${time}`;
+  const center = firstSeenAt ? new Date(firstSeenAt) : new Date();
+  const startDate = new Date(center.getTime() - 2 * 86400000);
+  const endDate = new Date(center.getTime() + 2 * 86400000);
   const body = new URLSearchParams({
     draw: "1",
     start: "0",
@@ -94,8 +98,8 @@ async function readPayoutStatus(
     "search[regex]": "false",
     "order[0][column]": "26",
     "order[0][dir]": "desc",
-    StartCreatedDate: fmt(new Date(Date.now() - 7 * 86400000), "00:00:00"),
-    EndCreatedDate: fmt(new Date(), "23:59:59"),
+    StartCreatedDate: fmt(startDate, "00:00:00"),
+    EndCreatedDate: fmt(endDate, "23:59:59"),
   }).toString();
   const r = await fetch(`${base}/Transactions/GetP2PPayoutTransactions`, {
     method: "POST",
@@ -150,7 +154,7 @@ Deno.serve(async (req) => {
       utr_number?: string;
       remark?: string;
       proof_url?: string;
-      mode?: "manual" | "auto";
+      mode?: "manual" | "auto" | "batch_decline";
     };
 
     if (!maven_id) return json({ error: "maven_id is required" }, 400);
@@ -160,13 +164,16 @@ Deno.serve(async (req) => {
 
     const { data: payout } = await sb
       .from("maven_payout_transactions")
-      .select("maven_id, ontarget_ref, status, amount")
+      .select("maven_id, ontarget_ref, status, amount, first_seen_at")
       .eq("maven_id", maven_id)
       .maybeSingle();
     if (!payout)
       return json({ error: `No payout for maven_id ${maven_id}` }, 404);
 
-    const wantAuto = mode === "auto";
+    const oneTimeBatchDecline = mode === "batch_decline";
+    if (oneTimeBatchDecline && decision !== "DECLINED")
+      return json({ error: "batch_decline_only" }, 400);
+    const wantAuto = mode === "auto" || oneTimeBatchDecline;
 
     // 1. Log first, always, whichever mode.
     const { data: logRow, error: logErr } = await sb
@@ -179,7 +186,7 @@ Deno.serve(async (req) => {
         proof_url: proof_url ?? null,
         remark: remark ?? null,
         utr_number: utr_number ?? null,
-        execution_mode: wantAuto ? "auto" : "manual",
+        execution_mode: oneTimeBatchDecline ? "batch_decline" : wantAuto ? "auto" : "manual",
         db_status_before: payout.status,
         executed_on_provider: false,
       })
@@ -223,13 +230,14 @@ Deno.serve(async (req) => {
       .select("*")
       .eq("id", 1)
       .maybeSingle();
-    if (!settings?.auto_execute_enabled) {
+    if (!oneTimeBatchDecline && !settings?.auto_execute_enabled) {
       return await fail(
         "Automatic payout execution is switched off. The decision is recorded; move the money on the portal.",
         409,
       );
     }
     if (
+      !oneTimeBatchDecline &&
       settings.max_auto_amount != null &&
       Number(payout.amount) > Number(settings.max_auto_amount)
     ) {
@@ -271,7 +279,7 @@ Deno.serve(async (req) => {
       const cookie = await login(username, password, base);
 
       // Refuse to touch anything the provider does not still show as pending.
-      beforeStatus = await readPayoutStatus(cookie, base, Number(maven_id));
+      beforeStatus = await readPayoutStatus(cookie, base, Number(maven_id), payout.first_seen_at);
       await sb
         .from("payout_decision_log")
         .update({ provider_raw_status_at_decision: beforeStatus })
@@ -330,7 +338,7 @@ Deno.serve(async (req) => {
 
         // 4. Verify against the provider's own view before claiming anything.
         await new Promise((res) => setTimeout(res, 2500));
-        afterStatus = await readPayoutStatus(cookie, base, Number(maven_id));
+        afterStatus = await readPayoutStatus(cookie, base, Number(maven_id), payout.first_seen_at);
         if (!afterStatus || afterStatus.toUpperCase() !== target) {
           return await fail(
             `Update sent but verify failed: expected ${target}, provider says ${afterStatus ?? "unknown"}`,
