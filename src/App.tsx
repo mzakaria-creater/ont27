@@ -78,6 +78,8 @@ const TeamTasks = lazy(() => import('./pages/TeamTasks'))
 const OperatorHandbook = lazy(() => import('./pages/OperatorHandbook'))
 const Devices = lazy(() => import('./pages/Devices'))
 const StaffAttendance = lazy(() => import('./pages/StaffAttendance'))
+const MindMap = lazy(() => import('./pages/MindMap'))
+const RedTeam = lazy(() => import('./pages/RedTeam'))
 
 type Conn = 'wait' | 'ok' | 'bad'
 
@@ -437,6 +439,8 @@ export default function App() {
             <Route path="/reports/merchant-settlements" element={<PageGate keys={['reports','advanced_analysis']}><MerchantSettlements /></PageGate>} />
             <Route path="/crm" element={<PageGate keys={['client_crm']}><Crm /></PageGate>} />
             <Route path="/risk" element={<PageGate keys={['risk','risk_audit','flagged','exceptions','manual_review','velocity','compliance']}><Risk /></PageGate>} />
+            <Route path="/mind-map" element={<PageGate keys={['reports','advanced_analysis']}><MindMap /></PageGate>} />
+            <Route path="/red-team" element={<PageGate keys={['risk','risk_audit','compliance']}><RedTeam /></PageGate>} />
             <Route path="/automation" element={<PageGate keys={['automation','automation_rules']}><Automation /></PageGate>} />
             <Route path="/automation-control" element={<Navigate to="/automation" replace />} />
             <Route path="/integration-guide" element={<PageGate keys={['api-keys','settings','merchants']}><IntegrationGuide /></PageGate>} />

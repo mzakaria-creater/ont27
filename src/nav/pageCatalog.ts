@@ -79,6 +79,7 @@ export const PAGE_CATALOG: Record<string, { category: string; label: string }> =
   manual_review: { category: 'risk', label: 'مراجعة يدوية' },
   velocity: { category: 'risk', label: 'حدود السرعة' },
   compliance: { category: 'risk', label: 'الامتثال' },
+  red_team: { category: 'risk', label: 'اختبار Red Team' },
 
   telegram_bot: { category: 'automation', label: 'بوت تيليجرام' },
   automation: { category: 'automation', label: 'مركز الأتمتة' },
@@ -106,6 +107,7 @@ export const PAGE_CATALOG: Record<string, { category: string; label: string }> =
 
   reports: { category: 'reports', label: 'التقارير' },
   advanced_analysis: { category: 'reports', label: 'تحليلات متقدمة' },
+  mind_map: { category: 'reports', label: 'خريطة النظام' },
   revenue_center: { category: 'reports', label: 'الإيرادات والعمولات' },
 
   support: { category: 'support', label: 'الدعم الفني' },

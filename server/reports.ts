@@ -7,6 +7,35 @@ import { sendTelegramAlert } from './notify.js'
 export const reportsRoutes = new Hono<AuthEnv>()
 reportsRoutes.use('*', requireAuth)
 
+// Structured merchant settlement ledger. This is separate from the live
+// transaction analytics below because it stores the approved settlement
+// snapshot, payments already received, and documentary proofs.
+reportsRoutes.get('/merchant-settlements', requireAnyPerm(['reports', 'advanced_analysis'], 'can_view'), async (c) => {
+  const [masters, subs, settlements, monthly, proofs] = await Promise.all([
+    db.from('master_merchants').select('id, name, code'),
+    db.from('sub_merchants').select('id, master_merchant_id, name, slug, merchant_id, status'),
+    db.from('merchant_settlements').select('id, sub_merchant_id, settlement_period, total_net_usdt, total_net_egp, already_settled_usdt, already_settled_egp, balance_due_usdt, balance_due_egp, settlement_date, status, created_at, updated_at').order('created_at', { ascending: false }),
+    db.from('merchant_settlement_transactions').select('id, sub_merchant_id, transaction_month, gross_amount_egp, deposit_fee_egp, after_deposit_fee_egp, after_deposit_fee_usdt, settlement_fee_usdt, net_amount_usdt, net_amount_egp, fx_rate').order('transaction_month'),
+    db.from('settlement_proofs').select('id, settlement_id, proof_type, file_name, file_url, amount_egp, amount_usdt, settlement_date, notes, uploaded_by, created_at').order('created_at', { ascending: false }),
+  ])
+  const firstError = masters.error ?? subs.error ?? settlements.error ?? monthly.error ?? proofs.error
+  if (firstError) return c.json({ error: 'db_error', detail: firstError.message }, 500)
+  const masterById = new Map((masters.data ?? []).map((row) => [String(row.id), row]))
+  const subById = new Map((subs.data ?? []).map((row) => [String(row.id), row]))
+  const enrich = (row: any) => {
+    const sub = subById.get(String(row.sub_merchant_id))
+    const master = sub ? masterById.get(String(sub.master_merchant_id)) : null
+    return { ...row, master_merchant: master?.name ?? null, master_code: master?.code ?? null, sub_merchant: sub?.name ?? null, sub_slug: sub?.slug ?? null }
+  }
+  return c.json({
+    masters: masters.data ?? [],
+    sub_merchants: (subs.data ?? []).map((row) => ({ ...row, master_merchant: masterById.get(String(row.master_merchant_id))?.name ?? null })),
+    settlements: (settlements.data ?? []).map(enrich),
+    monthly: (monthly.data ?? []).map(enrich),
+    proofs: proofs.data ?? [],
+  })
+})
+
 const DEPOSIT_STATUSES = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'EXPIRED_LOCAL', 'UNDERPAID']
 const PAYOUT_STATUSES = ['PENDING', 'APPROVED', 'DECLINED', 'PAID', 'EXPIRED', 'EXPIRED_LOCAL', 'UNDERPAID']
 type Tx = { tx_id: number; ontarget_ref: string | null; amount: number | null; status: string | null; merchant: string | null; sub_merchant: string | null; master_merchant: string | null; payment_method: string | null; gateway: string | null; receiving_wallet: string | null; to_account_number: string | null; commission: number | null; fees: number | null; first_seen_at: string | null }

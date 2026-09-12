@@ -114,6 +114,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/reports/merchant-settlements', icon: '📈', labelAr: 'تسويات التجار', labelEn: 'Merchant settlements', keys: ['reports', 'advanced_analysis'], group: 'insights' },
   // Risk & automation
   { to: '/risk', icon: '🛡️', labelAr: 'المخاطر', labelEn: 'Risk & compliance', keys: ['risk', 'risk_audit', 'flagged', 'exceptions', 'manual_review', 'velocity', 'compliance'], group: 'automation' },
+  { to: '/red-team', icon: '🧪', labelAr: 'اختبار Red Team', labelEn: 'Red Team review', keys: ['risk', 'risk_audit', 'compliance'], group: 'automation' },
   { to: '/automation', icon: '🤖', labelAr: 'الأتمتة', labelEn: 'Automation', keys: ['automation', 'telegram_bot', 'binance_p2p', 'treasury', 'allocation_engine', 'capacity_monitor', 'workspace_hub', 'launchpad', 'ai_team'], group: 'automation' },
   { to: '/replay-lab', icon: '🧪', labelAr: 'مختبر Replay', labelEn: 'Replay lab', keys: ['automation', 'sms_live', 'webhooks'], group: 'automation' },
   { to: '/webhooks', icon: '↗', labelAr: 'مركز Webhooks', labelEn: 'Webhook Center', keys: ['webhooks', 'developers'], group: 'automation' },
@@ -123,6 +124,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/binance/p2p-history', icon: '🧾', labelAr: 'سجل P2P', labelEn: 'P2P History', keys: ['binance_p2p', 'treasury'], group: 'automation' },
   // System — reporting, audit, admin
   { to: '/reports', icon: '📊', labelAr: 'التقارير الشاملة', labelEn: 'Full reports', keys: ['reports', 'advanced_analysis'], group: 'insights' },
+  { to: '/mind-map', icon: '🧠', labelAr: 'خريطة النظام', labelEn: 'System mind map', keys: ['reports', 'advanced_analysis'], group: 'insights' },
   { to: '/hr', icon: '🕒', labelAr: 'الموارد البشرية', labelEn: 'HR workspace', keys: ['reports', 'users'], group: 'insights' },
   { to: '/audit', icon: '🕵️', labelAr: 'سجل التدقيق', labelEn: 'Audit log', keys: ['audit_log', 'audit-logs'], group: 'admin' },
   { to: '/notifications', icon: '🔔', labelAr: 'الإشعارات', labelEn: 'Notifications', keys: ['notifications'], group: 'admin' },
