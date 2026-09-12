@@ -329,13 +329,20 @@ payoutRoutes.put("/:mavenId", requirePerm("payouts", "can_edit"), async (c) => {
     typeof body?.[key] === "string"
       ? body[key].trim().slice(0, max) || null
       : null;
+  const hasField = (key: string) =>
+    Object.prototype.hasOwnProperty.call(body ?? {}, key);
+  const hasAmount = body?.amount !== undefined && body?.amount !== null && body?.amount !== "";
+  const amount = hasAmount ? Number(body.amount) : null;
+  if (hasAmount && (amount == null || !Number.isFinite(amount) || amount <= 0 || amount > 100_000))
+    return c.json({ error: "invalid_amount" }, 400);
   const update = {
-    account_name: value("account_name", 160),
-    mobile_no: value("mobile_no", 40),
-    pay_by: value("pay_by", 80),
-    merchant: value("merchant", 180),
-    remark: value("remark", 500),
-    image_url: value("image_url", 1000),
+    ...(hasAmount ? { amount } : {}),
+    ...(hasField("account_name") ? { account_name: value("account_name", 160) } : {}),
+    ...(hasField("mobile_no") ? { mobile_no: value("mobile_no", 40) } : {}),
+    ...(hasField("pay_by") ? { pay_by: value("pay_by", 80) } : {}),
+    ...(hasField("merchant") ? { merchant: value("merchant", 180) } : {}),
+    ...(hasField("remark") ? { remark: value("remark", 500) } : {}),
+    ...(hasField("image_url") ? { image_url: value("image_url", 1000) } : {}),
     updated_utc: new Date().toISOString(),
   };
   const baseUrl = process.env.SUPABASE_URL;
@@ -346,12 +353,14 @@ payoutRoutes.put("/:mavenId", requirePerm("payouts", "can_edit"), async (c) => {
     return c.json({ error: "invalid_mobile_no" }, 400);
   const { data: before, error: readError } = await db
     .from("maven_payout_transactions")
-    .select("maven_id, account_name, mobile_no, pay_by, merchant, remark, image_url")
+    .select("maven_id, status, amount, account_name, mobile_no, pay_by, merchant, remark, image_url")
     .eq("maven_id", mavenId)
     .maybeSingle();
   if (readError)
     return c.json({ error: "db_error", detail: readError.message }, 500);
   if (!before) return c.json({ error: "not_found" }, 404);
+  if (hasAmount && before.status !== "PENDING")
+    return c.json({ error: "amount_edit_requires_pending" }, 409);
   const { data, error } = await db
     .from("maven_payout_transactions")
     .update(update)

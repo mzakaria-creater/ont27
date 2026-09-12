@@ -1,13 +1,32 @@
 import { db } from './db.js'
 
-type Candidate = { id: number; amount: number | null; receiver_number: string | null; received_at: string | null; consumed_by_tx_id: number | null; matched?: boolean | null; message?: string | null; sender_name?: string | null; notes?: string | null; manual_entry_note?: string | null }
+type Candidate = { id: number; amount: number | null; receiver_number: string | null; received_at?: string | null; consumed_by_tx_id?: number | null; matched?: boolean | null; message?: string | null; sender_name?: string | null; notes?: string | null; manual_entry_note?: string | null; trx_id?: string | null; trx_reference?: string | null }
 type Payout = { maven_id: number; amount: number | null; mobile_no: string | null; first_seen_at: string | null }
+type AutoApprovalResult = { attempted: boolean; executed_on_provider?: boolean; reason?: string; error?: string; [key: string]: unknown }
 
 const phone = (value: string | null) => (value ?? '').replace(/\D/g, '').replace(/^20(?=1\d{9}$)/, '0')
 
-// Evidence-only matching. It never changes payout/provider status. A match is
-// accepted only when amount + recipient phone identify exactly one unused WD
-// SMS and one unlinked payout inside the same 24-hour window.
+// The SMS is proof only after the matcher has verified the exact amount and
+// destination. The worker still checks Maven and reads the provider status
+// back before it changes the local payout to PAID.
+export async function autoApproveMatchedPayout(payoutId: number, sms: Candidate, actorName: string): Promise<AutoApprovalResult> {
+  const utr = String(sms.message ?? '').match(/(?:رقم المعاملة|transaction(?:\s+number)?|reference|utr)\s*[:#-]?\s*([A-Za-z0-9-]{6,})/i)?.[1] ?? ''
+  const baseUrl = process.env.SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SECRET_KEY
+  if (!utr || !baseUrl || !serviceKey) return { attempted: false, reason: !utr ? 'sms_utr_missing' : 'worker_not_configured' }
+  const response = await fetch(`${baseUrl}/functions/v1/payout-execute-worker`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
+    body: JSON.stringify({ maven_id: payoutId, decision: 'APPROVED', actor_name: actorName, proof_url: `sms-evidence:${sms.id}`, utr_number: utr, remark: `Auto-approved from exact matched withdrawal SMS #${sms.id}`, mode: 'auto' }),
+  })
+  const result = await response.json().catch(() => ({ error: 'worker_invalid_response' })) as Record<string, unknown>
+  return { attempted: true, ...result }
+}
+
+// A match is accepted only when amount + recipient phone identify exactly one
+// unused WD SMS and one unlinked payout inside the same 24-hour window. The
+// provider worker is then asked to verify/settle the payout using that SMS as
+// proof; it changes nothing locally unless Maven confirms the final state.
 export async function autoLinkWithdrawalSms(limit = 300) {
   const since = new Date(Date.now() - 3 * 86_400_000).toISOString()
   const [{ data: payouts, error: payoutErr }, { data: messages, error: smsErr }] = await Promise.all([
@@ -33,7 +52,11 @@ export async function autoLinkWithdrawalSms(limit = 300) {
     const { data: repaired, error } = await db.from('maven_payout_transactions').update({ matched_sms_id: sms.id })
       .eq('maven_id', payout.maven_id).is('matched_sms_id', null).select('maven_id').maybeSingle()
     if (error) throw new Error(`repair payout ${payout.maven_id}: ${error.message}`)
-    if (repaired) { repairedPayouts.add(payout.maven_id); linked += 1 }
+    if (repaired) {
+      repairedPayouts.add(payout.maven_id); linked += 1
+      const approval = await autoApproveMatchedPayout(payout.maven_id, sms, 'SMS matcher')
+      if (approval.attempted && approval.executed_on_provider !== true) console.error(`matched payout ${payout.maven_id} auto-approval failed:`, approval)
+    }
   }
 
   const availableSms = ss.filter((sms) => sms.consumed_by_tx_id == null)
@@ -64,6 +87,8 @@ export async function autoLinkWithdrawalSms(limit = 300) {
       continue
     }
     linked += 1
+    const approval = await autoApproveMatchedPayout(payout.maven_id, sms, 'SMS matcher')
+    if (approval.attempted && approval.executed_on_provider !== true) console.error(`matched payout ${payout.maven_id} auto-approval failed:`, approval)
   }
 
   // Deterministic fallback classification for withdrawal SMS that are not a

@@ -69,6 +69,7 @@ interface PayoutDetail extends PayoutRow {
   }>;
 }
 interface PayoutEditForm {
+  amount: string;
   account_name: string;
   mobile_no: string;
   pay_by: string;
@@ -115,6 +116,7 @@ export default function Payouts() {
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<PayoutEditForm>({
+    amount: "",
     account_name: "",
     mobile_no: "",
     pay_by: "",
@@ -327,6 +329,7 @@ export default function Payouts() {
       ).payout;
       setSelected(payout);
       setEditForm({
+        amount: payout.amount == null ? "" : String(payout.amount),
         account_name: payout.account_name ?? "",
         mobile_no: payout.mobile_no ?? "",
         pay_by: payout.pay_by ?? "",
@@ -348,6 +351,12 @@ export default function Payouts() {
   const saveEdit = async () => {
     if (!selected) return;
     const statusChanged = editForm.status !== selected.status;
+    const amountChanged = editForm.amount.trim() !== "" && Number(editForm.amount) !== Number(selected.amount ?? 0);
+    const nextAmount = Number(editForm.amount);
+    if (amountChanged && (selected.status !== "PENDING" || !Number.isFinite(nextAmount) || nextAmount <= 0 || nextAmount > 100_000)) {
+      setEditError(t("تعديل المبلغ متاح للسحب المعلّق فقط وبمبلغ بين 0.01 و100,000.", "Amount can only be edited while payout is pending, between 0.01 and 100,000."));
+      return;
+    }
     if (statusChanged && selected.status !== "PENDING") {
       setEditError(t("لا يمكن عكس حالة نُفذت بالفعل على NagoPay.", "A status already executed on NagoPay cannot be reversed."));
       return;
@@ -363,7 +372,15 @@ export default function Payouts() {
     try {
       await api(`/api/payouts/${selected.maven_id}`, {
         method: "PUT",
-        body: JSON.stringify({ ...editForm, status: undefined }),
+        body: JSON.stringify({
+          ...editForm,
+          amount: amountChanged ? nextAmount : undefined,
+          // Maven may provide an external proof URL. Do not send the old
+          // value back through the local-upload validator when only another
+          // payout field is being edited.
+          image_url: editForm.image_url !== (selected.image_url ?? "") ? editForm.image_url : undefined,
+          status: undefined,
+        }),
       });
       if (statusChanged) {
         await api(`/api/payouts/${selected.maven_id}/decision`, {
@@ -384,7 +401,9 @@ export default function Payouts() {
       setEditError(
         e instanceof ApiError && e.status === 403
           ? t("لا تملك صلاحية التعديل.", "You lack edit permission.")
-          : t("تعذّر حفظ التعديلات.", "Failed to save changes."),
+          : e instanceof ApiError
+            ? t(`تعذّر حفظ التعديلات: ${e.code}`, `Failed to save changes: ${e.code}`)
+            : t("تعذّر حفظ التعديلات.", "Failed to save changes."),
       );
     } finally {
       setEditBusy(false);
@@ -992,6 +1011,10 @@ export default function Payouts() {
                   <section className="payout-edit-card">
                     <strong>{t("تعديل بيانات السحب", "Edit payout details")}</strong>
                     <div className="payout-edit-grid">
+                      <label className="field-label">
+                        {t("المبلغ", "Amount")}
+                        <input className="login-input mono" type="number" min="0.01" max="100000" step="0.01" value={editForm.amount} disabled={selected.status !== "PENDING"} onChange={(e) => setEditForm((current) => ({ ...current, amount: e.target.value }))} />
+                      </label>
                       <label className="field-label">
                         {t("الحالة", "Status")}
                         <select

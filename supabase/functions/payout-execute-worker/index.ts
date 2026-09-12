@@ -40,6 +40,17 @@ const STATUS_MAP: Record<string, string> = {
   DECLINED: "DECLINED",
 };
 
+// Maven has returned both DECLINED and REJECTED for the same terminal
+// provider state. Keep the raw value for audit/read-back, but compare a
+// normalized value so a successful rejection is not reported as a failure.
+function normalizedProviderStatus(value: string | null): string {
+  const status = String(value ?? "").trim().toUpperCase();
+  if (["PAID", "APPROVED", "SUCCESS", "COMPLETED"].includes(status)) return "PAID";
+  if (["DECLINED", "REJECTED", "REJECT", "CANCELLED", "CANCELED"].includes(status)) return "DECLINED";
+  if (["PENDING", "PROCESSING", "IN PROCESS", "IN_PROGRESS", "INPROGRESS"].includes(status)) return "PENDING";
+  return status;
+}
+
 function pc(v: string | null): string {
   if (!v) return "";
   return v
@@ -290,9 +301,9 @@ Deno.serve(async (req) => {
           409,
         );
       const target = STATUS_MAP[decision];
-      if (beforeStatus.toUpperCase() === target) {
+      if (normalizedProviderStatus(beforeStatus) === target) {
         afterStatus = beforeStatus; // already there; nothing to send
-      } else if (!/pending|process/i.test(beforeStatus)) {
+      } else if (normalizedProviderStatus(beforeStatus) !== "PENDING" && !/pending|process/i.test(beforeStatus)) {
         return await fail(
           `Provider status is ${beforeStatus}, not pending — refusing (no reversals through this worker).`,
           409,
@@ -339,7 +350,7 @@ Deno.serve(async (req) => {
         // 4. Verify against the provider's own view before claiming anything.
         await new Promise((res) => setTimeout(res, 2500));
         afterStatus = await readPayoutStatus(cookie, base, Number(maven_id), payout.first_seen_at);
-        if (!afterStatus || afterStatus.toUpperCase() !== target) {
+        if (!afterStatus || normalizedProviderStatus(afterStatus) !== target) {
           return await fail(
             `Update sent but verify failed: expected ${target}, provider says ${afterStatus ?? "unknown"}`,
             502,

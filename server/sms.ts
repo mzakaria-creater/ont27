@@ -3,6 +3,7 @@ import { db } from './db.js'
 import { requireAuth, requirePerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 import { learnTrustedSmsName } from './clientIdentity.js'
+import { autoApproveMatchedPayout } from './payoutSmsMatcher.js'
 
 // SMS Live = inbound_sms (device-forwarded wallet SMS). The panel surfaces the
 // live queue + its Maven transaction links, mirroring the old "SMS operations
@@ -774,7 +775,7 @@ smsRoutes.post('/:id/withdrawal-assignment', requirePerm('sms_live', 'can_edit')
   if (!['payout', 'p2p_usdt', 'cash_return'].includes(assignmentType)) return c.json({ error: 'invalid_assignment_type' }, 400)
   if (!name) return c.json({ error: 'name_required' }, 400)
   const [{ data: sms, error: smsError }, { data: existingAssignment, error: assignmentLookupError }] = await Promise.all([
-    db.from('inbound_sms').select('id, sms_category, consumed_by_tx_id, matched_transaction_id, maven_transaction_id, matched').eq('id', id).maybeSingle(),
+    db.from('inbound_sms').select('id, sms_category, amount, receiver_number, trx_id, trx_reference, message, consumed_by_tx_id, matched_transaction_id, maven_transaction_id, matched').eq('id', id).maybeSingle(),
     db.from('sms_withdrawal_assignments').select('sms_id').eq('sms_id', Number(id)).maybeSingle(),
   ])
   if (smsError) return c.json({ error: 'db_error', detail: smsError.message }, 500)
@@ -786,15 +787,17 @@ smsRoutes.post('/:id/withdrawal-assignment', requirePerm('sms_live', 'can_edit')
   }
 
   let payoutId: number | null = null
+  let payout: { maven_id: number; ontarget_ref: string | null; amount: number | null; mobile_no: string | null; status: string | null; matched_sms_id: number | null } | null = null
   if (assignmentType === 'payout') {
     if (!targetReference) return c.json({ error: 'target_reference_required' }, 400)
-    let payoutQuery = db.from('maven_payout_transactions').select('maven_id, ontarget_ref, matched_sms_id')
+    let payoutQuery = db.from('maven_payout_transactions').select('maven_id, ontarget_ref, amount, mobile_no, status, matched_sms_id')
     payoutQuery = /^\d+$/.test(targetReference)
       ? payoutQuery.or(`maven_id.eq.${targetReference},ontarget_ref.eq.${targetReference}`)
       : payoutQuery.eq('ontarget_ref', targetReference)
-    const { data: payout, error } = await payoutQuery.maybeSingle()
+    const { data: foundPayout, error } = await payoutQuery.maybeSingle()
     if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-    if (!payout) return c.json({ error: 'payout_not_found' }, 404)
+    if (!foundPayout) return c.json({ error: 'payout_not_found' }, 404)
+    payout = foundPayout
     if (payout.matched_sms_id != null && Number(payout.matched_sms_id) !== Number(id)) return c.json({ error: 'payout_already_linked' }, 409)
     payoutId = Number(payout.maven_id)
   }
@@ -808,6 +811,16 @@ smsRoutes.post('/:id/withdrawal-assignment', requirePerm('sms_live', 'can_edit')
     if (smsLinkError) return c.json({ error: 'db_error', detail: smsLinkError.message }, 500)
     const { error: payoutLinkError } = await db.from('maven_payout_transactions').update({ matched_sms_id: Number(id) }).eq('maven_id', payoutId)
     if (payoutLinkError) return c.json({ error: 'db_error', detail: payoutLinkError.message }, 500)
+    const assignedPayout = payout
+    const exactMatch = Boolean(assignedPayout)
+      && Number(assignedPayout?.amount) === Number(sms.amount)
+      && phoneKey(assignedPayout?.mobile_no ?? null) !== ''
+      && phoneKey(assignedPayout?.mobile_no ?? null) === phoneKey(sms.receiver_number)
+    const autoApproval = exactMatch && assignedPayout?.status === 'PENDING'
+      ? await autoApproveMatchedPayout(payoutId, sms, actor.username).catch((error) => ({ attempted: true, executed_on_provider: false, error: error instanceof Error ? error.message : 'auto_approval_failed' }))
+      : { attempted: false, reason: exactMatch ? 'payout_not_pending' : 'amount_or_destination_mismatch' }
+    await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'payout.sms_proof_auto_approval', entity_type: 'maven_payout_transactions', entity_id: String(payoutId), after: { sms_id: Number(id), exact_match: exactMatch, result: autoApproval } })
+    return c.json({ ok: true, assignment, auto_approval: autoApproval })
   } else {
     const { error: metaError } = await db.from('inbound_sms').update({ sender_name: name, notes: note || null, matched: true, match_status: `manual_${assignmentType}` }).eq('id', id)
     if (metaError) return c.json({ error: 'db_error', detail: metaError.message }, 500)
