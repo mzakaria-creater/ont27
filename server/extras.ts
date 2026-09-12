@@ -157,9 +157,55 @@ extraRoutes.get(
     if (dep.error) return c.json({ error: 'db_error', detail: dep.error.message }, 500)
     if (pay.error) return c.json({ error: 'db_error', detail: pay.error.message }, 500)
 
+    // Checkout-link sessions are operational transactions too. They are kept
+    // as a distinct, read-only source row until the provider creates the
+    // corresponding Maven transaction, so the dashboard never loses the
+    // payment request or accidentally offers a Maven decision action for it.
+    let checkoutRows: Record<string, unknown>[] = []
+    let checkoutCount = 0
+    if (wantDep) {
+      let checkoutQuery = db.from('checkout_sessions')
+        .select('id, reference, status, amount, currency, customer_name, customer_phone, payment_link_id, metadata, success_url, created_at, expires_at, paid_at', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(0, fetchTo - 1)
+      if (from) checkoutQuery = checkoutQuery.gte('created_at', `${from}T00:00:00Z`)
+      if (to) checkoutQuery = checkoutQuery.lte('created_at', `${to}T23:59:59.999Z`)
+      if (Number.isFinite(minAmount)) checkoutQuery = checkoutQuery.gte('amount', minAmount)
+      if (Number.isFinite(maxAmount)) checkoutQuery = checkoutQuery.lte('amount', maxAmount)
+      if (statuses.length) {
+        const checkoutStatuses = statuses.map((value) => value === 'PAID' ? 'approved' : value.toLowerCase()).filter((value) => ['pending', 'processing', 'approved', 'declined', 'expired'].includes(value))
+        if (checkoutStatuses.length) checkoutQuery = checkoutQuery.in('status', checkoutStatuses)
+      }
+      if (q) {
+        const like = `%${q.replaceAll(',', ' ')}%`
+        checkoutQuery = checkoutQuery.or(`reference.ilike.${like},customer_phone.ilike.${like},customer_name.ilike.${like}`)
+      }
+      const checkout = await checkoutQuery
+      if (checkout.error) return c.json({ error: 'db_error', detail: checkout.error.message }, 500)
+      checkoutCount = checkout.count ?? 0
+      checkoutRows = (checkout.data ?? []).filter((row) => {
+        const metadata = (row.metadata ?? {}) as Record<string, unknown>
+        const merchantValue = String(metadata.merchant_name ?? '')
+        const methodValue = String(metadata.payment_method_code ?? metadata.provider ?? '')
+        return (!merchant || merchantValue.toLowerCase().includes(merchant.toLowerCase())) && (!method || methodValue.toLowerCase().includes(method.toLowerCase()))
+      }).map((row) => {
+        const metadata = (row.metadata ?? {}) as Record<string, unknown>
+        return {
+          kind: 'deposit', is_checkout_session: true, checkout_session_id: row.id,
+          ontarget_ref: row.reference, merchant: metadata.merchant_name ?? null,
+          amount: row.amount, currency: row.currency, status: String(row.status ?? 'pending').toUpperCase(),
+          sender_name: row.customer_name, sender_number: row.customer_phone,
+          payment_method: metadata.payment_method_code ?? metadata.provider ?? 'Payment link',
+          receiving_wallet: metadata.wallet_number ?? null, first_seen_at: row.created_at, created_utc: row.created_at,
+          checkout_return_url: row.success_url ?? metadata.return_url ?? null,
+        }
+      })
+    }
+
     const rows = ([
       ...((dep.data ?? []) as unknown as Record<string, unknown>[]).map((r) => ({ ...withSenderAccount(r), kind: 'deposit' })),
       ...((pay.data ?? []) as unknown as Record<string, unknown>[]).map((r) => ({ ...r, kind: 'payout' })),
+      ...checkoutRows,
     ] as Record<string, unknown>[]).sort((a, b) =>
       new Date(String(b.created_utc ?? b.first_seen_at ?? 0)).getTime() - new Date(String(a.created_utc ?? a.first_seen_at ?? 0)).getTime(),
     )
@@ -190,7 +236,7 @@ extraRoutes.get(
         const approved = row.kind === 'deposit' ? (approvedHistory.get(clientKey) ?? []).filter((item) => !Number.isFinite(rowAt) || !Number.isFinite(item.at) || item.at < rowAt).length : 0
         return { ...row, client_transaction_count: clientKey ? clientCounts.get(clientKey) ?? 1 : 1, deposit_kind: row.kind === 'deposit' ? (approved > 0 ? 'retention_deposit' : 'first_deposit') : null, previous_approved_deposits: approved, matched_sms: row.kind === 'deposit' ? smsByTx.get(Number(row.tx_id)) ?? null : null }
       }),
-      total: (dep.count ?? 0) + (pay.count ?? 0),
+      total: (dep.count ?? 0) + (pay.count ?? 0) + checkoutCount,
       limit,
       offset,
     })
@@ -874,14 +920,16 @@ extraRoutes.post('/automation/rules', requireAnyPerm(['automation_rules','automa
   if (action_type === 'decline' && time_window_minutes < 5) return c.json({ error: 'auto_decline_minimum_wait', minimum_minutes: 5 }, 400)
 
   const master_merchant = str(body?.master_merchant)
+  const merchant = str(body?.merchant)
   const sub_merchant = str(body?.sub_merchant)
+  if (scope_type === 'merchant' && !merchant) return c.json({ error: 'merchant_required_for_scope' }, 400)
   if (body?.confirm_conflict !== true) {
     const conflicts = await ruleConflict(db, scope_type, master_merchant, sub_merchant, priority)
     if (conflicts.length) return c.json({ error: 'priority_conflict', conflicts }, 409)
   }
 
   const row = {
-    scope_type, master_merchant, merchant: str(body?.merchant), sub_merchant, account_wallet: str(body?.account_wallet),
+    scope_type, master_merchant, merchant, sub_merchant, account_wallet: str(body?.account_wallet),
     payment_method: str(body?.payment_method), provider: str(body?.provider),
     min_amount, max_amount, time_window_minutes, action_type, priority,
     enabled: body?.enabled !== false,

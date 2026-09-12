@@ -8,7 +8,7 @@ paymentMethodRoutes.use('*', requireAuth)
 
 const methodColumns = 'id, method_code, method_name, channel_type, is_active, sort_order, created_at'
 const accountColumns = 'id, payment_method_id, payment_pool_id, account_number, account_name, iban, bank_name, currency, country_code, device_name, label, is_active, current_balance, balance_updated_at, created_at'
-const poolColumns = 'id, master_merchant_id, pool_name, pool_code, is_active, notes, created_at'
+const poolColumns = 'id, master_merchant_id, pool_name, pool_code, is_active, notes, rotation_enabled, rotation_interval_minutes, allocation_strategy, next_rotation_at, created_at'
 const countryColumns = 'id, payment_method_id, country_code, currency_code, is_active, created_at, updated_at'
 const countryMerchantColumns = 'id, method_country_id, merchant_hierarchy_id, is_active, created_at, updated_at'
 
@@ -173,6 +173,43 @@ paymentMethodRoutes.post('/pools/:id/merchants', requirePerm('payment_methods', 
   return c.json({ member: data }, 201)
 })
 
+paymentMethodRoutes.post('/pools/:id/merchants/bulk', requirePerm('payment_methods', 'can_edit'), async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const merchantIds = Array.isArray(body?.merchant_hierarchy_ids) ? [...new Set(body.merchant_hierarchy_ids.map(Number).filter(Number.isInteger))] : []
+  if (!merchantIds.length) return c.json({ error: 'invalid_merchant_hierarchy_ids' }, 400)
+  const { data, error } = await db.from('payment_pool_merchants').upsert(
+    merchantIds.map((merchant_hierarchy_id) => ({ payment_pool_id: c.req.param('id'), merchant_hierarchy_id, is_active: true })),
+    { onConflict: 'payment_pool_id,merchant_hierarchy_id' },
+  ).select('id, payment_pool_id, merchant_hierarchy_id, is_active')
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
+  return c.json({ members: data ?? [] }, 201)
+})
+
+paymentMethodRoutes.patch('/pools/:id/rule', requirePerm('payment_methods', 'can_edit'), async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const update: Record<string, unknown> = {}
+  if (body?.rotation_enabled !== undefined) {
+    if (typeof body.rotation_enabled !== 'boolean') return c.json({ error: 'invalid_rotation_enabled' }, 400)
+    update.rotation_enabled = body.rotation_enabled
+  }
+  if (body?.rotation_interval_minutes !== undefined) {
+    const minutes = Number(body.rotation_interval_minutes)
+    if (!Number.isInteger(minutes) || minutes < 5 || minutes > 10080) return c.json({ error: 'invalid_rotation_interval' }, 400)
+    update.rotation_interval_minutes = minutes
+  }
+  if (body?.allocation_strategy !== undefined) {
+    if (!['next_wallet', 'least_loaded', 'highest_balance'].includes(body.allocation_strategy)) return c.json({ error: 'invalid_allocation_strategy' }, 400)
+    update.allocation_strategy = body.allocation_strategy
+  }
+  if (body?.rotation_enabled === true || body?.next_rotation_at !== undefined) update.next_rotation_at = body?.next_rotation_at ?? new Date(Date.now() + Number(body?.rotation_interval_minutes ?? 60) * 60_000).toISOString()
+  if (body?.rotation_enabled === false) update.next_rotation_at = null
+  if (!Object.keys(update).length) return c.json({ error: 'nothing_to_update' }, 400)
+  const { data, error } = await db.from('payment_pools').update(update).eq('id', c.req.param('id')).select(poolColumns).maybeSingle()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
+  if (!data) return c.json({ error: 'not_found' }, 404)
+  return c.json({ pool: data })
+})
+
 paymentMethodRoutes.patch('/pools/members/:id', requirePerm('payment_methods', 'can_edit'), async (c) => {
   const body = await c.req.json().catch(() => null)
   if (typeof body?.is_active !== 'boolean') return c.json({ error: 'invalid_is_active' }, 400)
@@ -234,6 +271,26 @@ paymentMethodRoutes.post('/:id/accounts', requirePerm('payment_methods', 'can_cr
   }).select(accountColumns).single()
   if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
   return c.json({ account: data }, 201)
+})
+
+paymentMethodRoutes.patch('/accounts/bulk', requirePerm('payment_methods', 'can_edit'), async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const ids = Array.isArray(body?.account_ids) ? [...new Set(body.account_ids.filter((id: unknown) => typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id)))] as string[] : []
+  if (!ids.length) return c.json({ error: 'invalid_account_ids' }, 400)
+  const update: Record<string, unknown> = {}
+  if (body?.payment_pool_id === null) update.payment_pool_id = null
+  else if (body?.payment_pool_id !== undefined) {
+    if (typeof body.payment_pool_id === 'string' && /^[0-9a-f-]{36}$/i.test(body.payment_pool_id)) update.payment_pool_id = body.payment_pool_id
+    else return c.json({ error: 'invalid_payment_pool_id' }, 400)
+  }
+  if (body?.is_active !== undefined) {
+    if (typeof body.is_active !== 'boolean') return c.json({ error: 'invalid_is_active' }, 400)
+    update.is_active = body.is_active
+  }
+  if (!Object.keys(update).length) return c.json({ error: 'nothing_to_update' }, 400)
+  const { data, error } = await db.from('payment_accounts').update(update).in('id', ids).select(accountColumns)
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
+  return c.json({ accounts: data ?? [] })
 })
 
 paymentMethodRoutes.patch('/accounts/:id', requirePerm('payment_methods', 'can_edit'), async (c) => {

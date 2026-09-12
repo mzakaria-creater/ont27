@@ -55,6 +55,8 @@ interface TxRow {
   previous_approved_deposits?: number
   matched_sms?: { id: number; received_at: string | null; amount: number | null; balance_after?: number | null; sender_name: string | null; sender_number: string | null; receiver_number: string | null; device_name: string | null; sms_first_line: string | null; raw_sms: string | null; raw_payload?: Record<string, unknown> | null; message: string | null; sms_category: string | null; match_status: string | null; matched: boolean | null } | null
   raw_preview?: Record<string, unknown> | null
+  is_checkout_session?: boolean
+  checkout_session_id?: string
 }
 
 interface ListResponse {
@@ -261,9 +263,9 @@ export default function Transactions() {
                   const clientPhone = r.kind === 'deposit' ? r.sender_number : r.mobile_no
                   const wallet = r.kind === 'deposit' ? (r.receiving_wallet ?? r.to_account_number) : null
                   const proofUrl = r.kind === 'deposit' ? r.proof_image_url : r.image_url
-                  const rowKey = `${r.kind}-${id}`
+                  const rowKey = `${r.kind}-${r.checkout_session_id ?? id}`
                   const isExpanded = expanded.has(rowKey)
-                  const details = r.kind === 'deposit' && r.ontarget_ref ? `/transactions/${encodeURIComponent(r.ontarget_ref)}` : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`
+                  const details = r.is_checkout_session ? `/payment-status?id=${encodeURIComponent(r.checkout_session_id ?? '')}` : r.kind === 'deposit' && r.ontarget_ref ? `/transactions/${encodeURIComponent(r.ontarget_ref)}` : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`
                   const senderAccountName = r.kind === 'deposit' ? (r.sender_account_name ?? r.payment_method ?? party) : (r.account_name ?? party)
                   return (
                     <Fragment key={rowKey}>
@@ -271,7 +273,7 @@ export default function Transactions() {
                       <tr key={rowKey} className={`${r.status === 'PENDING' ? 'row-pending ' : ''}${r.matched_sms ? `tx-pair-${Math.abs(Number(id ?? 0)) % 5}` : ''}`}>
                         <td><button type="button" className="tx-expand-btn" onClick={() => toggleExpanded(rowKey)} aria-expanded={isExpanded} aria-label={isExpanded ? t('إغلاق التفاصيل', 'Collapse details') : t('فتح التفاصيل', 'Expand details')}>{isExpanded ? <ChevronDown size={15}/> : <ChevronRight size={15}/>}</button></td>
                         <td><div className="portal-row-actions"><Link className="tx-action-primary" to={details}>{r.status === 'PENDING' ? <Pencil size={13}/> : <Eye size={13}/>}<span>{r.status === 'PENDING' ? t('تعديل', 'Edit') : t('عرض', 'View')}</span></Link>{id && <TransactionEditDialog txId={Number(id)} ontargetRef={r.ontarget_ref} status={r.status} amount={r.amount} currency={r.currency} gateway={r.gateway} onDone={() => void load()} />}{proofUrl && <button type="button" className="tx-proof-icon" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id) })} aria-label={t('عرض الإثبات', 'View proof')} title={t('عرض الإثبات', 'View proof')}><Image size={15}/></button>}</div></td>
-                        <td className="mono"><Link className="transaction-cell-link" to={details}>{id}</Link>{r.ontarget_ref && String(r.ontarget_ref) !== String(id) && <div className="cell-sub mono">{r.ontarget_ref}</div>}{(r.merchant_reference ?? r.merchant_tx_reference) && <div className="cell-sub mono" title="NGPay merchant reference">{r.merchant_reference ?? r.merchant_tx_reference}</div>}{r.kind === 'deposit' && <span className={`deposit-kind ${r.deposit_kind === 'retention_deposit' ? 'is-retention' : 'is-first'}`}>{r.deposit_kind === 'retention_deposit' ? `↻ ${t('Retention','Retention')}` : `★ ${t('First','First')}`}</span>}</td>
+                        <td className="mono"><Link className="transaction-cell-link" to={details}>{r.is_checkout_session ? r.ontarget_ref : id}</Link>{r.is_checkout_session && <span className="deposit-kind is-first">🔗 Payment link</span>}{!r.is_checkout_session && r.ontarget_ref && String(r.ontarget_ref) !== String(id) && <div className="cell-sub mono">{r.ontarget_ref}</div>}{(r.merchant_reference ?? r.merchant_tx_reference) && <div className="cell-sub mono" title="NGPay merchant reference">{r.merchant_reference ?? r.merchant_tx_reference}</div>}{r.kind === 'deposit' && !r.is_checkout_session && <span className={`deposit-kind ${r.deposit_kind === 'retention_deposit' ? 'is-retention' : 'is-first'}`}>{r.deposit_kind === 'retention_deposit' ? `↻ ${t('Retention','Retention')}` : `★ ${t('First','First')}`}</span>}</td>
                         <td><span className={`portal-status-tag ${st.cls}`}>{st.label}</span></td>
                         <td><div className="portal-method-cell"><MethodLogo method={r.kind === 'deposit' ? r.payment_method : r.pay_by}/><span>{r.kind === 'deposit' ? (r.payment_method ?? t('إيداع', 'Deposit')) : (r.pay_by ?? t('سحب', 'Payout'))}</span></div></td>
                         <td className="mono portal-amount-cell">{money(r.amount, r.currency ?? 'EGP')}</td>
@@ -288,7 +290,7 @@ export default function Transactions() {
                         <div><span>{t('البوابة', 'Gateway')}</span><strong>{r.gateway ?? '—'}</strong></div>
                         <div><span>{t('التكرار', 'Duplicates')}</span>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First transaction')}</div>
                         <div><span>{t('اعتمد بواسطة', 'Approved by')}</span><strong>{r.status === 'PENDING' ? '—' : (isAutomaticApprovalActor(r.approved_by) ? t('آلي (Auto)', 'Auto') : r.approved_by)}</strong></div>
-                        <div className="tx-expanded-actions">{r.status === 'PENDING' && r.kind === 'deposit' && can('deposits','can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r,'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.status === 'PENDING' && r.kind === 'payout' && can('payouts','can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}</div>
+                        <div className="tx-expanded-actions">{r.status === 'PENDING' && !r.is_checkout_session && r.kind === 'deposit' && can('deposits','can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r,'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.status === 'PENDING' && r.kind === 'payout' && can('payouts','can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.is_checkout_session && <span className="cell-sub">{t('جلسة رابط دفع — بانتظار ظهور المعاملة المزوّدة', 'Payment-link session — waiting for provider transaction')}</span>}</div>
                         {r.kind === 'deposit' && r.raw_preview && <details className="tx-raw-details"><summary>{t('عرض Raw المعاملة', 'View transaction raw')}</summary><pre>{JSON.stringify(r.raw_preview, null, 2)}</pre></details>}
                       </div></td></tr>}
                     </Fragment>
@@ -307,8 +309,8 @@ export default function Transactions() {
               const clientPhone = r.kind === 'deposit' ? r.sender_number : r.mobile_no
               const wallet = r.kind === 'deposit' ? (r.receiving_wallet ?? r.to_account_number) : null
               const proofUrl = r.kind === 'deposit' ? r.proof_image_url : r.image_url
-              const details = r.kind === 'deposit' && r.ontarget_ref ? `/transactions/${encodeURIComponent(r.ontarget_ref)}` : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`
-              return <article key={`${r.kind}-${id}`} className={`all-tx-card${r.status === 'PENDING' ? ' pending' : ''}`}>
+              const details = r.is_checkout_session ? `/payment-status?id=${encodeURIComponent(r.checkout_session_id ?? '')}` : r.kind === 'deposit' && r.ontarget_ref ? `/transactions/${encodeURIComponent(r.ontarget_ref)}` : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`
+              return <article key={`${r.kind}-${r.checkout_session_id ?? id}`} className={`all-tx-card${r.status === 'PENDING' ? ' pending' : ''}`}>
                 <header><Link className="mono transaction-cell-link" to={details}>{r.ontarget_ref ?? id}</Link><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></header>
                 <div className="all-tx-card-amount mono">{money(r.amount, r.currency ?? 'EGP')}</div>
                 {r.kind === 'deposit' && r.matched_sms?.balance_after != null && <div className="tx-live-balance mono">رصيدك الحالي {money(r.matched_sms.balance_after, r.currency ?? 'EGP')}</div>}
@@ -326,7 +328,7 @@ export default function Transactions() {
                 </dl>
                 <div className="all-tx-card-actions">
                   {id && <TransactionEditDialog txId={Number(id)} ontargetRef={r.ontarget_ref} status={r.status} amount={r.amount} currency={r.currency} gateway={r.gateway} onDone={() => void load()} />}
-                  {r.status === 'PENDING' && r.kind === 'deposit' && can('deposits', 'can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r, 'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost danger btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r, 'decline')}>{t('رفض', 'Reject')}</button></>}
+                  {r.status === 'PENDING' && !r.is_checkout_session && r.kind === 'deposit' && can('deposits', 'can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r, 'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost danger btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r, 'decline')}>{t('رفض', 'Reject')}</button></>}
                   {r.status === 'PENDING' && r.kind === 'payout' && can('payouts', 'can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost danger btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r, 'decline')}>{t('رفض', 'Reject')}</button></>}
                   <Link className="btn-ghost btn-sm" to={details}>{t('التفاصيل', 'Details')}</Link>
                 </div>

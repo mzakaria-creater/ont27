@@ -97,6 +97,7 @@ export default function PaymentStatus() {
           {session.provider && <div><span>{t('القناة', 'Channel')}</span><span>{providerLabel(session.provider, session.channel_name)}</span></div>}
           {session.customer_phone && <div><span>{t('رقم العميل', 'Customer phone')}</span><span className="mono">{session.customer_phone}</span></div>}
         </div>
+        {session.return_url && <a className="btn-ghost pay-status-link" href={session.return_url}>{t('العودة إلى التاجر', 'Return to merchant')}</a>}
         {!['approved', 'declined', 'expired'].includes(session.status) && (
           <p className="pay-note">
             <span className="dot wait" /> {t('تحديث تلقائي كل 5 ثوانٍ · آخر فحص منذ', 'Auto-refresh every 5s · last check')} {ago} {t('ثانية', 's ago')}

@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { BarChart3, Copy, ExternalLink, Link2, Plus, RefreshCw, Search, ShieldCheck } from 'lucide-react'
+import { BarChart3, Copy, ExternalLink, Link2, Plus, RefreshCw, Search, ShieldCheck, Route, WalletCards } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
 import { useLocale } from '../lib/locale'
@@ -32,18 +32,29 @@ interface PaymentLink {
   max_uses: number | null
   use_count: number
   active: boolean
+  client_name: string | null
+  client_reference: string | null
+  return_url: string | null
+  payment_method_codes: string[] | null
+  wallet_pool_id: string | null
+  allocation_mode: 'single_queue' | 'multi_wallet'
+  multi_wallet_threshold: number | null
   created_at: string
   status: LinkStatus
   stats: LinkStats
   analytics: LinkAnalytics | null
 }
 interface Merchant { id: string; name: string; code: string | null }
+interface LinkMethod { id: string; method_code: string; method_name: string; channel_type: string }
+interface LinkPool { id: string; pool_name: string; pool_code: string; allocation_strategy: string; rotation_enabled: boolean }
 
 export default function LinkGenerator() {
   const { can } = useAuth()
   const { t } = useLocale()
   const [links, setLinks] = useState<PaymentLink[]>([])
   const [merchants, setMerchants] = useState<Merchant[]>([])
+  const [methods, setMethods] = useState<LinkMethod[]>([])
+  const [pools, setPools] = useState<LinkPool[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
@@ -52,17 +63,20 @@ export default function LinkGenerator() {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [form, setForm] = useState({
     title: '', merchant_id: '', amount_mode: 'open', amount: '',
-    min_amount: '', max_amount: '', expires_at: '', max_uses: '',
+    min_amount: '', max_amount: '', expires_at: '', max_uses: '', client_name: '', client_reference: '', return_url: '',
+    payment_method_codes: [] as string[], wallet_pool_id: '', allocation_mode: 'single_queue', multi_wallet_threshold: '50000',
   })
 
   const load = useCallback(async () => {
     try {
-      const [{ links }, { merchants }] = await Promise.all([
+      const [{ links }, { merchants, methods, pools }] = await Promise.all([
         api<{ links: PaymentLink[] }>('/api/links'),
-        api<{ merchants: Merchant[] }>('/api/links/merchants'),
+        api<{ merchants: Merchant[]; methods: LinkMethod[]; pools: LinkPool[] }>('/api/links/merchants'),
       ])
       setLinks(links)
       setMerchants(merchants)
+      setMethods(methods)
+      setPools(pools)
     } catch (err) {
       setError(err instanceof ApiError && err.status === 403 ? t('دورك لا يملك صلاحية عرض روابط الدفع', 'Your role cannot view payment links') : t('تعذر تحميل الروابط', 'Failed to load links'))
     }
@@ -101,9 +115,16 @@ export default function LinkGenerator() {
           max_amount: form.max_amount || undefined,
           expires_at: form.expires_at || undefined,
           max_uses: form.max_uses || undefined,
+          client_name: form.client_name || undefined,
+          client_reference: form.client_reference || undefined,
+          return_url: form.return_url || undefined,
+          payment_method_codes: form.payment_method_codes,
+          wallet_pool_id: form.wallet_pool_id || undefined,
+          allocation_mode: form.allocation_mode,
+          multi_wallet_threshold: form.allocation_mode === 'multi_wallet' ? form.multi_wallet_threshold || undefined : undefined,
         }),
       })
-      setForm({ title: '', merchant_id: '', amount_mode: 'open', amount: '', min_amount: '', max_amount: '', expires_at: '', max_uses: '' })
+      setForm({ title: '', merchant_id: '', amount_mode: 'open', amount: '', min_amount: '', max_amount: '', expires_at: '', max_uses: '', client_name: '', client_reference: '', return_url: '', payment_method_codes: [], wallet_pool_id: '', allocation_mode: 'single_queue', multi_wallet_threshold: '50000' })
       await load()
     } catch (err) {
       setError(err instanceof ApiError && err.status === 403 ? t('دورك لا يملك صلاحية إنشاء روابط', 'Your role cannot create links') : t('تعذر إنشاء الرابط', 'Failed to create link'))
@@ -160,6 +181,8 @@ export default function LinkGenerator() {
                 <option value="">{t('— بدون تاجر —', '— no merchant —')}</option>
                 {merchants.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select></label>
+            <label className="field"><span>{t('اسم العميل/البراند', 'Client / brand name')}</span><input value={form.client_name} onChange={set('client_name')} placeholder="Hf Markets / HFM" /></label>
+            <label className="field"><span>{t('مرجع العميل', 'Client reference')}</span><input value={form.client_reference} onChange={set('client_reference')} placeholder="HFM-CLIENT-001" /></label>
             <label className="field"><span>{t('نوع المبلغ', 'Amount type')}</span>
               <select value={form.amount_mode} onChange={set('amount_mode')}>
                 <option value="open">{t('مفتوح', 'Open')}</option>
@@ -180,11 +203,24 @@ export default function LinkGenerator() {
               <input type="datetime-local" dir="ltr" value={form.expires_at} onChange={set('expires_at')} /></label>
             <label className="field"><span>{t('حد الاستخدامات', 'Usage limit')}</span>
               <input dir="ltr" inputMode="numeric" value={form.max_uses} onChange={set('max_uses')} /></label>
+            <label className="field"><span>{t('رابط الرجوع للتاجر', 'Merchant return URL')}</span><input dir="ltr" type="url" value={form.return_url} onChange={set('return_url')} placeholder="https://merchant.example/success" /></label>
+          </div>
+          <div className="link-routing-grid">
+            <label className="field"><span><Route size={14}/> {t('طرق الدفع المسموحة', 'Allowed payment methods')}</span>
+              <select multiple value={form.payment_method_codes} onChange={(e) => setForm((f) => ({ ...f, payment_method_codes: Array.from(e.target.selectedOptions, (option) => option.value) }))}>
+                {methods.map((m) => <option key={m.id} value={m.method_code}>{m.method_name} · {m.method_code}</option>)}
+              </select><small>{t('اختر أكثر من طريقة باستخدام Ctrl/Cmd.', 'Select multiple methods with Ctrl/Cmd.')}</small>
+            </label>
+            <label className="field"><span><WalletCards size={14}/> {t('مجموعة المحافظ', 'Wallet pool')}</span>
+              <select value={form.wallet_pool_id} onChange={set('wallet_pool_id')}><option value="">{t('التوزيع الافتراضي', 'Default allocation')}</option>{pools.map((p) => <option key={p.id} value={p.id}>{p.pool_name} · {p.allocation_strategy}</option>)}</select>
+            </label>
+            <label className="field"><span>{t('قاعدة التوزيع', 'Allocation rule')}</span><select value={form.allocation_mode} onChange={set('allocation_mode')}><option value="single_queue">{t('محفظة واحدة / queue', 'Single wallet / queue')}</option><option value="multi_wallet">{t('مجموعة محافظ للمبالغ الكبيرة', 'Multi-wallet for high amounts')}</option></select></label>
+            {form.allocation_mode === 'multi_wallet' && <label className="field"><span>{t('يبدأ multi-wallet من', 'Multi-wallet threshold')}</span><input dir="ltr" inputMode="decimal" value={form.multi_wallet_threshold} onChange={set('multi_wallet_threshold')} /><small>EGP</small></label>}
           </div>
           {error && <div className="login-error" role="alert">{error}</div>}
           <button className="btn-primary" disabled={busy}><Plus size={16}/>{busy ? t('جارٍ الإنشاء…', 'Creating…') : t('إنشاء رابط الدفع', 'Create payment link')}</button>
         </form>
-        <aside className="card payment-link-preview" aria-label="Payment link preview"><span className="page-eyebrow">Live preview</span><div className="payment-link-preview-mark"><Link2 size={26}/></div><h3>{form.title || t('عنوان الدفع','Payment title')}</h3><strong className="mono">{previewAmount} EGP</strong><p>{merchants.find((m)=>m.id===form.merchant_id)?.name || t('بدون تاجر محدد','No merchant selected')}</p><div><span>{form.amount_mode === 'fixed' ? t('مبلغ ثابت','Fixed amount') : t('مبلغ مفتوح','Open amount')}</span><span>{form.max_uses ? `${form.max_uses} ${t('استخدام','uses')}` : t('استخدام غير محدود','Unlimited uses')}</span></div><button type="button" className="btn-primary" disabled>{t('متابعة الدفع','Continue to payment')}</button></aside>
+        <aside className="card payment-link-preview" aria-label="Payment link preview"><span className="page-eyebrow">Live preview</span><div className="payment-link-preview-mark"><Link2 size={26}/></div><h3>{form.client_name || form.title || t('عنوان الدفع','Payment title')}</h3><strong className="mono">{previewAmount} EGP</strong><p>{merchants.find((m)=>m.id===form.merchant_id)?.name || t('بدون تاجر محدد','No merchant selected')}</p><div><span>{form.amount_mode === 'fixed' ? t('مبلغ ثابت','Fixed amount') : t('مبلغ مفتوح','Open amount')}</span><span>{form.payment_method_codes.length || t('كل الطرق','All methods')} {t('طريقة','methods')}</span></div><button type="button" className="btn-primary" disabled>{t('متابعة الدفع','Continue to payment')}</button></aside>
         </section>
       )}
 
@@ -228,7 +264,7 @@ export default function LinkGenerator() {
               <Fragment key={l.id}>
               <tr className={l.status === 'active' ? '' : 'row-dim'}>
                 <td className="mono">{l.short_code}</td>
-                <td>{l.title ?? '—'}</td>
+                <td><strong>{l.client_name || l.title || '—'}</strong>{l.client_reference && <div className="cell-sub">{l.client_reference}</div>}<div className="cell-sub">{l.payment_method_codes?.join(', ') || t('كل الطرق','All methods')}</div></td>
                 <td className="mono" dir="ltr">
                   {l.amount_mode === 'fixed' ? `${l.amount} ${l.currency}` : `${l.min_amount ?? '∗'} – ${l.max_amount ?? '∗'} ${l.currency}`}
                 </td>

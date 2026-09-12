@@ -13,6 +13,12 @@ interface PayLink {
   min_amount: number | null
   max_amount: number | null
   currency: string
+  client_name: string | null
+  client_reference: string | null
+  return_url: string | null
+  payment_method_codes: string[]
+  allocation_mode: 'single_queue' | 'multi_wallet'
+  multi_wallet_threshold: number | null
 }
 
 export interface PaySession {
@@ -29,6 +35,8 @@ export interface PaySession {
   expires_at: string
   created_at: string
   paid_at: string | null
+  wallets?: Array<{ walletNumber: string; amount: number; provider: string; device: string }> | null
+  return_url?: string | null
 }
 
 // Provider string -> the theme key the stylesheet defines. Matching on
@@ -102,6 +110,7 @@ const payErrors: Record<string, [string, string]> = {
   no_channel_available: ['لا توجد قناة دفع متاحة حالياً — حاول لاحقاً', 'No payment channel available now — try later'],
   amount_below_min: ['المبلغ أقل من الحد الأدنى', 'Amount is below the minimum'],
   amount_above_max: ['المبلغ أكبر من الحد الأقصى', 'Amount is above the maximum'],
+  payment_method_not_allowed: ['طريقة الدفع غير متاحة لهذا الرابط', 'This payment method is not available for this link'],
 }
 
 export default function PaymentCheckout() {
@@ -113,6 +122,7 @@ export default function PaymentCheckout() {
   const [phone, setPhone] = useState('')
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [session, setSession] = useState<PaySession | null>(null)
@@ -152,7 +162,7 @@ export default function PaymentCheckout() {
     try {
       const { session } = await api<{ session: PaySession }>('/api/pay/session', {
         method: 'POST',
-        body: JSON.stringify({ code, phone, amount: Number(amount), name: name || undefined }),
+        body: JSON.stringify({ code, phone, amount: Number(amount), name: name || undefined, payment_method_code: paymentMethod || undefined }),
       })
       setSession(session)
     } catch (err) {
@@ -190,7 +200,7 @@ export default function PaymentCheckout() {
           <p className="login-sub">{t('حوّل المبلغ من محفظتك إلى الرقم التالي', 'Transfer the amount from your wallet to the number below')}</p>
           <div className="pay-amount">{session.amount} <span>{session.currency}</span></div>
           <div className="pay-channel">{pLabel}</div>
-          <div className="pay-wallet mono">{session.wallet_number}</div>
+          {session.wallets?.length ? <div className="pay-wallet-list">{session.wallets.map((wallet) => <div key={`${wallet.walletNumber}-${wallet.device}`}><span className="mono">{wallet.walletNumber}</span><strong>{wallet.amount} {session.currency}</strong><small>{providerLabel(wallet.provider, wallet.device)}</small></div>)}</div> : <div className="pay-wallet mono">{session.wallet_number}</div>}
           {qr && <img src={qr} alt="QR" className="pay-qr" />}
           <div className="pay-actions">
             <button className="btn-primary" onClick={() => void copy(session.wallet_number ?? '', 'wallet')}>
@@ -216,6 +226,7 @@ export default function PaymentCheckout() {
           <Link className="btn-ghost pay-status-link" to={`/payment-status?id=${session.id}`}>
             {t('متابعة حالة الدفع ←', 'Track payment status →')}
           </Link>
+          {session.return_url && <a className="btn-ghost pay-status-link" href={session.return_url}>{t('العودة إلى التاجر', 'Return to merchant')}</a>}
         </div>
       </div>
     )
@@ -229,6 +240,7 @@ export default function PaymentCheckout() {
         <img src="/logo.svg" alt="OnTarget" className="login-logo" />
         <h2>{link?.title ?? t('إيداع جديد', 'New deposit')}</h2>
         <p className="login-sub">{t('ادفع عبر المحفظة الإلكترونية', 'Pay via your mobile wallet')}</p>
+        {link?.payment_method_codes?.length ? <label className="field"><span>{t('طريقة الدفع', 'Payment method')}</span><select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} required><option value="">{t('اختر طريقة الدفع', 'Choose a payment method')}</option>{link.payment_method_codes.map((method) => <option key={method} value={method}>{providerLabel(method, method)}</option>)}</select></label> : null}
         <label className="field">
           <span>{t('رقم الموبايل', 'Mobile number')}</span>
           {/* type="tel" as well as inputMode: inputMode alone still asks some

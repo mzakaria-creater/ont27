@@ -20,6 +20,13 @@ interface LinkRow {
   max_uses: number | null
   use_count: number
   active: boolean
+  client_name?: string | null
+  client_reference?: string | null
+  return_url?: string | null
+  payment_method_codes?: string[] | null
+  wallet_pool_id?: string | null
+  allocation_mode?: 'single_queue' | 'multi_wallet'
+  multi_wallet_threshold?: number | null
 }
 
 function linkUsable(link: LinkRow): string | null {
@@ -83,6 +90,9 @@ function publicSession(s: Record<string, unknown>) {
     provider: meta.provider ?? null,
     channel_name: meta.channel_name ?? null,
     deeplink: meta.deeplink ?? null,
+    wallets: meta.wallets ?? null,
+    return_url: s.success_url ?? meta.return_url ?? null,
+    merchant_name: meta.merchant_name ?? null,
     created_at: s.created_at,
     expires_at: s.expires_at,
     paid_at: s.paid_at,
@@ -110,6 +120,12 @@ payRoutes.get('/link/:code', async (c) => {
       min_amount: link.min_amount,
       max_amount: link.max_amount,
       currency: link.currency,
+      client_name: link.client_name ?? null,
+      client_reference: link.client_reference ?? null,
+      return_url: link.return_url ?? null,
+      payment_method_codes: link.payment_method_codes ?? [],
+      allocation_mode: link.allocation_mode ?? 'single_queue',
+      multi_wallet_threshold: link.multi_wallet_threshold ?? null,
     },
   })
 })
@@ -119,6 +135,7 @@ payRoutes.post('/session', async (c) => {
   const code = typeof body?.code === 'string' ? body.code.trim() : null
   const phone = typeof body?.phone === 'string' ? body.phone.trim() : ''
   const name = typeof body?.name === 'string' ? body.name.trim() : null
+  const requestedMethod = typeof body?.payment_method_code === 'string' ? body.payment_method_code.trim().toUpperCase() : null
   const rawAmount = Number(body?.amount)
 
   if (!/^01[0-9]{9}$/.test(phone)) return c.json({ error: 'invalid_phone' }, 400)
@@ -145,7 +162,18 @@ payRoutes.post('/session', async (c) => {
     if (link.max_amount !== null && amount > link.max_amount) return c.json({ error: 'amount_above_max', max: link.max_amount }, 400)
   }
 
-  const wallet = await allocateWallet(currency)
+  const allowedMethods = (link?.payment_method_codes ?? []).map((method) => method.toUpperCase())
+  if (requestedMethod && allowedMethods.length && !allowedMethods.includes(requestedMethod)) {
+    return c.json({ error: 'payment_method_not_allowed' }, 400)
+  }
+
+  const wallet = await allocateWallet(currency, {
+    poolId: link?.wallet_pool_id,
+    methodCodes: requestedMethod ? [requestedMethod] : allowedMethods,
+    amount,
+    mode: link?.allocation_mode,
+    multiWalletThreshold: link?.multi_wallet_threshold,
+  })
   if (!wallet) return c.json({ error: 'no_channel_available' }, 503)
 
   if (link) {
@@ -172,6 +200,9 @@ payRoutes.post('/session', async (c) => {
       customer_phone: phone,
       customer_name: name,
       local_deposit_channel_id: wallet.channelId,
+      payment_method_id: wallet.paymentMethodId ?? null,
+      wallet_id: wallet.accountId ?? null,
+      success_url: link?.return_url ?? null,
       expires_at: new Date(Date.now() + SESSION_TTL_MIN * 60_000).toISOString(),
       metadata: {
         wallet_number: wallet.walletNumber,
@@ -180,6 +211,11 @@ payRoutes.post('/session', async (c) => {
         channel_name: wallet.channelName,
         channel_type: wallet.channelType,
         deeplink,
+        wallets: wallet.allocations ?? null,
+        return_url: link?.return_url ?? null,
+        merchant_name: link?.client_name ?? null,
+        client_reference: link?.client_reference ?? null,
+        payment_method_code: wallet.paymentMethodCode ?? requestedMethod ?? null,
       },
     })
     .select('*')

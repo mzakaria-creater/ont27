@@ -7,6 +7,11 @@ import type { AuthEnv } from './rbac.js'
 // Unambiguous alphabet (no 0/O/1/I) for short codes shared over chat apps.
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
 
+const positiveNumber = (value: unknown): number | null => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
 function newShortCode(): string {
   const bytes = randomBytes(8)
   let out = ''
@@ -99,6 +104,13 @@ linkRoutes.post('/:id/duplicate', requirePerm('checkout-builder', 'can_create'),
       max_amount: src.max_amount,
       currency: src.currency,
       max_uses: src.max_uses,
+      client_name: src.client_name,
+      client_reference: src.client_reference,
+      return_url: src.return_url,
+      payment_method_codes: src.payment_method_codes ?? [],
+      wallet_pool_id: src.wallet_pool_id,
+      allocation_mode: src.allocation_mode ?? 'single_queue',
+      multi_wallet_threshold: src.multi_wallet_threshold,
       created_by: c.get('actor').sub,
     })
     .select('*')
@@ -111,9 +123,12 @@ linkRoutes.post('/:id/duplicate', requirePerm('checkout-builder', 'can_create'),
 })
 
 linkRoutes.get('/merchants', requirePerm('checkout-builder', 'can_view'), async (c) => {
-  const { data } = await db
-    .from('merchants').select('id, name, code').eq('active', true).order('name')
-  return c.json({ merchants: data ?? [] })
+  const [{ data: merchants }, { data: methods }, { data: pools }] = await Promise.all([
+    db.from('merchants').select('id, name, code').eq('active', true).order('name'),
+    db.from('payment_methods').select('id, method_code, method_name, channel_type').eq('is_active', true).order('sort_order').order('method_name'),
+    db.from('payment_pools').select('id, pool_name, pool_code, allocation_strategy, rotation_enabled').eq('is_active', true).order('pool_name'),
+  ])
+  return c.json({ merchants: merchants ?? [], methods: methods ?? [], pools: pools ?? [] })
 })
 
 linkRoutes.post('/', requirePerm('checkout-builder', 'can_create'), async (c) => {
@@ -137,6 +152,13 @@ linkRoutes.post('/', requirePerm('checkout-builder', 'can_create'), async (c) =>
       currency: typeof body?.currency === 'string' && body.currency ? body.currency : 'EGP',
       expires_at: body?.expires_at ? new Date(body.expires_at).toISOString() : null,
       max_uses: Number.isInteger(Number(body?.max_uses)) && Number(body.max_uses) > 0 ? Number(body.max_uses) : null,
+      client_name: typeof body?.client_name === 'string' && body.client_name.trim() ? body.client_name.trim() : null,
+      client_reference: typeof body?.client_reference === 'string' && body.client_reference.trim() ? body.client_reference.trim() : null,
+      return_url: typeof body?.return_url === 'string' && /^https?:\/\//i.test(body.return_url.trim()) ? body.return_url.trim() : null,
+      payment_method_codes: Array.isArray(body?.payment_method_codes) ? body.payment_method_codes.filter((x: unknown): x is string => typeof x === 'string').slice(0, 20) : [],
+      wallet_pool_id: typeof body?.wallet_pool_id === 'string' && body.wallet_pool_id ? body.wallet_pool_id : null,
+      allocation_mode: body?.allocation_mode === 'multi_wallet' ? 'multi_wallet' : 'single_queue',
+      multi_wallet_threshold: positiveNumber(body?.multi_wallet_threshold),
       created_by: c.get('actor').sub,
     })
     .select('*')
@@ -153,6 +175,13 @@ linkRoutes.patch('/:id', requirePerm('checkout-builder', 'can_edit'), async (c) 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (typeof body?.active === 'boolean') updates.active = body.active
   if (typeof body?.title === 'string') updates.title = body.title.trim() || null
+  if (typeof body?.client_name === 'string') updates.client_name = body.client_name.trim() || null
+  if (typeof body?.client_reference === 'string') updates.client_reference = body.client_reference.trim() || null
+  if (typeof body?.return_url === 'string' && /^https?:\/\//i.test(body.return_url.trim())) updates.return_url = body.return_url.trim()
+  if (Array.isArray(body?.payment_method_codes)) updates.payment_method_codes = body.payment_method_codes.filter((x: unknown): x is string => typeof x === 'string').slice(0, 20)
+  if (typeof body?.wallet_pool_id === 'string' || body?.wallet_pool_id === null) updates.wallet_pool_id = body.wallet_pool_id || null
+  if (body?.allocation_mode === 'single_queue' || body?.allocation_mode === 'multi_wallet') updates.allocation_mode = body.allocation_mode
+  if (body?.multi_wallet_threshold !== undefined) updates.multi_wallet_threshold = positiveNumber(body.multi_wallet_threshold)
   const { data: link, error } = await db
     .from('payment_links')
     .update(updates)

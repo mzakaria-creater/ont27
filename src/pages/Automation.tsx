@@ -27,11 +27,11 @@ interface RuleRow {
 }
 
 type NewRule = {
-  scope_type: string; master_merchant: string; sub_merchant: string; min_amount: string; max_amount: string
+  scope_type: string; master_merchant: string; merchant: string; sub_merchant: string; min_amount: string; max_amount: string
   time_window_minutes: string; action_type: 'approve' | 'decline'; priority: string
   use_crm_matching: boolean; use_near_amount: boolean; use_unique_amount: boolean
 }
-const EMPTY_RULE: NewRule = { scope_type: 'global', master_merchant: 'ngpay', sub_merchant: '', min_amount: '1', max_amount: '10000', time_window_minutes: '5', action_type: 'approve', priority: '10', use_crm_matching: false, use_near_amount: false, use_unique_amount: false }
+const EMPTY_RULE: NewRule = { scope_type: 'global', master_merchant: 'ngpay', merchant: '', sub_merchant: '', min_amount: '1', max_amount: '10000', time_window_minutes: '5', action_type: 'approve', priority: '10', use_crm_matching: false, use_near_amount: false, use_unique_amount: false }
 
 // Flow templates — presets that prefill the form, never saved directly (the
 // operator must review + click Save, per the explicit requirement that no
@@ -138,6 +138,7 @@ export default function Automation() {
         method: 'POST',
         body: JSON.stringify({
           scope_type: newRule.scope_type, master_merchant: newRule.master_merchant || null, sub_merchant: newRule.sub_merchant || null,
+          merchant: newRule.merchant || null,
           min_amount: newRule.min_amount, max_amount: newRule.max_amount, time_window_minutes: newRule.time_window_minutes,
           action_type: newRule.action_type, priority: newRule.priority,
           use_crm_matching: newRule.use_crm_matching, use_near_amount: newRule.use_near_amount, use_unique_amount: newRule.use_unique_amount,
@@ -329,6 +330,7 @@ export default function Automation() {
               <span>{t('النطاق', 'Scope')}</span>
               <select className="login-input" value={newRule.scope_type} onChange={(e) => setNewRule({ ...newRule, scope_type: e.target.value })}>
                 <option value="global">{t('عام', 'Global')}</option>
+                <option value="merchant">{t('تاجر محدد', 'Specific merchant')}</option>
                 <option value="wallet">{t('محفظة', 'Wallet')}</option>
               </select>
               <span>{t('التاجر الرئيسي', 'Master merchant')}</span>
@@ -336,6 +338,8 @@ export default function Automation() {
                 <option value="ngpay">NGPay ({t('حي', 'live')})</option>
                 <option value="payfuture">PayFuture ({t('لا يوجد تنفيذ آلي بعد', 'no execution worker yet')})</option>
               </select>
+              <span>{t('اسم التاجر في المعاملة', 'Transaction merchant')}</span>
+              <input className="login-input" placeholder={t('مثال: HFM / Hf markets', 'e.g. HFM / Hf markets')} value={newRule.merchant} onChange={(e) => setNewRule({ ...newRule, merchant: e.target.value })} />
               <span>{t('تاجر فرعي (اختياري)', 'Sub-merchant (optional)')}</span>
               <input className="login-input" placeholder={t('مثال: MelBet', 'e.g. MelBet')} value={newRule.sub_merchant} onChange={(e) => setNewRule({ ...newRule, sub_merchant: e.target.value })} />
             </div>
