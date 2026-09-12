@@ -394,7 +394,7 @@ reportsRoutes.get('/attendance', requireAnyPerm(['reports', 'advanced_analysis',
   const userId = c.req.query('user_id')?.trim() || null
   const wallet = c.req.query('wallet')?.replace(/\D/g, '') || null
   const [usersResult, sessionsResult, txResult, payoutResult, smsResult] = await Promise.all([
-    db.from('panel_users').select('id, username, display_name, role').in('role', [...STAFF_ROLES]).order('username'),
+    db.from('panel_users').select('id, username, display_name, role, last_login_at').in('role', [...STAFF_ROLES]).order('username'),
     db.from('staff_attendance_sessions').select('id, user_id, wallet_number, checked_in_at, checked_out_at, note').gte('checked_in_at', fromBoundary).lte('checked_in_at', toBoundary).order('checked_in_at', { ascending: false }).limit(5000),
     db.from('maven_transactions').select('tx_id, amount, status, approved_by, agent_name, receiving_wallet, to_account_number, first_seen_at').gte('first_seen_at', fromBoundary).lte('first_seen_at', toBoundary).limit(50000),
     db.from('maven_payout_transactions').select('maven_id, amount, status, agent_name, mobile_no, first_seen_at').gte('first_seen_at', fromBoundary).lte('first_seen_at', toBoundary).limit(50000),
@@ -403,6 +403,12 @@ reportsRoutes.get('/attendance', requireAnyPerm(['reports', 'advanced_analysis',
   const firstError = usersResult.error || sessionsResult.error || txResult.error || payoutResult.error || smsResult.error
   if (firstError) return c.json({ error: 'db_error', detail: firstError.message }, 500)
   const users = usersResult.data ?? []
+  const userIds = users.map((user) => user.id)
+  const auditResult = userIds.length
+    ? await db.from('audit_log').select('id, actor_id, actor_name, action, entity, entity_id, after, created_at').in('actor_id', userIds).gte('created_at', fromBoundary).lte('created_at', toBoundary).order('created_at', { ascending: false }).limit(20000)
+    : { data: [], error: null }
+  if (auditResult.error) return c.json({ error: 'db_error', detail: auditResult.error.message }, 500)
+  const auditRows = auditResult.data ?? []
   const sessions = (sessionsResult.data ?? []).filter((row) => !userId || row.user_id === userId).filter((row) => !wallet || String(row.wallet_number ?? '').replace(/\D/g, '') === wallet)
   const nameOf = (user: typeof users[number]) => `${user.username} ${user.display_name ?? ''}`.toLowerCase().trim()
   const nameMatches = (value: unknown, names: string) => {
@@ -412,6 +418,9 @@ reportsRoutes.get('/attendance', requireAnyPerm(['reports', 'advanced_analysis',
   const stats = users.filter((user) => !userId || user.id === userId).map((user) => {
     const names = nameOf(user)
     const mine = sessions.filter((row) => row.user_id === user.id)
+    const mineAudit = auditRows.filter((row) => row.actor_id === user.id)
+    const loginEvents = mineAudit.filter((row) => row.action === 'auth.login' || row.action === 'auth.magic_login')
+    const actionEvents = mineAudit.filter((row) => !row.action.startsWith('auth.') && !row.action.startsWith('staff.attendance_'))
     const wallets = new Set(mine.map((row) => String(row.wallet_number ?? '').replace(/\D/g, '')).filter(Boolean))
     const txs = (txResult.data ?? []).filter((row) => nameMatches(row.agent_name, names) && (!wallet || digits(row.receiving_wallet ?? row.to_account_number) === wallet))
     const sms = (smsResult.data ?? []).filter((row) => !wallet || String(row.wallet_number ?? row.receiver_number ?? '').replace(/\D/g, '') === wallet)
@@ -448,7 +457,11 @@ reportsRoutes.get('/attendance', requireAnyPerm(['reports', 'advanced_analysis',
         },
       }
     })
-    return { user_id: user.id, username: user.username, display_name: user.display_name, role: user.role, active_session: open ?? null, sessions: mine.length, hours: mine.reduce((sum, row) => sum + (new Date(row.checked_out_at ?? now.toISOString()).getTime() - new Date(row.checked_in_at).getTime()) / 3_600_000, 0), transaction_count: txs.length, approved_count: paid.length, transaction_amount: txs.reduce((sum, row) => sum + Number(row.amount ?? 0), 0), approved_amount: paid.reduce((sum, row) => sum + Number(row.amount ?? 0), 0), sms_count: sms.length, wallets: [...wallets], session_reports: sessionReports }
+    const actionTransactions = txs.filter((row) => {
+      const actor = String(row.approved_by ?? row.agent_name ?? '').toLowerCase().trim()
+      return actor && (actor === user.username.toLowerCase() || actor.includes(user.username.toLowerCase()) || actor.includes(String(user.display_name ?? '').toLowerCase()))
+    })
+    return { user_id: user.id, username: user.username, display_name: user.display_name, role: user.role, last_login_at: loginEvents[0]?.created_at ?? user.last_login_at ?? null, login_count: loginEvents.length, check_in_count: mine.filter((row) => Boolean(row.checked_in_at)).length, check_out_count: mine.filter((row) => Boolean(row.checked_out_at)).length, action_count: actionEvents.length + actionTransactions.length, action_amount: actionTransactions.reduce((sum, row) => sum + Number(row.amount ?? 0), 0), recent_actions: actionEvents.slice(0, 8).map((row) => ({ action: row.action, entity: row.entity, entity_id: row.entity_id, at: row.created_at })), active_session: open ?? null, sessions: mine.length, hours: mine.reduce((sum, row) => sum + (new Date(row.checked_out_at ?? now.toISOString()).getTime() - new Date(row.checked_in_at).getTime()) / 3_600_000, 0), transaction_count: txs.length, approved_count: paid.length, transaction_amount: txs.reduce((sum, row) => sum + Number(row.amount ?? 0), 0), approved_amount: paid.reduce((sum, row) => sum + Number(row.amount ?? 0), 0), sms_count: sms.length, wallets: [...wallets], session_reports: sessionReports }
   })
   const staffById = new Map(users.map((user) => [user.id, user]))
   const inactivityCutoff = now.getTime() - 15 * 60_000
