@@ -69,7 +69,11 @@ const OVERLAP_MS = 5 * 60_000
 // turning every cron invocation into a historical backfill.
 const UPDATED_OVERLAP_MS = 2 * 60 * 60_000
 const PAGE = 1000
-const FAST_TABLES = new Set(['maven_transactions', 'maven_payout_transactions', 'inbound_sms'])
+// Maven deposit/payout rows are now reconciled directly from Maven by the V2
+// Edge Function. Keeping them in this legacy mirror list would allow a stale
+// old-project collector row to overwrite a live provider status.
+const LEGACY_MIRROR_TABLES = new Set(['inbound_sms', 'crm_clients', 'api_risk_blacklist', 'wallet_device_map'])
+const FAST_TABLES = new Set(['inbound_sms'])
 
 // Two cadences, because the two passes cost very different amounts.
 //
@@ -415,6 +419,7 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
   }
 
   for (const { table, pk, ts, updatedTs } of GROWING) {
+    if (!LEGACY_MIRROR_TABLES.has(table)) continue
     // The fast path is the browser's live mirror pump. CRM, blacklist and
     // wallet configuration are useful on the full repair cadence but should
     // never delay a fresh Maven transaction or SMS.
@@ -523,6 +528,29 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
   return results
 }
 
+async function reconcileMaven(mode: 'live' | 'repair') {
+  const baseUrl = process.env.SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SECRET_KEY
+  if (!baseUrl || !serviceKey) throw new Error('v2_reconcile_not_configured')
+  const response = await fetch(`${baseUrl}/functions/v1/maven-reconcile-final-status`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(mode === 'live' ? 55_000 : 240_000),
+    headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  })
+  const body = await response.json().catch(() => ({ error: 'invalid_reconcile_response' })) as Record<string, unknown>
+  if (!response.ok || body.ok !== true) throw new Error(`maven_reconcile_${response.status}: ${String(body.error ?? 'failed')}`)
+  return body
+}
+
+function mergeReconcileResult(results: Record<string, number | string>, direct: Record<string, unknown>) {
+  results.maven_reconcile_rows = Number(direct.rows_provider ?? 0)
+  results.maven_reconcile_inserted = Number(direct.inserted ?? 0)
+  results.maven_reconcile_updated = Number(direct.updated ?? 0)
+  results.maven_reconcile_unchanged = Number(direct.unchanged ?? 0)
+  results.maven_reconcile_alerts = Number(direct.alerts ?? 0)
+}
+
 function syncOnce(mode: 'fast' | 'full'): Promise<Record<string, number | string>> {
   if (activeSync[mode]) return activeSync[mode]!
   activeSync[mode] = runSync(mode).finally(() => { activeSync[mode] = null })
@@ -533,16 +561,39 @@ function resultOk(results: Record<string, number | string>): boolean {
   return !Object.values(results).some((value) => typeof value === 'string' && value.startsWith('error:'))
 }
 
-// Daily Vercel Cron.
+// Fast Vercel Cron. The live provider path is intentionally separate from the
+// heavier repair pass below so a full scan can never delay fresh Maven rows.
 deltaSyncRoutes.get('/delta-sync', async (c) => {
   const secret = process.env.CRON_SECRET
   const auth = c.req.header('authorization')
   if (!secret || auth !== `Bearer ${secret}`) {
     return c.json({ error: 'unauthorized' }, 401)
   }
+  if (!(await claimDistributedLease(20, 'provider_delta_sync_fast_cron'))) return c.json({ ok: true, skipped: 'distributed_lease' })
+  const results: Record<string, number | string> = {}
+  let directOk = true
+  try { mergeReconcileResult(results, await reconcileMaven('live')) }
+  catch (e) { directOk = false; results.maven_reconcile = `error: ${(e as Error).message}` }
+  Object.assign(results, await syncOnce('fast').catch((e) => ({ error: `error: ${(e as Error).message}` })))
+  const ok = directOk && resultOk(results)
+  return c.json({ ok, mode: 'fast', results, at: new Date().toISOString() }, ok ? 200 : 502)
+})
+
+// Bounded repair pass for CRM, blacklist, wallet configuration and the wider
+// status overlap. It runs independently so the one-minute live sync remains
+// responsive.
+deltaSyncRoutes.get('/delta-sync-full', async (c) => {
+  const secret = process.env.CRON_SECRET
+  const auth = c.req.header('authorization')
+  if (!secret || auth !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401)
   if (!(await claimDistributedLease(240, 'provider_delta_sync_full'))) return c.json({ ok: true, skipped: 'distributed_lease' })
-  const results = await syncOnce('full').catch((e) => ({ error: `error: ${(e as Error).message}` }))
-  return c.json({ ok: resultOk(results), mode: 'full', results, at: new Date().toISOString() }, resultOk(results) ? 200 : 502)
+  const results: Record<string, number | string> = {}
+  let directOk = true
+  try { mergeReconcileResult(results, await reconcileMaven('repair')) }
+  catch (e) { directOk = false; results.maven_reconcile = `error: ${(e as Error).message}` }
+  Object.assign(results, await syncOnce('full').catch((e) => ({ error: `error: ${(e as Error).message}` })))
+  const ok = directOk && resultOk(results)
+  return c.json({ ok, mode: 'full', results, at: new Date().toISOString() }, ok ? 200 : 502)
 })
 
 // v2 owns the decline sweep after the legacy bridge cutover. The SQL function
@@ -591,7 +642,11 @@ deltaSyncRoutes.post('/delta-sync', async (c) => {
 
   const mode = 'fast'
   lastFastRunAt = now
-  const results = await syncOnce(mode).catch((e) => ({ error: `error: ${(e as Error).message}` }))
-  const ok = resultOk(results)
+  const results: Record<string, number | string> = {}
+  let directOk = true
+  try { mergeReconcileResult(results, await reconcileMaven('live')) }
+  catch (e) { directOk = false; results.maven_reconcile = `error: ${(e as Error).message}` }
+  Object.assign(results, await syncOnce(mode).catch((e) => ({ error: `error: ${(e as Error).message}` })))
+  const ok = directOk && resultOk(results)
   return c.json({ ok, mode, results, at: new Date().toISOString() }, ok ? 200 : 502)
 })
