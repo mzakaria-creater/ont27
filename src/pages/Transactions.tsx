@@ -266,7 +266,7 @@ export default function Transactions() {
                   const id = r.kind === 'deposit' ? r.tx_id : r.maven_id
                   const party = r.kind === 'deposit' ? (r.sender_name ?? r.sender_number) : (r.account_name ?? r.mobile_no)
                   const clientPhone = r.kind === 'deposit' ? r.sender_number : r.mobile_no
-                  const wallet = r.kind === 'deposit' ? (r.receiving_wallet ?? r.to_account_number) : null
+                  const wallet = r.kind === 'deposit' ? (r.to_account_number ?? r.receiving_wallet) : null
                   const proofUrl = r.kind === 'deposit' ? r.proof_image_url : r.image_url
                   const rowKey = `${r.kind}-${r.checkout_session_id ?? id}`
                   const isExpanded = expanded.has(rowKey)
@@ -312,7 +312,7 @@ export default function Transactions() {
               const id = r.kind === 'deposit' ? r.tx_id : r.maven_id
               const party = r.kind === 'deposit' ? (r.sender_name ?? r.sender_number) : (r.account_name ?? r.mobile_no)
               const clientPhone = r.kind === 'deposit' ? r.sender_number : r.mobile_no
-              const wallet = r.kind === 'deposit' ? (r.receiving_wallet ?? r.to_account_number) : null
+              const wallet = r.kind === 'deposit' ? (r.to_account_number ?? r.receiving_wallet) : null
               const proofUrl = r.kind === 'deposit' ? r.proof_image_url : r.image_url
               const details = r.is_checkout_session ? `/payment-status?id=${encodeURIComponent(r.checkout_session_id ?? '')}` : r.kind === 'deposit' && r.ontarget_ref ? `/transactions/${encodeURIComponent(r.ontarget_ref)}` : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`
               return <article key={`${r.kind}-${r.checkout_session_id ?? id}`} className={`all-tx-card${r.status === 'PENDING' ? ' pending' : ''}`}>

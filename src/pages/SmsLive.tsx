@@ -62,6 +62,7 @@ interface SmsRow {
   consumed_by_tx_id: number | null
   wallet_number: string | null
   confirmed_wallet_number: string | null
+  wallet_identity_ambiguous?: boolean
   linked_wallet_number?: string | null
   wallet_balance_before?: number | null
   wallet_balance_after?: number | null
@@ -112,6 +113,10 @@ interface SmsDetail extends SmsRow {
   manual_entry_by: string | null
   manual_entry_note: string | null
   created_at: string | null
+}
+
+function displayWalletForRow(row: SmsRow): string | null {
+  return row.wallet_identity_ambiguous ? null : row.confirmed_wallet_number ?? row.receiver_number ?? row.wallet_number
 }
 
 interface SmsStats {
@@ -608,7 +613,7 @@ export default function SmsLive() {
                   <span className="sms-unlinked-item-top"><b>SMS #{row.id}</b><time>{depositTime({ first_seen_at: row.received_at })}</time></span>
                   <strong>{money(row.amount, 'EGP')}</strong>
                   <span>{row.sender_name ?? row.sender_number ?? t('مرسل غير معروف', 'Unknown sender')}</span>
-                  <small className="mono">← {row.confirmed_wallet_number ?? row.receiver_number ?? row.wallet_number ?? '—'}</small>
+                  <small className="mono">← {displayWalletForRow(row) ?? (row.wallet_identity_ambiguous ? t('غير محدد — SIM غير معروف', 'Unresolved — SIM not identified') : '—')}</small>
                 </button>
               ))}
             </div>
@@ -639,7 +644,7 @@ export default function SmsLive() {
                 {data.rows.map((r) => {
                   const payoutLinked = r.sms_category === 'withdrawal' && r.matched_payout_id != null
                   const linked = payoutLinked || r.matched_tx_id != null
-                  const displayWallet = r.confirmed_wallet_number ?? r.receiver_number ?? r.wallet_number
+                  const displayWallet = displayWalletForRow(r)
                   const mt = linked ? MATCH_META.auto : r.match_status ? MATCH_META[r.match_status] : null
                   const linkedAt = r.withdrawal_assigned_at
                   return (
@@ -677,7 +682,7 @@ export default function SmsLive() {
             {data.rows.map((r) => {
               const cat = r.sms_category ? CATEGORY_META[r.sms_category] : null
               const linked = r.matched_payout_id != null || r.matched_tx_id != null
-              const displayWallet = r.confirmed_wallet_number ?? r.receiver_number ?? r.wallet_number
+              const displayWallet = displayWalletForRow(r)
               const matchMeta = linked ? MATCH_META.auto : r.match_status ? MATCH_META[r.match_status] : null
               return <button type="button" className={`sms-live-card sms-live-card-${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}${!linked && !r.is_blocked ? ' is-unlinked' : ''}`} key={r.id} onClick={() => void openDetail(r.id)}>
                 <div className="sms-live-card-head"><span className="sms-card-brand"><span className={`sms-type-mark ${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}`}>{r.sms_category === 'withdrawal' ? '↗' : '↙'}</span><MethodLogo method={r.provider ?? 'Orange Money'} /></span><strong className="mono">SMS #{r.id}</strong><span className="mono">{depositTime({ first_seen_at: r.received_at })}</span></div>
@@ -768,7 +773,7 @@ export default function SmsLive() {
 
                 <dl className="detail-grid">
                   <dt>{t('المُرسِل', 'Sender')}</dt><dd>{selected.sender_name ?? '—'} {selected.sender_number && <span className="mono">({selected.sender_number})</span>}</dd>
-                  <dt>{selected.sms_category === 'withdrawal' ? t('المحفظة الدافعة', 'Paying wallet') : t('المحفظة المستقبِلة', 'Receiving wallet')}</dt><dd className="mono">{selected.sms_category === 'withdrawal' ? selected.linked_wallet_number ?? selected.wallet_number ?? '—' : selected.confirmed_wallet_number ?? selected.receiver_number ?? selected.wallet_number ?? selected.wallet ?? '—'}{selected.sms_category !== 'withdrawal' && selected.receiver_number && (selected.confirmed_wallet_number ?? selected.receiver_number) !== selected.receiver_number && <div className="cell-sub">SMS receiver {selected.receiver_number}</div>}</dd>
+                  <dt>{selected.sms_category === 'withdrawal' ? t('المحفظة الدافعة', 'Paying wallet') : t('المحفظة المستقبِلة', 'Receiving wallet')}</dt><dd className="mono">{selected.sms_category === 'withdrawal' ? selected.linked_wallet_number ?? (selected.wallet_identity_ambiguous ? null : selected.wallet_number) ?? '—' : displayWalletForRow(selected) ?? selected.wallet ?? (selected.wallet_identity_ambiguous ? t('غير محدد — SIM غير معروف', 'Unresolved — SIM not identified') : '—')}{selected.wallet_identity_ambiguous && <div className="cell-sub danger-text">⚠ {t('تم إخفاء الرقم لأن الرسالة لم تحدد SIM الصحيحة', 'Hidden because the SMS did not identify the SIM')}</div>}{selected.sms_category !== 'withdrawal' && selected.receiver_number && displayWalletForRow(selected) && displayWalletForRow(selected) !== selected.receiver_number && <div className="cell-sub">SMS receiver {selected.receiver_number}</div>}</dd>
                   <dt>{t('المزوّد', 'Provider')}</dt><dd>{selected.provider ?? '—'} · <span className="mono">{selected.sms_sender ?? '—'}</span></dd>
                   <dt>{t('التاجر', 'Merchant')}</dt><dd>{selected.matched_master_merchant ?? displayValue(payloadValue(selected, ['merchant', 'merchant_name', 'MerchantName']))}</dd>
                   <dt>{t('الطريقة', 'Method')}</dt><dd>{selected.method ?? displayValue(payloadValue(selected, ['method', 'payment_method', 'iPayinfo']))}</dd>

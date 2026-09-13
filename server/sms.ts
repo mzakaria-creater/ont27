@@ -239,6 +239,36 @@ async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> 
   }
 }
 
+// A webhook identifies the device, not necessarily the SIM. When a device has
+// multiple wallet mappings and the forwarder omitted sim_slot, never present
+// the newest mapping as fact: that was the source of repeated false wallet
+// numbers in SMS Live. The operator can still assign the wallet explicitly.
+async function markAmbiguousWallets(rows: Record<string, unknown>[]): Promise<void> {
+  const devices = [...new Set(rows.map((row) => String(row.webhook_name ?? row.device_name ?? '').trim()).filter(Boolean))]
+  if (!devices.length) return
+  const { data } = await db.from('wallet_device_map').select('device, sim_slot, to_account_number').in('device', devices)
+  const byDevice = new Map<string, { sim_slot: number | null; wallet: string }[]>()
+  for (const item of data ?? []) {
+    const key = String(item.device ?? '')
+    const list = byDevice.get(key) ?? []
+    list.push({ sim_slot: item.sim_slot == null ? null : Number(item.sim_slot), wallet: String(item.to_account_number ?? '') })
+    byDevice.set(key, list)
+  }
+  for (const row of rows) {
+    if (row.confirmed_wallet_number) continue
+    const device = String(row.webhook_name ?? row.device_name ?? '').trim()
+    const mappings = byDevice.get(device) ?? []
+    const slot = row.sim_slot == null ? null : Number(row.sim_slot)
+    const match = slot == null ? null : mappings.find((item) => item.sim_slot === slot)
+    if (match) {
+      row.wallet_number = match.wallet
+      row.receiver_number = row.receiver_number ?? match.wallet
+      continue
+    }
+    if (slot == null && mappings.length > 1) row.wallet_identity_ambiguous = true
+  }
+}
+
 smsRoutes.get('/stats', requirePerm('sms_live', 'can_view'), async (c) => {
   const day = sinceIso(24)
   const filters: SmsFilterInput = {
@@ -369,6 +399,7 @@ smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
   const { data, count, error } = await query
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   const rows = (data ?? []) as unknown as Record<string, unknown>[]
+  await markAmbiguousWallets(rows)
   await attachMatchedRef(rows)
   return c.json({ rows, total: count ?? 0, limit, offset })
 })

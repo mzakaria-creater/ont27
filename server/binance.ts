@@ -95,6 +95,15 @@ async function signedSpotAccount(creds: { api_key: string; api_secret: string })
   })
 }
 
+async function signedFundingBalances(creds: { api_key: string; api_secret: string }) {
+  const timestamp = await binanceTime()
+  const params = new URLSearchParams({ recvWindow: '5000', timestamp: String(timestamp) })
+  params.set('signature', createHmac('sha256', creds.api_secret).update(params.toString()).digest('hex'))
+  return fetch('https://api.binance.com/sapi/v1/asset/get-funding-asset', {
+    method: 'POST', headers: { 'X-MBX-APIKEY': creds.api_key, 'content-type': 'application/x-www-form-urlencoded' }, body: params, signal: AbortSignal.timeout(10_000),
+  })
+}
+
 function normalizeC2cOrder(row: Record<string, unknown>, side: 'BUY' | 'SELL') {
   const methods = Array.isArray(row.payMethods) ? row.payMethods : []
   const payMethodNames = methods.map((method) => {
@@ -138,14 +147,21 @@ binanceRoutes.get('/wallet', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) =>
   const creds = await credentials()
   if (!creds) return c.json({ error: 'credentials_required' }, 409)
   try {
-    const response = await signedSpotAccount(creds)
-    const result = await response.json().catch(() => ({ msg: 'invalid_response' })) as Record<string, unknown>
-    if (!response.ok) return c.json({ error: 'binance_error', provider_status: response.status, code: result.code ?? null, message: result.msg ?? null }, 502)
-    const balances = Array.isArray(result.balances) ? result.balances.map((row) => {
+    const spotResponse = await signedSpotAccount(creds)
+    const spotResult = await spotResponse.json().catch(() => ({ msg: 'invalid_response' })) as Record<string, unknown>
+    let balances = Array.isArray(spotResult.balances) ? spotResult.balances.map((row) => {
       const value = row as Record<string, unknown>
       return { asset: String(value.asset ?? ''), free: String(value.free ?? '0'), locked: String(value.locked ?? '0') }
     }).filter((row) => Number(row.free) > 0 || Number(row.locked) > 0) : []
-    return c.json({ balances, accountType: result.accountType ?? null, canTrade: result.canTrade ?? null, at: new Date().toISOString() })
+    let source = 'spot'
+    if (!spotResponse.ok) {
+      const fundingResponse = await signedFundingBalances(creds)
+      const fundingResult = await fundingResponse.json().catch(() => ({ msg: 'invalid_response' }))
+      if (!fundingResponse.ok) return c.json({ error: 'binance_error', provider_status: fundingResponse.status, code: (fundingResult as Record<string, unknown>).code ?? spotResult.code ?? null, message: (fundingResult as Record<string, unknown>).msg ?? spotResult.msg ?? null }, 502)
+      balances = Array.isArray(fundingResult) ? fundingResult.map((row) => { const value = row as Record<string, unknown>; return { asset: String(value.asset ?? ''), free: String(value.free ?? value.amount ?? '0'), locked: String(value.freeze ?? value.locked ?? '0') } }).filter((row) => Number(row.free) > 0 || Number(row.locked) > 0) : []
+      source = 'funding'
+    }
+    return c.json({ balances, source, accountType: spotResult.accountType ?? null, canTrade: spotResult.canTrade ?? null, at: new Date().toISOString() })
   } catch (error) {
     return c.json({ error: 'binance_unreachable', detail: error instanceof Error ? error.message : 'request_failed' }, 502)
   }

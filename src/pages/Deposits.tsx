@@ -476,9 +476,9 @@ export default function Deposits() {
                         <DepositKindBadge row={r} />
                       </td>
                       <td className="mono">
-                        {r.receiving_wallet ?? r.to_account_number ?? '—'}
+                        {r.to_account_number ?? '—'}
                         {r.to_account_number && r.receiving_wallet && r.receiving_wallet !== r.to_account_number && (
-                          <div className="cell-sub mono">{t('المخصص: ', 'Allocated: ')}{r.to_account_number}</div>
+                          <div className="cell-sub mono">{t('رقم SMS الفعلي: ', 'SMS wallet: ')}{r.receiving_wallet}</div>
                         )}
                       </td>
                       <td>
@@ -569,13 +569,13 @@ export default function Deposits() {
                   <dt>tx_id</dt><dd className="mono">{selected.tx_id}</dd>
                   <dt>GUID</dt><dd className="mono small">{selected.guid ?? '—'}</dd>
                   <dt>المُرسِل</dt><dd>{selected.sender_name ?? '—'} {selected.sender_number && <span className="mono">({selected.sender_number})</span>}</dd>
-                  <dt>{t('المحفظة المستلِمة', 'Receiving wallet')}</dt><dd className="mono">{selected.receiving_wallet ?? selected.to_account_number ?? '—'}</dd>
+                  <dt>{t('المحفظة المخصصة من Maven', 'Maven allocated wallet')}</dt><dd className="mono">{selected.to_account_number ?? '—'}</dd>
                   <dt>البنك / الطريقة</dt><dd>{selected.to_bank ?? '—'} · {selected.payment_method ?? selected.gateway ?? '—'}</dd>
                   <dt>التاجر</dt><dd>{selected.merchant ?? '—'}{selected.sub_merchant && <> · فرعي: {selected.sub_merchant}</>}</dd>
                   <dt>التاجر الرئيسي</dt><dd>{selected.master_merchant ?? '—'}</dd>
                   <dt>NGPay merchant reference</dt><dd className="mono">{selected.merchant_reference ?? selected.merchant_tx_reference ?? '—'}</dd>
                   <dt>الرسوم / العمولة</dt><dd className="mono">{money(selected.fees, selected.currency)} / {money(selected.commission, selected.currency)}</dd>
-                  {selected.receiving_wallet && selected.to_account_number && selected.receiving_wallet !== selected.to_account_number && <><dt>{t('المحفظة المخصصة', 'Allocated wallet')}</dt><dd className="mono">{selected.to_account_number}</dd></>}
+                  {selected.receiving_wallet && selected.receiving_wallet !== selected.to_account_number && <><dt>{t('رقم محفظة SMS الفعلي', 'Actual SMS wallet')}</dt><dd className="mono">{selected.receiving_wallet}<div className="cell-sub danger-text">⚠ {t('يختلف عن الحساب المخصص', 'Differs from allocated account')}</div></dd></>}
                   <dt>أول ظهور</dt><dd className="mono">{depositTime({ first_seen_at: selected.first_seen_at })}</dd>
                   <dt>آخر تغيير حالة</dt><dd className="mono">{depositTime({ first_seen_at: selected.last_status_change })}</dd>
                       <dt>اعتمده</dt><dd>{selected.status === 'PENDING' ? '—' : (isAutomaticApprovalActor(selected.approved_by) ? 'آلي (Auto)' : selected.approved_by)}</dd>
