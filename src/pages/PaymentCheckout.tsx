@@ -136,6 +136,7 @@ export default function PaymentCheckout() {
   const [session, setSession] = useState<PaySession | null>(null)
   const [qr, setQr] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  const [idempotencyKey] = useState(() => `checkout-${crypto.randomUUID()}`)
 
   useEffect(() => {
     if (!linkKey) return
@@ -170,7 +171,8 @@ export default function PaymentCheckout() {
     try {
       const { session } = await api<{ session: PaySession }>('/api/pay/session', {
         method: 'POST',
-        body: JSON.stringify({ code: linkKey, phone, amount: Number(amount), name: name || undefined, payment_method_code: paymentMethod || undefined }),
+        headers: { 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify({ code: linkKey, phone, amount: Number(amount), name: name || undefined, payment_method_code: paymentMethod || undefined, idempotency_key: idempotencyKey }),
       })
       setSession(session)
     } catch (err) {

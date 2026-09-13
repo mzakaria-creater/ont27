@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { db } from './db.js'
 import { allocateWallet } from './allocate.js'
 import { notifyTelegram } from './notify.js'
+import { idempotencyKey, recordPaymentOperation } from './paymentArchitecture.js'
 
 const SESSION_TTL_MIN = 15
 
@@ -150,6 +151,8 @@ payRoutes.get('/link/:code', async (c) => {
 
 payRoutes.post('/session', async (c) => {
   const body = await c.req.json().catch(() => null)
+  const requestIdempotency = c.req.header('idempotency-key')?.trim() || (typeof body?.idempotency_key === 'string' ? body.idempotency_key.trim() : '')
+  if (!requestIdempotency) return c.json({ error: 'idempotency_key_required' }, 400)
   const code = typeof body?.code === 'string' ? body.code.trim() : null
   const phone = typeof body?.phone === 'string' ? body.phone.trim() : ''
   const name = typeof body?.name === 'string' ? body.name.trim() : null
@@ -176,6 +179,9 @@ payRoutes.post('/session', async (c) => {
   let amount = link?.amount_mode === 'fixed' ? Number(link.amount) : rawAmount
   if (!Number.isFinite(amount) || amount <= 0) return c.json({ error: 'invalid_amount' }, 400)
   amount = Math.round(amount * 100) / 100
+  const idem = idempotencyKey(requestIdempotency, `${phone}:${amount}:${currency}`)
+  const { data: previous } = await db.from('payment_idempotency_keys').select('response_status, response_payload').eq('scope', link?.merchant_id ?? 'public').eq('idempotency_key', idem).eq('operation', 'create').gt('expires_at', new Date().toISOString()).maybeSingle()
+  if (previous?.response_payload) return c.json(previous.response_payload, previous.response_status === 201 ? 201 : 200)
   if (link?.amount_mode === 'open') {
     if (link.min_amount !== null && amount < link.min_amount) return c.json({ error: 'amount_below_min', min: link.min_amount }, 400)
     if (link.max_amount !== null && amount > link.max_amount) return c.json({ error: 'amount_above_max', max: link.max_amount }, 400)
@@ -250,17 +256,33 @@ payRoutes.post('/session', async (c) => {
     return c.json({ error: 'session_create_failed' }, 500)
   }
 
+  const operation = await recordPaymentOperation({
+    publicId: reference,
+    checkoutSessionId: session.id,
+    merchantId: link?.merchant_id ?? null,
+    amount,
+    currency,
+    method: wallet.paymentMethodCode ?? requestedMethod,
+    operation: 'create',
+    idempotency: idem,
+    request: { code, phone, name, amount, payment_method_code: requestedMethod, wallet_number: wallet.walletNumber },
+  })
+
   void notifyTelegram(
     `🟡 طلب إيداع جديد\nRef: <code>${reference}</code>\nAmount: ${amount} ${currency}\nWallet: <code>${wallet.walletNumber}</code> (${wallet.device})\nPhone: <code>${phone}</code>`,
   )
 
-  return c.json({
+  const response = {
     session: {
       ...publicSession(session),
       checkout_token: checkoutToken,
       checkout_url: `/payment-checkout?token=${checkoutToken}`,
+      payment_id: operation.paymentId,
+      provider: operation.provider,
     },
-  }, 201)
+  }
+  await db.from('payment_idempotency_keys').insert({ scope: link?.merchant_id ?? 'public', idempotency_key: idem, operation: 'create', payment_transaction_id: operation.paymentId, response_status: 201, response_payload: response })
+  return c.json(response, 201)
 })
 
 payRoutes.get('/session/token/:token', async (c) => {
