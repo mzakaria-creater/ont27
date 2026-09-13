@@ -39,6 +39,7 @@ const Review = lazy(() => import('./pages/Review'))
 const Mismatch = lazy(() => import('./pages/Mismatch'))
 const Telegram = lazy(() => import('./pages/Telegram'))
 const Binance = lazy(() => import('./pages/Binance'))
+const BinanceWallet = lazy(() => import('./pages/BinanceWallet'))
 const BinanceP2PEgp = lazy(() => import('./pages/BinanceP2PEgp'))
 const BinanceP2PAds = lazy(() => import('./pages/BinanceP2PAds'))
 const OperationsArchive = lazy(() => import('./pages/OperationsArchive'))
@@ -456,6 +457,7 @@ export default function App() {
             <Route path="/mismatch" element={<PageGate keys={['review','audit_log','audit-logs','risk','risk_audit','compliance']}><Mismatch /></PageGate>} />
             <Route path="/telegram" element={<PageGate keys={['telegram_bot','automation']}><Telegram /></PageGate>} />
             <Route path="/binance" element={<PageGate keys={['binance_p2p_config','binance_p2p','treasury']}><Binance /></PageGate>} />
+            <Route path="/binance/wallet" element={<PageGate keys={['binance_p2p','treasury']}><BinanceWallet /></PageGate>} />
             <Route path="/binance/p2p-egp" element={<PageGate keys={['binance_p2p','treasury']}><BinanceP2PEgp /></PageGate>} />
             <Route path="/binance/p2p-history" element={<PageGate keys={['binance_p2p','treasury']}><BinanceP2PEgp /></PageGate>} />
             <Route path="/binance/p2p-ads" element={<PageGate keys={['binance_p2p','treasury']}><BinanceP2PAds /></PageGate>} />

@@ -75,13 +75,51 @@ async function binanceTime(): Promise<number> {
   return Number(body.serverTime)
 }
 
-async function signedC2cHistory(creds: { api_key: string; api_secret: string }, side: 'BUY' | 'SELL', page = 1, rows = 50) {
+async function signedC2cHistory(creds: { api_key: string; api_secret: string }, side: 'BUY' | 'SELL', page = 1, rows = 50, range?: { startTimestamp?: number; endTimestamp?: number }) {
   const timestamp = await binanceTime()
   const params = new URLSearchParams({ tradeType: side, page: String(page), rows: String(rows), recvWindow: '5000', timestamp: String(timestamp) })
+  if (range?.startTimestamp) params.set('startTimestamp', String(range.startTimestamp))
+  if (range?.endTimestamp) params.set('endTimestamp', String(range.endTimestamp))
   params.set('signature', createHmac('sha256', creds.api_secret).update(params.toString()).digest('hex'))
   return fetch(`https://api.binance.com/sapi/v1/c2c/orderMatch/listUserOrderHistory?${params}`, {
     headers: { 'X-MBX-APIKEY': creds.api_key }, signal: AbortSignal.timeout(10_000),
   })
+}
+
+async function signedSpotAccount(creds: { api_key: string; api_secret: string }) {
+  const timestamp = await binanceTime()
+  const params = new URLSearchParams({ recvWindow: '5000', timestamp: String(timestamp) })
+  params.set('signature', createHmac('sha256', creds.api_secret).update(params.toString()).digest('hex'))
+  return fetch(`https://api.binance.com/api/v3/account?${params}`, {
+    headers: { 'X-MBX-APIKEY': creds.api_key }, signal: AbortSignal.timeout(10_000),
+  })
+}
+
+function normalizeC2cOrder(row: Record<string, unknown>, side: 'BUY' | 'SELL') {
+  const methods = Array.isArray(row.payMethods) ? row.payMethods : []
+  const payMethodNames = methods.map((method) => {
+    if (method && typeof method === 'object') {
+      const value = method as Record<string, unknown>
+      return String(value.payType ?? value.identifier ?? value.name ?? '').trim()
+    }
+    return String(method ?? '').trim()
+  }).filter(Boolean)
+  return {
+    orderNumber: row.orderNumber ?? null,
+    advNo: row.advNo ?? null,
+    tradeType: row.tradeType ?? side,
+    asset: row.asset ?? 'USDT',
+    fiat: row.fiat ?? 'EGP',
+    amount: row.amount ?? null,
+    totalPrice: row.totalPrice ?? null,
+    unitPrice: row.unitPrice ?? null,
+    orderStatus: row.orderStatus ?? null,
+    createTime: row.createTime ?? null,
+    commission: row.commission ?? null,
+    trader: row.counterPartNickName ?? row.counterpartyNickName ?? row.buyerNickname ?? row.sellerNickname ?? row.nickName ?? null,
+    paymentMethods: payMethodNames,
+    paymentMethod: payMethodNames[0] ?? null,
+  }
 }
 
 binanceRoutes.get('/market', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) => {
@@ -94,6 +132,23 @@ binanceRoutes.get('/market', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) =>
   const result = await response.json().catch(() => ({ msg: 'invalid_response' }))
   if (!response.ok) return c.json({ error: 'binance_error', provider_status: response.status, provider: result }, 502)
   return c.json({ prices: result, source: 'Binance Spot public market data', at: new Date().toISOString() })
+})
+
+binanceRoutes.get('/wallet', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) => {
+  const creds = await credentials()
+  if (!creds) return c.json({ error: 'credentials_required' }, 409)
+  try {
+    const response = await signedSpotAccount(creds)
+    const result = await response.json().catch(() => ({ msg: 'invalid_response' })) as Record<string, unknown>
+    if (!response.ok) return c.json({ error: 'binance_error', provider_status: response.status, code: result.code ?? null, message: result.msg ?? null }, 502)
+    const balances = Array.isArray(result.balances) ? result.balances.map((row) => {
+      const value = row as Record<string, unknown>
+      return { asset: String(value.asset ?? ''), free: String(value.free ?? '0'), locked: String(value.locked ?? '0') }
+    }).filter((row) => Number(row.free) > 0 || Number(row.locked) > 0) : []
+    return c.json({ balances, accountType: result.accountType ?? null, canTrade: result.canTrade ?? null, at: new Date().toISOString() })
+  } catch (error) {
+    return c.json({ error: 'binance_unreachable', detail: error instanceof Error ? error.message : 'request_failed' }, 502)
+  }
 })
 
 binanceRoutes.get('/connection', requireSuperAdmin, async (c) => {
@@ -117,11 +172,45 @@ binanceRoutes.get('/history', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) =
   const side = c.req.query('side') === 'SELL' ? 'SELL' : 'BUY'
   const page = Math.min(Math.max(Number(c.req.query('page')) || 1, 1), 1000)
   const rows = Math.min(Math.max(Number(c.req.query('rows')) || 50, 1), 100)
-  const response = await signedC2cHistory(creds, side, page, rows).catch(() => null)
+  const response = await signedC2cHistory(creds, side, page, rows, { startTimestamp: Number(c.req.query('from')) || undefined, endTimestamp: Number(c.req.query('to')) || undefined }).catch(() => null)
   if (!response) return c.json({ error: 'binance_unreachable' }, 502)
   const result = await response.json().catch(() => ({ message: 'invalid_response' }))
   if (!response.ok) return c.json({ error: 'binance_error', provider_status: response.status, provider: result }, 502)
   return c.json(result)
+})
+
+binanceRoutes.get('/p2p-report', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) => {
+  const creds = await credentials()
+  if (!creds) return c.json({ error: 'credentials_required' }, 409)
+  const rows = Math.min(Math.max(Number(c.req.query('rows')) || 100, 1), 100)
+  const from = Number(c.req.query('from')) || undefined
+  const to = Number(c.req.query('to')) || undefined
+  const trader = (c.req.query('trader') ?? '').trim().toLowerCase()
+  const method = (c.req.query('method') ?? '').trim().toLowerCase()
+  const responses = await Promise.all((['BUY', 'SELL'] as const).map((side) => signedC2cHistory(creds, side, 1, rows, { startTimestamp: from, endTimestamp: to }).catch(() => null)))
+  const parsed = await Promise.all(responses.map(async (response, index) => {
+    if (!response) return []
+    const result = await response.json().catch(() => ({ data: [] })) as Record<string, unknown>
+    if (!response.ok) return []
+    const data = Array.isArray(result.data) ? result.data : []
+    return data.filter((row): row is Record<string, unknown> => !!row && typeof row === 'object').map((row) => normalizeC2cOrder(row, index === 0 ? 'BUY' : 'SELL'))
+  }))
+  const filtered = parsed.flat().filter((row) => {
+    const traderMatch = !trader || String(row.trader ?? '').toLowerCase().includes(trader)
+    const methods = row.paymentMethods.map((value) => value.toLowerCase())
+    const methodMatch = !method || methods.some((value) => value.includes(method))
+    return (!row.fiat || String(row.fiat).toUpperCase() === 'EGP') && traderMatch && methodMatch
+  })
+  const byTrader = new Map<string, { trader: string; orders: number; totalEgp: number; buyEgp: number; sellEgp: number }>()
+  for (const row of filtered) {
+    const name = String(row.trader ?? 'Unknown trader')
+    const current = byTrader.get(name) ?? { trader: name, orders: 0, totalEgp: 0, buyEgp: 0, sellEgp: 0 }
+    const total = Number(row.totalPrice ?? 0)
+    current.orders += 1; current.totalEgp += total
+    if (row.tradeType === 'SELL') current.sellEgp += total; else current.buyEgp += total
+    byTrader.set(name, current)
+  }
+  return c.json({ orders: filtered, traders: [...byTrader.values()].sort((a, b) => b.totalEgp - a.totalEgp), from: from ?? null, to: to ?? null, at: new Date().toISOString() })
 })
 
 // Human-confirmation audit. Provider payloads are deliberately not returned

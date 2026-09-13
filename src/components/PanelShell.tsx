@@ -121,6 +121,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/telegram', icon: '✈️', labelAr: 'Telegram مباشر', labelEn: 'Telegram Live', keys: ['telegram_bot', 'automation'], group: 'automation' },
   { to: '/binance', icon: '🪙', labelAr: 'Binance P2P', labelEn: 'Binance P2P', keys: ['binance_p2p_config', 'binance_p2p', 'treasury'], group: 'automation' },
   { to: '/binance/p2p-ads', icon: '📣', labelAr: 'إعلانات P2P', labelEn: 'P2P Live Ads', keys: ['binance_p2p', 'treasury'], group: 'automation' },
+  { to: '/binance/wallet', icon: '💼', labelAr: 'محفظة Binance', labelEn: 'Binance Wallet', keys: ['binance_p2p', 'treasury'], group: 'automation' },
   { to: '/binance/p2p-history', icon: '🧾', labelAr: 'سجل P2P', labelEn: 'P2P History', keys: ['binance_p2p', 'treasury'], group: 'automation' },
   // System — reporting, audit, admin
   { to: '/reports', icon: '📊', labelAr: 'التقارير الشاملة', labelEn: 'Full reports', keys: ['reports', 'advanced_analysis'], group: 'insights' },
