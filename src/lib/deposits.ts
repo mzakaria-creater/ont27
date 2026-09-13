@@ -10,6 +10,13 @@ export interface DepositRow {
   merchant_reference?: string | null
   status: string
   amount: number | null
+  provider_amount?: number | null
+  local_amount?: number | null
+  amount_sync_status?: 'matched' | 'mismatch' | 'pending_confirmation' | null
+  amount_mismatch_reason?: string | null
+  amount_confirmed_at?: string | null
+  amount_confirmed_by?: string | null
+  settlement_blocked?: boolean | null
   currency: string | null
   sender_name: string | null
   sender_number: string | null

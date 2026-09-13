@@ -23,7 +23,7 @@ depositRoutes.use('*', requireAuth)
 // email <1%) — the card layout hides those lines entirely when empty rather
 // than rendering a dash, so shipping them in the list payload is safe.
 const LIST_COLUMNS =
-  'tx_id, guid, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, agent_name, email, payment_method, gateway, merchant, sub_merchant, master_merchant, manual_entry, approved_by, to_account_number, receiving_wallet, proof_image_url, first_seen_at, last_status_change, created_utc, maven_raw_row'
+  'tx_id, guid, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, agent_name, email, payment_method, gateway, merchant, sub_merchant, master_merchant, manual_entry, approved_by, to_account_number, receiving_wallet, proof_image_url, first_seen_at, last_status_change, created_utc, maven_raw_row, provider_amount, local_amount, amount_sync_status, amount_mismatch_reason, amount_confirmed_at, amount_confirmed_by, settlement_blocked'
 
 function providerReference(row: Record<string, unknown>): string | null {
   const raw = row.maven_raw_row && typeof row.maven_raw_row === 'object' && !Array.isArray(row.maven_raw_row)

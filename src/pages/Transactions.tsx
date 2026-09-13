@@ -30,6 +30,11 @@ interface TxRow {
   merchant_reference?: string | null
   status: string
   amount: number | null
+  provider_amount?: number | null
+  local_amount?: number | null
+  amount_sync_status?: 'matched' | 'mismatch' | 'pending_confirmation' | null
+  amount_mismatch_reason?: string | null
+  settlement_blocked?: boolean | null
   currency?: string | null
   sender_name?: string | null
   sender_number?: string | null
@@ -276,7 +281,7 @@ export default function Transactions() {
                         <td className="mono"><Link className="transaction-cell-link" to={details}>{r.is_checkout_session ? r.ontarget_ref : id}</Link>{r.is_checkout_session && <span className="deposit-kind is-first">🔗 Payment link</span>}{!r.is_checkout_session && r.ontarget_ref && String(r.ontarget_ref) !== String(id) && <div className="cell-sub mono">{r.ontarget_ref}</div>}{(r.merchant_reference ?? r.merchant_tx_reference) && <div className="cell-sub mono" title="NGPay merchant reference">{r.merchant_reference ?? r.merchant_tx_reference}</div>}{r.kind === 'deposit' && !r.is_checkout_session && <span className={`deposit-kind ${r.deposit_kind === 'retention_deposit' ? 'is-retention' : 'is-first'}`}>{r.deposit_kind === 'retention_deposit' ? `↻ ${t('Retention','Retention')}` : `★ ${t('First','First')}`}</span>}</td>
                         <td><span className={`portal-status-tag ${st.cls}`}>{st.label}</span></td>
                         <td><div className="portal-method-cell"><MethodLogo method={r.kind === 'deposit' ? r.payment_method : r.pay_by}/><span>{r.kind === 'deposit' ? (r.payment_method ?? t('إيداع', 'Deposit')) : (r.pay_by ?? t('سحب', 'Payout'))}</span></div></td>
-                        <td className="mono portal-amount-cell">{money(r.amount, r.currency ?? 'EGP')}</td>
+                        <td className="mono portal-amount-cell">{money(r.amount, r.currency ?? 'EGP')}{r.amount_sync_status === 'mismatch' && <div className="amount-critical-warning" title={r.amount_mismatch_reason ?? 'Maven amount confirmation required'}>⚠ CRITICAL</div>}</td>
                         <td>{r.user_email ? <a href={`mailto:${r.user_email}`} className="transaction-cell-link">{r.user_email}</a> : '—'}</td>
                         <td><SenderIdentity name={null} phone={clientPhone} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined}/></td>
                         <td>{senderAccountName ?? '—'}</td>
@@ -312,7 +317,7 @@ export default function Transactions() {
               const details = r.is_checkout_session ? `/payment-status?id=${encodeURIComponent(r.checkout_session_id ?? '')}` : r.kind === 'deposit' && r.ontarget_ref ? `/transactions/${encodeURIComponent(r.ontarget_ref)}` : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`
               return <article key={`${r.kind}-${r.checkout_session_id ?? id}`} className={`all-tx-card${r.status === 'PENDING' ? ' pending' : ''}`}>
                 <header><Link className="mono transaction-cell-link" to={details}>{r.ontarget_ref ?? id}</Link><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></header>
-                <div className="all-tx-card-amount mono">{money(r.amount, r.currency ?? 'EGP')}</div>
+                <div className="all-tx-card-amount mono">{money(r.amount, r.currency ?? 'EGP')}{r.amount_sync_status === 'mismatch' && <div className="amount-critical-warning" title={r.amount_mismatch_reason ?? 'Maven amount confirmation required'}>⚠ CRITICAL</div>}</div>
                 {r.kind === 'deposit' && r.matched_sms?.balance_after != null && <div className="tx-live-balance mono">رصيدك الحالي {money(r.matched_sms.balance_after, r.currency ?? 'EGP')}</div>}
                 {proofUrl && <button type="button" className="all-tx-card-proof" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id) })}><img src={proofUrl} alt="" loading="lazy" /><span>{t('عرض إثبات الدفع', 'View payment proof')}</span></button>}
                 <div className="all-tx-card-brands"><MerchantLogo merchant={r.merchant ?? r.master_merchant} /><MethodLogo method={r.kind === 'deposit' ? r.payment_method : r.pay_by} /></div>

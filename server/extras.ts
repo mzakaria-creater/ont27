@@ -14,7 +14,7 @@ export const extraRoutes = new Hono<AuthEnv>()
 extraRoutes.use('*', requireAuth)
 
 const DEPOSIT_COLS =
-  'tx_id, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, receiving_wallet, to_account_number, payment_method, gateway, merchant, master_merchant, approved_by, proof_image_url, first_seen_at, created_utc, maven_raw_row'
+  'tx_id, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, receiving_wallet, to_account_number, payment_method, gateway, merchant, master_merchant, approved_by, proof_image_url, first_seen_at, created_utc, maven_raw_row, provider_amount, local_amount, amount_sync_status, amount_mismatch_reason, amount_confirmed_at, amount_confirmed_by, settlement_blocked'
 const PAYOUT_COLS =
   'maven_id, ontarget_ref, status, amount, pay_by, merchant, account_name, mobile_no, agent_name, approved_by, image_url, first_seen_at, created_utc'
 
@@ -290,6 +290,10 @@ extraRoutes.post('/settlements/payments', requireAnyPerm(['settlements', 'settle
   const serviceFee = body?.service_fee == null || body.service_fee === '' ? 0 : Number(body.service_fee)
   const blockedPercent = body?.blocked_percent == null || body.blocked_percent === '' ? 0 : Number(body.blocked_percent)
   if (!merchant || !month || !Number.isFinite(amount) || amount <= 0 || (usdtRate != null && (!Number.isFinite(usdtRate) || usdtRate <= 0)) || !Number.isFinite(paymentFee) || paymentFee < 0 || !Number.isFinite(serviceFee) || serviceFee < 0 || !Number.isFinite(blockedPercent) || blockedPercent < 0 || blockedPercent > 100) return c.json({ error: 'merchant_month_amount_and_valid_fees_required' }, 400)
+  const { data: guard, error: guardError } = await db.rpc('guard_settlement_amount_mismatch', { p_merchant: merchant })
+  if (guardError) return c.json({ error: 'settlement_guard_unavailable', detail: guardError.message }, 503)
+  const guardRow = Array.isArray(guard) ? guard[0] : guard
+  if (!guardRow?.allowed) return c.json({ error: 'settlement_blocked_amount_mismatch', critical: true, mismatches: Number(guardRow?.mismatch_count ?? 0), message: 'Local amount differs from provider amount. Maven confirmation is required before settlement.' }, 409)
   const actor = c.get('actor')
   const { data, error } = await db.from('settlement_merchant_payments').insert({ merchant, settlement_month: month, amount, usdt_rate: usdtRate, payment_fee: paymentFee, service_fee: serviceFee, blocked_percent: blockedPercent, note: typeof body?.note === 'string' ? body.note.trim().slice(0, 500) || null : null, paid_by: actor.username }).select().single()
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)

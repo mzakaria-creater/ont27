@@ -44,7 +44,7 @@ const canEditAmount = (actor: { role: string; username: string }) =>
 // than hard-coding chat ids, so moving an account only touches that table.
 const APPROVER_LABEL_PREFIXES = ['Mina', 'Eslam']
 
-const TX_COLS = 'tx_id, ontarget_ref, status, amount, currency, gateway, master_merchant, sender_name, sender_number, receiving_wallet, to_account_number, maven_raw_row'
+const TX_COLS = 'tx_id, ontarget_ref, status, amount, currency, gateway, master_merchant, sender_name, sender_number, receiving_wallet, to_account_number, maven_raw_row, provider_amount, local_amount, amount_sync_status, amount_mismatch_reason, amount_confirmed_at, amount_confirmed_by, settlement_blocked'
 
 function isNgPayGateway(tx: Record<string, unknown>): boolean {
   const raw = tx.maven_raw_row && typeof tx.maven_raw_row === 'object' && !Array.isArray(tx.maven_raw_row)
@@ -250,7 +250,22 @@ async function applyEdit(
     patch.last_status_change = new Date().toISOString()
   }
 
-  if (edit.amount != null) patch.amount = edit.amount
+  if (edit.amount != null) {
+    patch.amount = edit.amount
+    patch.local_amount = edit.amount
+    if (executed === true) {
+      patch.provider_amount = edit.amount
+      patch.amount_sync_status = 'matched'
+      patch.amount_mismatch_reason = null
+      patch.amount_confirmed_at = new Date().toISOString()
+      patch.amount_confirmed_by = actorName
+      patch.settlement_blocked = false
+    } else {
+      patch.amount_sync_status = 'mismatch'
+      patch.amount_mismatch_reason = 'Local amount differs from provider amount — Maven confirmation required'
+      patch.settlement_blocked = true
+    }
+  }
 
   const raw = tx.maven_raw_row && typeof tx.maven_raw_row === 'object' && !Array.isArray(tx.maven_raw_row)
     ? { ...(tx.maven_raw_row as Record<string, unknown>) } : {}
