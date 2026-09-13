@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash, createHmac, randomBytes } from 'node:crypto'
 import { db } from './db.js'
 import { allocateWallet } from './allocate.js'
 import { notifyTelegram } from './notify.js'
@@ -85,6 +85,45 @@ async function recordOpen(
   } catch (e) {
     console.error('payment_link_opens insert failed:', e)
   }
+}
+
+async function dispatchPaymentCreatedWebhook(session: Record<string, any>, paymentId: string, method: string | null) {
+  if (!session.merchant_id) return
+  const { data: endpoints } = await db.from('webhook_endpoints')
+    .select('id, url, signing_secret, event_types')
+    .eq('merchant_id', session.merchant_id)
+    .eq('direction', 'outbound')
+    .eq('is_active', true)
+  const endpoint = (endpoints ?? []).find((row: any) => !row.event_types?.length || row.event_types.includes('payment.created'))
+  if (!endpoint?.url || !/^https:\/\//i.test(endpoint.url)) return
+  const payload = {
+    type: 'payment.created',
+    id: paymentId,
+    reference: session.reference,
+    amount: session.amount,
+    currency: session.currency,
+    payment_method: method,
+    status: 'pending',
+    merchant_id: session.merchant_id,
+    created_at: session.created_at,
+  }
+  const raw = JSON.stringify(payload)
+  const started = Date.now()
+  const signature = endpoint.signing_secret ? `sha256=${createHmac('sha256', endpoint.signing_secret).update(raw).digest('hex')}` : ''
+  let statusCode: number | null = null
+  let error: string | null = null
+  try {
+    const response = await fetch(endpoint.url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-ontarget-event': 'payment.created', ...(signature ? { 'x-ontarget-signature': signature } : {}) }, body: raw, signal: AbortSignal.timeout(5000) })
+    statusCode = response.status
+    if (!response.ok) error = `http_${response.status}`
+  } catch (err) {
+    error = err instanceof Error ? err.message.slice(0, 240) : 'webhook_failed'
+  }
+  await db.from('webhook_delivery_log').insert({
+    endpoint_id: endpoint.id, direction: 'outbound', event_type: 'payment.created', status_code: statusCode,
+    success: !error, latency_ms: Date.now() - started, request_id: paymentId, error,
+    payload: { ...payload, signature_present: Boolean(signature) },
+  })
 }
 
 function publicSession(s: Record<string, unknown>) {
@@ -281,6 +320,10 @@ payRoutes.post('/session', async (c) => {
       provider: operation.provider,
     },
   }
+  // This is the server-side equivalent of the sample "Send money" page:
+  // checkout allocation stays in the panel, while the merchant receives a
+  // signed payment.created event at its configured outbound webhook.
+  await dispatchPaymentCreatedWebhook(session, operation.paymentId, wallet.paymentMethodCode ?? requestedMethod)
   await db.from('payment_idempotency_keys').insert({ scope: link?.merchant_id ?? 'public', idempotency_key: idem, operation: 'create', payment_transaction_id: operation.paymentId, response_status: 201, response_payload: response })
   return c.json(response, 201)
 })

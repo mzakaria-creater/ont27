@@ -64,9 +64,11 @@ authRoutes.post('/login', async (c) => {
   const remember = body?.remember !== false // default true — matches the prior always-30d behavior
   if (!username || !password) return c.json({ error: 'missing_credentials' }, 400)
 
-  // Case-insensitive, backslash-safe lookup via SECURITY DEFINER helper
-  // (created by the 2026-07-31 session; 0 rows = unknown, >1 = case collision).
-  const { data: rows } = await db.rpc('panel_get_user_for_login', { p_username: username })
+  // Case-insensitive, backslash-safe lookup via SECURITY DEFINER helper.
+  // The helper accepts both the login name and the account email so operators
+  // can use either value shown in the admin user record.
+  const { data: rows, error: lookupError } = await db.rpc('panel_get_user_for_login', { p_username: username })
+  if (lookupError) console.error('panel login lookup failed:', lookupError.message)
   const user = Array.isArray(rows) && rows.length === 1 ? rows[0] : null
 
   if (user?.account_status==='frozen'&&user.frozen_until&&new Date(user.frozen_until).getTime()<=Date.now()) {

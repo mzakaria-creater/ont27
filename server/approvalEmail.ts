@@ -45,7 +45,7 @@ export async function notifyApprovedTransaction(tx: ApprovedTransaction): Promis
   if (alreadySent) return { sent: true, reason: 'already_sent' }
 
   const apiKey = process.env.RESEND_API_KEY
-  const from = process.env.EMAIL_FROM || 'OnTarget <info@ontarget-egy.com>'
+  const from = 'OnTarget <info@ontarget-egy.com>'
   if (!apiKey) {
     console.warn('approval email skipped: RESEND_API_KEY is not configured', { txId })
     return { sent: false, reason: 'email_not_configured' }
