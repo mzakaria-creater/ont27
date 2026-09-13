@@ -1572,6 +1572,11 @@ a.stat-card:hover { border-color: var(--accent); }
 .sms-balance-line strong { margin-inline-start: auto; color: var(--text); font-size: 11px; }
 .sms-balance-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--status-paid); box-shadow: 0 0 0 3px color-mix(in srgb,var(--status-paid) 18%,transparent), 0 0 10px color-mix(in srgb,var(--status-paid) 60%,transparent); }
 .sms-drawer-balance { margin: 10px 0 0; }
+.sms-provider-report{margin:14px 0;padding:14px;border:1px solid color-mix(in srgb,#4ade80 34%,var(--border));border-radius:18px;background:linear-gradient(160deg,#111713,var(--surface-raised));color:#f3f4f6;box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.sms-provider-report-divider{display:flex;align-items:center;gap:8px;margin:0 0 8px;color:#86efac;font-size:10px;font-weight:800}.sms-provider-report-divider::before,.sms-provider-report-divider::after{content:'';height:1px;flex:1;background:#4ade80}.sms-provider-report-time{display:block;margin-bottom:10px;text-align:center;color:#a7f3d0;font:700 11px ui-monospace,monospace}
+.sms-provider-report-bubble{padding:14px;border-radius:16px;background:#1d1d1f;border:1px solid rgba(255,255,255,.06);text-align:center}.sms-provider-report-bubble>strong{display:block;color:#d1d5db;font-size:12px;font-weight:700}.sms-provider-report-amount{margin:6px 0 12px;color:#f8fafc;font-size:30px;font-weight:800;letter-spacing:-.04em}
+.sms-provider-report-bubble dl{display:grid;grid-template-columns:auto 1fr;gap:8px 12px;margin:0;padding-top:12px;border-top:1px solid rgba(255,255,255,.16);text-align:start;font-size:11px}.sms-provider-report-bubble dt{color:#9ca3af}.sms-provider-report-bubble dd{margin:0;color:#f3f4f6;text-align:end;overflow-wrap:anywhere}.sms-provider-report>.cell-sub{display:block;margin-top:9px;color:#a7f3d0;text-align:center}
+@media(max-width:520px){.sms-provider-report{padding:12px}.sms-provider-report-amount{font-size:28px}.sms-provider-report-bubble dl{font-size:12px}}
 .sms-feed-status { margin-top: 5px; font-size: 9px; display: flex; align-items: center; gap: 3px; }
 .sms-feed-status.link { color: var(--status-paid); }
 .sms-feed-status.wait { color: var(--status-pending); }

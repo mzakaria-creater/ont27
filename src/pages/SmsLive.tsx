@@ -169,6 +169,23 @@ function displayValue(value: unknown): string {
   return String(value)
 }
 
+function smsReport(row: SmsDetail) {
+  const raw = row.raw_sms ?? row.message ?? row.sms_first_line ?? ''
+  const phone = raw.match(/(?:01\d{9}|2?01\d{9})/)?.[0] ?? row.sender_number ?? null
+  const ref = raw.match(/(?:رقم\s*(?:ال)?(?:عملية|المعاملة)|transaction\s*(?:id|number))\s*[:#]?\s*([A-Za-z0-9-]+)/i)?.[1] ?? row.trx_id ?? null
+  const amount = row.amount ?? (Number(raw.match(/(?:مبلغ|amount)\s*[:：]?\s*([\d,.]+)/i)?.[1]?.replace(/,/g, '')) || null)
+  const balance = row.balance_after ?? (Number(raw.match(/(?:رصيدك|الرصيد|balance)[^\d]*([\d,.]+)/i)?.[1]?.replace(/,/g, '')) || null)
+  return {
+    amount: Number.isFinite(amount as number) ? amount : null,
+    balance: Number.isFinite(balance as number) ? balance : null,
+    phone,
+    ref,
+    provider: row.provider ?? row.sms_sender ?? 'SMS',
+    time: row.received_at ? new Date(row.received_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—',
+    date: row.received_at ? new Date(row.received_at).toLocaleDateString([], { year: 'numeric', month: '2-digit', day: '2-digit' }) : '—',
+  }
+}
+
 export default function SmsLive() {
   const [pageSize, setPageSize] = usePageSize('sms')
   const { can } = useAuth()
@@ -462,6 +479,8 @@ export default function SmsLive() {
 
   const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1
 
+  const selectedReport = selected ? smsReport(selected) : null
+
   return (
     <PanelShell>
       <section className="page-head">
@@ -720,6 +739,24 @@ export default function SmsLive() {
                     </div>
                     <span className="cell-sub">{selected.sms_category === 'withdrawal' && selected.linked_wallet_number ? t('SMS الخام المرتبطة بالمحفظة', 'Raw SMS linked to wallet') : t('SMS الخام', 'Raw SMS')}</span>
                   </div>
+                )}
+
+                {selectedReport && (
+                  <section className="sms-provider-report" aria-label={t('تقرير الرسالة', 'SMS report')}>
+                    <div className="sms-provider-report-divider"><span>{t('غير مقروءة', 'Unread')}</span></div>
+                    <time className="sms-provider-report-time">{selectedReport.time}</time>
+                    <div className="sms-provider-report-bubble" dir="auto">
+                      <strong>{selectedReport.provider}</strong>
+                      <div className="sms-provider-report-amount">{money(selectedReport.amount, 'EGP')}</div>
+                      <dl>
+                        <dt>{t('المرسل', 'From')}</dt><dd className="mono">{selectedReport.phone ?? '—'}</dd>
+                        <dt>{t('الرصيد الحالي', 'Current balance')}</dt><dd className="mono">{money(selectedReport.balance, 'EGP')}</dd>
+                        <dt>{t('تاريخ العملية', 'Transaction date')}</dt><dd className="mono">{selectedReport.date}</dd>
+                        <dt>{t('رقم العملية', 'Transaction number')}</dt><dd className="mono">{selectedReport.ref ?? '—'}</dd>
+                      </dl>
+                    </div>
+                    <span className="cell-sub">{t('تقرير مستخرج من SMS الخام', 'Report extracted from raw SMS')}</span>
+                  </section>
                 )}
 
                 <section className="sms-detail-evidence">
