@@ -19,6 +19,8 @@ interface PayLink {
   payment_method_codes: string[]
   allocation_mode: 'single_queue' | 'multi_wallet'
   multi_wallet_threshold: number | null
+  merchant_mid?: string | null
+  master_mid?: string | null
 }
 
 export interface PaySession {
@@ -37,6 +39,8 @@ export interface PaySession {
   paid_at: string | null
   wallets?: Array<{ walletNumber: string; amount: number; provider: string; device: string }> | null
   return_url?: string | null
+  merchant_mid?: string | null
+  master_mid?: string | null
 }
 
 // Provider string -> the theme key the stylesheet defines. Matching on
@@ -116,7 +120,11 @@ const payErrors: Record<string, [string, string]> = {
 export default function PaymentCheckout() {
   const { t } = useLocale()
   const [params] = useSearchParams()
+  // New links use a 64-hex, 256-bit token. Keep short_code as a backwards
+  // compatible fallback for links created before the secure-token migration.
+  const token = params.get('token')
   const code = params.get('code')
+  const linkKey = token || code
   const [link, setLink] = useState<PayLink | null>(null)
   const [linkError, setLinkError] = useState<string | null>(null)
   const [phone, setPhone] = useState('')
@@ -130,14 +138,14 @@ export default function PaymentCheckout() {
   const [copied, setCopied] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!code) return
-    api<{ link: PayLink }>(`/api/pay/link/${encodeURIComponent(code)}`)
+    if (!linkKey) return
+    api<{ link: PayLink }>(`/api/pay/link/${encodeURIComponent(linkKey)}`)
       .then(({ link }) => {
         setLink(link)
         if (link.amount_mode === 'fixed' && link.amount) setAmount(String(link.amount))
       })
       .catch((err) => setLinkError(err instanceof ApiError && payErrors[err.code] ? t(payErrors[err.code][0], payErrors[err.code][1]) : t('تعذر تحميل الرابط', 'Failed to load the link')))
-  }, [code])
+  }, [linkKey])
 
   useEffect(() => {
     if (!session?.wallet_number) return
@@ -162,7 +170,7 @@ export default function PaymentCheckout() {
     try {
       const { session } = await api<{ session: PaySession }>('/api/pay/session', {
         method: 'POST',
-        body: JSON.stringify({ code, phone, amount: Number(amount), name: name || undefined, payment_method_code: paymentMethod || undefined }),
+        body: JSON.stringify({ code: linkKey, phone, amount: Number(amount), name: name || undefined, payment_method_code: paymentMethod || undefined }),
       })
       setSession(session)
     } catch (err) {
@@ -200,6 +208,7 @@ export default function PaymentCheckout() {
           <p className="login-sub">{t('حوّل المبلغ من محفظتك إلى الرقم التالي', 'Transfer the amount from your wallet to the number below')}</p>
           <div className="pay-amount">{session.amount} <span>{session.currency}</span></div>
           <div className="pay-channel">{pLabel}</div>
+          {(session.merchant_mid || session.master_mid) && <div className="pay-merchant-id">MID: <span className="mono">{session.merchant_mid ?? session.master_mid}</span></div>}
           {session.wallets?.length ? <div className="pay-wallet-list">{session.wallets.map((wallet) => <div key={`${wallet.walletNumber}-${wallet.device}`}><span className="mono">{wallet.walletNumber}</span><strong>{wallet.amount} {session.currency}</strong><small>{providerLabel(wallet.provider, wallet.device)}</small></div>)}</div> : <div className="pay-wallet mono">{session.wallet_number}</div>}
           {qr && <img src={qr} alt="QR" className="pay-qr" />}
           <div className="pay-actions">

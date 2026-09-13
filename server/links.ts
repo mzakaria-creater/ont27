@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { db } from './db.js'
 import { requireAuth, requirePerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
@@ -17,6 +17,11 @@ function newShortCode(): string {
   let out = ''
   for (let i = 0; i < 8; i++) out += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length]
   return out
+}
+
+function newCheckoutToken(): { raw: string; hash: string } {
+  const raw = randomBytes(32).toString('hex')
+  return { raw, hash: createHash('sha256').update(raw).digest('hex') }
 }
 
 export const linkRoutes = new Hono<AuthEnv>()
@@ -91,6 +96,7 @@ linkRoutes.post('/:id/duplicate', requirePerm('checkout-builder', 'can_create'),
   const { data: src, error: srcErr } = await db
     .from('payment_links').select('*').eq('id', c.req.param('id')).maybeSingle()
   if (srcErr || !src) return c.json({ error: 'link_not_found' }, 404)
+  const checkoutToken = newCheckoutToken()
 
   const { data: link, error } = await db
     .from('payment_links')
@@ -112,6 +118,7 @@ linkRoutes.post('/:id/duplicate', requirePerm('checkout-builder', 'can_create'),
       allocation_mode: src.allocation_mode ?? 'single_queue',
       multi_wallet_threshold: src.multi_wallet_threshold,
       created_by: c.get('actor').sub,
+      checkout_token_hash: checkoutToken.hash,
     })
     .select('*')
     .single()
@@ -119,16 +126,17 @@ linkRoutes.post('/:id/duplicate', requirePerm('checkout-builder', 'can_create'),
     console.error('link duplicate failed:', error?.message)
     return c.json({ error: 'link_duplicate_failed' }, 500)
   }
-  return c.json({ link, copiedFrom: src.short_code }, 201)
+  return c.json({ link, checkout_url: `/payment-checkout?token=${checkoutToken.raw}`, copiedFrom: src.short_code }, 201)
 })
 
 linkRoutes.get('/merchants', requirePerm('checkout-builder', 'can_view'), async (c) => {
-  const [{ data: merchants }, { data: methods }, { data: pools }] = await Promise.all([
-    db.from('merchants').select('id, name, code').eq('active', true).order('name'),
+  const [{ data: merchants }, { data: methods }, { data: pools }, { data: masters }] = await Promise.all([
+    db.from('merchants').select('id, name, code, "MID", master_merchant_id').eq('active', true).order('name'),
     db.from('payment_methods').select('id, method_code, method_name, channel_type').eq('is_active', true).order('sort_order').order('method_name'),
     db.from('payment_pools').select('id, pool_name, pool_code, allocation_strategy, rotation_enabled').eq('is_active', true).order('pool_name'),
+    db.from('master_merchants').select('id, name, code, mid').order('name'),
   ])
-  return c.json({ merchants: merchants ?? [], methods: methods ?? [], pools: pools ?? [] })
+  return c.json({ merchants: merchants ?? [], masters: masters ?? [], methods: methods ?? [], pools: pools ?? [] })
 })
 
 linkRoutes.post('/', requirePerm('checkout-builder', 'can_create'), async (c) => {
@@ -138,6 +146,7 @@ linkRoutes.post('/', requirePerm('checkout-builder', 'can_create'), async (c) =>
 
   const amount = num(body?.amount)
   if (amountMode === 'fixed' && !amount) return c.json({ error: 'fixed_needs_amount' }, 400)
+  const checkoutToken = newCheckoutToken()
 
   const { data: link, error } = await db
     .from('payment_links')
@@ -160,6 +169,7 @@ linkRoutes.post('/', requirePerm('checkout-builder', 'can_create'), async (c) =>
       allocation_mode: body?.allocation_mode === 'multi_wallet' ? 'multi_wallet' : 'single_queue',
       multi_wallet_threshold: positiveNumber(body?.multi_wallet_threshold),
       created_by: c.get('actor').sub,
+      checkout_token_hash: checkoutToken.hash,
     })
     .select('*')
     .single()
@@ -167,7 +177,7 @@ linkRoutes.post('/', requirePerm('checkout-builder', 'can_create'), async (c) =>
     console.error('link create failed:', error?.message)
     return c.json({ error: 'link_create_failed' }, 500)
   }
-  return c.json({ link }, 201)
+  return c.json({ link, checkout_url: `/payment-checkout?token=${checkoutToken.raw}` }, 201)
 })
 
 linkRoutes.patch('/:id', requirePerm('checkout-builder', 'can_edit'), async (c) => {

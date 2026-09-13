@@ -44,7 +44,7 @@ interface PaymentLink {
   stats: LinkStats
   analytics: LinkAnalytics | null
 }
-interface Merchant { id: string; name: string; code: string | null }
+interface Merchant { id: string; name: string; code: string | null; MID?: string | null; master_merchant_id?: string | null }
 interface LinkMethod { id: string; method_code: string; method_name: string; channel_type: string }
 interface LinkPool { id: string; pool_name: string; pool_code: string; allocation_strategy: string; rotation_enabled: boolean }
 
@@ -61,6 +61,7 @@ export default function LinkGenerator() {
   const [filter, setFilter] = useState<'all' | LinkStatus | 'paid'>('all')
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [newCheckoutUrl, setNewCheckoutUrl] = useState<string | null>(null)
   const [form, setForm] = useState({
     title: '', merchant_id: '', amount_mode: 'open', amount: '',
     min_amount: '', max_amount: '', expires_at: '', max_uses: '', client_name: '', client_reference: '', return_url: '',
@@ -104,7 +105,7 @@ export default function LinkGenerator() {
     setBusy(true)
     setError(null)
     try {
-      await api('/api/links', {
+      const created = await api<{ checkout_url?: string }>('/api/links', {
         method: 'POST',
         body: JSON.stringify({
           title: form.title || undefined,
@@ -124,6 +125,7 @@ export default function LinkGenerator() {
           multi_wallet_threshold: form.allocation_mode === 'multi_wallet' ? form.multi_wallet_threshold || undefined : undefined,
         }),
       })
+      setNewCheckoutUrl(created.checkout_url ? `${location.origin}${created.checkout_url}` : null)
       setForm({ title: '', merchant_id: '', amount_mode: 'open', amount: '', min_amount: '', max_amount: '', expires_at: '', max_uses: '', client_name: '', client_reference: '', return_url: '', payment_method_codes: [], wallet_pool_id: '', allocation_mode: 'single_queue', multi_wallet_threshold: '50000' })
       await load()
     } catch (err) {
@@ -219,6 +221,7 @@ export default function LinkGenerator() {
           </div>
           {error && <div className="login-error" role="alert">{error}</div>}
           <button className="btn-primary" disabled={busy}><Plus size={16}/>{busy ? t('جارٍ الإنشاء…', 'Creating…') : t('إنشاء رابط الدفع', 'Create payment link')}</button>
+          {newCheckoutUrl && <div className="card success" role="status"><strong>{t('رابط Checkout الآمن جاهز','Secure checkout link ready')}</strong><span className="mono">{newCheckoutUrl}</span><button type="button" className="btn-ghost btn-sm" onClick={()=>void navigator.clipboard.writeText(newCheckoutUrl)}><Copy size={14}/>{t('نسخ','Copy')}</button><small>{t('يحتوي على رمز 256-bit؛ احتفظ به وشاركه مع العميل فقط.','Contains a 256-bit token; keep it private and share only with the customer.')}</small></div>}
         </form>
         <aside className="card payment-link-preview" aria-label="Payment link preview"><span className="page-eyebrow">Live preview</span><div className="payment-link-preview-mark"><Link2 size={26}/></div><h3>{form.client_name || form.title || t('عنوان الدفع','Payment title')}</h3><strong className="mono">{previewAmount} EGP</strong><p>{merchants.find((m)=>m.id===form.merchant_id)?.name || t('بدون تاجر محدد','No merchant selected')}</p><div><span>{form.amount_mode === 'fixed' ? t('مبلغ ثابت','Fixed amount') : t('مبلغ مفتوح','Open amount')}</span><span>{form.payment_method_codes.length || t('كل الطرق','All methods')} {t('طريقة','methods')}</span></div><button type="button" className="btn-primary" disabled>{t('متابعة الدفع','Continue to payment')}</button></aside>
         </section>

@@ -27,6 +27,17 @@ interface LinkRow {
   wallet_pool_id?: string | null
   allocation_mode?: 'single_queue' | 'multi_wallet'
   multi_wallet_threshold?: number | null
+  checkout_token_hash?: string | null
+}
+
+async function merchantIdentity(merchantId: string | null | undefined) {
+  if (!merchantId) return { merchantMid: null, masterMid: null }
+  const { data: merchant } = await db.from('merchants').select('"MID", master_merchant_id').eq('id', merchantId).maybeSingle()
+  if (!merchant) return { merchantMid: null, masterMid: null }
+  const { data: master } = merchant.master_merchant_id
+    ? await db.from('master_merchants').select('mid').eq('id', merchant.master_merchant_id).maybeSingle()
+    : { data: null }
+  return { merchantMid: merchant.MID ?? null, masterMid: master?.mid ?? null }
 }
 
 function linkUsable(link: LinkRow): string | null {
@@ -93,6 +104,8 @@ function publicSession(s: Record<string, unknown>) {
     wallets: meta.wallets ?? null,
     return_url: s.success_url ?? meta.return_url ?? null,
     merchant_name: meta.merchant_name ?? null,
+    merchant_mid: meta.merchant_mid ?? null,
+    master_mid: meta.master_mid ?? null,
     created_at: s.created_at,
     expires_at: s.expires_at,
     paid_at: s.paid_at,
@@ -102,15 +115,18 @@ function publicSession(s: Record<string, unknown>) {
 export const payRoutes = new Hono()
 
 payRoutes.get('/link/:code', async (c) => {
-  const { data: link } = await db
+  const supplied = c.req.param('code')
+  const tokenHash = /^[a-f0-9]{64}$/i.test(supplied) ? createHash('sha256').update(supplied).digest('hex') : null
+  let query = db
     .from('payment_links')
     .select('*')
-    .eq('short_code', c.req.param('code'))
-    .maybeSingle<LinkRow>()
+  query = tokenHash ? query.eq('checkout_token_hash', tokenHash) : query.eq('short_code', supplied)
+  const { data: link } = await query.maybeSingle<LinkRow>()
   if (!link) return c.json({ error: 'link_not_found' }, 404)
   const unusable = linkUsable(link)
   await recordOpen(link, unusable, c)
   if (unusable) return c.json({ error: unusable }, 410)
+  const identity = await merchantIdentity(link.merchant_id)
   return c.json({
     link: {
       short_code: link.short_code,
@@ -126,6 +142,8 @@ payRoutes.get('/link/:code', async (c) => {
       payment_method_codes: link.payment_method_codes ?? [],
       allocation_mode: link.allocation_mode ?? 'single_queue',
       multi_wallet_threshold: link.multi_wallet_threshold ?? null,
+      merchant_mid: identity.merchantMid,
+      master_mid: identity.masterMid,
     },
   })
 })
@@ -142,11 +160,12 @@ payRoutes.post('/session', async (c) => {
 
   let link: LinkRow | null = null
   if (code) {
-    const { data } = await db
+    const tokenHash = code && /^[a-f0-9]{64}$/i.test(code) ? createHash('sha256').update(code).digest('hex') : null
+    let linkQuery = db
       .from('payment_links')
       .select('*')
-      .eq('short_code', code)
-      .maybeSingle<LinkRow>()
+    linkQuery = tokenHash ? linkQuery.eq('checkout_token_hash', tokenHash) : linkQuery.eq('short_code', code)
+    const { data } = await linkQuery.maybeSingle<LinkRow>()
     if (!data) return c.json({ error: 'link_not_found' }, 404)
     const unusable = linkUsable(data)
     if (unusable) return c.json({ error: unusable }, 410)
@@ -182,6 +201,9 @@ payRoutes.post('/session', async (c) => {
   }
 
   const reference = `OT-${randomBytes(5).toString('hex').toUpperCase()}`
+  const checkoutToken = randomBytes(32).toString('hex')
+  const checkoutTokenHash = createHash('sha256').update(checkoutToken).digest('hex')
+  const identity = await merchantIdentity(link?.merchant_id)
   const deeplink = wallet.deeplinkTemplate
     ?.replaceAll('{wallet}', wallet.walletNumber)
     .replaceAll('{amount}', String(amount)) ?? null
@@ -214,9 +236,12 @@ payRoutes.post('/session', async (c) => {
         wallets: wallet.allocations ?? null,
         return_url: link?.return_url ?? null,
         merchant_name: link?.client_name ?? null,
+        merchant_mid: identity.merchantMid,
+        master_mid: identity.masterMid,
         client_reference: link?.client_reference ?? null,
         payment_method_code: wallet.paymentMethodCode ?? requestedMethod ?? null,
       },
+      checkout_token_hash: checkoutTokenHash,
     })
     .select('*')
     .single()
@@ -229,7 +254,22 @@ payRoutes.post('/session', async (c) => {
     `🟡 طلب إيداع جديد\nRef: <code>${reference}</code>\nAmount: ${amount} ${currency}\nWallet: <code>${wallet.walletNumber}</code> (${wallet.device})\nPhone: <code>${phone}</code>`,
   )
 
-  return c.json({ session: publicSession(session) }, 201)
+  return c.json({
+    session: {
+      ...publicSession(session),
+      checkout_token: checkoutToken,
+      checkout_url: `/payment-checkout?token=${checkoutToken}`,
+    },
+  }, 201)
+})
+
+payRoutes.get('/session/token/:token', async (c) => {
+  const token = c.req.param('token')
+  if (!/^[a-f0-9]{64}$/i.test(token)) return c.json({ error: 'not_found' }, 404)
+  const hash = createHash('sha256').update(token).digest('hex')
+  const { data: session } = await db.from('checkout_sessions').select('*').eq('checkout_token_hash', hash).maybeSingle()
+  if (!session) return c.json({ error: 'not_found' }, 404)
+  return c.json({ session: publicSession(session) })
 })
 
 payRoutes.get('/session/:id', async (c) => {
