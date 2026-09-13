@@ -12,7 +12,7 @@ reportsRoutes.use('*', requireAuth)
 // snapshot, payments already received, and documentary proofs.
 reportsRoutes.get('/merchant-settlements', requireAnyPerm(['reports', 'advanced_analysis'], 'can_view'), async (c) => {
   const [masters, subs, settlements, monthly, proofs] = await Promise.all([
-    db.from('master_merchants').select('id, name, code'),
+    db.from('master_merchants').select('id, name, slug, description'),
     db.from('sub_merchants').select('id, master_merchant_id, name, slug, merchant_id, status'),
     db.from('merchant_settlements').select('id, sub_merchant_id, settlement_period, total_net_usdt, total_net_egp, already_settled_usdt, already_settled_egp, balance_due_usdt, balance_due_egp, settlement_date, status, created_at, updated_at').order('created_at', { ascending: false }),
     db.from('merchant_settlement_transactions').select('id, sub_merchant_id, transaction_month, gross_amount_egp, deposit_fee_egp, after_deposit_fee_egp, after_deposit_fee_usdt, settlement_fee_usdt, net_amount_usdt, net_amount_egp, fx_rate').order('transaction_month'),
@@ -25,7 +25,7 @@ reportsRoutes.get('/merchant-settlements', requireAnyPerm(['reports', 'advanced_
   const enrich = (row: any) => {
     const sub = subById.get(String(row.sub_merchant_id))
     const master = sub ? masterById.get(String(sub.master_merchant_id)) : null
-    return { ...row, master_merchant: master?.name ?? null, master_code: master?.code ?? null, sub_merchant: sub?.name ?? null, sub_slug: sub?.slug ?? null }
+    return { ...row, master_merchant: master?.name ?? null, sub_merchant: sub?.name ?? null, sub_slug: sub?.slug ?? null }
   }
   return c.json({
     masters: masters.data ?? [],
@@ -34,6 +34,24 @@ reportsRoutes.get('/merchant-settlements', requireAnyPerm(['reports', 'advanced_
     monthly: (monthly.data ?? []).map(enrich),
     proofs: proofs.data ?? [],
   })
+})
+
+reportsRoutes.post('/merchant-settlements/proofs', requireAnyPerm(['reports', 'advanced_analysis'], 'can_edit'), async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const settlementId = typeof body?.settlement_id === 'string' ? body.settlement_id : ''
+  const proofType = typeof body?.proof_type === 'string' ? body.proof_type.trim() : ''
+  const fileName = typeof body?.file_name === 'string' ? body.file_name.trim() : ''
+  const amountEgp = body?.amount_egp === '' || body?.amount_egp == null ? null : Number(body.amount_egp)
+  const amountUsdt = body?.amount_usdt === '' || body?.amount_usdt == null ? null : Number(body.amount_usdt)
+  if (!settlementId || !['bank_transfer', 'invoice', 'confirmation', 'receipt'].includes(proofType) || !fileName || (amountEgp != null && (!Number.isFinite(amountEgp) || amountEgp < 0)) || (amountUsdt != null && (!Number.isFinite(amountUsdt) || amountUsdt < 0))) {
+    return c.json({ error: 'invalid_settlement_proof' }, 400)
+  }
+  const actor = c.get('actor')
+  const row = { settlement_id: settlementId, proof_type: proofType, file_name: fileName, amount_egp: amountEgp, amount_usdt: amountUsdt, settlement_date: body?.settlement_date || new Date().toISOString(), notes: typeof body?.notes === 'string' ? body.notes.trim().slice(0, 1000) || null : null, uploaded_by: actor.username }
+  const { data, error } = await db.from('settlement_proofs').insert(row).select('id, settlement_id, proof_type, file_name, file_url, amount_egp, amount_usdt, settlement_date, notes, uploaded_by, created_at').single()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
+  await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'settlement.proof_added', entity: 'settlement_proofs', entity_id: data.id, after: row })
+  return c.json({ proof: data }, 201)
 })
 
 const DEPOSIT_STATUSES = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'EXPIRED_LOCAL', 'UNDERPAID']

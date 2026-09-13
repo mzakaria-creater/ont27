@@ -3506,6 +3506,10 @@ html, body { overflow-x: hidden; overflow-y: auto; }
 @media (max-width:1050px){.mindmap-flow-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.mindmap-step{display:block}.mindmap-connector{display:grid;place-items:center;height:25px}.redteam-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:680px){.mindmap-head,.redteam-head,.redteam-toolbar{display:grid}.mindmap-flow{padding:13px}.mindmap-flow-grid,.mindmap-principles{grid-template-columns:1fr}.mindmap-node{min-height:0}.redteam-kpis{grid-template-columns:1fr 1fr}.redteam-toolbar .risk-search{min-width:0}.redteam-table{min-width:760px}}
 .link-routing-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border, #e5e7eb); }
+.settlement-proof-form { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 9px; padding: 12px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); }
+.settlement-proof-form .proof-notes-input { grid-column: span 2; }
+@media (max-width: 900px) { .settlement-proof-form { grid-template-columns: repeat(2, minmax(0, 1fr)); } .settlement-proof-form .proof-notes-input { grid-column: auto; } }
+@media (max-width: 560px) { .settlement-proof-form { grid-template-columns: 1fr; } }
 .link-routing-grid .field > span { display: flex; align-items: center; gap: 6px; }
 .link-routing-grid select[multiple] { min-height: 96px; padding: 8px; }
 .link-routing-grid small { color: var(--muted, #6b7280); font-size: 11px; }

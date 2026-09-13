@@ -61,8 +61,15 @@ const OVERLAP_MS = 5 * 60_000
 // last_status_change on manual decisions, which can push the watermark past
 // not-yet-synced upstream changes. Upserts are idempotent and a day of status
 // flips is small, so the wide window costs little and misses nothing.
-const UPDATED_OVERLAP_MS = 24 * 60 * 60_000
+// A full cron pass used to re-read 24 hours of status changes on every run.
+// Because the cron is invoked frequently and the source is a large hosted
+// Supabase project, that query regularly hit the upstream statement timeout
+// before it could reach the mirror. Keep the live path bounded; the overlap
+// window is still long enough to recover delayed provider updates without
+// turning every cron invocation into a historical backfill.
+const UPDATED_OVERLAP_MS = 2 * 60 * 60_000
 const PAGE = 1000
+const FAST_TABLES = new Set(['maven_transactions', 'maven_payout_transactions', 'inbound_sms'])
 
 // Two cadences, because the two passes cost very different amounts.
 //
@@ -408,6 +415,10 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
   }
 
   for (const { table, pk, ts, updatedTs } of GROWING) {
+    // The fast path is the browser's live mirror pump. CRM, blacklist and
+    // wallet configuration are useful on the full repair cadence but should
+    // never delay a fresh Maven transaction or SMS.
+    if (mode === 'fast' && !FAST_TABLES.has(table)) continue
     try {
       const since = await watermark(table, ts, OVERLAP_MS)
       results[table] = await pullSince(table, pk, ts, since)
