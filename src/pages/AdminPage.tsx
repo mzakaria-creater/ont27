@@ -83,6 +83,8 @@ export default function AdminPage() {
     password: "",
     role: "",
   });
+  const [createUsername, setCreateUsername] = useState('');
+  const [createActive, setCreateActive] = useState(true);
   const [showUserPassword, setShowUserPassword] = useState(false);
   const [merchant, setMerchant] = useState({
     name: "",
@@ -353,13 +355,15 @@ export default function AdminPage() {
             </div>
             <button
               className="btn-primary"
-              onClick={() =>
+              onClick={() => {
+                setCreateUsername('');
+                setCreateActive(true);
                 setUser({
                   ...user,
                   username: "__open__",
                   role: user.role || data.roles[0]?.role_key || "",
-                })
-              }
+                });
+              }}
             >
               {t("إنشاء مستخدم", "Create user")}
             </button>
@@ -371,7 +375,11 @@ export default function AdminPage() {
                   <h3>{t("إضافة / تحديث مستخدم", "Create / update user")}</h3>
                   <button
                     className="btn-ghost btn-sm"
-                    onClick={() => setUser({ ...user, username: "" })}
+                    onClick={() => {
+                      setCreateUsername("");
+                      setCreateActive(true);
+                      setUser({ ...user, username: "" });
+                    }}
                   >
                     ✕
                   </button>
@@ -382,9 +390,12 @@ export default function AdminPage() {
                     e.preventDefault();
                     const result = await call("/api/admin/users", "POST", {
                       ...user,
-                      username: user.email.split("@")[0] || user.display_name,
+                      username: createUsername.trim(),
+                      active: createActive,
                     });
-                    if (result)
+                    if (result) {
+                      setCreateUsername("");
+                      setCreateActive(true);
                       setUser({
                         username: "",
                         email: "",
@@ -392,6 +403,7 @@ export default function AdminPage() {
                         password: "",
                         role: "",
                       });
+                    }
                   }}
                 >
                   <label>
@@ -428,9 +440,9 @@ export default function AdminPage() {
                     <input
                       required
                       className="login-input"
-                      value={user.email.split("@")[0]}
+                      value={createUsername}
                       onChange={(e) =>
-                        setUser({ ...user, email: e.target.value })
+                        setCreateUsername(e.target.value)
                       }
                     />
                   </label>
@@ -503,13 +515,17 @@ export default function AdminPage() {
                     </select>
                   </label>
                   <label className="user-active-row">
-                    <input type="checkbox" defaultChecked /> Is active
+                    <input type="checkbox" checked={createActive} onChange={(e) => setCreateActive(e.target.checked)} /> Is active
                   </label>
                   <div className="drawer-actions modal-actions">
                     <button
                       className="btn-ghost"
                       type="button"
-                      onClick={() => setUser({ ...user, username: "" })}
+                      onClick={() => {
+                        setCreateUsername("");
+                        setCreateActive(true);
+                        setUser({ ...user, username: "" });
+                      }}
                     >
                       Close
                     </button>
