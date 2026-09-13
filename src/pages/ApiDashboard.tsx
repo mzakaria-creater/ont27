@@ -8,7 +8,7 @@ import { money } from '../lib/deposits'
 type Provider = { count24h: number; pending: number; lastChange: string | null; latestTransaction?: string | null; stale?: boolean }
 type Tx = { tx_id: number; ontarget_ref: string | null; status: string; amount: number | null; currency: string | null; merchant: string | null; gateway: string | null; first_seen_at: string | null }
 type Data = { generatedAt: string; lastSync: string | null; api: { ok: boolean; latencyMs: number }; supabase: { ok: boolean; latencyMs: number; failedSources: string[] }; queues: { pendingDeposits: number | null; pendingPayouts: number | null; editRequests: number | null }; providers: Record<string, Provider>; transactions: Tx[]; devices: { online: boolean | null }[] }
-type RailwayStatus = { connected: boolean; baseUrl: string; docsUrl: string; version: string | null; remoteTimestamp: string | null; latencyMs: number | null; apiKeyConfigured: boolean; protectedAccess: boolean | null }
+type RailwayStatus = { connected: boolean; baseUrl: string; docsUrl: string; version: string | null; remoteTimestamp: string | null; latencyMs: number | null; apiKeyConfigured: boolean; protectedAccess: boolean | null; adminSecretConfigured?: boolean; adminAccess?: boolean | null }
 
 const modules = [
   ['/transactions', 'Transactions', 'Full transaction ledger'], ['/approvals', 'Approvals', 'Pending deposit decisions'],
@@ -68,9 +68,9 @@ export default function ApiDashboard() {
 
     <section className="card api-provider-strip">
       <div><span>Railway API</span><strong className={railway?.connected?'ok':'bad'}>{railway?.connected?'Connected':'Unavailable'}</strong><small>{railway?.latencyMs == null?'Checking…':`${railway.latencyMs} ms · v${railway.version??'—'}`}</small></div>
-      <div><span>Protected API access</span><strong className={railway?.protectedAccess?'ok':railway?.apiKeyConfigured?'bad':'gold'}>{railway?.protectedAccess?'Authorized':railway?.apiKeyConfigured?'Invalid key':'Key required'}</strong><small>Server-side credential only</small></div>
-      <div><span>API base</span><strong className="api-generated">api.ontarget-egy.com</strong><small>{railway?.remoteTimestamp?`Checked ${when(railway.remoteTimestamp)}`:'Live Railway service'}</small></div>
-      <div><span>Documentation</span><a className="pay-status-link" href={railway?.docsUrl??'https://api.ontarget-egy.com/docs'} target="_blank" rel="noreferrer">Open Swagger <ExternalLink size={13}/></a><small>Live OpenAPI specification</small></div>
+      <div><span>Protected API access</span><strong className={railway?.adminAccess||railway?.protectedAccess?'ok':railway?.adminSecretConfigured||railway?.apiKeyConfigured?'bad':'gold'}>{railway?.adminAccess||railway?.protectedAccess?'Authorized':railway?.adminSecretConfigured||railway?.apiKeyConfigured?'Invalid credential':'Key required'}</strong><small>Server-side credential only</small></div>
+      <div><span>API base</span><strong className="api-generated">{railway?.baseUrl?.replace(/^https?:\/\//,'')??'Railway'}</strong><small>{railway?.remoteTimestamp?`Checked ${when(railway.remoteTimestamp)}`:'Live Railway service'}</small></div>
+      <div><span>Documentation</span><a className="pay-status-link" href={railway?.docsUrl??'https://api.ontarget-egy.com/docs'} target="_blank" rel="noreferrer">Open API docs <ExternalLink size={13}/></a><small>Live Railway v3 contract</small></div>
     </section>
 
     <section className="api-metric-grid">

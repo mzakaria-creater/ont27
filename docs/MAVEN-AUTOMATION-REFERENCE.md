@@ -139,6 +139,30 @@ decided before creating a competing `browser_jobs` row.
 Watchdog requirements:
 
 - Alert when `worker-1` has no heartbeat for more than the configured threshold.
+
+## 6. Railway API connection from the panel
+
+The panel exposes an authenticated server-side connection check at
+`GET /api/railway/status`. It probes the API v3 health endpoint and, when
+configured, validates the protected route without exposing credentials to the
+browser. The API Dashboard uses this endpoint and refreshes it every 15
+seconds.
+
+Set these variables on the panel deployment (Vercel or the server hosting the
+panel):
+
+- `ONTARGET_RAILWAY_API_URL` — preferred live URL, normally
+  `https://api.ontarget-egy.com`; the direct Railway v3 URL is
+  `https://ontarget-api-v3-production.up.railway.app`.
+- `ONTARGET_RAILWAY_API_KEY` — server-to-server `ot_live_...` key, if the
+  protected merchant route is enabled.
+- `ONTARGET_RAILWAY_ADMIN_SECRET` — server-only secret for admin transaction
+  data. Never place this in `VITE_*` variables or frontend code.
+- `ONTARGET_RAILWAY_DOCS_URL` — optional URL for the live API documentation.
+
+The panel does not claim a successful provider action from a health response.
+Provider approve/decline actions still go through the dedicated browser worker,
+which verifies Maven's resulting status before the local audit is completed.
 - Show pending, running, failed and needs-review queue counts.
 - Show target-vs-actual mismatches for completed jobs.
 
@@ -163,4 +187,3 @@ When Maven and the panel disagree:
 - Check all callers when changing a function return column.
 - Verify the exact state values allowed by table constraints.
 - Check RLS and least-privilege policies before adding a new dashboard RPC.
-
