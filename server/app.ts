@@ -29,6 +29,7 @@ import { railwayApiRoutes } from './railwayApi.js'
 import { ticketRoutes } from './tickets.js'
 import { payoutRequestRoutes } from './payoutRequests.js'
 import { deviceRoutes } from './devices.js'
+import { gatewayRoutes } from './gateway.js'
 
 export const app = new Hono().basePath('/api')
 
@@ -66,4 +67,5 @@ app.route('/railway', railwayApiRoutes)
 // Transaction status/amount edits + the operator request queue behind them.
 app.route('/tx', txEditRoutes)
 app.route('/v1', publicApiRoutes)
+app.route('/v1/gateway', gatewayRoutes)
 app.route('/', extraRoutes)
