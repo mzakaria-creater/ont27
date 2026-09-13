@@ -45,6 +45,15 @@ interface MasterRow {
   base_currency: string | null
 }
 
+interface HierarchyRow {
+  id: number
+  master_merchant_id: string | null
+  name: string | null
+  mid: string | null
+  active: boolean | null
+  created_at: string | null
+}
+
 const KYC_META: Record<string, { ar: string; en: string; cls: string }> = {
   approved: { ar: 'موثّق', en: 'Verified', cls: 'st-paid' },
   verified: { ar: 'موثّق', en: 'Verified', cls: 'st-paid' },
@@ -65,8 +74,38 @@ export default function Merchants() {
   const [selected, setSelected] = useState<MerchantRow | null>(null)
 
   useEffect(() => {
-    api<{ rows: MerchantRow[]; masters: MasterRow[] }>('/api/merchants')
-      .then((res) => { setRows(res.rows); setMasters(res.masters) })
+    api<{ rows: MerchantRow[]; masters: MasterRow[]; hierarchy?: HierarchyRow[] }>('/api/merchants')
+      .then((res) => {
+        const hierarchyRows: MerchantRow[] = (res.hierarchy ?? []).map((row) => ({
+          id: `hierarchy-${row.id}`,
+          name: row.name,
+          code: null,
+          MID: row.mid,
+          status: row.active === false ? 'inactive' : 'active',
+          is_active: row.active !== false,
+          active: row.active !== false,
+          kyc_status: null,
+          email: null,
+          phone: null,
+          business_type: 'Sub-merchant',
+          country: null,
+          country_code: null,
+          base_currency: null,
+          website: null,
+          business_address: null,
+          primary_contact_name: null,
+          registration_id: null,
+          blocked_amount: 0,
+          callback_url: null,
+          master_merchant_id: row.master_merchant_id,
+          operator_id: null,
+          key_rotated_at: null,
+          created_at: row.created_at,
+          updated_at: null,
+        }))
+        setRows([...res.rows, ...hierarchyRows])
+        setMasters(res.masters)
+      })
       .catch((e) => {
         setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض التجار.', 'You do not have permission to view merchants.') : t('تعذّر تحميل التجار.', 'Failed to load merchants.'))
       })
