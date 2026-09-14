@@ -60,6 +60,8 @@ export default function Notifications() {
         <SoundPicker label={t('SMS جديدة', 'New SMS')} value={sounds.sms} onChange={(sms) => updateSounds({ ...sounds, sms })} onTest={() => playNotificationTone('sms', true)} t={t}/>
       </section>
 
+      <EmailApprovalSubscriptions t={t} />
+
       {!data && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
       {data && (
         <>
@@ -118,4 +120,75 @@ export default function Notifications() {
 
 function SoundPicker({ label, value, onChange, onTest, t }: { label: string; value: AlertTone; onChange: (tone: AlertTone) => void; onTest: () => void; t: (ar: string, en: string) => string }) {
   return <div className="sound-picker"><label>{label}<select className="login-input" value={value} onChange={(e) => onChange(e.target.value as AlertTone)}><option value="glass">Glass</option><option value="chime">Chime</option><option value="pulse">Pulse</option><option value="bell">Bell</option><option value="sonar">Sonar</option><option value="pop">Pop</option><option value="double">Double</option><option value="urgent">Urgent</option></select></label><button className="btn-ghost btn-sm" type="button" onClick={onTest}>{t('معاينة', 'Preview')}</button></div>
+}
+
+
+type EmailScope = 'all' | 'merchant' | 'country' | 'payment_method'
+interface EmailRule {
+  id: string
+  email: string
+  label: string | null
+  scope_type: EmailScope
+  scope_value: string | null
+  active: boolean
+}
+interface EmailRulesResponse {
+  rows: EmailRule[]
+  options: Record<Exclude<EmailScope, 'all'>, string[]>
+}
+
+function EmailApprovalSubscriptions({ t }: { t: (ar: string, en: string) => string }) {
+  const [data, setData] = useState<EmailRulesResponse | null>(null)
+  const [email, setEmail] = useState('')
+  const [label, setLabel] = useState('')
+  const [scopeType, setScopeType] = useState<EmailScope>('all')
+  const [scopeValue, setScopeValue] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+
+  const load = () => api<EmailRulesResponse>('/api/email-notifications').then(setData).catch(() => setData(null))
+  useEffect(() => { void load() }, [])
+
+  const options = scopeType === 'all' ? [] : data?.options[scopeType] ?? []
+  const add = async () => {
+    if (!email.trim() || (scopeType !== 'all' && !scopeValue)) return
+    setBusy(true); setMessage('')
+    try {
+      await api('/api/email-notifications', { method: 'POST', body: JSON.stringify({ email, label, scope_type: scopeType, scope_value: scopeType === 'all' ? null : scopeValue }) })
+      setEmail(''); setLabel(''); setScopeType('all'); setScopeValue('')
+      await load(); setMessage(t('تمت إضافة التعيين', 'Assignment added'))
+    } catch { setMessage(t('تعذر حفظ التعيين أو أنه موجود بالفعل', 'Could not save assignment or it already exists')) }
+    finally { setBusy(false) }
+  }
+  const toggle = async (row: EmailRule) => {
+    await api(`/api/email-notifications/${row.id}`, { method: 'PATCH', body: JSON.stringify({ active: !row.active }) })
+    await load()
+  }
+  const remove = async (row: EmailRule) => {
+    if (!window.confirm(t('حذف تعيين البريد؟', 'Delete this email assignment?'))) return
+    await api(`/api/email-notifications/${row.id}`, { method: 'DELETE' })
+    await load()
+  }
+  const scopeLabel = (row: EmailRule) => row.scope_type === 'all'
+    ? t('كل الموافقات', 'All approvals')
+    : `${row.scope_type === 'merchant' ? t('تاجر', 'Merchant') : row.scope_type === 'country' ? t('دولة', 'Country') : t('طريقة دفع', 'Payment method')}: ${row.scope_value}`
+
+  return <section className="card recent-card">
+    <div className="recent-head">
+      <div><h3>✉️ {t('إشعارات اعتماد المعاملات بالبريد', 'Approval email notifications')}</h3><p className="cell-sub">{t('إشعارات داخلية فقط. لن يتم إرسال البريد إلى العميل.', 'Internal recipients only. Customer emails are never used.')}</p></div>
+    </div>
+    <div className="filters-grid">
+      <label>{t('اسم التعيين', 'Label')}<input className="login-input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t('مثال: فريق مصر', 'Example: Egypt team')} /></label>
+      <label>{t('البريد المستلم', 'Recipient email')}<input className="login-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="operations@company.com" /></label>
+      <label>{t('نوع التعيين', 'Assignment type')}<select className="login-input" value={scopeType} onChange={(e) => { setScopeType(e.target.value as EmailScope); setScopeValue('') }}>
+        <option value="all">{t('كل الموافقات', 'All approvals')}</option><option value="merchant">{t('حسب التاجر', 'By merchant')}</option><option value="country">{t('حسب الدولة', 'By country')}</option><option value="payment_method">{t('حسب طريقة الدفع', 'By payment method')}</option>
+      </select></label>
+      {scopeType !== 'all' && <label>{t('القيمة المحددة', 'Assigned value')}<select className="login-input" value={scopeValue} onChange={(e) => setScopeValue(e.target.value)}><option value="">{t('اختر…', 'Select…')}</option>{options.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>}
+    </div>
+    <div style={{ marginTop: 14, display: 'flex', gap: 10, alignItems: 'center' }}><button type="button" className="btn-primary" disabled={busy || !email.trim() || (scopeType !== 'all' && !scopeValue)} onClick={() => void add()}>{busy ? t('جارٍ الحفظ…', 'Saving…') : t('إضافة بريد وتعيين', 'Add email assignment')}</button>{message && <span className="cell-sub">{message}</span>}</div>
+    <div className="table-wrap" style={{ marginTop: 18 }}><table className="data-table"><thead><tr><th>{t('الاسم', 'Label')}</th><th>{t('البريد', 'Email')}</th><th>{t('التعيين', 'Assignment')}</th><th>{t('الحالة', 'Status')}</th><th>{t('إجراء', 'Action')}</th></tr></thead><tbody>
+      {(data?.rows ?? []).map((row) => <tr key={row.id}><td>{row.label ?? '—'}</td><td className="mono">{row.email}</td><td>{scopeLabel(row)}</td><td><button type="button" className={`pay-status-badge ${row.active ? 'st-paid' : 'st-declined'}`} onClick={() => void toggle(row)}>{row.active ? t('نشط', 'Active') : t('متوقف', 'Paused')}</button></td><td><button type="button" className="btn-ghost btn-sm" onClick={() => void remove(row)}>{t('حذف', 'Delete')}</button></td></tr>)}
+      {(data?.rows ?? []).length === 0 && <tr><td colSpan={5}>{t('لا توجد تعيينات بريد بعد', 'No email assignments yet')}</td></tr>}
+    </tbody></table></div>
+  </section>
 }
