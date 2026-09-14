@@ -8,6 +8,7 @@ import { produceRiskAlerts } from './riskAlerts.js'
 import { autoLinkWithdrawalSms } from './payoutSmsMatcher.js'
 import { oldDb } from './oldDb.js'
 import { processWalletFreezeAlerts } from './smsAlerts.js'
+import { notifyApprovedTransaction } from './approvalEmail.js'
 
 // Pulls new rows from the OLD prod Supabase (where the Maven workers still
 // write) into the panel-v2 DB. Same overlap-window upsert idea as
@@ -311,6 +312,7 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
           }
         })
       }
+      let newlyApproved: Record<string, unknown>[] = []
       if (table === 'maven_transactions') {
         const localTs = new Map<number, number>()
         // The guard needs our CURRENT values, not just the timestamp: a blocked
@@ -367,6 +369,8 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
           return Number.isFinite(theirs) && theirs > mine
         })
 
+        newlyApproved = providerActions.filter((row) => ['PAID', 'APPROVED'].includes(String(row.status ?? '').toUpperCase()))
+
         if (providerActions.length > 0) {
           // A terminal status arriving from the Maven source is a provider
           // action, not an automation/agent decision. Preserve that identity
@@ -397,6 +401,18 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
 
       const { error: upErr } = await db.from(table).upsert(payload, { onConflict: pk })
       if (upErr) throw new Error(`upsert: ${upErr.message}`)
+      if (table === 'maven_transactions' && newlyApproved.length) {
+        const emailResults = await Promise.allSettled(newlyApproved.map((row) => notifyApprovedTransaction({
+          ...row,
+          tx_id: row.tx_id as number,
+          status: row.status,
+          approved_by: row.approved_by || 'Maven Team',
+          approved_at: row.last_status_change || row.modified_utc || new Date().toISOString(),
+          provider_confirmed: true,
+        })))
+        const failed = emailResults.filter((result) => result.status === 'rejected').length
+        if (failed) console.error('provider approval email post-processing failed', { failed, total: newlyApproved.length })
+      }
       upserted += rows.length
       if (rows.length < PAGE) break
       offset += rows.length
