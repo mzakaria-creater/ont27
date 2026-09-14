@@ -116,7 +116,8 @@ interface SmsDetail extends SmsRow {
 }
 
 function displayWalletForRow(row: SmsRow): string | null {
-  return row.wallet_identity_ambiguous ? null : row.confirmed_wallet_number ?? row.receiver_number ?? row.wallet_number
+  // This is the SMS card's wallet. The matched transaction wallet is shown separately.
+  return row.wallet_identity_ambiguous ? null : row.receiver_number ?? row.confirmed_wallet_number ?? row.wallet_number
 }
 
 interface SmsStats {

@@ -128,7 +128,17 @@ export default function Transactions() {
     }
   }, [type, status, appliedQ, page, pageSize, from, to, merchant, method, currency, minAmount, maxAmount])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    let alive = true
+    const initialLoad = async () => {
+      // Pull the provider delta before the first read so a newly opened
+      // transactions page cannot render the previous mirror snapshot first.
+      await syncProviders()
+      if (alive) await load()
+    }
+    void initialLoad()
+    return () => { alive = false }
+  }, [load])
 
   // Keep All Transactions live as well as the approval queue. Provider pulls
   // are shared across tabs and local realtime events repaint immediately once

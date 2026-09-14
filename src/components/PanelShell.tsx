@@ -210,6 +210,7 @@ interface RailSms {
   trx_id: string | null
   matched_tx_id?: number | null
   matched_ontarget_ref?: string | null
+  matched_receiving_wallet?: string | null
   linked_wallet_number?: string | null
   balance_after?: number | null
   wallet_balance_after?: number | null
@@ -313,9 +314,11 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
           const linked = walletLinked || r.matched_tx_id != null
           const rawText = r.raw_sms ?? r.message ?? r.sms_first_line
           const balance = r.balance_after ?? r.wallet_balance_after
+          // Keep the raw SMS wallet visible; the matched transaction wallet is
+          // shown separately so a mapping cannot hide the SMS evidence.
           const receivingWallet = r.sms_category === 'withdrawal'
-            ? r.linked_wallet_number ?? r.wallet_number ?? r.receiver_number
-            : r.confirmed_wallet_number ?? r.wallet_number ?? r.receiver_number
+            ? r.linked_wallet_number ?? r.receiver_number ?? r.wallet_number
+            : r.receiver_number ?? r.confirmed_wallet_number ?? r.wallet_number ?? r.matched_receiving_wallet
           return (
             <button key={r.id} type="button" onClick={() => setSelected(r)} className={`sms-feed-item sms-feed-button${linked ? ' matched' : ''}${!linked && (r.sms_category === 'deposit' || r.sms_category === 'withdrawal') ? ' unlinked' : ''}${r.sms_category === 'withdrawal' ? ' withdrawal' : ''}`} aria-label={`SMS ${r.id} details`}>
               <div className="sms-feed-head">
@@ -336,8 +339,8 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
       </div>
       {selected && (() => {
         const selectedWallet = selected.sms_category === 'withdrawal'
-          ? selected.linked_wallet_number ?? selected.wallet_number ?? selected.receiver_number
-          : selected.confirmed_wallet_number ?? selected.wallet_number ?? selected.receiver_number
+          ? selected.linked_wallet_number ?? selected.receiver_number ?? selected.wallet_number
+          : selected.receiver_number ?? selected.confirmed_wallet_number ?? selected.wallet_number ?? selected.matched_receiving_wallet
         const selectedBalance = selected.balance_after ?? selected.wallet_balance_after
         const selectedRaw = selected.raw_sms ?? selected.message ?? selected.sms_first_line
         const selectedLinked = selected.sms_category === 'withdrawal' ? selected.linked_wallet_number != null : selected.matched_tx_id != null

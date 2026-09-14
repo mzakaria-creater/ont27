@@ -123,7 +123,14 @@ export default function Approvals() {
   }, [])
 
   useEffect(() => {
-    void load()
+    let alive = true
+    const initialLoad = async () => {
+      // Sync Maven before the first queue read so newly arrived transactions
+      // and provider status changes are visible immediately on page open.
+      await syncProviders()
+      if (alive) await load()
+    }
+    void initialLoad()
     // Realtime changes update the queue without a full provider sync or a
     // polling storm. A tiny debounce coalesces transaction + SMS changes.
     const schedule = () => {
@@ -139,6 +146,7 @@ export default function Approvals() {
     }, 10_000)
     const fallbackIv = window.setInterval(() => void load(), 10_000)
     return () => {
+      alive = false
       window.clearInterval(syncIv)
       window.clearInterval(fallbackIv)
       if (refreshTimer.current != null) window.clearTimeout(refreshTimer.current)
