@@ -932,7 +932,7 @@ extraRoutes.post('/risk/blacklist/unblock-client', requireAnyPerm(['risk', 'risk
 
 // ---- Automation: settings + rules + worker jobs + treasury ----
 const RULE_COLS =
-  'id, scope_type, master_merchant, merchant, sub_merchant, account_wallet, payment_method, provider, enabled, min_amount, max_amount, time_window_minutes, action_type, priority, use_crm_matching, use_near_amount, use_unique_amount, created_at, updated_at'
+  'id, scope_type, master_merchant, merchant, sub_merchant, account_wallet, payment_method, provider, enabled, min_amount, max_amount, time_window_minutes, action_type, priority, use_crm_matching, use_near_amount, use_unique_amount, first_deposit_only, created_at, updated_at'
 
 extraRoutes.get(
   '/automation',
@@ -1009,6 +1009,7 @@ extraRoutes.post('/automation/rules', requireAnyPerm(['automation_rules','automa
   const time_window_minutes = num(body?.time_window_minutes) ?? 5
   if (max_amount == null || max_amount < min_amount) return c.json({ error: 'invalid_amount_range' }, 400)
   if (max_amount <= 0) return c.json({ error: 'maximum_amount_required' }, 400)
+  if (body?.first_deposit_only === true && max_amount > 5000) return c.json({ error: 'first_deposit_maximum_5000' }, 400)
   if (action_type === 'decline' && time_window_minutes < 5) return c.json({ error: 'auto_decline_minimum_wait', minimum_minutes: 5 }, 400)
 
   const master_merchant = str(body?.master_merchant)
@@ -1028,6 +1029,7 @@ extraRoutes.post('/automation/rules', requireAnyPerm(['automation_rules','automa
     use_crm_matching: body?.use_crm_matching === true,
     use_near_amount: body?.use_near_amount === true,
     use_unique_amount: body?.use_unique_amount === true,
+    first_deposit_only: body?.first_deposit_only === true,
   }
   const { data, error } = await db.from('automation_rules_scoped').insert(row).select(RULE_COLS).single()
   if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
@@ -1052,7 +1054,7 @@ extraRoutes.patch('/automation/rules/:id', requireAnyPerm(['automation_rules','a
   if (body?.min_amount !== undefined) update.min_amount = num(body.min_amount) ?? before.min_amount
   if (body?.max_amount !== undefined) update.max_amount = num(body.max_amount) ?? before.max_amount
   if (body?.time_window_minutes !== undefined) update.time_window_minutes = num(body.time_window_minutes) ?? before.time_window_minutes
-  for (const key of ['use_crm_matching', 'use_near_amount', 'use_unique_amount'] as const) {
+  for (const key of ['use_crm_matching', 'use_near_amount', 'use_unique_amount', 'first_deposit_only'] as const) {
     if (body?.[key] !== undefined) update[key] = body[key] === true
   }
 
@@ -1061,6 +1063,8 @@ extraRoutes.patch('/automation/rules/:id', requireAnyPerm(['automation_rules','a
   const nextMax = Number(update.max_amount ?? before.max_amount)
   const nextWindow = Number(update.time_window_minutes ?? before.time_window_minutes)
   if (!Number.isFinite(nextMax) || nextMax <= 0) return c.json({ error: 'maximum_amount_required' }, 400)
+  const nextFirstDepositOnly = (update.first_deposit_only as boolean | undefined) ?? before.first_deposit_only
+  if (nextFirstDepositOnly && nextMax > 5000) return c.json({ error: 'first_deposit_maximum_5000' }, 400)
   if (before.action_type === 'decline' && nextWindow < 5) return c.json({ error: 'auto_decline_minimum_wait', minimum_minutes: 5 }, 400)
   if (nextEnabled && body?.confirm_conflict !== true && (update.priority !== undefined || update.enabled === true)) {
     const conflicts = await ruleConflict(db, before.scope_type, before.master_merchant, before.sub_merchant, nextPriority, id)
