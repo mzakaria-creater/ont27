@@ -23,15 +23,15 @@ interface RuleRow {
   id: string; scope_type: string | null; master_merchant: string | null; merchant: string | null; sub_merchant: string | null
   account_wallet: string | null; payment_method: string | null; provider: string | null; enabled: boolean | null
   min_amount: number | null; max_amount: number | null; time_window_minutes: number | null; action_type: string | null; priority: number | null
-  use_crm_matching: boolean | null; use_near_amount: boolean | null; use_unique_amount: boolean | null
+  use_crm_matching: boolean | null; use_near_amount: boolean | null; use_unique_amount: boolean | null; first_deposit_only: boolean | null
 }
 
 type NewRule = {
   scope_type: string; master_merchant: string; merchant: string; sub_merchant: string; min_amount: string; max_amount: string
   time_window_minutes: string; action_type: 'approve' | 'decline'; priority: string
-  use_crm_matching: boolean; use_near_amount: boolean; use_unique_amount: boolean
+  use_crm_matching: boolean; use_near_amount: boolean; use_unique_amount: boolean; first_deposit_only: boolean
 }
-const EMPTY_RULE: NewRule = { scope_type: 'global', master_merchant: 'ngpay', merchant: '', sub_merchant: '', min_amount: '1', max_amount: '10000', time_window_minutes: '5', action_type: 'approve', priority: '10', use_crm_matching: false, use_near_amount: false, use_unique_amount: false }
+const EMPTY_RULE: NewRule = { scope_type: 'global', master_merchant: 'ngpay', merchant: '', sub_merchant: '', min_amount: '1', max_amount: '10000', time_window_minutes: '5', action_type: 'approve', priority: '10', use_crm_matching: false, use_near_amount: false, use_unique_amount: false, first_deposit_only: false }
 
 // Flow templates — presets that prefill the form, never saved directly (the
 // operator must review + click Save, per the explicit requirement that no
@@ -40,6 +40,7 @@ const EMPTY_RULE: NewRule = { scope_type: 'global', master_merchant: 'ngpay', me
 // matching (not implemented yet) -- picking it will show that block plainly
 // once saved, rather than silently pretending to work.
 const RULE_TEMPLATES: { id: string; label: [string, string]; desc: [string, string]; rule: Partial<NewRule> }[] = [
+  { id: 'first-deposit-5000', label: ['أول إيداع حتى 5,000', 'First deposit up to 5,000'], desc: ['موافقة تلقائية لأول إيداع فقط بعد ربط SMS حصري وآمن، بحد أقصى 5,000 جنيه.', 'Auto-approve a customer’s first deposit only after an exclusive, safe SMS link, capped at EGP 5,000.'], rule: { action_type: 'approve', min_amount: '1', max_amount: '5000', time_window_minutes: '5', first_deposit_only: true, use_crm_matching: false, use_near_amount: false, use_unique_amount: true } },
   { id: 'small-auto-approve', label: ['موافقة تلقائية للمبالغ الصغيرة', 'Auto-approve small amounts'], desc: ['حد أقصى منخفض، بدون شرط مطابقة، مهلة قصيرة.', 'Low cap, no matching requirement, short window.'], rule: { action_type: 'approve', min_amount: '1', max_amount: '500', time_window_minutes: '5', use_crm_matching: false, use_near_amount: false, use_unique_amount: false } },
   { id: 'strict-matching', label: ['مطابقة صارمة', 'Strict matching'], desc: ['يتطلب كل أدوات المطابقة معاً — سيُرفض تلقائياً من المحرّك اليوم لأن المطابقة الفعلية غير مُنفَّذة بعد (fail-safe).', 'Requires every matching tool — the live engine blocks this today since real matching isn’t implemented yet (fail-safe).'], rule: { action_type: 'approve', min_amount: '1', max_amount: '10000', use_crm_matching: true, use_near_amount: true, use_unique_amount: true } },
   { id: 'decline-after-wait', label: ['رفض تلقائي بعد 5 دقائق', 'Auto-decline after 5 minutes'], desc: ['يعمل فقط حتى الحد الأقصى الذي تراجعه وتحدده قبل الحفظ؛ ما فوق الحد يبقى للمراجعة.', 'Works only up to the maximum amount you review and set before saving; amounts above it remain in review.'], rule: { action_type: 'decline', min_amount: '1', max_amount: '', time_window_minutes: '5' } },
@@ -146,6 +147,7 @@ export default function Automation() {
           min_amount: newRule.min_amount, max_amount: newRule.max_amount, time_window_minutes: newRule.time_window_minutes,
           action_type: newRule.action_type, priority: newRule.priority,
           use_crm_matching: newRule.use_crm_matching, use_near_amount: newRule.use_near_amount, use_unique_amount: newRule.use_unique_amount,
+          first_deposit_only: newRule.first_deposit_only,
           confirm_conflict: confirmConflict,
         }),
       })
@@ -424,6 +426,7 @@ export default function Automation() {
             {newRule.action_type === 'decline' && <div className="card warn">{t('الرفض التلقائي ينتظر 5 دقائق على الأقل، ولن يُحفَظ بدون Maximum Amount موجب. أي مبلغ أعلى من الحد يظل pending review.', 'Auto-decline waits at least 5 minutes and cannot be saved without a positive Maximum Amount. Any amount above the limit remains pending review.')}</div>}
             {newRule.action_type === 'approve' && (
               <div className="control-row">
+                <label className="login-remember" style={{ margin: 0 }}><input type="checkbox" checked={newRule.first_deposit_only} onChange={(e) => setNewRule({ ...newRule, first_deposit_only: e.target.checked, max_amount: e.target.checked ? '5000' : newRule.max_amount })} />{t('أول إيداع فقط (SMS مطلوب، حد 5,000)', 'First deposit only (SMS required, 5,000 cap)')}</label>
                 <label className="login-remember" style={{ margin: 0 }}><input type="checkbox" checked={newRule.use_crm_matching} onChange={(e) => setNewRule({ ...newRule, use_crm_matching: e.target.checked })} />{t('مطابقة CRM', 'CRM matching')}</label>
                 <label className="login-remember" style={{ margin: 0 }}><input type="checkbox" checked={newRule.use_near_amount} onChange={(e) => setNewRule({ ...newRule, use_near_amount: e.target.checked })} />{t('مطابقة مبلغ تقريبي', 'Near-amount matching')}</label>
                 <label className="login-remember" style={{ margin: 0 }}><input type="checkbox" checked={newRule.use_unique_amount} onChange={(e) => setNewRule({ ...newRule, use_unique_amount: e.target.checked })} />{t('مطابقة مبلغ فريد', 'Unique-amount matching')}</label>
