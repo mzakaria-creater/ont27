@@ -51,7 +51,12 @@ export async function notifyApprovedTransaction(tx: ApprovedTransaction): Promis
       return { sent: false, reason: String(result.error || 'email_provider_failed') }
     }
 
-    const recipient = typeof result.recipient === 'string' ? result.recipient : undefined
+    const sent = Number(result.sent ?? 0)
+    if (sent === 0) return { sent: false, reason: String(result.reason || 'no_matching_subscriptions') }
+    const recipients = Array.isArray(result.results)
+      ? result.results.map((item) => item && typeof item === 'object' ? String((item as Record<string, unknown>).email ?? '') : '').filter(Boolean)
+      : []
+    const recipient = recipients[0]
     const { error: auditError } = await db.from('audit_log').insert({
       actor_type: 'system',
       actor_name: 'customer-approval-email',
@@ -60,6 +65,8 @@ export async function notifyApprovedTransaction(tx: ApprovedTransaction): Promis
       entity_id: txId,
       after: {
         recipient: recipient ?? null,
+        recipients,
+        sent,
         provider: 'namecheap_private_email',
         provider_message_id: result.message_id || null,
         approved_by: tx.approved_by,
