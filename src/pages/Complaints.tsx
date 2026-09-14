@@ -26,6 +26,12 @@ interface ComplaintRow {
 interface TicketRow { id:number; ticket_no:string|null; tx_id:number|null; customer_phone:string|null; subject:string|null; description:string|null; action_requested?:string|null; assigned_to?:string|null; due_at?:string|null; priority:string|null; ticket_status:string; created_at:string|null }
 interface Assignee { id:string; username:string; display_name:string|null; role:string; active:boolean }
 
+type InvestigationResult = { txId: string; result: unknown; error?: string }
+
+function parseTransactionIds(value: string): string[] {
+  return [...new Set(value.split(/[\s,;]+/).map((item) => item.replace(/\D/g, '')).filter(Boolean))].slice(0, 50)
+}
+
 const STATUS_META: Record<string, { ar: string; en: string; cls: string }> = {
   open: { ar: 'مفتوحة', en: 'Open', cls: 'st-pending' },
   pending: { ar: 'مفتوحة', en: 'Open', cls: 'st-pending' },
@@ -52,6 +58,7 @@ export default function Complaints() {
   const [caseAmount, setCaseAmount] = useState('')
   const [caseNote, setCaseNote] = useState('')
   const [caseResult, setCaseResult] = useState<unknown | null>(null)
+  const [batchResults, setBatchResults] = useState<InvestigationResult[]>([])
   const [caseBusy, setCaseBusy] = useState(false)
   const [caseMessage, setCaseMessage] = useState<string | null>(null)
   const [tickets, setTickets] = useState<TicketRow[]>([])
@@ -114,11 +121,26 @@ export default function Complaints() {
 
   const investigateCase = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!caseTx && !(casePhone && caseAmount)) return
+    const txIds = parseTransactionIds(caseTx)
+    if (!txIds.length && !(casePhone && caseAmount)) return
     setCaseBusy(true); setCaseMessage(null)
     try {
-      const res = await api<{ result: unknown }>('/api/complaints/investigate', { method: 'POST', body: JSON.stringify({ tx_id: caseTx || null, phone: casePhone || null, amount: caseAmount || null }) })
-      setCaseResult(res.result)
+      if (txIds.length) {
+        setCaseResult(null)
+        const results = await Promise.all(txIds.map(async (txId): Promise<InvestigationResult> => {
+          try {
+            const res = await api<{ result: unknown }>('/api/complaints/investigate', { method: 'POST', body: JSON.stringify({ tx_id: txId, phone: null, amount: null }) })
+            return { txId, result: res.result }
+          } catch (error) {
+            return { txId, result: null, error: error instanceof ApiError ? error.code : t('فشل الفحص', 'Investigation failed') }
+          }
+        }))
+        setBatchResults(results)
+      } else {
+        setBatchResults([])
+        const res = await api<{ result: unknown }>('/api/complaints/investigate', { method: 'POST', body: JSON.stringify({ tx_id: null, phone: casePhone || null, amount: caseAmount || null }) })
+        setCaseResult(res.result)
+      }
     } catch { setCaseResult({ error: t('فشل الفحص', 'Investigation failed') }) }
     finally { setCaseBusy(false) }
   }
@@ -192,12 +214,13 @@ export default function Complaints() {
       <section className="card complaint-investigator">
         <div className="complaint-panel-title"><div><h3>🔎 {t('فحص شكوى معاملة','Investigate a transaction complaint')}</h3><p>{t('اكتب رقم معاملة Maven، أو رقم العميل والمبلغ.', 'Enter a Maven transaction ID, or customer phone and amount.')}</p></div><span className="pay-status-badge st-pending">LIVE CHECK</span></div>
         <form className="complaint-investigation-form" onSubmit={investigateCase}>
-          <label>{t('رقم المعاملة','Transaction ID')}<input className="login-input" inputMode="numeric" value={caseTx} onChange={(e)=>setCaseTx(e.target.value.replace(/\D/g,''))} placeholder="Maven TRX"/></label>
+          <label>{t('أرقام المعاملات','Transaction IDs')}<textarea className="login-input complaint-tx-batch-input" inputMode="numeric" value={caseTx} onChange={(e)=>setCaseTx(e.target.value)} placeholder={t('ضع كل رقم في سطر أو افصل بينها بفاصلة', 'One transaction ID per line, or separate with commas')} rows={4}/><span className="cell-sub">{parseTransactionIds(caseTx).length}/50 {t('معاملة للفحص','transactions to investigate')}</span></label>
           <span className="complaint-or">{t('أو','OR')}</span>
           <label>{t('رقم العميل','Customer phone')}<input className="login-input" value={casePhone} onChange={(e)=>setCasePhone(e.target.value.replace(/[^0-9+]/g,''))} placeholder="01xxxxxxxxx"/></label>
           <label>{t('المبلغ','Amount')}<input className="login-input" type="number" min="0" step="0.01" value={caseAmount} onChange={(e)=>setCaseAmount(e.target.value)} placeholder="EGP"/></label>
-          <button className="btn-primary" disabled={caseBusy || (!caseTx && !(casePhone && caseAmount))}>{caseBusy ? t('جارٍ الفحص…','Investigating…') : `🔍 ${t('افحص','Investigate')}`}</button>
+          <button className="btn-primary" disabled={caseBusy || (!parseTransactionIds(caseTx).length && !(casePhone && caseAmount))}>{caseBusy ? t('جارٍ الفحص…','Investigating…') : `🔍 ${t('افحص المعاملات','Investigate transactions')}`}</button>
         </form>
+        {batchResults.length > 0 && <div className="complaint-analysis"><div className="section-label">{t('نتائج الفحص لكل معاملة','Investigation result for each transaction')}</div>{batchResults.map((item) => <article className="card complaint-batch-result" key={item.txId}><div className="recent-head"><strong className="mono">TRX {item.txId}</strong><span className={`pay-status-badge ${item.error ? 'st-declined' : 'st-paid'}`}>{item.error ?? t('تم الفحص','Investigated')}</span></div><pre className="sms-body">{item.error ?? JSON.stringify(item.result, null, 2).slice(0, 3000)}</pre></article>)}</div>}
         {caseResult != null && <div className="complaint-analysis"><div className="section-label">{t('نتيجة التحليل','Analysis result')}</div><pre className="sms-body">{JSON.stringify(caseResult,null,2).slice(0,3000)}</pre><div className="complaint-log-row"><input className="login-input" value={caseNote} onChange={(e)=>setCaseNote(e.target.value)} placeholder={t('وصف الشكوى أو ملاحظة العميل…','Complaint description or customer note…')}/><button className="btn-primary btn-sm" disabled={caseBusy || (!caseTx && !casePhone)} onClick={() => void logCase()}>{t('تسجيل شكوى وإرسال تنبيه','File complaint & notify')}</button></div></div>}
         {caseMessage && <div className="guide-callout success">{caseMessage}</div>}
       </section>
