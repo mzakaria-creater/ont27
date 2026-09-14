@@ -67,18 +67,19 @@ webhookRoutes.get('/', requireAnyPerm(['webhooks','developers'],'can_view'), asy
   const from = c.req.query('from')
   const to = c.req.query('to')
   const direction = c.req.query('direction')
-  const [endpointRes, merchantRes] = await Promise.all([
+  const [endpointRes, merchantRes, smsRes] = await Promise.all([
     db.from('webhook_endpoints').select(endpointColumns).order('created_at',{ascending:false}),
     db.from('merchants').select('id,name').order('name'),
+    db.from('inbound_sms').select('id,received_at,amount,sms_category,provider,device_name,webhook_name,match_status,matched_transaction_id').or('webhook_name.eq.ont1,device_name.eq.ont1').order('received_at',{ascending:false}).limit(20),
   ])
   let logs = db.from('webhook_delivery_log').select('id,endpoint_id,direction,event_type,status_code,success,latency_ms,request_id,error,created_at').order('created_at',{ascending:false}).limit(250)
   if (from) logs = logs.gte('created_at',`${from}T00:00:00Z`)
   if (to) logs = logs.lte('created_at',`${to}T23:59:59.999Z`)
   if (direction === 'inbound' || direction === 'outbound') logs = logs.eq('direction',direction)
   const logRes = await logs
-  if (endpointRes.error || logRes.error) return c.json({error:'db_error',detail:endpointRes.error?.message ?? logRes.error?.message},500)
+  if (endpointRes.error || logRes.error || smsRes.error) return c.json({error:'db_error',detail:endpointRes.error?.message ?? logRes.error?.message ?? smsRes.error?.message},500)
   const rows = logRes.data ?? []
-  return c.json({ endpoints:endpointRes.data ?? [], merchants:merchantRes.data ?? [], logs:rows, kpis:{ endpoints:(endpointRes.data??[]).length, active:(endpointRes.data??[]).filter(x=>x.is_active).length, deliveries:rows.length, successRate:rows.length?Math.round(rows.filter(x=>x.success).length/rows.length*1000)/10:0, failed:rows.filter(x=>!x.success).length } })
+  return c.json({ endpoints:endpointRes.data ?? [], merchants:merchantRes.data ?? [], logs:rows, sms_ont1:smsRes.data ?? [], kpis:{ endpoints:(endpointRes.data??[]).length, active:(endpointRes.data??[]).filter(x=>x.is_active).length, deliveries:rows.length, successRate:rows.length?Math.round(rows.filter(x=>x.success).length/rows.length*1000)/10:0, failed:rows.filter(x=>!x.success).length } })
 })
 
 webhookRoutes.post('/', requireAnyPerm(['webhooks','developers'],'can_edit'), async (c) => {
