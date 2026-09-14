@@ -31,6 +31,7 @@ import { ticketRoutes } from './tickets.js'
 import { payoutRequestRoutes } from './payoutRequests.js'
 import { deviceRoutes } from './devices.js'
 import { gatewayRoutes } from './gateway.js'
+import { emailNotificationRoutes } from './emailNotifications.js'
 
 export const app = new Hono().basePath('/api')
 
