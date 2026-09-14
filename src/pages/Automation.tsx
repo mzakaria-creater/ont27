@@ -47,6 +47,7 @@ const RULE_TEMPLATES: { id: string; label: [string, string]; desc: [string, stri
 interface JobRow { id: string; tx_id: number | null; amount: number | null; target_status: string | null; provider: string | null; state: string | null; mission: string | null; attempts: number | null; last_error: string | null; operator_username: string | null; created_at: string | null; completed_at: string | null }
 interface BalanceRow { account_id: string | null; total_balance: number | null; available_balance: number | null; usdt_value: number | null; measured_at: string | null }
 interface RateRow { currency_pair: string | null; rate: number | null; fetched_at: string | null }
+interface TurboAuditRow { id: number; actor_name: string | null; action: string; before: Record<string, unknown> | null; after: Record<string, unknown> | null; created_at: string }
 
 const FLAG_LABELS: Record<string, string> = {
   automation_enabled: 'الأتمتة مفعّلة',
@@ -100,6 +101,7 @@ export default function Automation() {
     jobs: JobRow[]
     balances: BalanceRow[]
     rates: RateRow[]
+    turbo_history?: TurboAuditRow[]
   } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const { t, locale } = useLocale()
@@ -124,6 +126,8 @@ export default function Automation() {
   const [ruleMsg, setRuleMsg] = useState<string | null>(null)
   const [ruleConflict, setRuleConflict] = useState<{ id: string; action_type: string; priority: number }[] | null>(null)
   const [settingsBusy, setSettingsBusy] = useState<string | null>(null)
+  const [turboBusy, setTurboBusy] = useState(false)
+  const [turboUntil, setTurboUntil] = useState<number | null>(null)
   const [ruleSearch, setRuleSearch] = useState('')
   const [ruleProviders, setRuleProviders] = useState<string[]>([])
   const [ruleStatuses, setRuleStatuses] = useState<string[]>([])
@@ -187,6 +191,42 @@ export default function Automation() {
       setRuleMsg(t('تعذّر تحديث الإعداد.', 'Unable to update the setting.'))
     } finally {
       setSettingsBusy(null)
+    }
+  }
+
+  const runTurboForTwoMinutes = async () => {
+    if (!canControl || turboBusy) return
+    setTurboBusy(true)
+    setRuleMsg(null)
+    try {
+      // Apply the same server-side posture used by the live worker, then keep
+      // the V2 mirror in sync for the page and dashboard.
+      await api('/api/control/automation/template', { method: 'POST', body: JSON.stringify({ id: 'turbo' }) })
+      await api('/api/automation/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ turbo_mode: true, wallet_switch_auto_enabled: true, max_auto_amount: 8000, decline_grace_minutes: 1 }),
+      })
+      const until = Date.now() + 120_000
+      setTurboUntil(until)
+      setRuleMsg(t('تم تشغيل Turbo لمدة دقيقتين — سيعود للوضع المتوازن تلقائياً.', 'Turbo is on for 2 minutes — it will return to Balanced automatically.'))
+      window.setTimeout(async () => {
+        try {
+          await api('/api/control/automation/template', { method: 'POST', body: JSON.stringify({ id: 'balanced' }) })
+          await api('/api/automation/settings', {
+            method: 'PATCH',
+            body: JSON.stringify({ turbo_mode: false, wallet_switch_auto_enabled: false, max_auto_amount: 5000, decline_grace_minutes: 3 }),
+          })
+          setTurboUntil(null)
+          await reloadAutomation()
+          setRuleMsg(t('انتهت جلسة Turbo وعادت الأتمتة إلى الوضع المتوازن.', 'Turbo session ended; automation returned to Balanced.'))
+        } catch {
+          setRuleMsg(t('تعذّر إيقاف Turbo تلقائياً — أوقفه يدوياً الآن.', 'Turbo could not be disabled automatically — turn it off manually now.'))
+        }
+      }, 120_000)
+    } catch {
+      setRuleMsg(t('تعذّر تشغيل Turbo.', 'Unable to start Turbo.'))
+    } finally {
+      setTurboBusy(false)
     }
   }
 
@@ -305,6 +345,27 @@ export default function Automation() {
             </label>
             <span className="cell-sub">{t('مستقلة تماماً عن مفتاح الموافقة أعلاه — إيقاف الموافقة لا يوقف استلام/مطابقة SMS.', 'Fully independent of the switch above — turning approval off does not stop SMS ingestion/matching.')}</span>
           </div>
+          <div className={`automation-turbo-card ${settings.turbo_mode ? 'is-on' : ''}`}>
+            <div>
+              <strong>⚡ {t('Turbo Mode — جلسة سريعة', 'Turbo Mode — quick session')}</strong>
+              <p>{t('يشغّل المعالجة السريعة لمدة دقيقتين فقط، ثم يعود تلقائياً إلى الوضع المتوازن.', 'Runs the faster processing posture for exactly two minutes, then returns to Balanced automatically.')}</p>
+              {turboUntil && <small>{t('ينتهي عند', 'Ends at')} {new Date(turboUntil).toLocaleTimeString()}</small>}
+            </div>
+            <button type="button" className="btn-primary btn-sm" disabled={!canControl || turboBusy || Boolean(turboUntil)} onClick={() => void runTurboForTwoMinutes()}>
+              {turboBusy ? t('جارٍ التشغيل…', 'Starting…') : turboUntil ? t('يعمل الآن', 'Running now') : t('تشغيل Turbo لدقيقتين', 'Run Turbo for 2 minutes')}
+            </button>
+          </div>
+          {(data?.turbo_history?.length ?? 0) > 0 && <div className="automation-turbo-report">
+            <div className="automation-turbo-report-head"><strong>📊 {t('تقرير جلسات Turbo', 'Turbo activity report')}</strong><span>{t('آخر 30 تغييرًا', 'Last 30 changes')}</span></div>
+            <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('الوقت', 'Time')}</th><th>{t('الإجراء', 'Action')}</th><th>{t('المنفّذ', 'Actor')}</th><th>{t('الإعدادات', 'Applied settings')}</th></tr></thead><tbody>
+              {(data?.turbo_history ?? []).map((row) => {
+                const after = row.after ?? {}
+                const template = typeof after.template === 'string' ? after.template : null
+                const turbo = template ? template === 'turbo' : after.turbo_mode === true
+                return <tr key={row.id}><td className="mono">{new Date(row.created_at).toLocaleString()}</td><td><span className={`pay-status-badge ${turbo ? 'st-paid' : 'st-dim'}`}>{turbo ? '⚡ Turbo ON' : 'Balanced / Turbo OFF'}</span></td><td>{row.actor_name ?? 'system'}</td><td className="cell-sub">{template ? template : `${after.max_auto_amount ?? '—'} EGP · ${after.decline_grace_minutes ?? '—'}m · ${after.wallet_switch_auto_enabled ? 'wallet switch' : 'fixed wallet'}`}</td></tr>
+              })}
+            </tbody></table></div>
+          </div>}
         </section>
       )}
 

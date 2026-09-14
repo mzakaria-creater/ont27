@@ -860,7 +860,7 @@ extraRoutes.get(
     'can_view',
   ),
   async (c) => {
-    const [settings, rules, jobs, balances, rates] = await Promise.all([
+    const [settings, rules, jobs, balances, rates, turboAudit] = await Promise.all([
       db.from('automation_settings').select('*').limit(1).maybeSingle(),
       db.from('automation_rules_scoped').select(RULE_COLS).order('priority', { ascending: false }).limit(100),
       db
@@ -870,6 +870,7 @@ extraRoutes.get(
         .limit(15),
       db.from('binance_account_balances').select('account_id, total_balance, available_balance, usdt_value, measured_at').order('measured_at', { ascending: false }).limit(10),
       db.from('exchange_rates').select('currency_pair, rate, fetched_at').order('fetched_at', { ascending: false }).limit(10),
+      db.from('audit_log').select('id, actor_name, action, before, after, created_at').in('action', ['automation.template_applied', 'automation.settings_updated', 'automation.turbo_session_started', 'automation.turbo_session_ended']).order('created_at', { ascending: false }).limit(30),
     ])
     if (rules.error) return c.json({ error: 'db_error', detail: rules.error.message }, 500)
     return c.json({
@@ -878,6 +879,12 @@ extraRoutes.get(
       jobs: jobs.data ?? [],
       balances: balances.data ?? [],
       rates: rates.data ?? [],
+      turbo_history: (turboAudit.data ?? []).filter((row) => {
+        const after = row.after as Record<string, unknown> | null
+        return row.action === 'automation.template_applied'
+          ? after?.template === 'turbo' || after?.template === 'balanced'
+          : row.action.startsWith('automation.turbo_session_') || after?.turbo_mode !== undefined
+      }),
     })
   },
 )
