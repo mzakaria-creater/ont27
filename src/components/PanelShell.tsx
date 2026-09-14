@@ -91,6 +91,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/airdroid', icon: '📱', labelAr: 'إدارة AirDroid', labelEn: 'AirDroid devices', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/devices', icon: '📲', labelAr: 'أسطول الأجهزة', labelEn: 'Device fleet', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/wallet-report', icon: '📊', labelAr: 'تقرير المحافظ', labelEn: 'Wallet report', keys: ['sms_live', 'wallets'], group: 'payments' },
+  { to: '/sms-balance-chains', icon: '🔗', labelAr: 'سلاسل أرصدة SMS', labelEn: 'SMS balance chains', keys: ['sms_live', 'wallets', 'reports'], group: 'payments' },
   { to: '/wallet-investigation', icon: '🔎', labelAr: 'تحقيق المحفظة', labelEn: 'Wallet investigation', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/withdrawal-sms-report', icon: '🧾', labelAr: 'تقرير SMS السحب', labelEn: 'Withdrawal SMS report', keys: ['reports', 'advanced_analysis', 'sms_live'], group: 'insights' },
   { to: '/cash-settlements', icon: '💵', labelAr: 'تسوية كاش SMS', labelEn: 'Cash SMS settlement', keys: ['reports', 'advanced_analysis', 'settlements', 'sms_live'], group: 'insights' },

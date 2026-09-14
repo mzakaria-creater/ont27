@@ -5,13 +5,15 @@ import { api, ApiError } from '../lib/api'
 import { useLocale } from '../lib/locale'
 
 interface Balance { asset: string; free: string; locked: string }
-interface WalletData { balances: Balance[]; accountType: string | null; canTrade: boolean | null; source: 'spot' | 'funding'; at: string }
+interface WalletData { balances: Balance[]; accountType: string | null; canTrade: boolean | null; source: 'spot' | 'funding' | 'spot+funding'; at: string }
+interface Health { connected: boolean; reason: string | null; checked_at: string }
 
 export default function BinanceWallet() {
   const { t } = useLocale()
   const [data, setData] = useState<WalletData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [health, setHealth] = useState<Health | null>(null)
   const load = useCallback(async () => {
     setLoading(true); setError('')
     try { setData(await api<WalletData>('/api/binance/wallet')) }
@@ -19,10 +21,11 @@ export default function BinanceWallet() {
     finally { setLoading(false) }
   }, [t])
   useEffect(() => { void load() }, [load])
+  useEffect(() => { api<Health>('/api/binance/health').then(setHealth).catch(() => setHealth({ connected: false, reason: 'unreachable', checked_at: new Date().toISOString() })) }, [])
   const totalAssets = data?.balances.length ?? 0
   const nonZero = useMemo(() => data?.balances.filter((row) => Number(row.free) > 0 || Number(row.locked) > 0) ?? [], [data])
   return <PanelShell>
-    <section className="page-head binance-egp-head"><div><span className="guide-eyebrow">BINANCE · WALLET CONTROL</span><h2>{t('محفظة Binance', 'Binance Wallet')}</h2><p className="page-sub">{t('رصيد الحساب الحي مع فصل المتاح والمقفل.', 'Live account balances with available and locked funds separated.')}</p></div><button className="btn-ghost btn-sm" disabled={loading} onClick={() => void load()}><RefreshCw size={15} className={loading ? 'spin' : ''}/> {t('تحديث', 'Refresh')}</button></section>
+    <section className="page-head binance-egp-head"><div><span className="guide-eyebrow">BINANCE · WALLET CONTROL</span><h2>{t('محفظة Binance', 'Binance Wallet')}</h2><p className="page-sub">{t('رصيد الحساب الحي مع دمج Spot وFunding.', 'Live account balances merged from Spot and Funding.')}</p></div><div className="control-row"><span className={`pay-status-badge ${health?.connected ? 'st-paid' : 'st-pending'}`}>{health?.connected ? '● Connected' : '○ Not verified'}</span><button className="btn-ghost btn-sm" disabled={loading} onClick={() => void load()}><RefreshCw size={15} className={loading ? 'spin' : ''}/> {t('تحديث', 'Refresh')}</button></div></section>
     <div className="binance-egp-safety"><ShieldCheck size={20}/><div><strong>{t('قراءة آمنة فقط', 'Read-only safe access')}</strong><p>{t('المفاتيح محفوظة في Vault ولا تظهر في المتصفح. لا يوجد سحب أو تحويل من هذه الصفحة.', 'Credentials stay in Vault and never reach the browser. This page cannot withdraw or transfer funds.')}</p></div></div>
     {error && <div className="card warn">{error}</div>}
     <section className="stat-grid"><article className="stat-card"><span className="stat-label">{t('الأصول', 'Assets')}</span><strong className="stat-value">{totalAssets}</strong></article><article className="stat-card"><span className="stat-label">{t('مصدر الرصيد', 'Balance source')}</span><strong className="stat-value">{data?.source === 'funding' ? 'Funding' : data?.source === 'spot' ? 'Spot' : '—'}</strong></article><article className="stat-card"><span className="stat-label">{t('نوع الحساب', 'Account type')}</span><strong className="stat-value">{data?.accountType ?? '—'}</strong></article><article className="stat-card"><span className="stat-label">{t('التداول', 'Trading')}</span><strong className="stat-value">{data?.canTrade == null ? '—' : data.canTrade ? t('مسموح','Enabled') : t('موقوف','Disabled')}</strong></article></section>

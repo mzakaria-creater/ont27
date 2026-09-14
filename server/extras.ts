@@ -13,6 +13,87 @@ export const extraRoutes = new Hono<AuthEnv>()
 
 extraRoutes.use('*', requireAuth)
 
+// ---- SMS balance chains ---------------------------------------------------
+// sms_balance_chains is a relationship table. The wallet/device/provider and
+// balance values live on inbound_sms, so enrich the chain rows here once and
+// keep the browser payload small and safe.
+extraRoutes.get(
+  '/sms-balance-chains',
+  requireAnyPerm(['sms_live', 'wallets', 'reports', 'advanced_analysis'], 'can_view'),
+  async (c) => {
+    const q = c.req.query('q')?.trim().toLowerCase() ?? ''
+    const wallets = (c.req.query('wallet') ?? '').split(',').map((v) => v.trim()).filter(Boolean)
+    const providers = (c.req.query('provider') ?? '').split(',').map((v) => v.trim().toLowerCase()).filter(Boolean)
+    const devices = (c.req.query('device') ?? '').split(',').map((v) => v.trim().toLowerCase()).filter(Boolean)
+    const from = c.req.query('from')?.trim()
+    const to = c.req.query('to')?.trim()
+    const status = c.req.query('status') ?? 'all'
+    const limit = Math.min(Math.max(Number(c.req.query('limit')) || 100, 1), 500)
+
+    const chains = await db.from('sms_balance_chains')
+      .select('sms_id, prev_sms_id, chain_root, inferred_wallet, evidence_tx_links, computed_at')
+      .order('computed_at', { ascending: false, nullsFirst: false })
+      .limit(5000)
+    if (chains.error) return c.json({ error: 'db_error', detail: chains.error.message }, 500)
+
+    const ids = [...new Set((chains.data ?? []).flatMap((row) => [Number(row.sms_id), Number(row.prev_sms_id)]).filter(Number.isFinite))]
+    const smsById = new Map<number, Record<string, unknown>>()
+    for (let i = 0; i < ids.length; i += 500) {
+      const batch = ids.slice(i, i + 500)
+      if (!batch.length) continue
+      const result = await db.from('inbound_sms')
+        .select('id, received_at, device_name, sim_slot, provider, wallet_number, receiver_number, confirmed_wallet_number, amount, balance_after, sms_category, match_status, matched_transaction_id, webhook_name')
+        .in('id', batch)
+      if (result.error) return c.json({ error: 'db_error', detail: result.error.message }, 500)
+      for (const row of result.data ?? []) smsById.set(Number(row.id), row as Record<string, unknown>)
+    }
+
+    const number = (value: unknown) => value == null || value === '' ? null : Number(value)
+    const finite = (value: unknown) => { const n = number(value); return n != null && Number.isFinite(n) ? n : null }
+    const enriched = (chains.data ?? []).map((chain) => {
+      const current = smsById.get(Number(chain.sms_id)) ?? {}
+      const previous = smsById.get(Number(chain.prev_sms_id)) ?? {}
+      const currentBalance = finite(current.balance_after)
+      const previousBalance = finite(previous.balance_after)
+      const amount = finite(current.amount)
+      const delta = currentBalance != null && previousBalance != null ? Math.round((currentBalance - previousBalance) * 100) / 100 : null
+      const expectedDelta = amount != null ? amount : null
+      const difference = delta != null && expectedDelta != null ? Math.round((delta - expectedDelta) * 100) / 100 : null
+      const continuity = difference == null ? 'unknown' : Math.abs(difference) <= 1 ? 'ok' : 'warning'
+      const wallet = String(current.confirmed_wallet_number ?? current.wallet_number ?? current.receiver_number ?? chain.inferred_wallet ?? '') || null
+      return {
+        sms_id: Number(chain.sms_id), prev_sms_id: Number(chain.prev_sms_id), chain_root: Number(chain.chain_root),
+        inferred_wallet: chain.inferred_wallet, wallet, evidence_tx_links: Number(chain.evidence_tx_links ?? 0), computed_at: chain.computed_at,
+        received_at: current.received_at ?? null, previous_received_at: previous.received_at ?? null,
+        device: current.device_name ?? previous.device_name ?? null, sim_slot: current.sim_slot ?? previous.sim_slot ?? null,
+        provider: current.provider ?? previous.provider ?? null, webhook_name: current.webhook_name ?? previous.webhook_name ?? null,
+        amount, previous_balance: previousBalance, current_balance: currentBalance, delta, expected_delta: expectedDelta, difference, continuity,
+        sms_category: current.sms_category ?? null, match_status: current.match_status ?? null, matched_transaction_id: current.matched_transaction_id ?? null,
+      }
+    }).filter((row) => {
+      const haystack = [row.sms_id, row.prev_sms_id, row.chain_root, row.wallet, row.inferred_wallet, row.device, row.provider, row.webhook_name].join(' ').toLowerCase()
+      if (q && !haystack.includes(q)) return false
+      if (wallets.length && !wallets.some((value) => String(row.wallet ?? '').includes(value))) return false
+      if (providers.length && !providers.includes(String(row.provider ?? '').toLowerCase())) return false
+      if (devices.length && !devices.includes(String(row.device ?? '').toLowerCase())) return false
+      if (from && (!row.received_at || Date.parse(String(row.received_at)) < Date.parse(`${from}T00:00:00Z`))) return false
+      if (to && (!row.received_at || Date.parse(String(row.received_at)) > Date.parse(`${to}T23:59:59.999Z`))) return false
+      if (status !== 'all' && row.continuity !== status) return false
+      return true
+    })
+
+    const providersOut = [...new Set(enriched.map((row) => String(row.provider ?? '')).filter(Boolean))].sort()
+    const devicesOut = [...new Set(enriched.map((row) => String(row.device ?? '')).filter(Boolean))].sort()
+    const kpis = {
+      chains: enriched.length,
+      wallets: new Set(enriched.map((row) => row.wallet).filter(Boolean)).size,
+      evidence_links: enriched.reduce((sum, row) => sum + row.evidence_tx_links, 0),
+      warnings: enriched.filter((row) => row.continuity === 'warning').length,
+    }
+    return c.json({ rows: enriched.slice(0, limit), total: enriched.length, kpis, options: { providers: providersOut, devices: devicesOut } })
+  },
+)
+
 const DEPOSIT_COLS =
   'tx_id, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, receiving_wallet, to_account_number, payment_method, gateway, merchant, master_merchant, approved_by, proof_image_url, first_seen_at, created_utc, maven_raw_row, provider_amount, local_amount, amount_sync_status, amount_mismatch_reason, amount_confirmed_at, amount_confirmed_by, settlement_blocked'
 const PAYOUT_COLS =

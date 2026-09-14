@@ -143,6 +143,20 @@ binanceRoutes.get('/market', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) =>
   return c.json({ prices: result, source: 'Binance Spot public market data', at: new Date().toISOString() })
 })
 
+// A lightweight, account-authorized health check. It never returns credentials
+// or provider payloads; it only confirms whether a signed C2C read succeeds.
+binanceRoutes.get('/health', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) => {
+  const creds = await credentials()
+  if (!creds) return c.json({ connected: false, reason: 'credentials_required', checked_at: new Date().toISOString() })
+  try {
+    const response = await signedC2cHistory(creds, 'BUY', 1, 1)
+    const result = await response.json().catch(() => ({})) as Record<string, unknown>
+    return c.json({ connected: response.ok, reason: response.ok ? null : 'provider_rejected_request', provider_status: response.status, code: result.code ?? null, checked_at: new Date().toISOString() })
+  } catch (error) {
+    return c.json({ connected: false, reason: 'binance_unreachable', detail: error instanceof Error ? error.message : 'request_failed', checked_at: new Date().toISOString() }, 502)
+  }
+})
+
 binanceRoutes.get('/wallet', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) => {
   const creds = await credentials()
   if (!creds) return c.json({ error: 'credentials_required' }, 409)
@@ -153,15 +167,19 @@ binanceRoutes.get('/wallet', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) =>
       const value = row as Record<string, unknown>
       return { asset: String(value.asset ?? ''), free: String(value.free ?? '0'), locked: String(value.locked ?? '0') }
     }).filter((row) => Number(row.free) > 0 || Number(row.locked) > 0) : []
-    let source = 'spot'
-    if (!spotResponse.ok) {
-      const fundingResponse = await signedFundingBalances(creds)
-      const fundingResult = await fundingResponse.json().catch(() => ({ msg: 'invalid_response' }))
-      if (!fundingResponse.ok) return c.json({ error: 'binance_error', provider_status: fundingResponse.status, code: (fundingResult as Record<string, unknown>).code ?? spotResult.code ?? null, message: (fundingResult as Record<string, unknown>).msg ?? spotResult.msg ?? null }, 502)
-      balances = Array.isArray(fundingResult) ? fundingResult.map((row) => { const value = row as Record<string, unknown>; return { asset: String(value.asset ?? ''), free: String(value.free ?? value.amount ?? '0'), locked: String(value.freeze ?? value.locked ?? '0') } }).filter((row) => Number(row.free) > 0 || Number(row.locked) > 0) : []
-      source = 'funding'
+    const fundingResponse = await signedFundingBalances(creds).catch(() => null)
+    const fundingResult = fundingResponse ? await fundingResponse.json().catch(() => ({ msg: 'invalid_response' })) : []
+    const fundingBalances = fundingResponse?.ok && Array.isArray(fundingResult) ? fundingResult.map((row) => { const value = row as Record<string, unknown>; return { asset: String(value.asset ?? ''), free: String(value.free ?? value.amount ?? '0'), locked: String(value.freeze ?? value.locked ?? '0') } }).filter((row) => Number(row.free) > 0 || Number(row.locked) > 0) : []
+    if (!spotResponse.ok && !fundingResponse?.ok) {
+      return c.json({ error: 'binance_error', provider_status: fundingResponse?.status ?? spotResponse.status, code: (fundingResult as Record<string, unknown>).code ?? spotResult.code ?? null, message: (fundingResult as Record<string, unknown>).msg ?? spotResult.msg ?? null }, 502)
     }
-    return c.json({ balances, source, accountType: spotResult.accountType ?? null, canTrade: spotResult.canTrade ?? null, at: new Date().toISOString() })
+    const byAsset = new Map<string, { asset: string; free: number; locked: number }>()
+    for (const row of [...balances, ...fundingBalances]) {
+      const current = byAsset.get(row.asset) ?? { asset: row.asset, free: 0, locked: 0 }
+      current.free += Number(row.free) || 0; current.locked += Number(row.locked) || 0
+      byAsset.set(row.asset, current)
+    }
+    return c.json({ balances: [...byAsset.values()].map((row) => ({ asset: row.asset, free: String(row.free), locked: String(row.locked) })), source: spotResponse.ok && fundingResponse?.ok ? 'spot+funding' : spotResponse.ok ? 'spot' : 'funding', accountType: spotResult.accountType ?? null, canTrade: spotResult.canTrade ?? null, at: new Date().toISOString() })
   } catch (error) {
     return c.json({ error: 'binance_unreachable', detail: error instanceof Error ? error.message : 'request_failed' }, 502)
   }
