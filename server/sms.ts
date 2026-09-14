@@ -518,7 +518,7 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
 
   const [{ data: sms, error: smsErr }, { data: tx, error: txErr }, { data: existingTxLinks, error: linkErr }] = await Promise.all([
     db.from('inbound_sms').select('id, matched, match_status, sms_category, amount, received_at, receiver_number, sender_name, sender_number, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').eq('id', id).maybeSingle(),
-    db.from('maven_transactions').select('tx_id, amount, status, sender_number, first_seen_at, ontarget_ref').eq('tx_id', txId).maybeSingle(),
+    db.from('maven_transactions').select('tx_id, amount, status, gateway, sender_number, first_seen_at, ontarget_ref').eq('tx_id', txId).maybeSingle(),
     db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').or(`consumed_by_tx_id.eq.${txId},matched_transaction_id.eq.${txId},maven_transaction_id.eq.${txId}`).limit(2),
   ])
   if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
@@ -615,7 +615,44 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
     })
   }
 
-  return c.json({ ok: true, learned_sms_name: learnedIdentity })
+  // A deliberate SMS assignment is a confirmed operator match. For a pending
+  // NGPay deposit, execute the provider action immediately instead of waiting
+  // for the next automation sweep. Automation remains a gate: when it is off,
+  // the SMS is linked but the transaction stays pending for manual approval.
+  let providerApproval: Record<string, unknown> = { attempted: false }
+  const gateway = String(tx.gateway ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+  if (tx.status === 'PENDING' && (gateway === 'nagupayp2p' || gateway === 'nagopay')) {
+    const { data: settings } = await db.from('automation_settings').select('automation_enabled').eq('id', 1).maybeSingle()
+    if (settings?.automation_enabled === true) {
+      const baseUrl = process.env.SUPABASE_URL
+      const serviceKey = process.env.SUPABASE_SECRET_KEY
+      providerApproval = { attempted: true }
+      if (!baseUrl || !serviceKey) {
+        providerApproval = { attempted: true, ok: false, error: 'worker_not_configured' }
+      } else {
+        try {
+          const response = await fetch(`${baseUrl}/functions/v1/ngpay-approve`, {
+            method: 'POST',
+            signal: AbortSignal.timeout(45_000),
+            headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
+            body: JSON.stringify({ tx_id: txId, decision: 'PAID', actor_name: actor.username, remark: `Approved immediately after SMS assignment #${id}` }),
+          })
+          const result = await response.json().catch(() => ({ error: 'worker_invalid_response' })) as Record<string, unknown>
+          const executed = response.ok && result.executed_on_provider === true
+          providerApproval = { attempted: true, ok: executed, status: response.status, result }
+          if (executed) {
+            const now = new Date().toISOString()
+            await db.from('maven_transactions').update({ status: 'PAID', approved_by: actor.username, last_status_change: now, updated_at: now }).eq('tx_id', txId).eq('status', 'PENDING')
+            await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'sms.link_immediate_provider_approval', entity: 'maven_transactions', entity_id: String(txId), after: { sms_id: Number(id), status: 'PAID', provider_execution: true } })
+          }
+        } catch (error) {
+          providerApproval = { attempted: true, ok: false, error: error instanceof Error ? error.message : 'provider_worker_failed' }
+        }
+      }
+    }
+  }
+
+  return c.json({ ok: true, learned_sms_name: learnedIdentity, provider_approval: providerApproval })
 })
 
 smsRoutes.post('/:id/unlink', requirePerm('sms_live', 'can_edit'), async (c) => {
