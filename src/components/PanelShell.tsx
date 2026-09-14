@@ -256,6 +256,7 @@ function TelegramRail({ onMinimize }: { onMinimize: () => void }) {
 function SmsRail({ onMinimize }: { onMinimize: () => void }) {
   const [rows, setRows] = useState<RailSms[]>([])
   const [devices, setDevices] = useState<RailDevice[]>([])
+  const [selected, setSelected] = useState<RailSms | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -316,7 +317,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
             ? r.linked_wallet_number ?? r.wallet_number ?? r.receiver_number
             : r.confirmed_wallet_number ?? r.wallet_number ?? r.receiver_number
           return (
-            <Link key={r.id} to={`/sms?sms_id=${r.id}`} className={`sms-feed-item${linked ? ' matched' : ''}${!linked && (r.sms_category === 'deposit' || r.sms_category === 'withdrawal') ? ' unlinked' : ''}${r.sms_category === 'withdrawal' ? ' withdrawal' : ''}`}>
+            <button key={r.id} type="button" onClick={() => setSelected(r)} className={`sms-feed-item sms-feed-button${linked ? ' matched' : ''}${!linked && (r.sms_category === 'deposit' || r.sms_category === 'withdrawal') ? ' unlinked' : ''}${r.sms_category === 'withdrawal' ? ' withdrawal' : ''}`} aria-label={`SMS ${r.id} details`}>
               <div className="sms-feed-head">
                 <span className="sms-feed-device">{r.device_name ?? '—'}{r.sim_slot != null && <> · SIM{r.sim_slot}</>}</span>
                 <span className="sms-feed-time mono">{depositTime({ first_seen_at: r.received_at })}</span>
@@ -329,10 +330,33 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
               <div className={`sms-feed-status ${linked ? 'link' : r.sms_category === 'deposit' || r.sms_category === 'withdrawal' ? 'wait' : 'info'}`}>
                 {walletLinked ? <>👛 محفظة <span className="mono">{r.linked_wallet_number}</span></> : linked ? <>🔗 مرتبطة <span className="mono">{r.matched_ontarget_ref ?? r.matched_tx_id}</span></> : r.sms_category === 'deposit' ? '⏳ بانتظار مطابقة' : r.sms_category === 'withdrawal' ? '⚠ محفظة غير معروفة' : 'غير مالية'}
               </div>
-            </Link>
+            </button>
           )
         })}
       </div>
+      {selected && (() => {
+        const selectedWallet = selected.sms_category === 'withdrawal'
+          ? selected.linked_wallet_number ?? selected.wallet_number ?? selected.receiver_number
+          : selected.confirmed_wallet_number ?? selected.wallet_number ?? selected.receiver_number
+        const selectedBalance = selected.balance_after ?? selected.wallet_balance_after
+        const selectedRaw = selected.raw_sms ?? selected.message ?? selected.sms_first_line
+        const selectedLinked = selected.sms_category === 'withdrawal' ? selected.linked_wallet_number != null : selected.matched_tx_id != null
+        return <div className="sms-detail-sheet" role="dialog" aria-modal="true" aria-label="SMS details" onClick={() => setSelected(null)}>
+          <section className="sms-detail-sheet-card" onClick={(event) => event.stopPropagation()}>
+            <header><div><span className="cell-sub">SMS #{selected.id}</span><h3>{selected.sms_category === 'withdrawal' ? 'تحويل خارج' : 'استلام وارد'} · {money(selected.amount, 'EGP')}</h3></div><button type="button" className="sms-widget-icon-btn" onClick={() => setSelected(null)} aria-label="Close SMS details"><X size={16} /></button></header>
+            <div className="sms-detail-sheet-grid">
+              <div><span>المحفظة</span><strong className="mono">{selectedWallet ?? '—'}</strong></div>
+              <div><span>المرسل</span><strong>{selected.sender_name ?? selected.sender_number ?? '—'}</strong></div>
+              <div><span>الرصيد بعد العملية</span><strong className="mono">{selectedBalance == null ? '—' : money(selectedBalance, 'EGP')}</strong></div>
+              <div><span>الجهاز</span><strong className="mono">{selected.device_name ?? '—'}{selected.sim_slot != null ? ` · SIM${selected.sim_slot}` : ''}</strong></div>
+              <div><span>حالة الربط</span><strong>{selectedLinked ? 'مرتبطة' : 'بانتظار المطابقة'}</strong></div>
+              <div><span>المعاملة</span><strong className="mono">{selected.matched_ontarget_ref ?? selected.matched_tx_id ?? '—'}</strong></div>
+            </div>
+            {selectedRaw && <div className="sms-detail-sheet-raw" dir="auto"><span>Raw SMS</span><p>{selectedRaw}</p></div>}
+            <footer><span className="cell-sub">{depositTime({ first_seen_at: selected.received_at })}</span><button type="button" className="btn-ghost btn-sm" onClick={() => setSelected(null)}>إغلاق</button></footer>
+          </section>
+        </div>
+      })()}
     </aside>
   )
 }

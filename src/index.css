@@ -1556,6 +1556,7 @@ a.stat-card:hover { border-color: var(--accent); }
   display: block;
 }
 .sms-feed-item:hover { border-color: var(--text-muted); background: var(--hover-2); }
+.sms-feed-button { width: 100%; text-align: start; font: inherit; color: inherit; }
 .sms-feed-item.matched { background: var(--green-bg); border-color: var(--green-border); }
 .sms-feed-item.unlinked { border: 2px solid #eab308; background: rgba(234,179,8,.09); box-shadow: inset 3px 0 0 #eab308, 0 0 12px rgba(234,179,8,.16); }
 .sms-widget-launcher.has-unlinked { border-color: #eab308; box-shadow: var(--shadow-panel), 0 0 0 3px rgba(234,179,8,.2), 0 0 24px rgba(234,179,8,.34); }
@@ -1573,6 +1574,19 @@ a.stat-card:hover { border-color: var(--accent); }
 .sms-feed-wallet { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 7px 9px; border: 1px solid var(--blue-border, rgba(96,165,250,.35)); border-radius: 8px; background: rgba(59,130,246,.10); color: var(--text-muted); font-size: 10.5px; }
 .sms-feed-wallet svg { color: var(--status-info, #60a5fa); flex: 0 0 auto; }
 .sms-feed-wallet strong { margin-inline-start: auto; color: var(--text); font-size: 11px; direction: ltr; }
+.sms-detail-sheet { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: flex-end; justify-content: center; padding: 20px; background: rgba(3, 7, 18, .38); backdrop-filter: blur(3px); }
+.sms-detail-sheet-card { width: min(560px, 100%); max-height: min(75vh, 680px); overflow: auto; border: 1px solid var(--border); border-radius: 18px; padding: 18px; background: var(--surface); color: var(--text); box-shadow: 0 20px 60px rgba(0,0,0,.32); animation: sms-sheet-in .2s ease-out; }
+.sms-detail-sheet-card header, .sms-detail-sheet-card footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sms-detail-sheet-card h3 { margin: 3px 0 0; font-size: 17px; }
+.sms-detail-sheet-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin: 16px 0; }
+.sms-detail-sheet-grid > div { display: flex; flex-direction: column; gap: 4px; padding: 9px; border: 1px solid var(--border); border-radius: 10px; background: var(--hover-2); }
+.sms-detail-sheet-grid span, .sms-detail-sheet-raw > span { color: var(--text-muted); font-size: 10px; }
+.sms-detail-sheet-grid strong { font-size: 12px; overflow-wrap: anywhere; }
+.sms-detail-sheet-raw { padding: 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--hover-2); }
+.sms-detail-sheet-raw p { margin: 6px 0 0; max-height: 150px; overflow: auto; white-space: pre-wrap; font-size: 12px; line-height: 1.55; }
+.sms-detail-sheet-card footer { margin-top: 14px; }
+@keyframes sms-sheet-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 540px) { .sms-detail-sheet { padding: 10px; } .sms-detail-sheet-grid { grid-template-columns: 1fr; } }
 .sms-balance-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--status-paid); box-shadow: 0 0 0 3px color-mix(in srgb,var(--status-paid) 18%,transparent), 0 0 10px color-mix(in srgb,var(--status-paid) 60%,transparent); }
 .sms-drawer-balance { margin: 10px 0 0; }
 .sms-provider-report{margin:14px 0;padding:14px;border:1px solid color-mix(in srgb,#4ade80 34%,var(--border));border-radius:18px;background:linear-gradient(160deg,#111713,var(--surface-raised));color:#f3f4f6;box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
