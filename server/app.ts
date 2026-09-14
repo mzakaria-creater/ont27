@@ -24,6 +24,7 @@ import { monitoringRoutes } from './monitoring.js'
 import { replayRoutes } from './replay.js'
 import { chatRoutes } from './chat.js'
 import { revenueRoutes } from './revenue.js'
+import { financeOpsRoutes } from './financeOps.js'
 import { webhookRoutes } from './webhooks.js'
 import { railwayApiRoutes } from './railwayApi.js'
 import { ticketRoutes } from './tickets.js'
@@ -48,9 +49,6 @@ app.route('/cron', deltaSyncRoutes)
 app.route('/control', controlRoutes)
 app.route('/complaints', complaintRoutes)
 app.route('/tickets', ticketRoutes)
-// These routes intentionally precede the legacy aggregate endpoints in
-// extras.ts: they are the authenticated CRUD surfaces for the new neutral
-// payment catalogue and operational administration.
 app.route('/payment-methods', paymentMethodRoutes)
 app.route('/admin', adminRoutes)
 app.route('/reports', reportsRoutes)
@@ -62,9 +60,9 @@ app.route('/review', reviewRoutes)
 app.route('/telegram', telegramRoutes)
 app.route('/binance', binanceRoutes)
 app.route('/revenue', revenueRoutes)
+app.route('/finance-ops', financeOpsRoutes)
 app.route('/webhooks', webhookRoutes)
 app.route('/railway', railwayApiRoutes)
-// Transaction status/amount edits + the operator request queue behind them.
 app.route('/tx', txEditRoutes)
 app.route('/v1', publicApiRoutes)
 app.route('/v1/gateway', gatewayRoutes)
