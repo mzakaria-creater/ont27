@@ -104,7 +104,7 @@ payoutRoutes.get("/", requirePerm("payouts", "can_view"), async (c) => {
     .order("first_seen_at", { ascending: false, nullsFirst: false })
     .order("maven_id", { ascending: false })
     .range(offset, offset + limit - 1);
-  query = await applyPayoutScopes(query,c.get("actor"),"view");
+  ;({ query } = await applyPayoutScopes(query,c.get("actor"),"view"));
 
   if (statuses.length) query = query.in("status", [...new Set(statuses.flatMap((value) => value === "PAID" ? ["PAID", "APPROVED"] : [value]))]);
   if (from && /^\d{4}-\d{2}-\d{2}$/.test(from))

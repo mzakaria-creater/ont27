@@ -28,8 +28,8 @@ adminRoutes.get('/transactions', requirePerm('transactions', 'can_view'), async 
     .order('first_seen_at', { ascending, nullsFirst: false })
     .order('tx_id', { ascending }).range(offset, offset + limit - 1)
   let summaryQuery = db.from('maven_transactions').select('status, amount').limit(10_000)
-  query = await applyDepositScopes(query,c.get('actor'),'view')
-  summaryQuery = await applyDepositScopes(summaryQuery,c.get('actor'),'view')
+  ;({ query } = await applyDepositScopes(query,c.get('actor'),'view'))
+  ;({ query: summaryQuery } = await applyDepositScopes(summaryQuery,c.get('actor'),'view'))
   if (statuses.length) {
     const expanded = [...new Set(statuses.flatMap((value) => value === 'PAID' ? ['PAID', 'APPROVED'] : [value]))]
     query = query.in('status', expanded)

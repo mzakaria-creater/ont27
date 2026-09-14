@@ -316,7 +316,7 @@ async function applyEdit(
   })
 
   if (edit.status === 'PAID' || edit.status === 'APPROVED') {
-    await notifyApprovedTransaction({ ...tx, tx_id: txId, amount: edit.amount ?? tx.amount, status: edit.status, approved_by: actorName, approved_at: new Date().toISOString(), provider_confirmed: executed === true })
+    await notifyApprovedTransaction({ ...tx, tx_id: txId, status: edit.status, approved_by: actorName, approved_at: new Date().toISOString(), provider_confirmed: executed === true })
   }
 
   return { ok: true, localOnly, executed }

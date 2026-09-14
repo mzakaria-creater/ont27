@@ -13,6 +13,14 @@ export async function actorScopes(actor:AccessClaims,level:ScopeLevel='view'){
 
 // Scope rows are opt-in restrictions: no rows preserves the role's full data
 // set; once any rows exist, each configured dimension is enforced as an AND.
+//
+// NOTE: these return `{ query }` rather than `query` directly. The Supabase
+// query builder is itself thenable, so returning it straight from an async
+// function makes `await applyDepositScopes(...)` resolve the *query result*
+// instead of the builder (JS re-resolves a thenable return value) — silently
+// running the query early and leaving callers with a plain {data,error}
+// object that has no .in()/.or() to keep chaining. Wrapping in a plain
+// object sidesteps that.
 export async function applyDepositScopes(query:any,actor:AccessClaims,level:ScopeLevel='view'){
   const rows=await actorScopes(actor,level)
   const values=(type:string)=>rows.filter((r)=>r.scope_type===type).map((r)=>r.scope_value)
@@ -21,7 +29,7 @@ export async function applyDepositScopes(query:any,actor:AccessClaims,level:Scop
   if(methods.length)query=query.in('payment_method',methods)
   if(merchants.length)query=query.in('merchant',merchants)
   if(types.length)query=query.in('request_type',types)
-  return query
+  return { query }
 }
 
 export async function applyPayoutScopes(query:any,actor:AccessClaims,level:ScopeLevel='view'){
@@ -30,7 +38,7 @@ export async function applyPayoutScopes(query:any,actor:AccessClaims,level:Scope
   const methods=values('payment_method'),merchants=values('merchant')
   if(methods.length)query=query.in('pay_by',methods)
   if(merchants.length)query=query.in('merchant',merchants)
-  return query
+  return { query }
 }
 
 export async function rowAllowed(actor:AccessClaims,row:Record<string,unknown>,level:ScopeLevel){

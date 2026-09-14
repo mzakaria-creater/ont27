@@ -195,7 +195,7 @@ depositRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
     .order('first_seen_at', { ascending: false, nullsFirst: false })
     .order('tx_id', { ascending: false })
     .range(offset, offset + limit - 1)
-  query = await applyDepositScopes(query,c.get('actor'),'view')
+  ;({ query } = await applyDepositScopes(query,c.get('actor'),'view'))
 
   if (statuses.length) query = query.in('status', [...new Set(statuses.flatMap((value) => value === 'PAID' ? ['PAID', 'APPROVED'] : [value]))])
   if (masters.length) query = query.in('master_merchant', masters)
