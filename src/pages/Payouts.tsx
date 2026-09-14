@@ -348,6 +348,17 @@ export default function Payouts() {
       setDetailLoading(false);
     }
   };
+  useEffect(() => {
+    if (params.get("edit") !== "1" || !appliedQ || selected || detailLoading || !data) return;
+    const target = data.rows.find((row) =>
+      String(row.maven_id) === appliedQ || String(row.ontarget_ref ?? "") === appliedQ,
+    );
+    if (!target) return;
+    void openDetail(target.maven_id, true);
+    const next = new URLSearchParams(params);
+    next.delete("edit");
+    setParams(next, { replace: true });
+  }, [data, appliedQ, detailLoading, params, selected, setParams]);
   const saveEdit = async () => {
     if (!selected) return;
     const statusChanged = editForm.status !== selected.status;
