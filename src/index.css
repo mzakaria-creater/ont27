@@ -2,49 +2,70 @@
 :root[data-theme='dark'] {
   /* "Live Transaction Monitor" design system — dark. Status colors are
      reserved EXCLUSIVELY for transaction status. */
-  --bg: #050506;
-  --surface: #0f1013;
-  --surface-raised: #13151a;
-  --surface-glass: rgba(10, 11, 14, 0.94);
-  --border: #1c2129;
-  --border-soft: #1a1b1f;
-  --text: #eaeae7;
-  --text-dim: #8b8f98;
-  --text-muted: #4a4b52;
+  --bg: #0b0f17;
+  --surface: #111827;
+  --surface-raised: rgba(20, 25, 38, 0.72);
+  --surface-glass: rgba(20, 25, 38, 0.72);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-soft: rgba(255, 255, 255, 0.05);
+  --text: #f8fafc;
+  --text-dim: #94a3b8;
+  --text-muted: rgba(148, 163, 184, 0.55);
   --hover: rgba(255, 255, 255, 0.04);
   --hover-2: rgba(255, 255, 255, 0.07);
-  --status-pending: #d99a3a; /* PENDING only */
-  --status-paid: #3ecf8e;    /* PAID only */
-  --status-declined: #e2585a;/* DECLINED only */
-  --amber-bg: rgba(217, 154, 58, 0.14);
-  --amber-border: rgba(217, 154, 58, 0.35);
-  --green-bg: rgba(62, 207, 142, 0.12);
-  --green-border: rgba(62, 207, 142, 0.3);
-  --red-bg: rgba(226, 88, 90, 0.12);
-  --red-border: rgba(226, 88, 90, 0.3);
+  --status-pending: #fbbf24; /* PENDING only */
+  --status-paid: #34d399;    /* PAID only */
+  --status-declined: #ff6b6b;/* DECLINED only */
+  --amber-bg: rgba(251, 191, 36, 0.14);
+  --amber-border: rgba(251, 191, 36, 0.35);
+  --green-bg: rgba(52, 211, 153, 0.12);
+  --green-border: rgba(52, 211, 153, 0.3);
+  --red-bg: rgba(255, 107, 107, 0.12);
+  --red-border: rgba(255, 107, 107, 0.3);
   --ngpay: #8fc255;
   --ngpay-bg: #161f0d;
   --payfuture: #a89ee8;
   --payfuture-bg: #191632;
-  --brand-purple: #6d28d9;
-  --brand-blue: #2f8fef;
-  --accent: #d99a3a;
-  --shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --shadow-panel: 0 24px 72px rgba(0, 0, 0, 0.68), 0 0 0 1px rgba(255,255,255,.025);
-  --focus-ring: 0 0 0 3px rgba(217,154,58,.22);
+  --brand-purple: #667eea;
+  --brand-blue: #764ba2;
+  --accent: #667eea;
+  --shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-panel: 0 24px 72px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255,255,255,.04);
+  --focus-ring: 0 0 0 3px rgba(102,126,234,.35);
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Premium fintech gradient accents, layered on top of the token system above. */
+  --gradient-primary: linear-gradient(135deg, #667eea, #764ba2);
+  --gradient-cyan: linear-gradient(135deg, #4facfe, #00f2fe);
+  --gradient-warm: linear-gradient(135deg, #fa709a, #fee140);
+  --gradient-danger: linear-gradient(135deg, #ff6b6b, #ee5a6f);
+  --gradient-pink: linear-gradient(135deg, #f093fb, #f5576c);
+  --glass-blur: blur(20px) saturate(150%);
   /* Shared aliases used by the Live Operations Monitor components. Keeping
      them here makes every page use the same dark surface and status system. */
   --card: var(--surface-raised);
-  --surface-2: #171a21;
-  --surface-soft: #111318;
-  --panel-soft: #111318;
+  --surface-2: rgba(20, 25, 38, 0.6);
+  --surface-soft: rgba(17, 24, 39, 0.55);
+  --panel-soft: rgba(17, 24, 39, 0.55);
   --line: var(--border);
   --muted: var(--text-dim);
   --success: var(--status-paid);
   --danger: var(--status-declined);
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --shadow: var(--shadow-panel);
+}
+
+/* Glassmorphism pass: backdrop-blur every card/panel/kpi/modal-style surface
+   now that their background tokens are translucent. Kept to a class-name
+   match so it doesn't require touching each component's markup. */
+:root[data-theme='dark'] [class*="-card"],
+:root[data-theme='dark'] [class*="-kpi"],
+:root[data-theme='dark'] [class*="-panel"],
+:root[data-theme='dark'] [class*="-modal"],
+:root[data-theme='dark'] [class*="-drawer"],
+:root[data-theme='dark'] [class*="-popover"],
+:root[data-theme='dark'] .card {
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
 }
 
 :root[data-theme='light'] {
@@ -191,7 +212,7 @@ body {
 }
 
 .card {
-  background: linear-gradient(145deg, color-mix(in srgb, var(--surface-raised) 96%, white 1%), var(--surface));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--surface-raised) 96%, white 4%), var(--surface-raised));
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 24px 28px;
@@ -1135,7 +1156,7 @@ a.sidebar-link { text-decoration: none; color: inherit; }
   margin-block-end: 16px;
 }
 .stat-card {
-  background: var(--surface);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 16px;
@@ -1609,7 +1630,7 @@ a.stat-card:hover { border-color: var(--accent); }
 
 /* KPI cards */
 .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
-.kpi-card { padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; text-decoration: none; color: inherit; display: block; }
+.kpi-card { padding: 16px; background: var(--surface-raised); border: 1px solid var(--border); border-radius: 18px; text-decoration: none; color: inherit; display: block; }
 .kpi-card.amber { background: linear-gradient(135deg, var(--amber-bg), transparent); border-color: var(--amber-border); }
 .kpi-icon { font-size: 18px; margin-bottom: 8px; display: block; }
 .kpi-value { font-size: 24px; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1; }
