@@ -105,6 +105,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/merchants', icon: '🏬', labelAr: 'التجار', labelEn: 'Merchants', keys: ['merchants'], group: 'customers' },
   { to: '/wallets', icon: '👛', labelAr: 'المحافظ', labelEn: 'Wallets', keys: ['wallets'], group: 'payments' },
   { to: '/mavenwallets', icon: '◉', labelAr: 'محافظ Maven', labelEn: 'Maven Wallets', keys: ['wallets'], group: 'payments' },
+  { to: '/ngpay-wallet-management', icon: '🛠️', labelAr: 'تغيير محافظ NGPay', labelEn: 'NGPay wallet management', keys: ['wallets'], group: 'payments' },
   { to: '/payment-methods', icon: '💳', labelAr: 'طرق الدفع', labelEn: 'Payment Methods', keys: ['wallets', 'payment_methods'], group: 'payments' },
   { to: '/merchant-payment-setup', icon: '🧩', labelAr: 'إعداد دفع التجار', labelEn: 'Merchant Payment Setup', keys: ['wallets', 'payment_methods'], group: 'payments' },
   { to: '/known-recipients', icon: '🎯', labelAr: 'المستلمون المعروفون', labelEn: 'Known Recipients', keys: ['wallets', 'payouts'], group: 'payments' },
@@ -200,6 +201,9 @@ interface RailSms {
   sender_name: string | null
   sender_number: string | null
   amount: number | null
+  receiver_number?: string | null
+  wallet_number?: string | null
+  confirmed_wallet_number?: string | null
   sms_category: string | null
   matched: boolean | null
   match_status: string | null
@@ -308,6 +312,9 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
           const linked = walletLinked || r.matched_tx_id != null
           const rawText = r.raw_sms ?? r.message ?? r.sms_first_line
           const balance = r.balance_after ?? r.wallet_balance_after
+          const receivingWallet = r.sms_category === 'withdrawal'
+            ? r.linked_wallet_number ?? r.wallet_number ?? r.receiver_number
+            : r.confirmed_wallet_number ?? r.wallet_number ?? r.receiver_number
           return (
             <Link key={r.id} to={`/sms?sms_id=${r.id}`} className={`sms-feed-item${linked ? ' matched' : ''}${!linked && (r.sms_category === 'deposit' || r.sms_category === 'withdrawal') ? ' unlinked' : ''}${r.sms_category === 'withdrawal' ? ' withdrawal' : ''}`}>
               <div className="sms-feed-head">
@@ -315,6 +322,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
                 <span className="sms-feed-time mono">{depositTime({ first_seen_at: r.received_at })}</span>
               </div>
               <div className="sms-feed-body">{r.sms_category === 'withdrawal' ? 'تحويل' : 'استلام'} {money(r.amount, 'EGP')}{' '}{r.sender_name ?? r.sender_number ? `— ${r.sender_name ?? r.sender_number}` : ''}</div>
+              <div className="sms-feed-wallet"><WalletCards size={13} aria-hidden="true" /><span>{r.sms_category === 'withdrawal' ? 'المحفظة الدافعة' : 'المحفظة المستقبِلة'}</span><strong className="mono">{receivingWallet ?? '—'}</strong></div>
               {rawText && <div className="sms-feed-raw" dir="auto">{rawText}</div>}
               {balance != null && <div className="sms-balance-line"><span className="sms-balance-dot" aria-hidden="true" /> <span>{'الرصيد الحالي'}</span><strong className="mono">{money(balance, 'EGP')}</strong></div>}
               {walletLinked && <div className="cell-sub mono">{r.linked_wallet_number}</div>}

@@ -283,6 +283,70 @@ walletRoutes.post('/allocation/simulate', requirePerm('wallets', 'can_view'), as
   })
 })
 
+// Controlled NGPay wallet-number replacement. The wallet map uses the phone
+// number as its primary key, so this endpoint deliberately refuses to merge
+// rows into an existing number. The UI can therefore bulk-edit a selection
+// without silently deleting device/SIM mappings.
+walletRoutes.post('/ngpay/bulk-replace', requirePerm('wallets', 'can_edit'), async (c) => {
+  const body = await c.req.json<{ wallet_numbers?: unknown; new_wallet_number?: unknown; merge?: unknown }>().catch(() => null)
+  const walletNumbers = Array.isArray(body?.wallet_numbers)
+    ? [...new Set(body.wallet_numbers.map((value) => String(value ?? '').replace(/\D/g, '')).filter((value) => /^\d{8,20}$/.test(value)))]
+    : []
+  const newWallet = String(body?.new_wallet_number ?? '').replace(/\D/g, '')
+  if (!walletNumbers.length || !/^\d{8,20}$/.test(newWallet)) return c.json({ error: 'invalid_ngpay_bulk_replace' }, 400)
+
+  const { data: rows, error: readError } = await db
+    .from('wallet_device_map')
+    .select('to_account_number, device, provider, payment_type, merchant, sim_slot, daily_limit, confidence, auto_inferred, updated_at')
+    .in('to_account_number', walletNumbers)
+    .eq('merchant', 'NGPay-MelBet-Prod')
+  if (readError) return c.json({ error: 'db_error', detail: readError.message }, 500)
+
+  const found = rows ?? []
+  const missing = walletNumbers.filter((number) => !found.some((row) => row.to_account_number === number))
+  if (body?.merge === true) {
+    const { data, error } = await db.rpc('merge_ngpay_wallets', {
+      p_wallet_numbers: walletNumbers,
+      p_new_wallet: newWallet,
+      p_actor: c.get('actor').username,
+    })
+    if (error) return c.json({ error: 'ngpay_merge_failed', detail: error.message, missing }, 409)
+    return c.json({ ok: true, merged: data, missing })
+  }
+  const conflicts = found.filter((row) => row.to_account_number !== newWallet && walletNumbers.length > 1 && newWallet === row.to_account_number)
+  if (conflicts.length) return c.json({ error: 'replacement_conflicts', detail: 'The target number is already one of the selected wallet keys.', conflicts }, 409)
+
+  const existing = await db.from('wallet_device_map').select('to_account_number, device, merchant').eq('to_account_number', newWallet).maybeSingle()
+  if (existing.error) return c.json({ error: 'db_error', detail: existing.error.message }, 500)
+  if (existing.data && !walletNumbers.includes(newWallet)) {
+    return c.json({ error: 'target_wallet_exists', detail: 'The target number already exists. Select that row instead of merging it.', target: existing.data }, 409)
+  }
+  if (found.length !== 1) {
+    return c.json({
+      error: 'bulk_merge_requires_confirmation',
+      detail: 'Several NGPay rows cannot share one primary-key wallet number. Update one row at a time or use the dedicated merge workflow.',
+      found: found.length,
+      missing,
+      target: newWallet,
+    }, 409)
+  }
+
+  const row = found[0]
+  const { data: updated, error: updateError } = await db.from('wallet_device_map')
+    .update({ to_account_number: newWallet, auto_inferred: false, confidence: 100, updated_at: new Date().toISOString(), merchant: 'NGPay-MelBet-Prod' })
+    .eq('to_account_number', row.to_account_number)
+    .select('to_account_number, device, provider, payment_type, merchant, sim_slot, daily_limit, confidence, auto_inferred, updated_at')
+    .single()
+  if (updateError) return c.json({ error: updateError.code === '23505' ? 'target_wallet_exists' : 'wallet_replace_failed', detail: updateError.message }, 409)
+
+  const actor = c.get('actor')
+  await Promise.all([
+    db.from('wallet_device_history').insert({ wallet_number: newWallet, device: row.device, sim_slot: row.sim_slot, changed_by: actor.username, note: `NGPay number replaced from ${row.to_account_number}` }),
+    db.from('audit_log').insert({ actor_type: 'panel_user', actor_id: actor.sub, actor_name: actor.username, action: 'ngpay_wallet_number_replaced', entity: 'wallet_device_map', entity_id: newWallet, before: row, after: updated }),
+  ]).catch(() => {})
+  return c.json({ ok: true, updated, missing })
+})
+
 walletRoutes.post('/:walletNumber/assignment', requirePerm('wallets', 'can_edit'), async (c) => {
   const walletNumber = decodeURIComponent(c.req.param('walletNumber')).trim()
   const body = await c.req.json<{ device?: string; sim_slot?: number | null; note?: string }>().catch(() => null)
