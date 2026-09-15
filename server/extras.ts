@@ -1094,12 +1094,11 @@ extraRoutes.delete('/automation/rules/:id', requireAnyPerm(['automation_rules','
   return c.json({ ok: true })
 })
 
-// Settings PATCH covers both the master kill switch (automation_enabled) and
-// the SMS-matching circuit breaker as two genuinely independent toggles --
-// disabling automation_enabled does not touch sms_feed_circuit_breaker_enabled
-// (verified live today: SMS kept flowing while automation_enabled=false).
+// Settings PATCH keeps the master switch, auto-decline switch and SMS-matching
+// circuit breaker independent. Disabling one must never silently change either
+// of the others.
 const SETTINGS_BOOL_FIELDS = [
-  'automation_enabled', 'sms_feed_circuit_breaker_enabled', 'ngpay_enabled', 'payfuture_enabled',
+  'automation_enabled', 'auto_decline_enabled', 'sms_feed_circuit_breaker_enabled', 'ngpay_enabled', 'payfuture_enabled',
   'balance_check_enabled', 'above_limit_to_manual', 'security_rules_enabled', 'wallet_switch_auto_enabled', 'turbo_mode',
   'use_crm_name_matching', 'use_near_amount_matching', 'use_unique_amount_matching', 'use_trxid_matching',
   'use_balance_timing_matching', 'use_wallet_verify_ocr', 'use_direct_field_matching', 'use_nameonly_ocr_matching', 'use_account_number_matching',
