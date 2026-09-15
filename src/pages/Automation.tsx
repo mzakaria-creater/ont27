@@ -10,6 +10,7 @@ import MultiSelectFilter from '../components/MultiSelectFilter'
 interface AutomationTemplate { id: string; settings: Record<string, number | boolean> }
 const HIGH_VALUE_SMS_THRESHOLD_EVENT = 'ontarget:high-value-sms-threshold'
 const HIGH_VALUE_SMS_THRESHOLD_MAX = 10_000_000
+const DEFAULT_HIGH_VALUE_SMS_THRESHOLD = 5_000
 const HIGH_VALUE_SMS_THRESHOLD_PRESETS = [5_000, 10_000, 20_000, 50_000]
 // Bilingual copy lives client-side so it follows the language switcher; the
 // server is the source of truth for the id + the actual settings payload.
@@ -207,8 +208,8 @@ export default function Automation() {
   }
 
   const openPopupSettings = () => {
-    const current = Number(data?.settings?.high_value_sms_popup_threshold ?? 10_000)
-    setPopupThreshold(String(Number.isFinite(current) && current >= 0 ? current : 10_000))
+    const current = Number(data?.settings?.high_value_sms_popup_threshold ?? DEFAULT_HIGH_VALUE_SMS_THRESHOLD)
+    setPopupThreshold(String(Number.isFinite(current) && current >= 0 ? current : DEFAULT_HIGH_VALUE_SMS_THRESHOLD))
     setPopupSettingsError(null)
     setPopupSettingsOpen(true)
   }
@@ -436,7 +437,7 @@ export default function Automation() {
               <span className="automation-popup-threshold-icon" aria-hidden="true"><CircleDollarSign size={20} /></span>
               <span>
                 <strong>{t('نافذة تنبيه المبالغ الكبيرة', 'High-value SMS popup')}</strong>
-                <small>{t('تظهر للرسائل الجديدة التي تتجاوز', 'Opens for new SMS amounts above')} {money(Number(settings.high_value_sms_popup_threshold ?? 10_000), 'EGP')}</small>
+                <small>{t('تظهر للرسائل الجديدة التي تتجاوز', 'Opens for new SMS amounts above')} {money(Number(settings.high_value_sms_popup_threshold ?? DEFAULT_HIGH_VALUE_SMS_THRESHOLD), 'EGP')}</small>
               </span>
             </div>
             <button type="button" className="btn-ghost btn-sm automation-popup-settings-button" disabled={!canControl} onClick={openPopupSettings}>
@@ -811,7 +812,7 @@ export default function Automation() {
               <input ref={popupInputRef} id="high-value-sms-threshold" type="number" min="0" max={HIGH_VALUE_SMS_THRESHOLD_MAX} step="100" inputMode="decimal" value={popupThreshold} onChange={(event) => { setPopupThreshold(event.target.value); setPopupSettingsError(null) }} aria-invalid={popupSettingsError != null} aria-describedby={popupSettingsError ? 'popup-threshold-hint popup-threshold-error' : 'popup-threshold-hint'} />
               <span>EGP</span>
             </div>
-            <small id="popup-threshold-hint">{t('مثال: 5,000 للتنبيه أكثر، أو 50,000 للتنبيه أقل. القيمة 0 تعرض كل مبلغ أكبر من صفر.', 'Example: 5,000 shows more alerts; 50,000 shows fewer. Zero alerts on every amount above zero.')}</small>
+            <small id="popup-threshold-hint">{t('التنبيه خاص برسائل السحب فقط: 5,000 يظهر تنبيهات أكثر، و50,000 يظهر أقل. القيمة 0 تعرض كل سحب أكبر من صفر.', 'Only withdrawal SMS alerts: 5,000 shows more; 50,000 shows fewer. Zero alerts on every withdrawal above zero.')}</small>
             <div className="automation-popup-presets" aria-label={t('قيم سريعة', 'Quick values')}>
               {HIGH_VALUE_SMS_THRESHOLD_PRESETS.map((preset) => <button key={preset} type="button" className={Number(popupThreshold) === preset ? 'is-selected' : ''} aria-pressed={Number(popupThreshold) === preset} onClick={() => { setPopupThreshold(String(preset)); setPopupSettingsError(null) }}>{money(preset, 'EGP')}</button>)}
             </div>

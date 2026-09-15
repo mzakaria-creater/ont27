@@ -983,7 +983,7 @@ extraRoutes.get(
       .eq('id', 1)
       .maybeSingle()
     if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-    return c.json({ high_value_sms_popup_threshold: Number(data?.high_value_sms_popup_threshold ?? 10_000) })
+    return c.json({ high_value_sms_popup_threshold: Number(data?.high_value_sms_popup_threshold ?? 5_000) })
   },
 )
 
