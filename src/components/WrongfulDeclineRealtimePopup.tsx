@@ -17,6 +17,7 @@ interface PopupAlert extends AlertRow {
   amount?: number
   wallet?: string | null
   smsId?: number
+  smsCategory?: 'deposit' | 'withdrawal'
 }
 
 interface SmsAlertRow {
@@ -157,7 +158,7 @@ export default function WrongfulDeclineRealtimePopup() {
         const amount = Number(row.amount)
         if (!['deposit', 'withdrawal'].includes(row.sms_category ?? '') || !Number.isFinite(amount) || amount <= highValueSmsThreshold) continue
         const transactionRef = row.matched_ontarget_ref ?? row.matched_payout_ref ?? (row.matched_tx_id == null ? null : String(row.matched_tx_id))
-        const wallet = row.confirmed_wallet_number ?? row.receiver_number ?? row.wallet_number ?? null
+        const wallet = row.confirmed_wallet_number ?? row.wallet_number ?? row.receiver_number ?? null
         enqueue({
           id: row.id,
           alert_type: 'high_value_sms',
@@ -170,6 +171,7 @@ export default function WrongfulDeclineRealtimePopup() {
           amount,
           wallet,
           smsId: row.id,
+          smsCategory: row.sms_category as 'deposit' | 'withdrawal',
         })
       }
     }
@@ -234,7 +236,7 @@ export default function WrongfulDeclineRealtimePopup() {
         </button>
       </article>)}
     </aside>}
-    {criticalAlert && <div className={`pending-work-overlay critical-alert-overlay ${criticalAlert.kind === 'complaint' ? 'complaint' : 'high-value-sms'}`} onMouseDown={closeCritical}>
+    {criticalAlert && <div className={`pending-work-overlay critical-alert-overlay ${criticalAlert.kind === 'complaint' ? 'complaint' : `high-value-sms ${criticalAlert.smsCategory === 'withdrawal' ? 'sms-out' : 'sms-in'}`}`} onMouseDown={closeCritical}>
       <article ref={dialog} className="pending-work-popup critical-alert-popup" role="alertdialog" aria-modal="true" aria-labelledby="critical-alert-title" onMouseDown={(event) => event.stopPropagation()}>
         <button ref={closeButton} type="button" className="pending-work-close" onClick={closeCritical} aria-label={t('إغلاق', 'Close')}><X size={17}/></button>
         <div className="pending-work-icon" aria-hidden="true">{criticalAlert.kind === 'complaint' ? <LifeBuoy size={27}/> : <CircleDollarSign size={27}/>}</div>
