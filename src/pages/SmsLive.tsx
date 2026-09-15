@@ -117,7 +117,7 @@ interface SmsDetail extends SmsRow {
 
 function displayWalletForRow(row: SmsRow): string | null {
   // This is the SMS card's wallet. The matched transaction wallet is shown separately.
-  return row.wallet_identity_ambiguous ? null : row.receiver_number ?? row.confirmed_wallet_number ?? row.wallet_number
+  return row.wallet_identity_ambiguous ? null : row.confirmed_wallet_number ?? row.wallet_number ?? row.receiver_number
 }
 
 interface SmsStats {
@@ -127,6 +127,8 @@ interface SmsStats {
   linked: number
   review: number
 }
+
+interface WalletPaidTotal { wallet: string; paid_amount: number }
 
 interface ListResponse {
   rows: SmsRow[]
@@ -207,6 +209,8 @@ export default function SmsLive() {
   const [amountQ, setAmountQ] = useState(params.get('amount') ?? '')
   const [data, setData] = useState<ListResponse | null>(null)
   const [stats, setStats] = useState<SmsStats | null>(null)
+  const [walletPaidTotals, setWalletPaidTotals] = useState<WalletPaidTotal[]>([])
+  const [walletAlertDismissed, setWalletAlertDismissed] = useState(false)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [selected, setSelected] = useState<SmsDetail | null>(null)
@@ -263,12 +267,15 @@ export default function SmsLive() {
     if (from) search.set('from', from)
     if (to) search.set('to', to)
     try {
-      const [list, st] = await Promise.all([
+      const [list, st, walletTotals] = await Promise.all([
         api<ListResponse>(`/api/sms?${search}`),
         api<SmsStats>(`/api/sms/stats?${search}`),
+        api<{ rows: WalletPaidTotal[] }>('/api/wallet-paid-totals'),
       ])
       setData((current) => JSON.stringify(current) === JSON.stringify(list) ? current : list)
       setStats(st)
+      setWalletPaidTotals(walletTotals.rows ?? [])
+      if (!(walletTotals.rows ?? []).some((row) => row.paid_amount >= 50_000)) setWalletAlertDismissed(false)
       setErr(null)
     } catch (e) {
       setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض رسائل SMS.', 'You do not have permission to view SMS.') : t('تعذّر تحميل الرسائل.', 'Failed to load messages.'))
@@ -512,9 +519,21 @@ export default function SmsLive() {
   const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1
 
   const selectedReport = selected ? smsReport(selected) : null
+  const walletAlerts = walletPaidTotals.filter((row) => row.paid_amount >= 50_000)
 
   return (
     <PanelShell>
+      {walletAlerts.length > 0 && !walletAlertDismissed && (
+        <div className="wallet-limit-popup-backdrop" role="presentation">
+          <section className="wallet-limit-popup" role="alertdialog" aria-modal="true" aria-labelledby="wallet-limit-popup-title">
+            <div className="wallet-limit-popup-icon">⚠</div>
+            <h3 id="wallet-limit-popup-title">{t('تنبيه حد المحفظة', 'Wallet limit alert')}</h3>
+            <p>{t('وصلت المحافظ التالية إلى 50,000 جنيه مدفوع. يرجى إيقاف التوجيه أو مراجعة السعة.', 'These wallets reached 50,000 EGP paid. Please stop routing or review capacity.')}</p>
+            <div className="wallet-limit-popup-list">{walletAlerts.map((row) => <div key={row.wallet}><span className="mono">{row.wallet}</span><strong>{money(row.paid_amount, 'EGP')}</strong></div>)}</div>
+            <button type="button" className="btn-primary" onClick={() => setWalletAlertDismissed(true)}>{t('فهمت', 'Acknowledge')}</button>
+          </section>
+        </div>
+      )}
       <section className="page-head">
         <div className="recent-head">
           <h2 style={{ margin: 0 }}>📨 {t('SMS مباشر', 'Live SMS')}</h2>
@@ -724,7 +743,7 @@ export default function SmsLive() {
                   <div className="sms-live-card-foot">{matchMeta ? <span className={`pay-status-badge ${matchMeta.cls}`}>{t(matchMeta.ar, matchMeta.en)}</span> : <span className="pay-status-badge st-dim">{t('غير مرتبطة', 'Unlinked')}</span>}{r.sms_category === 'withdrawal' && <span className="cell-sub">{r.matched_payout_id ? `WD ${r.matched_payout_ref ?? r.matched_payout_id}` : t('سحب غير معيّن', 'Unassigned withdrawal')}</span>}</div>
                   <div className="cell-sub sms-card-preview">{firstLine(r)}</div>
                 </button>
-                {!linked && !r.is_blocked && can('sms_live', 'can_edit') && (
+                {!linked && !r.is_blocked && (
                   <button type="button" className={`sms-card-assign-action ${r.sms_category === 'withdrawal' ? 'is-payout' : ''}`} onClick={(event) => { event.stopPropagation(); void openDetail(r.id) }}>
                     {r.sms_category === 'withdrawal' ? t('تعيين السحب', 'Assign withdrawal') : t('تعيين لمعاملة', 'Assign to transaction')} <span aria-hidden="true">→</span>
                   </button>

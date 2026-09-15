@@ -657,6 +657,25 @@ extraRoutes.get('/wallet-report', requireAnyPerm(['sms_live', 'wallets'], 'can_v
   return c.json({ rows, days, from, to, limits: { daily: WALLET_DAILY_LIMIT, monthly: WALLET_MONTHLY_LIMIT, warning_ratio: WALLET_LIMIT_WARNING_RATIO }, as_of: new Date().toISOString(), time_zone: CAIRO_TIME_ZONE })
 })
 
+// Lightweight paid-volume totals used by the live SMS safety alert.
+extraRoutes.get('/wallet-paid-totals', requireAnyPerm(['sms_live', 'wallets'], 'can_view'), async (c) => {
+  const monthStart = cairoBoundary(`${cairoToday().slice(0, 7)}-01`)
+  const { data, error } = await db.from('maven_transactions')
+    .select('amount, status, receiving_wallet, to_account_number')
+    .gte('first_seen_at', monthStart)
+    .in('status', ['PAID', 'APPROVED', 'SUCCESS', 'COMPLETED'])
+    .limit(20_000)
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  const totals = new Map<string, number>()
+  for (const row of data ?? []) {
+    const wallet = walletDigits(row.receiving_wallet ?? row.to_account_number)
+    const amount = Number(row.amount ?? 0)
+    if (!wallet || !Number.isFinite(amount)) continue
+    totals.set(wallet, (totals.get(wallet) ?? 0) + amount)
+  }
+  return c.json({ rows: [...totals.entries()].map(([wallet, paid_amount]) => ({ wallet, paid_amount: Math.round(paid_amount * 100) / 100 })).sort((a, b) => b.paid_amount - a.paid_amount) })
+})
+
 // Per-wallet detail: recent SMS for the wallet + transactions that landed on
 // it, shown inline in the wallet-report drawer.
 extraRoutes.get('/wallet-report/:wallet', requireAnyPerm(['sms_live', 'wallets'], 'can_view'), async (c) => {
