@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, CheckCircle2, CircleDollarSign, Download, Filter, Pencil, RefreshCw, Search, ShieldAlert, Smartphone, Target, WalletCards, Wifi, WifiOff } from 'lucide-react'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
@@ -43,22 +43,33 @@ export default function MavenWallets() {
   const [livePage, setLivePage] = useState(1)
   const [replacementThreshold, setReplacementThreshold] = useState('85')
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
+  const refreshSequence = useRef(0)
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current
     try {
       setError(null)
-      setData(await api<WalletsResponse>('/api/wallets'))
+      // Local wallet/device data is enough to paint and search the page. Do
+      // not hold it behind the slower legacy Maven RPC.
+      const base = await api<WalletsResponse>('/api/wallets?include_live=false')
+      if (sequence !== refreshSequence.current) return
+      setData((current) => ({ ...base, live: current?.live ?? [] }))
       setLastRefresh(new Date())
+      void api<{ live: LiveWallet[] }>('/api/wallets/live').then(({ live }) => {
+        if (sequence !== refreshSequence.current) return
+        setData((current) => current ? { ...current, live } : current)
+      }).catch(() => { /* Local mirror stays usable when the legacy source is slow. */ })
     } catch (e) {
+      if (sequence !== refreshSequence.current) return
       setError(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض المحافظ.', 'You do not have permission to view wallets.') : t('تعذّر تحميل محافظ Maven.', 'Unable to load Maven wallets.'))
     }
-  }
+  }, [t])
 
   useEffect(() => {
     void refresh()
     const timer = window.setInterval(() => void refresh(), 60_000)
-    return () => window.clearInterval(timer)
-  }, [])
+    return () => { window.clearInterval(timer); refreshSequence.current++ }
+  }, [refresh])
 
   const deviceMap = useMemo(() => {
     const map = new Map<string, DeviceRow>()

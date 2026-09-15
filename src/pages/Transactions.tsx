@@ -130,13 +130,12 @@ export default function Transactions() {
 
   useEffect(() => {
     let alive = true
-    const initialLoad = async () => {
-      // Pull the provider delta before the first read so a newly opened
-      // transactions page cannot render the previous mirror snapshot first.
-      await syncProviders()
-      if (alive) await load()
-    }
-    void initialLoad()
+    // Paint the local mirror immediately. Provider sync can take several
+    // seconds and must not block the first page render or a search/filter.
+    void load()
+    void syncProviders().then((changed) => {
+      if (alive && changed) void load(true)
+    })
     return () => { alive = false }
   }, [load])
 

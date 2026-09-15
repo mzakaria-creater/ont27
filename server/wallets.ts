@@ -11,16 +11,25 @@ export const walletRoutes = new Hono<AuthEnv>()
 
 walletRoutes.use('*', requireAuth)
 
+walletRoutes.get('/live', requirePerm('wallets', 'can_view'), async (c) => {
+  const old = oldDb()
+  if (!old) return c.json({ live: [] })
+  const { data, error } = await old.rpc('maven_banks_live_list')
+  if (error) return c.json({ error: 'legacy_wallet_lookup_failed', detail: error.message }, 502)
+  return c.json({ live: Array.isArray(data) ? data : [] })
+})
+
 walletRoutes.get('/', requirePerm('wallets', 'can_view'), async (c) => {
   // Authoritative live wallet list straight from Maven (checked every few
   // minutes by the old system) — wallet_device_map is only the device
   // mapping and its auto-inferred rows go stale.
-  const liveP = (async () => {
+  const includeLive = c.req.query('include_live') !== 'false'
+  const liveP = includeLive ? (async () => {
     const old = oldDb()
     if (!old) return []
     const { data } = await old.rpc('maven_banks_live_list')
     return Array.isArray(data) ? data : []
-  })()
+  })() : Promise.resolve([])
 
   const [wallets, devices, channels, live] = await Promise.all([
     db
