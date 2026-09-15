@@ -711,18 +711,25 @@ export default function SmsLive() {
               const linked = r.matched_payout_id != null || r.matched_tx_id != null
               const displayWallet = displayWalletForRow(r)
               const matchMeta = linked ? MATCH_META.auto : r.match_status ? MATCH_META[r.match_status] : null
-              return <button type="button" className={`sms-live-card sms-live-card-${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}${!linked && !r.is_blocked ? ' is-unlinked' : ''}`} key={r.id} onClick={() => void openDetail(r.id)}>
-                <div className="sms-live-card-head"><span className="sms-card-brand"><span className={`sms-type-mark ${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}`}>{r.sms_category === 'withdrawal' ? '↗' : '↙'}</span><MethodLogo method={r.provider ?? 'Orange Money'} /></span><strong className="mono">SMS #{r.id}</strong><span className="mono">{depositTime({ first_seen_at: r.received_at })}</span></div>
-                <div className="sms-live-card-amount">{money(r.amount, 'EGP')}</div>
-                <div className="sms-live-card-grid">
-                  <span>{t('النوع', 'Type')}<b>{cat ? t(cat.ar, cat.en) : '—'}</b></span>
-                  <span>{t('المرسل', 'Sender')}<b>{r.sender_name ?? r.sender_number ?? '—'}</b></span>
-                  <span>{t('المحفظة', 'Wallet')}<b className="mono">{displayWallet ?? '—'}</b></span>
-                  <span>{t('الجهاز', 'Device')}<b className="mono">{r.device_name ?? '—'}</b></span>
-                </div>
-                <div className="sms-live-card-foot">{matchMeta ? <span className={`pay-status-badge ${matchMeta.cls}`}>{t(matchMeta.ar, matchMeta.en)}</span> : <span className="pay-status-badge st-dim">{t('غير مرتبطة', 'Unlinked')}</span>}{r.sms_category === 'withdrawal' && <span className="cell-sub">{r.matched_payout_id ? `WD ${r.matched_payout_ref ?? r.matched_payout_id}` : t('سحب غير معيّن', 'Unassigned withdrawal')}</span>}</div>
-                <div className="cell-sub sms-card-preview">{firstLine(r)}</div>
-              </button>
+              return <article className="sms-live-card-shell" key={r.id}>
+                <button type="button" className={`sms-live-card sms-live-card-${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}${!linked && !r.is_blocked ? ' is-unlinked' : ''}`} onClick={() => void openDetail(r.id)}>
+                  <div className="sms-live-card-head"><span className="sms-card-brand"><span className={`sms-type-mark ${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}`}>{r.sms_category === 'withdrawal' ? '↗' : '↙'}</span><MethodLogo method={r.provider ?? 'Orange Money'} /></span><strong className="mono">SMS #{r.id}</strong><span className="mono">{depositTime({ first_seen_at: r.received_at })}</span></div>
+                  <div className="sms-live-card-amount">{money(r.amount, 'EGP')}</div>
+                  <div className="sms-live-card-grid">
+                    <span>{t('النوع', 'Type')}<b>{cat ? t(cat.ar, cat.en) : '—'}</b></span>
+                    <span>{t('المرسل', 'Sender')}<b>{r.sender_name ?? r.sender_number ?? '—'}</b></span>
+                    <span>{t('المحفظة', 'Wallet')}<b className="mono">{displayWallet ?? '—'}</b></span>
+                    <span>{t('الجهاز', 'Device')}<b className="mono">{r.device_name ?? '—'}</b></span>
+                  </div>
+                  <div className="sms-live-card-foot">{matchMeta ? <span className={`pay-status-badge ${matchMeta.cls}`}>{t(matchMeta.ar, matchMeta.en)}</span> : <span className="pay-status-badge st-dim">{t('غير مرتبطة', 'Unlinked')}</span>}{r.sms_category === 'withdrawal' && <span className="cell-sub">{r.matched_payout_id ? `WD ${r.matched_payout_ref ?? r.matched_payout_id}` : t('سحب غير معيّن', 'Unassigned withdrawal')}</span>}</div>
+                  <div className="cell-sub sms-card-preview">{firstLine(r)}</div>
+                </button>
+                {!linked && !r.is_blocked && can('sms_live', 'can_edit') && (
+                  <button type="button" className={`sms-card-assign-action ${r.sms_category === 'withdrawal' ? 'is-payout' : ''}`} onClick={(event) => { event.stopPropagation(); void openDetail(r.id) }}>
+                    {r.sms_category === 'withdrawal' ? t('تعيين السحب', 'Assign withdrawal') : t('تعيين لمعاملة', 'Assign to transaction')} <span aria-hidden="true">→</span>
+                  </button>
+                )}
+              </article>
             })}
           </div>
         )}
