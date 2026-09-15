@@ -229,8 +229,6 @@ interface RailDevice {
 }
 
 interface RailTelegramAlert { id: number; alert_type: string; chat_id: string | null; message: string | null; ok: boolean | null; error: string | null; created_at: string | null }
-interface PendingWorkAlert { kind: 'payout' | 'deposit'; id: number; reference: string | null; amount: number | null; wallet: string | null; created_at: string | null }
-
 const telegramPlainText = (value: string | null) => (value ?? '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/?(?:b|code|strong|em)>/gi, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim()
 const telegramTxRef = (value: string | null) => telegramPlainText(value).match(/(?:^|\n)TRX\s*:\s*([0-9]+)/i)?.[1] ?? null
 const cairoToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(new Date())
@@ -393,10 +391,8 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   const [smsUnread, setSmsUnread] = useState(0)
   const [smsUnlinked, setSmsUnlinked] = useState(0)
   const [telegramUnread, setTelegramUnread] = useState(0)
-  const [pendingWorkAlert, setPendingWorkAlert] = useState<PendingWorkAlert | null>(null)
   const smsLatestRef = useRef(0)
   const telegramLatestRef = useRef(0)
-  const pendingWorkSeenRef = useRef<Set<string>>(new Set())
   const [chatUnread, setChatUnread] = useState(0)
   const chatSeenRef = useRef<number | null>(null)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<NavGroupId>>(() => new Set(NAV_GROUPS.map((group) => group.id).filter((id) => id !== activeGroup)))
@@ -421,38 +417,6 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   }, [pathname])
 
   const canTelegramLive = COMPLAINT_ROLES.includes(user?.role ?? '')
-
-  // Notify once when a new provider request enters a pending queue. The first
-  // poll seeds the current queue so signing in never creates a false popup.
-  useEffect(() => {
-    if (!user?.id) return
-    let alive = true
-    let seeded = false
-    const storageKey = `ontarget:${user.id}:pending-work-seen`
-    try {
-      pendingWorkSeenRef.current = new Set(JSON.parse(sessionStorage.getItem(storageKey) ?? '[]'))
-    } catch { pendingWorkSeenRef.current = new Set() }
-    const check = async () => {
-      const requests: Promise<PendingWorkAlert[]>[] = []
-      if (can('payouts')) requests.push(api<{ rows?: Record<string, unknown>[] }>('/api/payouts?status=PENDING&limit=50').then(({ rows = [] }) => rows.map((row) => ({ kind: 'payout' as const, id: Number(row.maven_id ?? row.id), reference: row.ontarget_ref == null ? null : String(row.ontarget_ref), amount: row.amount == null ? null : Number(row.amount), wallet: row.mobile_no == null ? null : String(row.mobile_no), created_at: row.first_seen_at == null ? null : String(row.first_seen_at) }))))
-      if (can('deposits')) requests.push(api<{ rows?: Record<string, unknown>[] }>('/api/deposits?status=PENDING&limit=50').then(({ rows = [] }) => rows.map((row) => ({ kind: 'deposit' as const, id: Number(row.tx_id ?? row.id), reference: row.ontarget_ref == null ? null : String(row.ontarget_ref), amount: row.amount == null ? null : Number(row.amount), wallet: row.receiving_wallet == null ? null : String(row.receiving_wallet), created_at: row.first_seen_at == null ? null : String(row.first_seen_at) }))))
-      if (!requests.length) return
-      const batches = await Promise.allSettled(requests)
-      if (!alive) return
-      const rows = batches.flatMap((batch) => batch.status === 'fulfilled' ? batch.value : []).filter((row) => Number.isFinite(row.id) && row.id > 0)
-      const newRow = rows.find((row) => !pendingWorkSeenRef.current.has(`${row.kind}:${row.id}`))
-      rows.forEach((row) => pendingWorkSeenRef.current.add(`${row.kind}:${row.id}`))
-      try { sessionStorage.setItem(storageKey, JSON.stringify([...pendingWorkSeenRef.current].slice(-500))) } catch { /* optional */ }
-      if (seeded && newRow) {
-        setPendingWorkAlert(newRow)
-        playNotificationTone('transaction')
-      }
-      seeded = true
-    }
-    void check()
-    const timer = window.setInterval(() => void check(), 6_000)
-    return () => { alive = false; window.clearInterval(timer) }
-  }, [can, user?.id])
 
   // Persistent unread markers make alerts visible even if they land while a
   // floating rail is minimized. The first successful read establishes a
@@ -573,7 +537,6 @@ export default function PanelShell({ children }: { children: ReactNode }) {
       {can('sms_live') && !smsOpen && <button type="button" className={`sms-widget-launcher${smsUnread ? ' has-unread' : ''}${smsUnlinked ? ' has-unlinked' : ''}`} onClick={openSmsRail} aria-expanded="false" aria-controls="live-sms-widget" aria-label={t('إظهار شريط SMS المباشر', 'Show Live SMS bar')} title={t('إظهار شريط SMS المباشر', 'Show Live SMS bar')}><span className="sms-widget-pulse" /><MessageSquareText size={20} aria-hidden="true" /><span className="sms-widget-label">Live SMS</span>{(smsUnread > 0 || smsUnlinked > 0) && <span className={`live-widget-badge${smsUnlinked ? ' unlinked-badge' : ''}`}>{smsUnlinked > 99 ? '99+' : smsUnlinked || smsUnread}</span>}</button>}
       {can('sms_live') && smsOpen && <SmsRail onMinimize={() => setSmsOpen(false)} />}
       {canTelegramLive && telegramOpen && <TelegramRail onMinimize={() => setTelegramOpen(false)} />}
-      {pendingWorkAlert && <div className="pending-work-overlay" role="presentation" onClick={() => setPendingWorkAlert(null)}><article className="pending-work-popup" role="alertdialog" aria-modal="true" aria-label={t('طلب جديد يحتاج إجراء', 'New request needs action')} onClick={(event) => event.stopPropagation()}><button type="button" className="pending-work-close" onClick={() => setPendingWorkAlert(null)} aria-label={t('إغلاق', 'Close')}><X size={17} /></button><div className="pending-work-icon"><CircleDollarSign size={26} /></div><div className="pending-work-copy"><strong>{pendingWorkAlert.kind === 'payout' ? t('طلب سحب جديد', 'New payout request') : t('معاملة إيداع جديدة', 'New deposit transaction')}</strong><span className="mono">{pendingWorkAlert.reference ?? pendingWorkAlert.id}</span>{pendingWorkAlert.amount != null && <span className="pending-work-amount">{money(pendingWorkAlert.amount, 'EGP')}</span>}{pendingWorkAlert.wallet && <span className="mono">{t('المحفظة', 'Wallet')}: {pendingWorkAlert.wallet}</span>}<Link className="btn-primary btn-sm pending-work-open" to={pendingWorkAlert.kind === 'payout' ? `/payouts?q=${encodeURIComponent(pendingWorkAlert.reference ?? String(pendingWorkAlert.id))}` : `/deposits?q=${encodeURIComponent(pendingWorkAlert.reference ?? String(pendingWorkAlert.id))}`} onClick={() => setPendingWorkAlert(null)}>{t('فتح الطابور', 'Open queue')}</Link></div></article></div>}
       <nav className="mobile-bottom-nav" aria-label={t('التنقل السريع', 'Quick navigation')}>
         <Link to="/" className={pathname === '/' ? 'active' : ''}><LayoutDashboard size={18} /><span>{t('الرئيسية', 'Home')}</span></Link>
         <Link to="/transactions" className={pathname.startsWith('/transactions') ? 'active' : ''}><CircleDollarSign size={18} /><span>{t('المعاملات', 'Transactions')}</span></Link>

@@ -1,26 +1,48 @@
-import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, LifeBuoy, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { AlertTriangle, CircleDollarSign, LifeBuoy, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { api } from '../lib/api'
-import { supabase } from '../lib/supabase'
+import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { playNotificationTone } from '../lib/notificationSounds'
+import { supabase } from '../lib/supabase'
 
 interface AlertRow { id: number; alert_type: string; message: string; created_at: string }
 interface PopupAlert extends AlertRow {
   transactionRef: string | null
   lines: string[]
   dedupeKey: string
-  kind: 'decline' | 'complaint'
+  kind: 'decline' | 'complaint' | 'high_value_sms'
+  amount?: number
+  wallet?: string | null
+  smsId?: number
+}
+
+interface SmsAlertRow {
+  id: number
+  amount: number | null
+  received_at: string | null
+  sms_category: string | null
+  receiver_number?: string | null
+  wallet_number?: string | null
+  confirmed_wallet_number?: string | null
+  matched_ontarget_ref?: string | null
+  matched_payout_ref?: string | null
+  matched_tx_id?: number | null
 }
 
 const SESSION_KEY = 'ontarget:wrongful-decline-popup-seen'
+const HIGH_VALUE_SMS_THRESHOLD = 10_000
+const TELEGRAM_ALERT_ROLES = new Set(['owner', 'admin', 'super_admin', 'operator', 'operations_admin'])
+
 const decode = (value: string) => {
   const node = document.createElement('textarea')
   node.innerHTML = value.replace(/<br\s*\/?>/gi, '\n').replace(/<\/?(?:b|code|strong|em)>/gi, '')
   return node.value.trim()
 }
-const parse = (row: AlertRow): PopupAlert | null => {
+
+const parseTelegramAlert = (row: AlertRow): PopupAlert | null => {
   if (row.alert_type !== 'wrongful_auto_decline' && row.alert_type !== 'complaint_filed') return null
   const clean = decode(row.message)
   const lines = clean.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
@@ -31,32 +53,42 @@ const parse = (row: AlertRow): PopupAlert | null => {
 }
 
 export default function WrongfulDeclineRealtimePopup() {
-  const { status } = useAuth()
+  const { status, can, user } = useAuth()
   const { t } = useLocale()
   const navigate = useNavigate()
   const [alerts, setAlerts] = useState<PopupAlert[]>([])
   const seen = useRef(new Set<string>())
+  const smsBaseline = useRef<number | null>(null)
+  const dialog = useRef<HTMLElement | null>(null)
+  const closeButton = useRef<HTMLButtonElement | null>(null)
+  const canSeeSms = can('sms_live')
+  const canSeeTelegramAlerts = TELEGRAM_ALERT_ROLES.has(user?.role ?? '')
 
   useEffect(() => {
     try { seen.current = new Set(JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? '[]')) }
     catch { seen.current = new Set() }
   }, [])
 
+  const enqueue = useCallback((alert: PopupAlert) => {
+    if (seen.current.has(alert.dedupeKey)) return
+    seen.current.add(alert.dedupeKey)
+    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify([...seen.current].slice(-500))) } catch { /* optional session dedupe */ }
+    setAlerts((current) => [...current.slice(-4), alert])
+    if (alert.kind !== 'decline') playNotificationTone('transaction')
+  }, [])
+
   useEffect(() => {
-    if (status !== 'authed') return
+    if (status !== 'authed' || !canSeeTelegramAlerts) return
     let channel: ReturnType<typeof supabase.channel> | null = null
     let cancelled = false
     const receive = (row: AlertRow) => {
-      const parsed = parse(row)
-      if (!parsed || seen.current.has(parsed.dedupeKey)) return
-      seen.current.add(parsed.dedupeKey)
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify([...seen.current]))
-      setAlerts((current) => [...current.slice(-2), parsed])
+      const parsed = parseTelegramAlert(row)
+      if (parsed) enqueue(parsed)
     }
     void api<{ access_token: string }>('/api/auth/realtime-token').then(({ access_token }) => {
       if (cancelled) return
       supabase.realtime.setAuth(access_token)
-      channel = supabase.channel(`wrongful-decline-popups-${crypto.randomUUID()}`)
+      channel = supabase.channel(`operations-popups-${crypto.randomUUID()}`)
         .on('postgres_changes', {
           event: 'INSERT', schema: 'public', table: 'telegram_alerts', filter: 'alert_type=eq.wrongful_auto_decline',
         }, (payload) => receive(payload.new as AlertRow))
@@ -64,32 +96,134 @@ export default function WrongfulDeclineRealtimePopup() {
           event: 'INSERT', schema: 'public', table: 'telegram_alerts', filter: 'alert_type=eq.complaint_filed',
         }, (payload) => receive(payload.new as AlertRow))
         .subscribe()
-      // Realtime only delivers rows created after subscription. Recover the
-      // newest recent complaint so an operator who signs in seconds later does
-      // not miss the case entirely. Session dedupe still prevents repetition.
-      void api<{ alerts?: AlertRow[] }>('/api/telegram/live').then(({ alerts = [] }) => {
+      // Recover a complaint filed shortly before sign-in. Session dedupe keeps
+      // the same ticket from appearing twice when Realtime also delivers it.
+      void api<{ alerts?: AlertRow[] }>('/api/telegram/live?type=complaint_filed&limit=30').then(({ alerts: rows = [] }) => {
         if (cancelled) return
         const cutoff = Date.now() - 24 * 60 * 60_000
-        const missed = alerts.find((row) => row.alert_type === 'complaint_filed' && new Date(row.created_at).getTime() >= cutoff)
+        const missed = rows.find((row) => new Date(row.created_at).getTime() >= cutoff)
         if (missed) receive(missed)
       }).catch(() => {})
     }).catch(() => { /* Authentication remains intact; only live popup is unavailable. */ })
     return () => { cancelled = true; if (channel) void supabase.removeChannel(channel) }
-  }, [status])
+  }, [canSeeTelegramAlerts, enqueue, status])
 
-  const dismiss = (id: number) => setAlerts((current) => current.filter((item) => item.id !== id))
-  if (!alerts.length) return null
-  return <aside className="wrongful-popup-stack" aria-live="assertive" aria-label={t('تنبيهات العمليات والشكاوى', 'Operations and complaint alerts')}>
-    {alerts.map((alert) => <article key={alert.id} className={`wrongful-popup${alert.kind === 'complaint' ? ' complaint-popup' : ''}`} role="alert">
-      <button className="wrongful-popup-close" onClick={() => dismiss(alert.id)} aria-label={t('إغلاق', 'Close')}><X size={16}/></button>
-      <button className="wrongful-popup-content" onClick={() => { dismiss(alert.id); navigate(alert.transactionRef ? `/transactions/${encodeURIComponent(alert.transactionRef)}` : '/complaints') }}>
-        <span className="wrongful-popup-icon">{alert.kind === 'complaint' ? <LifeBuoy size={24}/> : <AlertTriangle size={24}/>}</span>
-        <span className="wrongful-popup-copy">
-          <strong>{alert.lines[0]?.replace(/^[⚠️📣]\s*/, '') || (alert.kind === 'complaint' ? t('شكوى جديدة من الدعم', 'New complaint from Support') : t('رفض مشبوه يحتاج مراجعة بشرية', 'Suspicious decline requires human review'))}</strong>
-          {alert.lines.slice(1).map((line, index) => <span key={`${alert.id}-${index}`} className={/(?:TRX|Transaction|المعاملة)\s*:/i.test(line) ? 'mono wrongful-popup-ref' : ''}>{line}</span>)}
-          <small>{alert.transactionRef ? t('فتح المعاملة واتخاذ إجراء', 'Open transaction actions') : t('فتح مركز الشكاوى', 'Open complaint center')}</small>
-        </span>
-      </button>
-    </article>)}
-  </aside>
+  // The initial read establishes a baseline, so signing in never replays old
+  // wallet messages. Later polls surface only newly arrived financial SMS
+  // above EGP 10,000; smaller transactions remain in Live SMS without a modal.
+  useEffect(() => {
+    if (status !== 'authed' || !canSeeSms) return
+    let cancelled = false
+    const check = async () => {
+      const { rows = [] } = await api<{ rows?: SmsAlertRow[] }>('/api/sms?limit=30')
+      if (cancelled) return
+      const newestId = Math.max(0, ...rows.map((row) => Number(row.id) || 0))
+      if (smsBaseline.current == null) {
+        smsBaseline.current = newestId
+        return
+      }
+      const newRows = rows
+        .filter((row) => Number(row.id) > Number(smsBaseline.current))
+        .sort((left, right) => left.id - right.id)
+      smsBaseline.current = Math.max(smsBaseline.current, newestId)
+      for (const row of newRows) {
+        const amount = Number(row.amount)
+        if (!['deposit', 'withdrawal'].includes(row.sms_category ?? '') || !Number.isFinite(amount) || amount <= HIGH_VALUE_SMS_THRESHOLD) continue
+        const transactionRef = row.matched_ontarget_ref ?? row.matched_payout_ref ?? (row.matched_tx_id == null ? null : String(row.matched_tx_id))
+        const wallet = row.confirmed_wallet_number ?? row.receiver_number ?? row.wallet_number ?? null
+        enqueue({
+          id: row.id,
+          alert_type: 'high_value_sms',
+          message: '',
+          created_at: row.received_at ?? new Date().toISOString(),
+          transactionRef,
+          lines: [],
+          dedupeKey: `high_value_sms:${row.id}`,
+          kind: 'high_value_sms',
+          amount,
+          wallet,
+          smsId: row.id,
+        })
+      }
+    }
+    void check().catch(() => {})
+    const timer = window.setInterval(() => void check().catch(() => {}), 6_000)
+    return () => { cancelled = true; window.clearInterval(timer); smsBaseline.current = null }
+  }, [canSeeSms, enqueue, status])
+
+  const dismiss = useCallback((dedupeKey: string) => {
+    setAlerts((current) => current.filter((item) => item.dedupeKey !== dedupeKey))
+  }, [])
+  const criticalAlert = alerts.find((alert) => alert.kind !== 'decline') ?? null
+  const declineAlerts = alerts.filter((alert) => alert.kind === 'decline')
+  const closeCritical = useCallback(() => {
+    if (criticalAlert) dismiss(criticalAlert.dedupeKey)
+  }, [criticalAlert, dismiss])
+
+  useEffect(() => {
+    if (!criticalAlert) return
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    closeButton.current?.focus()
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeCritical()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const focusable = [...(dialog.current?.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])') ?? [])]
+      if (!focusable.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => { window.removeEventListener('keydown', onKeyDown); previousFocus?.focus() }
+  }, [closeCritical, criticalAlert])
+
+  const openCritical = () => {
+    if (!criticalAlert) return
+    dismiss(criticalAlert.dedupeKey)
+    if (criticalAlert.kind === 'complaint') {
+      navigate(criticalAlert.transactionRef ? `/transactions/${encodeURIComponent(criticalAlert.transactionRef)}` : '/complaints')
+    } else {
+      navigate(`/sms?q=${encodeURIComponent(String(criticalAlert.smsId ?? criticalAlert.id))}`)
+    }
+  }
+
+  if (!criticalAlert && !declineAlerts.length) return null
+  return <>
+    {declineAlerts.length > 0 && <aside className="wrongful-popup-stack" aria-live="assertive" aria-label={t('تنبيهات العمليات', 'Operations alerts')}>
+      {declineAlerts.map((alert) => <article key={alert.dedupeKey} className="wrongful-popup" role="alert">
+        <button className="wrongful-popup-close" onClick={() => dismiss(alert.dedupeKey)} aria-label={t('إغلاق', 'Close')}><X size={16}/></button>
+        <button className="wrongful-popup-content" onClick={() => { dismiss(alert.dedupeKey); navigate(alert.transactionRef ? `/transactions/${encodeURIComponent(alert.transactionRef)}` : '/complaints') }}>
+          <span className="wrongful-popup-icon"><AlertTriangle size={24}/></span>
+          <span className="wrongful-popup-copy">
+            <strong>{alert.lines[0]?.replace(/^[⚠️📣]\s*/, '') || t('رفض مشبوه يحتاج مراجعة بشرية', 'Suspicious decline requires human review')}</strong>
+            {alert.lines.slice(1).map((line, index) => <span key={`${alert.dedupeKey}-${index}`} className={/(?:TRX|Transaction|المعاملة)\s*:/i.test(line) ? 'mono wrongful-popup-ref' : ''}>{line}</span>)}
+            <small>{t('فتح المعاملة واتخاذ إجراء', 'Open transaction actions')}</small>
+          </span>
+        </button>
+      </article>)}
+    </aside>}
+    {criticalAlert && <div className={`pending-work-overlay critical-alert-overlay ${criticalAlert.kind === 'complaint' ? 'complaint' : 'high-value-sms'}`} onMouseDown={closeCritical}>
+      <article ref={dialog} className="pending-work-popup critical-alert-popup" role="alertdialog" aria-modal="true" aria-labelledby="critical-alert-title" onMouseDown={(event) => event.stopPropagation()}>
+        <button ref={closeButton} type="button" className="pending-work-close" onClick={closeCritical} aria-label={t('إغلاق', 'Close')}><X size={17}/></button>
+        <div className="pending-work-icon" aria-hidden="true">{criticalAlert.kind === 'complaint' ? <LifeBuoy size={27}/> : <CircleDollarSign size={27}/>}</div>
+        <div className="pending-work-copy">
+          <strong id="critical-alert-title">{criticalAlert.kind === 'complaint' ? t('تذكرة شكوى جديدة من Telegram', 'New complaint ticket from Telegram') : t('معاملة SMS أكبر من 10,000 جنيه', 'SMS transaction over EGP 10,000')}</strong>
+          {criticalAlert.kind === 'complaint' ? <>
+            {criticalAlert.lines.slice(1).map((line, index) => <span key={`${criticalAlert.dedupeKey}-${index}`} className={/(?:TRX|Transaction|المعاملة)\s*:/i.test(line) ? 'mono wrongful-popup-ref' : ''}>{line}</span>)}
+          </> : <>
+            <span className="mono">SMS #{criticalAlert.smsId}</span>
+            {criticalAlert.amount != null && <span className="pending-work-amount">{money(criticalAlert.amount, 'EGP')}</span>}
+            {criticalAlert.wallet && <span className="mono">{t('المحفظة', 'Wallet')}: {criticalAlert.wallet}</span>}
+            {criticalAlert.transactionRef && <span className="mono wrongful-popup-ref">TRX: {criticalAlert.transactionRef}</span>}
+          </>}
+          <button type="button" className="btn-primary btn-sm pending-work-open" onClick={openCritical}>{criticalAlert.kind === 'complaint' ? t('فتح الشكوى', 'Open complaint') : t('فتح رسالة SMS', 'Open SMS')}</button>
+        </div>
+      </article>
+    </div>}
+  </>
 }

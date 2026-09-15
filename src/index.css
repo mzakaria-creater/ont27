@@ -3655,5 +3655,9 @@ html, body { overflow-x: hidden; overflow-y: auto; }
 .pending-work-close{position:absolute;top:10px;inset-inline-end:10px;display:grid;place-items:center;width:30px;height:30px;border:0;border-radius:8px;background:transparent;color:var(--text-dim);cursor:pointer}.pending-work-close:hover{background:var(--hover-2);color:var(--text)}
 .pending-work-icon{display:grid;place-items:center;flex:0 0 auto;width:52px;height:52px;border-radius:15px;background:var(--amber-bg);color:var(--status-pending)}
 .pending-work-copy{display:flex;min-width:0;flex-direction:column;align-items:flex-start;gap:7px;padding-inline-end:20px;color:var(--text-dim);font-size:13px}.pending-work-copy strong{font-size:18px;color:var(--text)}.pending-work-copy .mono{overflow-wrap:anywhere}.pending-work-amount{font-size:22px;font-weight:800;color:var(--status-pending)}.pending-work-open{margin-top:7px;text-decoration:none}
+.critical-alert-overlay.complaint .critical-alert-popup{border-color:color-mix(in srgb,#38bdf8 62%,var(--border));background:linear-gradient(145deg,color-mix(in srgb,#0284c7 16%,var(--surface-raised)),var(--surface));box-shadow:0 28px 90px rgba(0,0,0,.48),0 0 34px color-mix(in srgb,#38bdf8 20%,transparent)}
+.critical-alert-overlay.complaint .pending-work-icon{background:color-mix(in srgb,#38bdf8 18%,transparent);color:#38bdf8}
+.critical-alert-popup .pending-work-close:focus-visible,.critical-alert-popup .pending-work-open:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 75%,white);outline-offset:3px}
 @keyframes pending-work-in{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
 @media(max-width:560px){.pending-work-popup{padding:20px;gap:12px}.pending-work-icon{width:44px;height:44px;border-radius:12px}.pending-work-copy strong{font-size:16px}}
+@media(prefers-reduced-motion:reduce){.critical-alert-popup{animation:none}}
