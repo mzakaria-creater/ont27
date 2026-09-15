@@ -812,7 +812,7 @@ export default function Automation() {
               <input ref={popupInputRef} id="high-value-sms-threshold" type="number" min="0" max={HIGH_VALUE_SMS_THRESHOLD_MAX} step="100" inputMode="decimal" value={popupThreshold} onChange={(event) => { setPopupThreshold(event.target.value); setPopupSettingsError(null) }} aria-invalid={popupSettingsError != null} aria-describedby={popupSettingsError ? 'popup-threshold-hint popup-threshold-error' : 'popup-threshold-hint'} />
               <span>EGP</span>
             </div>
-            <small id="popup-threshold-hint">{t('التنبيه خاص برسائل السحب فقط: 5,000 يظهر تنبيهات أكثر، و50,000 يظهر أقل. القيمة 0 تعرض كل سحب أكبر من صفر.', 'Only withdrawal SMS alerts: 5,000 shows more; 50,000 shows fewer. Zero alerts on every withdrawal above zero.')}</small>
+            <small id="popup-threshold-hint">{t('التنبيه لرسائل الدخول والخروج: 5,000 يظهر تنبيهات أكثر، و50,000 يظهر أقل. القيمة 0 تعرض كل رسالة أكبر من صفر.', 'Alerts for inbound and outbound SMS: 5,000 shows more; 50,000 shows fewer. Zero alerts on every message above zero.')}</small>
             <div className="automation-popup-presets" aria-label={t('قيم سريعة', 'Quick values')}>
               {HIGH_VALUE_SMS_THRESHOLD_PRESETS.map((preset) => <button key={preset} type="button" className={Number(popupThreshold) === preset ? 'is-selected' : ''} aria-pressed={Number(popupThreshold) === preset} onClick={() => { setPopupThreshold(String(preset)); setPopupSettingsError(null) }}>{money(preset, 'EGP')}</button>)}
             </div>

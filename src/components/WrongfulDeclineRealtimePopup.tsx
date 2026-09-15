@@ -135,9 +135,9 @@ export default function WrongfulDeclineRealtimePopup() {
 
   // The initial read establishes a baseline, so signing in never replays old
   // wallet messages. Later polls surface only newly arrived financial SMS
-  // withdrawal SMS above the configured threshold; deposits remain in Live
-  // SMS without a modal. Changing the threshold resets the baseline so old
-  // SMS records are never replayed as new alerts.
+  // inbound and outbound SMS above the configured threshold. Changing the
+  // threshold resets the baseline so old SMS records are never replayed as
+  // new alerts.
   useEffect(() => {
     if (status !== 'authed' || !canSeeSms) return
     let cancelled = false
@@ -155,7 +155,7 @@ export default function WrongfulDeclineRealtimePopup() {
       smsBaseline.current = Math.max(smsBaseline.current, newestId)
       for (const row of newRows) {
         const amount = Number(row.amount)
-        if (row.sms_category !== 'withdrawal' || !Number.isFinite(amount) || amount <= highValueSmsThreshold) continue
+        if (!['deposit', 'withdrawal'].includes(row.sms_category ?? '') || !Number.isFinite(amount) || amount <= highValueSmsThreshold) continue
         const transactionRef = row.matched_ontarget_ref ?? row.matched_payout_ref ?? (row.matched_tx_id == null ? null : String(row.matched_tx_id))
         const wallet = row.confirmed_wallet_number ?? row.receiver_number ?? row.wallet_number ?? null
         enqueue({
@@ -239,7 +239,7 @@ export default function WrongfulDeclineRealtimePopup() {
         <button ref={closeButton} type="button" className="pending-work-close" onClick={closeCritical} aria-label={t('إغلاق', 'Close')}><X size={17}/></button>
         <div className="pending-work-icon" aria-hidden="true">{criticalAlert.kind === 'complaint' ? <LifeBuoy size={27}/> : <CircleDollarSign size={27}/>}</div>
         <div className="pending-work-copy">
-          <strong id="critical-alert-title">{criticalAlert.kind === 'complaint' ? t('تذكرة شكوى جديدة من Telegram', 'New complaint ticket from Telegram') : t(`سحب SMS أكبر من ${money(highValueSmsThreshold, 'EGP')}`, `SMS withdrawal over ${money(highValueSmsThreshold, 'EGP')}`)}</strong>
+          <strong id="critical-alert-title">{criticalAlert.kind === 'complaint' ? t('تذكرة شكوى جديدة من Telegram', 'New complaint ticket from Telegram') : t(`رسالة SMS أكبر من ${money(highValueSmsThreshold, 'EGP')}`, `SMS message over ${money(highValueSmsThreshold, 'EGP')}`)}</strong>
           {criticalAlert.kind === 'complaint' ? <>
             {criticalAlert.lines.slice(1).map((line, index) => <span key={`${criticalAlert.dedupeKey}-${index}`} className={/(?:TRX|Transaction|المعاملة)\s*:/i.test(line) ? 'mono wrongful-popup-ref' : ''}>{line}</span>)}
           </> : <>
