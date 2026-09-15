@@ -1,10 +1,11 @@
 import { Hono } from 'hono'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { db } from './db.js'
-import { requireAnyPerm } from './rbac.js'
+import { requireAnyPerm, requireAuth } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 
 export const whatsappRoutes = new Hono<AuthEnv>()
+whatsappRoutes.use('*', requireAuth)
 whatsappRoutes.use('*', requireAnyPerm(['whatsapp', 'support'], 'can_view'))
 
 const safeConversation = 'id, phone, contact_name, status, assigned_to, linked_tx_ref, last_message_at, unread_count, created_at, updated_at'
