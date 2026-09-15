@@ -131,6 +131,8 @@ export default function Automation() {
   const [ruleBusy, setRuleBusy] = useState(false)
   const [ruleMsg, setRuleMsg] = useState<string | null>(null)
   const [ruleConflict, setRuleConflict] = useState<{ id: string; action_type: string; priority: number }[] | null>(null)
+  const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set())
+  const ruleBuilderRef = useRef<HTMLElement | null>(null)
   const [settingsBusy, setSettingsBusy] = useState<string | null>(null)
   const [popupSettingsOpen, setPopupSettingsOpen] = useState(false)
   const [popupThreshold, setPopupThreshold] = useState('5000')
@@ -195,6 +197,43 @@ export default function Automation() {
     } catch {
       setRuleMsg(t('تعذّر حذف القاعدة.', 'Unable to delete the rule.'))
     }
+  }
+
+  const startNewFlow = (draft: Partial<NewRule> = {}) => {
+    setNewRule({ ...EMPTY_RULE, ...draft })
+    setRuleConflict(null)
+    setRuleMsg(null)
+    window.requestAnimationFrame(() => ruleBuilderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
+
+  const toggleRuleSelection = (id: string) => setSelectedRuleIds((current) => {
+    const next = new Set(current)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+
+  const toggleVisibleRuleSelection = () => setSelectedRuleIds((current) => {
+    const visible = filteredRules.map((row) => row.id)
+    const allSelected = visible.length > 0 && visible.every((id) => current.has(id))
+    const next = new Set(current)
+    visible.forEach((id) => allSelected ? next.delete(id) : next.add(id))
+    return next
+  })
+
+  const bulkRuleAction = async (action: 'enable' | 'disable' | 'delete') => {
+    if (!canRulesChange || selectedRuleIds.size === 0) return
+    if (action === 'delete' && !window.confirm(t(`حذف ${selectedRuleIds.size} قاعدة؟`, `Delete ${selectedRuleIds.size} selected rule(s)?`))) return
+    setRuleBusy(true); setRuleMsg(null)
+    try {
+      await Promise.all([...selectedRuleIds].map((id) => action === 'delete'
+        ? api(`/api/automation/rules/${id}`, { method: 'DELETE' })
+        : api(`/api/automation/rules/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled: action === 'enable', confirm_conflict: true }) })))
+      setSelectedRuleIds(new Set())
+      await reloadAutomation()
+      setRuleMsg(t('تم تحديث القواعد المحددة.', 'Selected rules updated.'))
+    } catch {
+      setRuleMsg(t('تعذّر تحديث بعض القواعد المحددة.', 'Some selected rules could not be updated.'))
+    } finally { setRuleBusy(false) }
   }
 
   const toggleGlobalSetting = async (key: string, value: boolean) => {
@@ -450,6 +489,7 @@ export default function Automation() {
               <b>{settings.auto_decline_enabled === true ? 'ON' : 'OFF'}</b>
             </button>
           </div>
+          {settings.auto_decline_enabled === true && canRuleCreate && <button type="button" className="btn-ghost btn-sm automation-create-flow-button" onClick={() => startNewFlow({ action_type: 'decline', max_amount: '5000', time_window_minutes: '5' })}>{t('إنشاء تدفق رفض', 'Create decline flow')}</button>}
           <div className="control-row automation-popup-threshold-row">
             <div className="automation-popup-threshold-summary">
               <span className="automation-popup-threshold-icon" aria-hidden="true"><CircleDollarSign size={20} /></span>
@@ -493,14 +533,14 @@ export default function Automation() {
             <div key={tpl2.id} className="template-card">
               <div className="template-head"><strong>{tpl2.label[li]}</strong></div>
               <p className="template-desc">{tpl2.desc[li]}</p>
-              {canRuleCreate && <button className="btn-primary btn-sm" onClick={() => { setNewRule({ ...EMPTY_RULE, ...tpl2.rule }); setRuleConflict(null); setRuleMsg(null) }}>{t('استخدام كنقطة بداية', 'Use as starting point')}</button>}
+              {canRuleCreate && <button className="btn-primary btn-sm" onClick={() => startNewFlow(tpl2.rule)}>{t('استخدام كنقطة بداية', 'Use as starting point')}</button>}
             </div>
           ))}
         </div>
       </section>
 
-      <section className="card recent-card">
-        <div className="recent-head"><h3>🛠️ {t('تخصيص قاعدة جديدة', 'Customize a new rule')}</h3></div>
+      <section ref={ruleBuilderRef} className="card recent-card automation-rule-builder">
+        <div className="recent-head"><div><h3>🛠️ {t('إنشاء تدفق جديد', 'Create a new flow')}</h3><p className="cell-sub">{t('صمّم قاعدة، راجع حدودها، ثم احفظها لتظهر في قائمة القواعد الحيّة.', 'Design a rule, review its limits, then save it to the live rules list.')}</p></div><span className="pay-status-badge st-pending">{newRule.action_type === 'decline' ? t('رفض تلقائي', 'Auto-decline') : t('موافقة تلقائية', 'Auto-approve')}</span></div>
         {!canRuleCreate && <p className="sidebar-hint">{t('عرض فقط — إضافة قواعد تتطلب صلاحية إنشاء.', 'View only — adding rules needs create permission.')}</p>}
         {canRuleCreate && (
           <>
@@ -560,13 +600,13 @@ export default function Automation() {
                 <div><button className="btn-ghost danger btn-sm" onClick={() => void saveRule(true)}>{t('احفظ رغم التعارض', 'Save anyway')}</button></div>
               </div>
             )}
-            <button className="btn-primary btn-sm" disabled={ruleBusy} onClick={() => void saveRule(false)}>{ruleBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ القاعدة', 'Save rule')}</button>
+            <button className="btn-primary btn-sm" disabled={ruleBusy} onClick={() => void saveRule(false)}>{ruleBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ التدفق', 'Save flow')}</button>
           </>
         )}
       </section>
 
       <section className="card recent-card">
-        <div className="recent-head"><h3>📐 {t('قواعد المحرّك الحي', 'Live engine rules')} ({data?.rules.length ?? 0})</h3></div>
+        <div className="recent-head"><div><h3>📐 {t('قواعد المحرّك الحي', 'Live engine rules')} ({data?.rules.length ?? 0})</h3><p className="cell-sub">{t('حدد عدة قواعد لتفعيلها أو إيقافها أو حذفها دفعة واحدة.', 'Select multiple rules to enable, disable or delete them in bulk.')}</p></div><div className="row-actions"><button type="button" className="btn-primary btn-sm" disabled={!canRuleCreate} onClick={() => startNewFlow()}>{t('إنشاء تدفق جديد', 'Create new flow')}</button>{selectedRuleIds.size > 0 && <><span className="pay-status-badge st-pending">{selectedRuleIds.size} {t('محدد', 'selected')}</span><button type="button" className="btn-ghost btn-sm" disabled={ruleBusy} onClick={() => void bulkRuleAction('enable')}>{t('تفعيل', 'Enable')}</button><button type="button" className="btn-ghost btn-sm" disabled={ruleBusy} onClick={() => void bulkRuleAction('disable')}>{t('إيقاف', 'Disable')}</button><button type="button" className="btn-ghost danger btn-sm" disabled={ruleBusy} onClick={() => void bulkRuleAction('delete')}>{t('حذف', 'Delete')}</button></>}</div></div>
         <div className="automation-filter-bar" role="search" aria-label={t('فلترة قواعد الأتمتة', 'Filter automation rules')}>
           <div className="automation-filter-title"><Filter size={16} /><span>{t('فلترة القواعد', 'Rule filters')}</span></div>
           <label className="automation-filter-search">
@@ -584,11 +624,11 @@ export default function Automation() {
         {data && filteredRules.length > 0 && (
           <div className="table-wrap">
             <table className="data-table">
-              <thead><tr><th>{t('النطاق', 'Scope')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('المدى', 'Range')}</th><th>{t('المهلة', 'Window')}</th><th>{t('الإجراء', 'Action')}</th><th>{t('مطابقة', 'Matching')}</th><th>{t('الحالة', 'Status')}</th><th /></tr></thead>
+              <thead><tr><th className="check-col"><input type="checkbox" checked={filteredRules.length > 0 && filteredRules.every((row) => selectedRuleIds.has(row.id))} onChange={toggleVisibleRuleSelection} aria-label={t('تحديد كل القواعد الظاهرة', 'Select all visible rules')} /></th><th>{t('النطاق', 'Scope')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('المدى', 'Range')}</th><th>{t('المهلة', 'Window')}</th><th>{t('الإجراء', 'Action')}</th><th>{t('مطابقة', 'Matching')}</th><th>{t('الحالة', 'Status')}</th><th /></tr></thead>
               <tbody>
                 {filteredRules.map((r) => (
                   <tr key={r.id}>
-                    <td className="mono">{r.scope_type ?? '—'}<div className="cell-sub">{t('أولوية', 'priority')} {r.priority ?? '—'}</div></td>
+                    <td className="check-col"><input type="checkbox" checked={selectedRuleIds.has(r.id)} onChange={() => toggleRuleSelection(r.id)} aria-label={t(`تحديد القاعدة ${r.id}`, `Select rule ${r.id}`)} /></td><td className="mono">{r.scope_type ?? '—'}<div className="cell-sub">{t('أولوية', 'priority')} {r.priority ?? '—'}</div></td>
                     <td>{r.sub_merchant ?? r.merchant ?? r.master_merchant ?? t('الكل', 'any')}</td>
                     <td className="mono">{money(r.min_amount, '')} – {money(r.max_amount, '')}</td>
                     <td className="mono">{r.time_window_minutes ?? '—'}{t('د', 'm')}</td>
