@@ -233,7 +233,7 @@ async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> 
     r.matched_master_merchant = tx?.master_merchant ?? null
     r.matched_gateway = tx?.gateway ?? null
     r.matched_receiving_wallet = tx?.receiving_wallet ?? tx?.to_account_number ?? null
-    const smsWallet = String(r.confirmed_wallet_number ?? r.receiver_number ?? r.wallet_number ?? '').replace(/\D/g, '').slice(-11)
+    const smsWallet = String(r.confirmed_wallet_number ?? r.wallet_number ?? r.receiver_number ?? '').replace(/\D/g, '').slice(-11)
     const txWallet = String(r.matched_receiving_wallet ?? '').replace(/\D/g, '').slice(-11)
     r.wallet_match = Boolean(smsWallet && txWallet && smsWallet === txWallet)
   }
@@ -360,7 +360,7 @@ smsRoutes.get('/balances', requirePerm('sms_live', 'can_view'), async (c) => {
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   const latest = new Map<string, { wallet_number: string; balance: number; received_at: string | null }>()
   for (const row of data ?? []) {
-    const wallet = String(row.confirmed_wallet_number ?? row.receiver_number ?? row.wallet_number ?? '').trim()
+    const wallet = String(row.confirmed_wallet_number ?? row.wallet_number ?? row.receiver_number ?? '').trim()
     if (!wallet || latest.has(wallet)) continue
     const balance = Number(row.balance_after)
     if (Number.isFinite(balance)) latest.set(wallet, { wallet_number: wallet, balance, received_at: row.received_at })
@@ -517,7 +517,7 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
   if (!Number.isInteger(txId) || txId <= 0) return c.json({ error: 'bad_tx_id' }, 400)
 
   const [{ data: sms, error: smsErr }, { data: tx, error: txErr }, { data: existingTxLinks, error: linkErr }] = await Promise.all([
-    db.from('inbound_sms').select('id, matched, match_status, sms_category, amount, received_at, receiver_number, sender_name, sender_number, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').eq('id', id).maybeSingle(),
+    db.from('inbound_sms').select('id, matched, match_status, sms_category, amount, received_at, receiver_number, wallet_number, confirmed_wallet_number, sender_name, sender_number, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').eq('id', id).maybeSingle(),
     db.from('maven_transactions').select('tx_id, amount, status, gateway, sender_number, first_seen_at, ontarget_ref').eq('tx_id', txId).maybeSingle(),
     db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').or(`consumed_by_tx_id.eq.${txId},matched_transaction_id.eq.${txId},maven_transaction_id.eq.${txId}`).limit(2),
   ])
@@ -567,10 +567,11 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
   // A matched SMS is the authoritative evidence of the wallet that received
   // the funds.  Do not overwrite to_account_number: it records the original
   // checkout allocation and is useful for diagnosing a mismatch.
-  if (sms.receiver_number) {
+  const receivingWallet = sms.confirmed_wallet_number ?? sms.wallet_number ?? sms.receiver_number
+  if (receivingWallet) {
     const { error: walletError } = await db
       .from('maven_transactions')
-      .update({ receiving_wallet: sms.receiver_number })
+      .update({ receiving_wallet: receivingWallet })
       .eq('tx_id', txId)
     if (walletError) return c.json({ error: 'db_error', detail: walletError.message }, 500)
   }
@@ -585,7 +586,7 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
     {
       sms_id: Number(id),
       tx_id: txId,
-      receiving_wallet: sms.receiver_number,
+      receiving_wallet: receivingWallet,
       sms_amount: sms.amount,
       mv_amount: tx.amount,
       received_at: sms.received_at,
@@ -792,7 +793,7 @@ smsRoutes.post('/:id/expense', requirePerm('sms_live', 'can_edit'), async (c) =>
   const actor = c.get('actor')
   const amount = Number(sms.amount)
   if (!Number.isFinite(amount) || amount <= 0) return c.json({ error: 'invalid_amount' }, 422)
-  const wallet = sms.confirmed_wallet_number ?? sms.receiver_number ?? sms.wallet_number ?? 'unknown wallet'
+  const wallet = sms.confirmed_wallet_number ?? sms.wallet_number ?? sms.receiver_number ?? 'unknown wallet'
   const record = {
     entry_date: sms.received_at ? new Date(sms.received_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
     entry_type: 'expense', category: 'withdrawal_sms',

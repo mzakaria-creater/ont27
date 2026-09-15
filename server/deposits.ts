@@ -280,7 +280,7 @@ async function depositDetail(c: Context<AuthEnv>, txId: string) {
         if (!m) return null
         const { data: sms } = await db
           .from('inbound_sms')
-          .select('id, received_at, device_name, sim_slot, sender_name, sender_number, receiver_number, amount, balance_after, sms_category, trx_id, provider, webhook_name, sms_first_line, raw_sms, match_status, matched, risk_score, risk_reason, suspicious, is_duplicate')
+          .select('id, received_at, device_name, sim_slot, sender_name, sender_number, receiver_number, wallet_number, confirmed_wallet_number, amount, balance_after, sms_category, trx_id, provider, webhook_name, sms_first_line, raw_sms, match_status, matched, risk_score, risk_reason, suspicious, is_duplicate')
           .eq('id', m.sms_id)
           .maybeSingle()
         return sms ? { ...sms, sec_diff: m.sec_diff, matched_at: m.matched_at } : null

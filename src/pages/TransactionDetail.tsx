@@ -23,6 +23,8 @@ interface MatchedSms {
   sender_name: string | null
   sender_number: string | null
   receiver_number: string | null
+  wallet_number?: string | null
+  confirmed_wallet_number?: string | null
   amount: number | null
   balance_after: number | null
   sms_first_line: string | null
@@ -318,7 +320,7 @@ export default function TransactionDetail() {
                 <dl className="detail-grid sms-detail-grid">
                   <dt>SMS ID / TRX</dt><dd className="mono">#{data.sms.id} · {data.sms.trx_id ?? '—'}</dd>
                   <dt>{t('المرسل', 'Sender')}</dt><dd>{data.sms.sender_name ?? '—'} {data.sms.sender_number && <span className="mono">({data.sms.sender_number})</span>}</dd>
-                  <dt>{t('محفظة الاستلام', 'Receiving wallet')}</dt><dd className="mono">{data.sms.receiver_number ?? '—'}</dd>
+                  <dt>{t('محفظة الاستلام', 'Receiving wallet')}</dt><dd className="mono">{data.sms.confirmed_wallet_number ?? data.sms.wallet_number ?? data.sms.receiver_number ?? '—'}</dd>
                   <dt>{t('المبلغ / الرصيد بعده', 'Amount / balance after')}</dt><dd className="mono">{money(data.sms.amount, 'EGP')} / {money(data.sms.balance_after, 'EGP')}</dd>
                   <dt>{t('الجهاز', 'Device')}</dt><dd className="mono">{data.sms.device_name ?? data.sms.webhook_name ?? '—'}{data.sms.sim_slot != null && <> · SIM {data.sms.sim_slot}</>}</dd>
                   <dt>{t('المصدر / التصنيف', 'Provider / category')}</dt><dd>{data.sms.provider ?? '—'} · {data.sms.sms_category ?? '—'}</dd>

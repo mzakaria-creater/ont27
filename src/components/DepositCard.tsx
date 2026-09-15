@@ -60,7 +60,7 @@ export default function DepositCard({
       {row.sms && (
         <div className="dep-sms dep-sms-top">
           📨 {t('رسالة المعاملة', 'Transaction SMS')} <span className="mono">#{row.sms.id}</span>
-          <span>{row.sms.sender_name ?? row.sms.sender_number ?? '—'} → {row.sms.receiver_number ?? '—'}</span>
+          <span>{row.sms.sender_name ?? row.sms.sender_number ?? '—'} → {row.sms.confirmed_wallet_number ?? row.sms.wallet_number ?? row.sms.receiver_number ?? '—'}</span>
           <span className="mono">{money(row.sms.amount, row.currency ?? 'EGP')} · {row.sms.received_at ? depositTime({ first_seen_at: row.sms.received_at }) : '—'}</span>
           {declinedWithSms && <span className="declined-sms-warning-line"><AlertTriangle size={12} aria-hidden="true" /> {t('تحذير: SMS مرتبطة مع معاملة مرفوضة', 'Warning: linked SMS with declined transaction')}</span>}
           {(row.sms.raw_sms ?? row.sms.message ?? row.sms.sms_first_line) && <code className={declinedWithSms ? 'is-warning-raw' : undefined}>{row.sms.raw_sms ?? row.sms.message ?? row.sms.sms_first_line}</code>}

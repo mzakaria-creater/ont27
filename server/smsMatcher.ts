@@ -1,7 +1,7 @@
 import { db } from './db.js'
 import { notifyApprovedTransaction } from './approvalEmail.js'
 
-type SmsRow = { id: number; trx_id: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; received_at: string | null; receiver_number: string | null; balance_after?: number | null; provider?: string | null; raw_sms?: string | null; message?: string | null; is_blocked?: boolean | null }
+type SmsRow = { id: number; trx_id: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; received_at: string | null; receiver_number: string | null; wallet_number?: string | null; confirmed_wallet_number?: string | null; balance_after?: number | null; provider?: string | null; raw_sms?: string | null; message?: string | null; is_blocked?: boolean | null }
 type TxRow = { tx_id: number; guid: string | null; ontarget_ref: string | null; merchant_tx_reference: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; receiving_wallet: string | null; to_account_number: string | null; payment_method: string | null; gateway: string | null; status: string | null; first_seen_at: string | null }
 
 const PAGE = 1000
@@ -11,15 +11,16 @@ const FALLBACK_TIME_DIFF_MS = 10 * 60_000
 const ref = (value: unknown) => String(value ?? '').trim().toUpperCase()
 const cents = (value: unknown) => Math.round(Number(value) * 100)
 const phone = (value: unknown) => { const digits = String(value ?? '').replace(/\D/g, ''); return digits.length > 10 ? digits.slice(-10) : digits }
+const receivingWallet = (sms: SmsRow) => sms.confirmed_wallet_number ?? sms.wallet_number ?? sms.receiver_number
 const nameKey = (value: unknown) => String(value ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter((part) => part.length > 1).join(' ')
 const sameName = (left: unknown, right: unknown) => { const a = nameKey(left); const b = nameKey(right); return Boolean(a && b && (a === b || a.includes(b) || b.includes(a))) }
 function hasBalanceContinuity(sms: SmsRow, history: SmsRow[]) {
-  const wallet = phone(sms.receiver_number)
+  const wallet = phone(receivingWallet(sms))
   const at = Date.parse(String(sms.received_at ?? ''))
   const balance = Number(sms.balance_after)
   const amount = Number(sms.amount)
   if (!wallet || !Number.isFinite(at) || !Number.isFinite(balance) || !Number.isFinite(amount)) return false
-  const previous = history.filter((row) => row.id !== sms.id && phone(row.receiver_number) === wallet && Number.isFinite(Number(row.balance_after)) && Date.parse(String(row.received_at ?? '')) < at).sort((a, b) => Date.parse(String(b.received_at ?? '')) - Date.parse(String(a.received_at ?? '')))[0]
+  const previous = history.filter((row) => row.id !== sms.id && phone(receivingWallet(row)) === wallet && Number.isFinite(Number(row.balance_after)) && Date.parse(String(row.received_at ?? '')) < at).sort((a, b) => Date.parse(String(b.received_at ?? '')) - Date.parse(String(a.received_at ?? '')))[0]
   return Boolean(previous && Math.abs(balance - (Number(previous.balance_after) + amount)) <= 1)
 }
 
@@ -47,7 +48,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
   const limit = Math.min(Math.max(scanLimit, 1), PAGE)
   const [{ data: smsData, error: smsError }, { data: txData, error: txError }] = await Promise.all([
     db.from('inbound_sms')
-      .select('id, trx_id, amount, sender_name, sender_number, received_at, receiver_number, balance_after, provider, raw_sms, message')
+      .select('id, trx_id, amount, sender_name, sender_number, received_at, receiver_number, wallet_number, confirmed_wallet_number, balance_after, provider, raw_sms, message')
       .eq('sms_category', 'deposit')
       .is('consumed_by_tx_id', null)
       .or('is_blocked.eq.false,is_blocked.is.null')
@@ -64,7 +65,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
 
   const { data: walletRows, error: walletError } = await db.from('wallet_device_map').select('to_account_number')
   if (walletError) throw new Error(`wallet exclusion lookup: ${walletError.message}`)
-  const { data: balanceHistory, error: balanceHistoryError } = await db.from('inbound_sms').select('id, amount, receiver_number, balance_after, received_at').not('balance_after', 'is', null).or('is_blocked.eq.false,is_blocked.is.null').gte('received_at', new Date(Date.now() - 7 * 86_400_000).toISOString()).limit(10_000)
+  const { data: balanceHistory, error: balanceHistoryError } = await db.from('inbound_sms').select('id, amount, receiver_number, wallet_number, confirmed_wallet_number, balance_after, received_at').not('balance_after', 'is', null).or('is_blocked.eq.false,is_blocked.is.null').gte('received_at', new Date(Date.now() - 7 * 86_400_000).toISOString()).limit(10_000)
   if (balanceHistoryError) throw new Error(`balance continuity lookup: ${balanceHistoryError.message}`)
   const ourWallets = new Set((walletRows ?? []).map((row) => phone(row.to_account_number)).filter(Boolean))
   const smsRows = (smsData ?? []) as SmsRow[]
@@ -165,11 +166,11 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
 
         const [match, wallet] = await Promise.all([
           db.from('sms_maven_matches').upsert({
-            sms_id: sms.id, tx_id: tx.tx_id, receiving_wallet: sms.receiver_number,
+            sms_id: sms.id, tx_id: tx.tx_id, receiving_wallet: receivingWallet(sms),
             sms_amount: sms.amount, mv_amount: tx.amount, received_at: sms.received_at,
             mv_time: tx.first_seen_at, sec_diff: secDiff, webhook_name: 'trx_exact_auto_match', matched_at: now,
           }, { onConflict: 'sms_id' }),
-          sms.receiver_number ? db.from('maven_transactions').update({ receiving_wallet: sms.receiver_number }).eq('tx_id', tx.tx_id) : Promise.resolve({ error: null }),
+          receivingWallet(sms) ? db.from('maven_transactions').update({ receiving_wallet: receivingWallet(sms) }).eq('tx_id', tx.tx_id) : Promise.resolve({ error: null }),
         ])
         if (match.error) errors.push(`match ${sms.id}/${tx.tx_id}: ${match.error.message}`)
         if (wallet.error) errors.push(`wallet tx ${tx.tx_id}: ${wallet.error.message}`)
