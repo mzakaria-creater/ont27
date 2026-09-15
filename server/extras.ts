@@ -661,19 +661,23 @@ extraRoutes.get('/wallet-report', requireAnyPerm(['sms_live', 'wallets'], 'can_v
 extraRoutes.get('/wallet-paid-totals', requireAnyPerm(['sms_live', 'wallets'], 'can_view'), async (c) => {
   const monthStart = cairoBoundary(`${cairoToday().slice(0, 7)}-01`)
   const { data, error } = await db.from('maven_transactions')
-    .select('amount, status, receiving_wallet, to_account_number')
+    .select('tx_id, ontarget_ref, merchant, sub_merchant, amount, status, receiving_wallet, to_account_number')
     .gte('first_seen_at', monthStart)
     .in('status', ['PAID', 'APPROVED', 'SUCCESS', 'COMPLETED'])
     .limit(20_000)
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  const totals = new Map<string, number>()
+  const totals = new Map<string, { paid_amount: number; transaction_ref: string | null; merchant: string | null }>()
   for (const row of data ?? []) {
     const wallet = walletDigits(row.receiving_wallet ?? row.to_account_number)
     const amount = Number(row.amount ?? 0)
     if (!wallet || !Number.isFinite(amount)) continue
-    totals.set(wallet, (totals.get(wallet) ?? 0) + amount)
+    const current = totals.get(wallet) ?? { paid_amount: 0, transaction_ref: null, merchant: null }
+    current.paid_amount += amount
+    current.transaction_ref ??= row.ontarget_ref ?? (row.tx_id == null ? null : String(row.tx_id))
+    current.merchant ??= row.sub_merchant ?? row.merchant ?? null
+    totals.set(wallet, current)
   }
-  return c.json({ rows: [...totals.entries()].map(([wallet, paid_amount]) => ({ wallet, paid_amount: Math.round(paid_amount * 100) / 100 })).sort((a, b) => b.paid_amount - a.paid_amount) })
+  return c.json({ rows: [...totals.entries()].map(([wallet, value]) => ({ wallet, paid_amount: Math.round(value.paid_amount * 100) / 100, transaction_ref: value.transaction_ref, merchant: value.merchant })).sort((a, b) => b.paid_amount - a.paid_amount) })
 })
 
 // Per-wallet detail: recent SMS for the wallet + transactions that landed on

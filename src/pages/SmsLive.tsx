@@ -128,7 +128,7 @@ interface SmsStats {
   review: number
 }
 
-interface WalletPaidTotal { wallet: string; paid_amount: number }
+interface WalletPaidTotal { wallet: string; paid_amount: number; transaction_ref?: string | null; merchant?: string | null }
 
 interface ListResponse {
   rows: SmsRow[]
@@ -378,6 +378,7 @@ export default function SmsLive() {
           matched_tx_id: txId,
         } : current)
         setCandidates(null)
+        window.dispatchEvent(new CustomEvent('ontarget:sms-assignment-success', { detail: { direction: 'in', amount: selected.amount, wallet: displayWalletForRow(selected), transactionRef: String(txId) } }))
         setLinkErr(t(
           `تم ربط الرسالة كدليل فقط لأن مبلغ SMS (${result.sms_amount ?? '—'} جنيه) لا يطابق مبلغ المعاملة (${result.tx_amount ?? '—'} جنيه). لم يتم اعتماد المعاملة تلقائياً؛ صحّح المبلغ واعتمدها يدوياً.`,
           result.warning,
@@ -385,6 +386,7 @@ export default function SmsLive() {
         void load(true)
         return
       }
+      window.dispatchEvent(new CustomEvent('ontarget:sms-assignment-success', { detail: { direction: selected.sms_category === 'withdrawal' ? 'out' : 'in', amount: selected.amount, wallet: displayWalletForRow(selected), transactionRef: String(txId) } }))
       setSelected(null)
       void load(true)
     } catch (e) {
@@ -475,6 +477,7 @@ export default function SmsLive() {
         method: 'PATCH', body: JSON.stringify({ sender_name: metaName, notes: metaNotes, wallet_number: metaWallet }),
       })
       setSelected({ ...selected, ...res.sms, linked_wallet_number: res.sms.confirmed_wallet_number ?? selected.wallet_number })
+      window.dispatchEvent(new CustomEvent('ontarget:sms-assignment-success', { detail: { direction: 'out', amount: selected.amount, wallet: res.sms.confirmed_wallet_number ?? metaWallet, merchant: metaName.trim() || null } }))
       void load(true)
     } catch (e) {
       setLinkErr(e instanceof ApiError && e.code === 'invalid_wallet_number'
@@ -505,6 +508,7 @@ export default function SmsLive() {
         method: 'POST',
         body: JSON.stringify({ assignment_type: assignmentType, target_reference: assignmentRef.trim(), name: assignmentName.trim(), note: metaNotes.trim() }),
       })
+      window.dispatchEvent(new CustomEvent('ontarget:sms-assignment-success', { detail: { direction: 'out', amount: selected.amount, wallet: displayWalletForRow(selected), transactionRef: assignmentRef.trim(), merchant: assignmentName.trim() } }))
       await openDetail(selected.id)
       void load(true)
     } catch (e) {
@@ -527,9 +531,9 @@ export default function SmsLive() {
         <div className="wallet-limit-popup-backdrop" role="presentation">
           <section className="wallet-limit-popup" role="alertdialog" aria-modal="true" aria-labelledby="wallet-limit-popup-title">
             <div className="wallet-limit-popup-icon">⚠</div>
-            <h3 id="wallet-limit-popup-title">{t('تنبيه حد المحفظة', 'Wallet limit alert')}</h3>
+          <h3 id="wallet-limit-popup-title">{t('تنبيه حد المحفظة', 'Wallet limit alert')}</h3>
             <p>{t('وصلت المحافظ التالية إلى 50,000 جنيه مدفوع. يرجى إيقاف التوجيه أو مراجعة السعة.', 'These wallets reached 50,000 EGP paid. Please stop routing or review capacity.')}</p>
-            <div className="wallet-limit-popup-list">{walletAlerts.map((row) => <div key={row.wallet}><span className="mono">{row.wallet}</span><strong>{money(row.paid_amount, 'EGP')}</strong></div>)}</div>
+            <div className="wallet-limit-popup-list">{walletAlerts.map((row) => <div key={row.wallet}><span><span className="mono">{row.wallet}</span>{(row.transaction_ref || row.merchant) && <small>{row.transaction_ref ? `TRX ${row.transaction_ref}` : ''}{row.transaction_ref && row.merchant ? ' · ' : ''}{row.merchant ?? ''}</small>}</span><strong>{money(row.paid_amount, 'EGP')}</strong></div>)}</div>
             <button type="button" className="btn-primary" onClick={() => setWalletAlertDismissed(true)}>{t('فهمت', 'Acknowledge')}</button>
           </section>
         </div>
@@ -538,6 +542,7 @@ export default function SmsLive() {
         <div className="recent-head">
           <h2 style={{ margin: 0 }}>📨 {t('SMS مباشر', 'Live SMS')}</h2>
           <Link to="/wallet-report" className="btn-ghost btn-sm">📊 {t('تقرير المحافظ ←', 'Wallet report →')}</Link>
+          {can('sms_live', 'can_edit') && <span className="sms-popup-test-actions"><button type="button" className="btn-ghost btn-sm sms-test-in" onClick={() => window.dispatchEvent(new CustomEvent('ontarget:test-sms-popup', { detail: { direction: 'in', amount: 7500, wallet: '01200000000', test: true } }))}>{t('اختبار SMS داخل', 'Test SMS in')}</button><button type="button" className="btn-ghost btn-sm sms-test-out" onClick={() => window.dispatchEvent(new CustomEvent('ontarget:test-sms-popup', { detail: { direction: 'out', amount: 7500, wallet: '01200000000', test: true } }))}>{t('اختبار SMS خارج', 'Test SMS out')}</button></span>}
         </div>
         <div className="view-switch" role="group" aria-label={t('طريقة العرض', 'View mode')}>
           <button className={viewMode === 'table' ? 'active' : ''} aria-pressed={viewMode === 'table'} onClick={() => { setViewMode('table'); localStorage.setItem('sms-live-view', 'table') }}><TableProperties size={16} /> {t('جدول', 'Table')}</button>

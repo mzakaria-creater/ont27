@@ -18,6 +18,7 @@ interface PopupAlert extends AlertRow {
   wallet?: string | null
   smsId?: number
   smsCategory?: 'deposit' | 'withdrawal'
+  merchant?: string | null
 }
 
 interface SmsAlertRow {
@@ -31,6 +32,15 @@ interface SmsAlertRow {
   matched_ontarget_ref?: string | null
   matched_payout_ref?: string | null
   matched_tx_id?: number | null
+}
+
+interface SmsPopupEvent {
+  direction?: 'in' | 'out'
+  amount?: number | null
+  wallet?: string | null
+  transactionRef?: string | null
+  merchant?: string | null
+  test?: boolean
 }
 
 const SESSION_KEY = 'ontarget:wrongful-decline-popup-seen'
@@ -180,6 +190,19 @@ export default function WrongfulDeclineRealtimePopup() {
     return () => { cancelled = true; window.clearInterval(timer); smsBaseline.current = null }
   }, [canSeeSms, enqueue, highValueSmsThreshold, status])
 
+  useEffect(() => {
+    if (status !== 'authed' || !canSeeSms) return
+    const onPopup = (event: Event) => {
+      const detail = (event as CustomEvent<SmsPopupEvent>).detail ?? {}
+      const direction = detail.direction === 'out' ? 'withdrawal' : 'deposit'
+      const id = Date.now()
+      enqueue({ id, alert_type: 'high_value_sms', message: '', created_at: new Date().toISOString(), transactionRef: detail.transactionRef ?? null, lines: [], dedupeKey: `sms_event:${id}`, kind: 'high_value_sms', amount: Number(detail.amount ?? (detail.test ? 7500 : 0)) || 0, wallet: detail.wallet ?? null, smsId: detail.test ? undefined : id, smsCategory: direction, merchant: detail.merchant ?? null })
+    }
+    window.addEventListener('ontarget:test-sms-popup', onPopup)
+    window.addEventListener('ontarget:sms-assignment-success', onPopup)
+    return () => { window.removeEventListener('ontarget:test-sms-popup', onPopup); window.removeEventListener('ontarget:sms-assignment-success', onPopup) }
+  }, [canSeeSms, enqueue, status])
+
   const dismiss = useCallback((dedupeKey: string) => {
     setAlerts((current) => current.filter((item) => item.dedupeKey !== dedupeKey))
   }, [])
@@ -249,6 +272,7 @@ export default function WrongfulDeclineRealtimePopup() {
             {criticalAlert.amount != null && <span className="pending-work-amount">{money(criticalAlert.amount, 'EGP')}</span>}
             {criticalAlert.wallet && <span className="mono">{t('المحفظة', 'Wallet')}: {criticalAlert.wallet}</span>}
             {criticalAlert.transactionRef && <span className="mono wrongful-popup-ref">TRX: {criticalAlert.transactionRef}</span>}
+            {criticalAlert.merchant && <span>{t('التاجر', 'Merchant')}: {criticalAlert.merchant}</span>}
           </>}
           <button type="button" className="btn-primary btn-sm pending-work-open" onClick={openCritical}>{criticalAlert.kind === 'complaint' ? t('فتح الشكوى', 'Open complaint') : t('فتح رسالة SMS', 'Open SMS')}</button>
         </div>
