@@ -351,19 +351,45 @@ export default function SmsLive() {
     setParams(next, { replace: true })
   }
 
-  const link = async (txId: number) => {
+  const link = async (txId: number, confirmAmountMismatch = false) => {
     if (!selected) return
     setLinkBusy(true)
     setLinkErr(null)
     try {
-      await api(`/api/sms/${selected.id}/link`, {
+      const result = await api<{ warning?: string; amount_mismatch?: boolean; sms_amount?: number; tx_amount?: number }>(`/api/sms/${selected.id}/link`, {
         method: 'POST',
-        body: JSON.stringify({ tx_id: txId }),
+        body: JSON.stringify({ tx_id: txId, confirm_amount_mismatch: confirmAmountMismatch }),
       })
+      if (result.warning) {
+        setSelected((current) => current ? {
+          ...current,
+          matched: true,
+          match_status: 'manual',
+          matched_transaction_id: txId,
+          maven_transaction_id: String(txId),
+          consumed_by_tx_id: txId,
+          matched_tx_id: txId,
+        } : current)
+        setCandidates(null)
+        setLinkErr(t(
+          `تم ربط الرسالة كدليل فقط لأن مبلغ SMS (${result.sms_amount ?? '—'} جنيه) لا يطابق مبلغ المعاملة (${result.tx_amount ?? '—'} جنيه). لم يتم اعتماد المعاملة تلقائياً؛ صحّح المبلغ واعتمدها يدوياً.`,
+          result.warning,
+        ))
+        void load(true)
+        return
+      }
       setSelected(null)
       void load(true)
     } catch (e) {
-      if (e instanceof ApiError && e.code === 'already_linked') {
+      if (e instanceof ApiError && e.status === 409 && e.code === 'amount_mismatch') {
+        const smsAmount = Number(e.body?.sms_amount)
+        const txAmount = Number(e.body?.tx_amount)
+        const confirmed = window.confirm(t(
+          `مبلغ SMS هو ${money(smsAmount, 'EGP')} بينما مبلغ المعاملة هو ${money(txAmount, 'EGP')}. المتابعة ستربط الرسالة كدليل فقط ولن تعتمد المعاملة تلقائياً. يجب تصحيح مبلغ المعاملة واعتمادها يدوياً. هل تريد المتابعة؟`,
+          `The SMS amount is ${money(smsAmount, 'EGP')} while the transaction amount is ${money(txAmount, 'EGP')}. Continuing will link the SMS as evidence only and will not auto-approve the transaction. Correct the transaction amount and approve it manually. Continue?`,
+        ))
+        if (confirmed) await link(txId, true)
+      } else if (e instanceof ApiError && e.code === 'already_linked') {
         setLinkErr(t('الرسالة مرتبطة بالفعل — أعد الفتح.', 'Message already linked — reopen.'))
       } else if (e instanceof ApiError && e.code === 'transaction_already_linked') {
         setLinkErr(t('هذه المعاملة مرتبطة برسالة أخرى بالفعل.', 'This transaction is already linked to another SMS.'))

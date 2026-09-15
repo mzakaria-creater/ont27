@@ -537,6 +537,13 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
     return c.json({ error: 'transaction_already_linked' }, 409)
   }
 
+  const smsAmount = Number(sms.amount)
+  const txAmount = Number(tx.amount)
+  const amountMismatch = smsAmount !== txAmount
+  if (amountMismatch && body?.confirm_amount_mismatch !== true) {
+    return c.json({ error: 'amount_mismatch', sms_amount: smsAmount, tx_amount: txAmount }, 409)
+  }
+
   const { data: claimedSms, error: updErr } = await db
     .from('inbound_sms')
     .update({
@@ -599,7 +606,7 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
     entity: 'inbound_sms',
     entity_id: id,
     before: { match_status: sms.match_status },
-    after: { match_status: 'manual', tx_id: txId, ontarget_ref: tx.ontarget_ref },
+    after: { match_status: 'manual', tx_id: txId, ontarget_ref: tx.ontarget_ref, amount_mismatch: amountMismatch, sms_amount: smsAmount, tx_amount: txAmount },
   })
 
   // Linking an already-approved first deposit is enough evidence to remember
@@ -619,9 +626,11 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
   // NGPay deposit, execute the provider action immediately instead of waiting
   // for the next automation sweep. Automation remains a gate: when it is off,
   // the SMS is linked but the transaction stays pending for manual approval.
-  let providerApproval: Record<string, unknown> = { attempted: false }
+  let providerApproval: Record<string, unknown> = amountMismatch
+    ? { attempted: false, skipped: 'amount_mismatch' }
+    : { attempted: false }
   const gateway = String(tx.gateway ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase()
-  if (tx.status === 'PENDING' && (gateway === 'nagupayp2p' || gateway === 'nagopay')) {
+  if (!amountMismatch && tx.status === 'PENDING' && (gateway === 'nagupayp2p' || gateway === 'nagopay')) {
     // Do not hold the SMS assignment request open while Maven performs its
     // browser action. The link is already committed; the provider action runs
     // in the platform background and updates the mirror when confirmed.
@@ -658,7 +667,17 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
     try { c.executionCtx.waitUntil(approvalTask) } catch { approvalTask.catch(() => {}) }
   }
 
-  return c.json({ ok: true, learned_sms_name: learnedIdentity, provider_approval: providerApproval })
+  return c.json({
+    ok: true,
+    learned_sms_name: learnedIdentity,
+    provider_approval: providerApproval,
+    amount_mismatch: amountMismatch,
+    ...(amountMismatch ? {
+      warning: `SMS amount (${smsAmount} EGP) does not match transaction amount (${txAmount} EGP). The SMS was linked as evidence only; the transaction was not auto-approved. Correct the transaction amount and approve it manually.`,
+      sms_amount: smsAmount,
+      tx_amount: txAmount,
+    } : {}),
+  })
 })
 
 smsRoutes.post('/:id/unlink', requirePerm('sms_live', 'can_edit'), async (c) => {

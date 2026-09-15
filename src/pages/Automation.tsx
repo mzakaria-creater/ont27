@@ -52,6 +52,7 @@ interface TurboAuditRow { id: number; actor_name: string | null; action: string;
 
 const FLAG_LABELS: Record<string, string> = {
   automation_enabled: 'الأتمتة مفعّلة',
+  auto_decline_enabled: 'الرفض التلقائي للمعاملات',
   ngpay_enabled: 'NGPay',
   // maven_enabled is the old stack's back-office worker channel; the literal
   // provider name must never surface in the UI (naming rule).
@@ -336,7 +337,7 @@ export default function Automation() {
               onClick={() => void toggleGlobalSetting('automation_enabled', settings.automation_enabled !== true)}
             >
               <span className="automation-toggle-track"><span className="automation-toggle-thumb" /></span>
-              <span><strong>{t('الأتمتة: موافق / إيقاف', 'Automation: ON / OFF')}</strong><small>{settings.automation_enabled ? t('ON — موافقة ورفض تلقائي', 'ON — auto approve and decline') : t('OFF — مراجعة يدوية فقط', 'OFF — manual review only')}</small></span>
+              <span><strong>{t('الأتمتة: موافق / إيقاف', 'Automation: ON / OFF')}</strong><small>{settings.automation_enabled ? t('ON — القرارات التلقائية مفعّلة', 'ON — automated decisions enabled') : t('OFF — مراجعة يدوية فقط', 'OFF — manual review only')}</small></span>
               <b>{settings.automation_enabled ? 'ON' : 'OFF'}</b>
             </button>
           </div>
@@ -346,6 +347,20 @@ export default function Automation() {
               <strong>{t('مطابقة SMS مستمرة', 'SMS matching keeps running')}</strong>
             </label>
             <span className="cell-sub">{t('مستقلة تماماً عن مفتاح الموافقة أعلاه — إيقاف الموافقة لا يوقف استلام/مطابقة SMS.', 'Fully independent of the switch above — turning approval off does not stop SMS ingestion/matching.')}</span>
+          </div>
+          <div className="control-row">
+            <button
+              type="button"
+              className={`automation-master-toggle ${settings.auto_decline_enabled === true ? 'is-on' : 'is-off'}`}
+              role="switch"
+              aria-checked={settings.auto_decline_enabled === true}
+              disabled={!canControl || settingsBusy === 'auto_decline_enabled'}
+              onClick={() => void toggleGlobalSetting('auto_decline_enabled', settings.auto_decline_enabled !== true)}
+            >
+              <span className="automation-toggle-track"><span className="automation-toggle-thumb" /></span>
+              <span><strong>{t('الرفض التلقائي للمعاملات', 'Auto-decline transactions')}</strong><small>{settings.auto_decline_enabled === true ? t('ON — رفض المعاملات غير المطابقة بعد المهلة', 'ON — decline stale unmatched transactions') : t('OFF — تظل المعاملات غير المطابقة PENDING', 'OFF — stale unmatched transactions stay PENDING')}</small></span>
+              <b>{settings.auto_decline_enabled === true ? 'ON' : 'OFF'}</b>
+            </button>
           </div>
           <div className={`automation-turbo-card ${settings.turbo_mode ? 'is-on' : ''}`}>
             <div>
