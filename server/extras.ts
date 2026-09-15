@@ -867,13 +867,25 @@ extraRoutes.get(
 // Add a sender_number to the blacklist straight from the velocity view.
 extraRoutes.post(
   '/risk/blacklist',
-  requireAnyPerm(['risk', 'risk_audit', 'flagged', 'velocity', 'compliance'], 'can_edit'),
+  requireAnyPerm(['risk', 'risk_audit', 'flagged', 'velocity', 'compliance', 'transactions', 'client_crm'], 'can_edit'),
   async (c) => {
     const body = await c.req.json().catch(() => null)
     const value = typeof body?.value === 'string' ? body.value.trim() : ''
     const type = typeof body?.type === 'string' && body.type.trim() ? body.type.trim().slice(0, 40) : 'phone'
     const reason = typeof body?.reason === 'string' ? body.reason.trim().slice(0, 300) : null
     if (!value) return c.json({ error: 'value_required' }, 400)
+    const txId = Number(body?.tx_id)
+    if (type === 'phone' && Number.isSafeInteger(txId) && txId > 0) {
+      const [consumed, matched, maven] = await Promise.all([
+        db.from('inbound_sms').select('id').eq('consumed_by_tx_id', txId).limit(1),
+        db.from('inbound_sms').select('id').eq('matched_transaction_id', txId).limit(1),
+        db.from('inbound_sms').select('id').eq('maven_transaction_id', txId).limit(1),
+      ])
+      if (consumed.error || matched.error || maven.error) return c.json({ error: 'db_error', detail: consumed.error?.message ?? matched.error?.message ?? maven.error?.message }, 500)
+      if ((consumed.data?.length ?? 0) + (matched.data?.length ?? 0) + (maven.data?.length ?? 0) > 0) {
+        return c.json({ error: 'sms_link_requires_manual_review', message: 'A transaction with linked SMS must be reviewed manually before client blocking.' }, 409)
+      }
+    }
     const actor = c.get('actor')
     // Scoped by (type, value) — the table's real key — not by value alone, and
     // NOT via .maybeSingle(): that errors out when more than one row matches,

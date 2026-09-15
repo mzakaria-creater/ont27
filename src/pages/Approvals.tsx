@@ -185,10 +185,10 @@ export default function Approvals() {
     if (!window.confirm(`${question}\n${phone}`)) return
     setRowBusy(`client-${row.tx_id}`)
     try {
-      await api(action === 'block' ? '/api/risk/blacklist' : '/api/risk/blacklist/unblock-client', { method: 'POST', body: JSON.stringify(action === 'block' ? { type: 'phone', value: phone, reason: `Approval queue action for ${row.ontarget_ref ?? row.tx_id}` } : { value: phone }) })
+      await api(action === 'block' ? '/api/risk/blacklist' : '/api/risk/blacklist/unblock-client', { method: 'POST', body: JSON.stringify(action === 'block' ? { type: 'phone', value: phone, tx_id: row.tx_id, reason: `Approval queue action for ${row.ontarget_ref ?? row.tx_id}` } : { value: phone }) })
       await load()
     } catch (e) {
-      setErr(e instanceof ApiError && e.status === 409 ? t('العميل محظور بالفعل.', 'Client is already blocked.') : t('تعذر تحديث حظر العميل.', 'Could not update client block.'))
+      setErr(e instanceof ApiError && e.code === 'sms_link_requires_manual_review' ? t('توجد SMS مرتبطة — المعاملة تحتاج مراجعة يدوية قبل حظر العميل.', 'SMS is linked — manual review is required before blocking the client.') : e instanceof ApiError && e.status === 409 ? t('العميل محظور بالفعل.', 'Client is already blocked.') : t('تعذر تحديث حظر العميل.', 'Could not update client block.'))
     } finally { setRowBusy(null) }
   }
   const normalizedSearch = searchQuery.trim().toLocaleLowerCase()
@@ -329,7 +329,7 @@ export default function Approvals() {
                         <div className="row-actions">
                           {canDep && <><button className="btn-primary btn-sm" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'approve')}>✅</button>
                           <button className="btn-ghost danger btn-sm" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'decline')}>❌</button></>}
-                          {canClientProtection && r.sender_number && (r.blacklisted_sender ? <button className="btn-ghost btn-sm" disabled={rowBusy === `client-${r.tx_id}`} onClick={() => void changeClientBlock(r, 'unblock')} title={t('رفع حظر العميل', 'Unblock client')}>🔓 <Unlock size={13} /></button> : <button className="btn-ghost danger btn-sm" disabled={rowBusy === `client-${r.tx_id}`} onClick={() => void changeClientBlock(r, 'block')} title={t('حظر العميل', 'Block client')}>🚫 <Ban size={13} /></button>)}
+                          {canClientProtection && r.sender_number && (r.blacklisted_sender ? <button className="btn-ghost btn-sm" disabled={rowBusy === `client-${r.tx_id}`} onClick={() => void changeClientBlock(r, 'unblock')} title={t('رفع حظر العميل', 'Unblock client')}>🔓 <Unlock size={13} /></button> : r.linked_sms ? <span className="pay-status-badge st-pending" title={t('تحتاج هذه المعاملة مراجعة يدوية بسبب وجود SMS مرتبطة', 'Linked SMS requires manual review')}>{t('مراجعة يدوية', 'Manual review')}</span> : <button className="btn-ghost danger btn-sm" disabled={rowBusy === `client-${r.tx_id}`} onClick={() => void changeClientBlock(r, 'block')} title={t('حظر العميل', 'Block client')}>🚫 <Ban size={13} /></button>)}
                         </div>
                       )}
                     </td>
@@ -367,7 +367,7 @@ export default function Approvals() {
                 </div>
                 <AutomationCountdown row={r} now={now} />
                 {r.proof_image_url && <button className="approval-card-proof" onClick={() => setProof({ url: r.proof_image_url!, ref: String(r.ontarget_ref ?? r.tx_id) })}><img src={r.proof_image_url} alt="" loading="lazy" /><span>{t('عرض إثبات الدفع', 'View payment proof')}</span></button>}
-                {(canDep || (canClientProtection && r.sender_number)) && <div className="approval-card-actions">{canDep && <><button className="btn-primary" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'approve')}>{t('موافقة', 'Approve')}</button><button className="btn-ghost danger" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'decline')}>{t('رفض', 'Decline')}</button></>}{canClientProtection && r.sender_number && (r.blacklisted_sender ? <button className="btn-ghost" disabled={rowBusy === `client-${r.tx_id}`} onClick={() => void changeClientBlock(r, 'unblock')}>🔓 {t('رفع الحظر', 'Unblock')}</button> : <button className="btn-ghost danger" disabled={rowBusy === `client-${r.tx_id}`} onClick={() => void changeClientBlock(r, 'block')}>🚫 {t('حظر العميل', 'Block client')}</button>)}</div>}
+                {(canDep || (canClientProtection && r.sender_number)) && <div className="approval-card-actions">{canDep && <><button className="btn-primary" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'approve')}>{t('موافقة', 'Approve')}</button><button className="btn-ghost danger" disabled={rowBusy === `deposits-${r.tx_id}`} onClick={() => void quick(r.tx_id, 'decline')}>{t('رفض', 'Decline')}</button></>}{canClientProtection && r.sender_number && (r.blacklisted_sender ? <button className="btn-ghost" disabled={rowBusy === `client-${r.tx_id}`} onClick={() => void changeClientBlock(r, 'unblock')}>🔓 {t('رفع الحظر', 'Unblock')}</button> : r.linked_sms ? <span className="pay-status-badge st-pending">{t('مراجعة يدوية', 'Manual review')}</span> : <button className="btn-ghost danger" disabled={rowBusy === `client-${r.tx_id}`} onClick={() => void changeClientBlock(r, 'block')}>🚫 {t('حظر العميل', 'Block client')}</button>)}</div>}
               </article>
             ))}
           </div>
