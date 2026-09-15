@@ -17,7 +17,7 @@ const HIGH_VALUE_SMS_THRESHOLD_PRESETS = [5_000, 10_000, 20_000, 50_000]
 const TEMPLATE_COPY: Record<string, { label: [string, string]; desc: [string, string] }> = {
   conservative: { label: ['محافظ', 'Conservative'], desc: ['أقل مخاطرة: حد أقل، مهلة أطول، ثقة أعلى، قاطع الأمان مفعّل.', 'Lowest risk: smaller cap, longer grace, higher confidence, circuit breaker on.'] },
   balanced: { label: ['متوازن', 'Balanced'], desc: ['الوضع التشغيلي الافتراضي — توازن بين السرعة والأمان.', 'Default operating posture — balance of speed and safety.'] },
-  turbo: { label: ['سريع (Turbo)', 'Turbo'], desc: ['أعلى إنتاجية: حد أكبر، مهلة أقصر، تبديل محافظ تلقائي. مخاطرة أعلى.', 'Highest throughput: larger cap, shorter grace, auto wallet switch. Higher risk.'] },
+  turbo: { label: ['سريع (Turbo)', 'Turbo'], desc: ['نفس قواعد المطابقة والحدود، مع مهلة تنفيذ أسرع لمدة دقيقتين فقط.', 'Same matching and amount rules, with faster execution for two minutes only.'] },
   maintenance: { label: ['صيانة (إيقاف)', 'Maintenance (off)'], desc: ['إيقاف الأتمتة بالكامل — كل معاملة تروح مراجعة يدوية. الأمان يفضل مفعّل.', 'Automation fully off — every transaction goes to manual review. Safety stays on.'] },
 }
 
@@ -133,13 +133,15 @@ export default function Automation() {
   const [ruleConflict, setRuleConflict] = useState<{ id: string; action_type: string; priority: number }[] | null>(null)
   const [settingsBusy, setSettingsBusy] = useState<string | null>(null)
   const [popupSettingsOpen, setPopupSettingsOpen] = useState(false)
-  const [popupThreshold, setPopupThreshold] = useState('10000')
+  const [popupThreshold, setPopupThreshold] = useState('5000')
   const [popupSettingsBusy, setPopupSettingsBusy] = useState(false)
   const [popupSettingsError, setPopupSettingsError] = useState<string | null>(null)
   const popupDialogRef = useRef<HTMLElement | null>(null)
   const popupInputRef = useRef<HTMLInputElement | null>(null)
   const [turboBusy, setTurboBusy] = useState(false)
   const [turboUntil, setTurboUntil] = useState<number | null>(null)
+  const turboTimerRef = useRef<number | null>(null)
+  const turboRestoreRef = useRef<Record<string, unknown> | null>(null)
   const [ruleSearch, setRuleSearch] = useState('')
   const [ruleProviders, setRuleProviders] = useState<string[]>([])
   const [ruleStatuses, setRuleStatuses] = useState<string[]>([])
@@ -267,36 +269,52 @@ export default function Automation() {
     }
   }, [popupSettingsOpen])
 
+  const stopTurbo = async (automatic = false) => {
+    if (!canControl || turboBusy) return
+    setTurboBusy(true)
+    try {
+      const restore = turboRestoreRef.current ?? {}
+      await api('/api/automation/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ ...restore, turbo_mode: false }),
+      })
+      if (turboTimerRef.current != null) window.clearTimeout(turboTimerRef.current)
+      turboTimerRef.current = null
+      turboRestoreRef.current = null
+      setTurboUntil(null)
+      await reloadAutomation()
+      setRuleMsg(automatic
+        ? t('انتهت جلسة Turbo وعادت القواعد والإعدادات السابقة.', 'Turbo ended; the previous rules and settings were restored.')
+        : t('تم إيقاف Turbo — عادت القواعد والإعدادات السابقة.', 'Turbo stopped; the previous rules and settings were restored.'))
+    } catch {
+      setRuleMsg(t('تعذّر إيقاف Turbo — حاول مرة أخرى.', 'Turbo could not be stopped — try again.'))
+    } finally {
+      setTurboBusy(false)
+    }
+  }
+
   const runTurboForTwoMinutes = async () => {
     if (!canControl || turboBusy) return
     setTurboBusy(true)
     setRuleMsg(null)
     try {
-      // Apply the same server-side posture used by the live worker, then keep
-      // the V2 mirror in sync for the page and dashboard.
-      await api('/api/control/automation/template', { method: 'POST', body: JSON.stringify({ id: 'turbo' }) })
+      // Turbo changes timing only. Preserve the operator's amount cap,
+      // wallet policy and every matching rule so it cannot widen approvals.
+      turboRestoreRef.current = {
+        max_auto_amount: data?.settings?.max_auto_amount,
+        decline_grace_minutes: data?.settings?.decline_grace_minutes,
+        wallet_switch_auto_enabled: data?.settings?.wallet_switch_auto_enabled,
+      }
       await api('/api/automation/settings', {
         method: 'PATCH',
-        body: JSON.stringify({ turbo_mode: true, wallet_switch_auto_enabled: true, max_auto_amount: 8000, decline_grace_minutes: 1 }),
+        body: JSON.stringify({ turbo_mode: true, decline_grace_minutes: 1 }),
       })
       const until = Date.now() + 120_000
       setTurboUntil(until)
       setRuleMsg(t('تم تشغيل Turbo لمدة دقيقتين — سيعود للوضع المتوازن تلقائياً.', 'Turbo is on for 2 minutes — it will return to Balanced automatically.'))
-      window.setTimeout(async () => {
-        try {
-          await api('/api/control/automation/template', { method: 'POST', body: JSON.stringify({ id: 'balanced' }) })
-          await api('/api/automation/settings', {
-            method: 'PATCH',
-            body: JSON.stringify({ turbo_mode: false, wallet_switch_auto_enabled: false, max_auto_amount: 5000, decline_grace_minutes: 3 }),
-          })
-          setTurboUntil(null)
-          await reloadAutomation()
-          setRuleMsg(t('انتهت جلسة Turbo وعادت الأتمتة إلى الوضع المتوازن.', 'Turbo session ended; automation returned to Balanced.'))
-        } catch {
-          setRuleMsg(t('تعذّر إيقاف Turbo تلقائياً — أوقفه يدوياً الآن.', 'Turbo could not be disabled automatically — turn it off manually now.'))
-        }
-      }, 120_000)
+      turboTimerRef.current = window.setTimeout(() => { void stopTurbo(true) }, 120_000)
     } catch {
+      turboRestoreRef.current = null
       setRuleMsg(t('تعذّر تشغيل Turbo.', 'Unable to start Turbo.'))
     } finally {
       setTurboBusy(false)
@@ -450,8 +468,8 @@ export default function Automation() {
               <p>{t('يشغّل المعالجة السريعة لمدة دقيقتين فقط، ثم يعود تلقائياً إلى الوضع المتوازن.', 'Runs the faster processing posture for exactly two minutes, then returns to Balanced automatically.')}</p>
               {turboUntil && <small>{t('ينتهي عند', 'Ends at')} {new Date(turboUntil).toLocaleTimeString()}</small>}
             </div>
-            <button type="button" className="btn-primary btn-sm" disabled={!canControl || turboBusy || Boolean(turboUntil)} onClick={() => void runTurboForTwoMinutes()}>
-              {turboBusy ? t('جارٍ التشغيل…', 'Starting…') : turboUntil ? t('يعمل الآن', 'Running now') : t('تشغيل Turbo لدقيقتين', 'Run Turbo for 2 minutes')}
+            <button type="button" className={turboUntil ? 'btn-ghost danger btn-sm' : 'btn-primary btn-sm'} disabled={!canControl || turboBusy} onClick={() => void (turboUntil ? stopTurbo() : runTurboForTwoMinutes())}>
+              {turboBusy ? t('جارٍ التنفيذ…', 'Processing…') : turboUntil ? t('إيقاف Turbo الآن', 'Stop Turbo now') : t('تشغيل Turbo لدقيقتين', 'Run Turbo for 2 minutes')}
             </button>
           </div>
           {(data?.turbo_history?.length ?? 0) > 0 && <div className="automation-turbo-report">
