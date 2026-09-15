@@ -33,7 +33,8 @@ interface SmsAlertRow {
 }
 
 const SESSION_KEY = 'ontarget:wrongful-decline-popup-seen'
-const HIGH_VALUE_SMS_THRESHOLD = 10_000
+const HIGH_VALUE_SMS_THRESHOLD_EVENT = 'ontarget:high-value-sms-threshold'
+const DEFAULT_HIGH_VALUE_SMS_THRESHOLD = 10_000
 const TELEGRAM_ALERT_ROLES = new Set(['owner', 'admin', 'super_admin', 'operator', 'operations_admin'])
 
 const decode = (value: string) => {
@@ -57,12 +58,36 @@ export default function WrongfulDeclineRealtimePopup() {
   const { t } = useLocale()
   const navigate = useNavigate()
   const [alerts, setAlerts] = useState<PopupAlert[]>([])
+  const [highValueSmsThreshold, setHighValueSmsThreshold] = useState(DEFAULT_HIGH_VALUE_SMS_THRESHOLD)
   const seen = useRef(new Set<string>())
   const smsBaseline = useRef<number | null>(null)
   const dialog = useRef<HTMLElement | null>(null)
   const closeButton = useRef<HTMLButtonElement | null>(null)
   const canSeeSms = can('sms_live')
   const canSeeTelegramAlerts = TELEGRAM_ALERT_ROLES.has(user?.role ?? '')
+
+  useEffect(() => {
+    if (status !== 'authed' || !canSeeSms) return
+    let cancelled = false
+    const load = () => void api<{ high_value_sms_popup_threshold?: number }>('/api/automation/popup-settings')
+      .then((result) => {
+        const value = Number(result.high_value_sms_popup_threshold)
+        if (!cancelled && Number.isFinite(value) && value >= 0) setHighValueSmsThreshold(value)
+      })
+      .catch(() => { /* Keep the safe EGP 10,000 default while settings are unavailable. */ })
+    const onThresholdChanged = (event: Event) => {
+      const value = Number((event as CustomEvent<number>).detail)
+      if (Number.isFinite(value) && value >= 0) setHighValueSmsThreshold(value)
+    }
+    load()
+    const timer = window.setInterval(load, 60_000)
+    window.addEventListener(HIGH_VALUE_SMS_THRESHOLD_EVENT, onThresholdChanged)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+      window.removeEventListener(HIGH_VALUE_SMS_THRESHOLD_EVENT, onThresholdChanged)
+    }
+  }, [canSeeSms, status])
 
   useEffect(() => {
     try { seen.current = new Set(JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? '[]')) }
@@ -110,7 +135,9 @@ export default function WrongfulDeclineRealtimePopup() {
 
   // The initial read establishes a baseline, so signing in never replays old
   // wallet messages. Later polls surface only newly arrived financial SMS
-  // above EGP 10,000; smaller transactions remain in Live SMS without a modal.
+  // above the configured threshold; smaller transactions remain in Live SMS
+  // without a modal. Changing the threshold resets the baseline so old SMS
+  // records are never replayed as new alerts.
   useEffect(() => {
     if (status !== 'authed' || !canSeeSms) return
     let cancelled = false
@@ -128,7 +155,7 @@ export default function WrongfulDeclineRealtimePopup() {
       smsBaseline.current = Math.max(smsBaseline.current, newestId)
       for (const row of newRows) {
         const amount = Number(row.amount)
-        if (!['deposit', 'withdrawal'].includes(row.sms_category ?? '') || !Number.isFinite(amount) || amount <= HIGH_VALUE_SMS_THRESHOLD) continue
+        if (!['deposit', 'withdrawal'].includes(row.sms_category ?? '') || !Number.isFinite(amount) || amount <= highValueSmsThreshold) continue
         const transactionRef = row.matched_ontarget_ref ?? row.matched_payout_ref ?? (row.matched_tx_id == null ? null : String(row.matched_tx_id))
         const wallet = row.confirmed_wallet_number ?? row.receiver_number ?? row.wallet_number ?? null
         enqueue({
@@ -149,7 +176,7 @@ export default function WrongfulDeclineRealtimePopup() {
     void check().catch(() => {})
     const timer = window.setInterval(() => void check().catch(() => {}), 6_000)
     return () => { cancelled = true; window.clearInterval(timer); smsBaseline.current = null }
-  }, [canSeeSms, enqueue, status])
+  }, [canSeeSms, enqueue, highValueSmsThreshold, status])
 
   const dismiss = useCallback((dedupeKey: string) => {
     setAlerts((current) => current.filter((item) => item.dedupeKey !== dedupeKey))
@@ -212,7 +239,7 @@ export default function WrongfulDeclineRealtimePopup() {
         <button ref={closeButton} type="button" className="pending-work-close" onClick={closeCritical} aria-label={t('إغلاق', 'Close')}><X size={17}/></button>
         <div className="pending-work-icon" aria-hidden="true">{criticalAlert.kind === 'complaint' ? <LifeBuoy size={27}/> : <CircleDollarSign size={27}/>}</div>
         <div className="pending-work-copy">
-          <strong id="critical-alert-title">{criticalAlert.kind === 'complaint' ? t('تذكرة شكوى جديدة من Telegram', 'New complaint ticket from Telegram') : t('معاملة SMS أكبر من 10,000 جنيه', 'SMS transaction over EGP 10,000')}</strong>
+          <strong id="critical-alert-title">{criticalAlert.kind === 'complaint' ? t('تذكرة شكوى جديدة من Telegram', 'New complaint ticket from Telegram') : t(`معاملة SMS أكبر من ${money(highValueSmsThreshold, 'EGP')}`, `SMS transaction over ${money(highValueSmsThreshold, 'EGP')}`)}</strong>
           {criticalAlert.kind === 'complaint' ? <>
             {criticalAlert.lines.slice(1).map((line, index) => <span key={`${criticalAlert.dedupeKey}-${index}`} className={/(?:TRX|Transaction|المعاملة)\s*:/i.test(line) ? 'mono wrongful-popup-ref' : ''}>{line}</span>)}
           </> : <>

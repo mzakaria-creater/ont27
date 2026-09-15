@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { useAuth } from '../auth/AuthContext'
-import { Filter, Search, X } from 'lucide-react'
+import { CircleDollarSign, Filter, Search, SlidersHorizontal, X } from 'lucide-react'
 import MultiSelectFilter from '../components/MultiSelectFilter'
 
 interface AutomationTemplate { id: string; settings: Record<string, number | boolean> }
+const HIGH_VALUE_SMS_THRESHOLD_EVENT = 'ontarget:high-value-sms-threshold'
+const HIGH_VALUE_SMS_THRESHOLD_MAX = 10_000_000
+const HIGH_VALUE_SMS_THRESHOLD_PRESETS = [5_000, 10_000, 20_000, 50_000]
 // Bilingual copy lives client-side so it follows the language switcher; the
 // server is the source of truth for the id + the actual settings payload.
 const TEMPLATE_COPY: Record<string, { label: [string, string]; desc: [string, string] }> = {
@@ -128,6 +131,12 @@ export default function Automation() {
   const [ruleMsg, setRuleMsg] = useState<string | null>(null)
   const [ruleConflict, setRuleConflict] = useState<{ id: string; action_type: string; priority: number }[] | null>(null)
   const [settingsBusy, setSettingsBusy] = useState<string | null>(null)
+  const [popupSettingsOpen, setPopupSettingsOpen] = useState(false)
+  const [popupThreshold, setPopupThreshold] = useState('10000')
+  const [popupSettingsBusy, setPopupSettingsBusy] = useState(false)
+  const [popupSettingsError, setPopupSettingsError] = useState<string | null>(null)
+  const popupDialogRef = useRef<HTMLElement | null>(null)
+  const popupInputRef = useRef<HTMLInputElement | null>(null)
   const [turboBusy, setTurboBusy] = useState(false)
   const [turboUntil, setTurboUntil] = useState<number | null>(null)
   const [ruleSearch, setRuleSearch] = useState('')
@@ -196,6 +205,66 @@ export default function Automation() {
       setSettingsBusy(null)
     }
   }
+
+  const openPopupSettings = () => {
+    const current = Number(data?.settings?.high_value_sms_popup_threshold ?? 10_000)
+    setPopupThreshold(String(Number.isFinite(current) && current >= 0 ? current : 10_000))
+    setPopupSettingsError(null)
+    setPopupSettingsOpen(true)
+  }
+
+  const savePopupSettings = async () => {
+    const value = Number(popupThreshold)
+    if (!popupThreshold.trim() || !Number.isFinite(value) || value < 0 || value > HIGH_VALUE_SMS_THRESHOLD_MAX) {
+      setPopupSettingsError(t('أدخل مبلغًا من 0 إلى 10,000,000 جنيه.', 'Enter an amount from EGP 0 to EGP 10,000,000.'))
+      return
+    }
+    const normalized = Math.round(value * 100) / 100
+    setPopupSettingsBusy(true)
+    setPopupSettingsError(null)
+    try {
+      const result = await api<{ settings: Record<string, unknown> }>('/api/automation/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ high_value_sms_popup_threshold: normalized }),
+      })
+      setData((current) => current ? { ...current, settings: result.settings } : current)
+      window.dispatchEvent(new CustomEvent(HIGH_VALUE_SMS_THRESHOLD_EVENT, { detail: normalized }))
+      setPopupSettingsOpen(false)
+      setRuleMsg(t(`تم ضبط نافذة SMS للمبالغ الأكبر من ${money(normalized, 'EGP')}.`, `SMS popup now opens above ${money(normalized, 'EGP')}.`))
+    } catch (error) {
+      setPopupSettingsError(error instanceof ApiError && error.code === 'invalid_high_value_sms_popup_threshold'
+        ? t('المبلغ خارج النطاق المسموح.', 'The amount is outside the allowed range.')
+        : t('تعذّر حفظ إعداد النافذة.', 'Unable to save the popup setting.'))
+    } finally {
+      setPopupSettingsBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!popupSettingsOpen) return
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const frame = window.requestAnimationFrame(() => popupInputRef.current?.focus())
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setPopupSettingsOpen(false)
+        return
+      }
+      if (event.key !== 'Tab') return
+      const focusable = [...(popupDialogRef.current?.querySelectorAll<HTMLElement>('button, input, [href], select, textarea, [tabindex]:not([tabindex="-1"])') ?? [])]
+      if (!focusable.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('keydown', onKeyDown)
+      previousFocus?.focus()
+    }
+  }, [popupSettingsOpen])
 
   const runTurboForTwoMinutes = async () => {
     if (!canControl || turboBusy) return
@@ -360,6 +429,18 @@ export default function Automation() {
               <span className="automation-toggle-track"><span className="automation-toggle-thumb" /></span>
               <span><strong>{t('الرفض التلقائي للمعاملات', 'Auto-decline transactions')}</strong><small>{settings.auto_decline_enabled === true ? t('ON — رفض المعاملات غير المطابقة بعد المهلة', 'ON — decline stale unmatched transactions') : t('OFF — تظل المعاملات غير المطابقة PENDING', 'OFF — stale unmatched transactions stay PENDING')}</small></span>
               <b>{settings.auto_decline_enabled === true ? 'ON' : 'OFF'}</b>
+            </button>
+          </div>
+          <div className="control-row automation-popup-threshold-row">
+            <div className="automation-popup-threshold-summary">
+              <span className="automation-popup-threshold-icon" aria-hidden="true"><CircleDollarSign size={20} /></span>
+              <span>
+                <strong>{t('نافذة تنبيه المبالغ الكبيرة', 'High-value SMS popup')}</strong>
+                <small>{t('تظهر للرسائل الجديدة التي تتجاوز', 'Opens for new SMS amounts above')} {money(Number(settings.high_value_sms_popup_threshold ?? 10_000), 'EGP')}</small>
+              </span>
+            </div>
+            <button type="button" className="btn-ghost btn-sm automation-popup-settings-button" disabled={!canControl} onClick={openPopupSettings}>
+              <SlidersHorizontal size={15} /> {t('إعداد المبلغ', 'Set amount')}
             </button>
           </div>
           <div className={`automation-turbo-card ${settings.turbo_mode ? 'is-on' : ''}`}>
@@ -714,6 +795,35 @@ export default function Automation() {
           )}
         </>
       )}
+      {popupSettingsOpen && <div className="automation-popup-settings-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !popupSettingsBusy) setPopupSettingsOpen(false) }}>
+        <section ref={popupDialogRef} className="automation-popup-settings-modal" role="dialog" aria-modal="true" aria-labelledby="popup-settings-title" aria-describedby="popup-settings-description">
+          <header>
+            <span className="automation-popup-settings-icon" aria-hidden="true"><CircleDollarSign size={23} /></span>
+            <div>
+              <h3 id="popup-settings-title">{t('إعداد نافذة تنبيه المبلغ', 'Amount popup settings')}</h3>
+              <p id="popup-settings-description">{t('اختر الحد الذي يجب أن تتجاوزه رسالة SMS الجديدة لفتح التنبيه في منتصف الشاشة.', 'Choose the amount a new SMS must exceed before opening the centered alert.')}</p>
+            </div>
+            <button type="button" className="automation-popup-settings-close" disabled={popupSettingsBusy} onClick={() => setPopupSettingsOpen(false)} aria-label={t('إغلاق', 'Close')}><X size={18} /></button>
+          </header>
+          <form onSubmit={(event) => { event.preventDefault(); void savePopupSettings() }}>
+            <label htmlFor="high-value-sms-threshold">{t('التنبيه للمبالغ الأكبر من', 'Show popup above')}</label>
+            <div className="automation-popup-amount-input">
+              <input ref={popupInputRef} id="high-value-sms-threshold" type="number" min="0" max={HIGH_VALUE_SMS_THRESHOLD_MAX} step="100" inputMode="decimal" value={popupThreshold} onChange={(event) => { setPopupThreshold(event.target.value); setPopupSettingsError(null) }} aria-invalid={popupSettingsError != null} aria-describedby={popupSettingsError ? 'popup-threshold-hint popup-threshold-error' : 'popup-threshold-hint'} />
+              <span>EGP</span>
+            </div>
+            <small id="popup-threshold-hint">{t('مثال: 5,000 للتنبيه أكثر، أو 50,000 للتنبيه أقل. القيمة 0 تعرض كل مبلغ أكبر من صفر.', 'Example: 5,000 shows more alerts; 50,000 shows fewer. Zero alerts on every amount above zero.')}</small>
+            <div className="automation-popup-presets" aria-label={t('قيم سريعة', 'Quick values')}>
+              {HIGH_VALUE_SMS_THRESHOLD_PRESETS.map((preset) => <button key={preset} type="button" className={Number(popupThreshold) === preset ? 'is-selected' : ''} aria-pressed={Number(popupThreshold) === preset} onClick={() => { setPopupThreshold(String(preset)); setPopupSettingsError(null) }}>{money(preset, 'EGP')}</button>)}
+            </div>
+            {popupSettingsError && <p id="popup-threshold-error" className="automation-popup-settings-error" role="alert">{popupSettingsError}</p>}
+            <p className="automation-popup-settings-note">{t('هذا الإعداد يغيّر التنبيه فقط. لا يغيّر المطابقة أو الموافقة أو الرفض التلقائي، وتذاكر شكاوى Telegram تظل فورية.', 'This changes alerts only. It does not change matching, approval, or auto-decline, and Telegram complaint tickets remain immediate.')}</p>
+            <footer>
+              <button type="button" className="btn-ghost" disabled={popupSettingsBusy} onClick={() => setPopupSettingsOpen(false)}>{t('إلغاء', 'Cancel')}</button>
+              <button type="submit" className="btn-primary" disabled={popupSettingsBusy}>{popupSettingsBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ المبلغ', 'Save amount')}</button>
+            </footer>
+          </form>
+        </section>
+      </div>}
     </PanelShell>
   )
 }
