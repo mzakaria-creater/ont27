@@ -970,6 +970,23 @@ extraRoutes.get(
   },
 )
 
+// High-value SMS popups are visible to SMS operators even when they do not
+// have access to the full automation page. Keep this small read endpoint
+// separate from /automation so it exposes no unrelated engine settings.
+extraRoutes.get(
+  '/automation/popup-settings',
+  requireAnyPerm(['sms_live', 'automation'], 'can_view'),
+  async (c) => {
+    const { data, error } = await db
+      .from('automation_settings')
+      .select('high_value_sms_popup_threshold')
+      .eq('id', 1)
+      .maybeSingle()
+    if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+    return c.json({ high_value_sms_popup_threshold: Number(data?.high_value_sms_popup_threshold ?? 5_000) })
+  },
+)
+
 // Only the NGPay live evaluator (evaluate_and_dispatch_ngpay_decision, wired
 // 2026-08-17) actually executes rule matches -- PayFuture has no execution
 // worker on this project yet, so a rule scoped to it would only ever sit
@@ -1118,6 +1135,14 @@ extraRoutes.patch('/automation/settings', requirePerm('automation', 'can_edit'),
   if (body?.max_auto_amount !== undefined) update.max_auto_amount = num(body.max_auto_amount) ?? before.max_auto_amount
   if (body?.decline_grace_minutes !== undefined) update.decline_grace_minutes = num(body.decline_grace_minutes) ?? before.decline_grace_minutes
   if (body?.score_threshold !== undefined) update.score_threshold = num(body.score_threshold) ?? before.score_threshold
+  if (body?.high_value_sms_popup_threshold !== undefined) {
+    const rawThreshold = body.high_value_sms_popup_threshold
+    const popupThreshold = rawThreshold == null || rawThreshold === '' ? null : num(rawThreshold)
+    if (popupThreshold == null || popupThreshold < 0 || popupThreshold > 10_000_000) {
+      return c.json({ error: 'invalid_high_value_sms_popup_threshold', min: 0, max: 10_000_000 }, 400)
+    }
+    update.high_value_sms_popup_threshold = Math.round(popupThreshold * 100) / 100
+  }
   if (Object.keys(update).length <= 2) return c.json({ error: 'nothing_to_update' }, 400)
 
   const { data, error } = await db.from('automation_settings').update(update).eq('id', 1).select('*').maybeSingle()

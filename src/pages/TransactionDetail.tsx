@@ -453,7 +453,14 @@ export default function TransactionDetail() {
         </div>
       )}
       {proofOpen && data?.deposit.proof_image_url && (
-        <ProofModal url={data.deposit.proof_image_url} title={`${t('إثبات الدفع', 'Payment proof')} · ${data.deposit.ontarget_ref}`} onClose={() => setProofOpen(false)} />
+        <ProofModal
+          url={data.deposit.proof_image_url}
+          title={`${t('إثبات الدفع', 'Payment proof')} · ${data.deposit.ontarget_ref}`}
+          onClose={() => setProofOpen(false)}
+          actionBusy={busy}
+          onApprove={can('deposits', 'can_approve') && data.deposit.status === 'PENDING' ? () => decide('approve') : undefined}
+          onDecline={can('deposits', 'can_approve') && data.deposit.status === 'PENDING' ? () => decide('decline') : undefined}
+        />
       )}
     </PanelShell>
   )

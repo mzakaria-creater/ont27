@@ -4,7 +4,16 @@ import { RotateCcw, ZoomIn, ZoomOut } from 'lucide-react'
 
 // Lightbox for payment-proof images. Opens over the page instead of a new tab
 // so operators stay in context while reviewing evidence.
-export default function ProofModal({ url, title, onClose }: { url: string; title?: string; onClose: () => void }) {
+type ProofModalProps = {
+  url: string
+  title?: string
+  onClose: () => void
+  onApprove?: () => void | Promise<void>
+  onDecline?: () => void | Promise<void>
+  actionBusy?: boolean
+}
+
+export default function ProofModal({ url, title, onClose, onApprove, onDecline, actionBusy = false }: ProofModalProps) {
   const { t } = useLocale()
   const [zoom, setZoom] = useState(1)
   const changeZoom = (next: number) => setZoom(Math.min(3, Math.max(.5, Math.round(next * 10) / 10)))
@@ -31,6 +40,10 @@ export default function ProofModal({ url, title, onClose }: { url: string; title
         <div className="proof-body" onWheel={(event) => { if (event.deltaY < 0) changeZoom(zoom + .1); else changeZoom(zoom - .1) }}>
           <img src={url} alt={title ?? t('إثبات الدفع', 'Payment proof')} style={{ transform: `scale(${zoom})` }} onDoubleClick={() => changeZoom(zoom >= 2 ? 1 : zoom + .5)} />
         </div>
+        {(onApprove || onDecline) && <div className="proof-decision-actions">
+          {onApprove && <button type="button" className="btn-primary" disabled={actionBusy} onClick={() => void onApprove()}>✅ {actionBusy ? t('جارٍ التنفيذ…', 'Processing…') : t('اعتماد', 'Approve')}</button>}
+          {onDecline && <button type="button" className="btn-ghost danger" disabled={actionBusy} onClick={() => void onDecline()}>❌ {actionBusy ? t('جارٍ التنفيذ…', 'Processing…') : t('رفض', 'Decline')}</button>}
+        </div>}
       </div>
     </div>
   )
