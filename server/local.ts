@@ -1,11 +1,16 @@
 // Local dev entry: loads .env manually (no dotenv dep), then serves the Hono app.
 // Production uses api/[[...path]].ts on Vercel instead.
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-for (const line of readFileSync(resolve(import.meta.dirname, '../.env'), 'utf8').split('\n')) {
-  const m = line.match(/^([A-Z0-9_]+)=(.*)$/)
-  if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2]
+const envFiles = ['../.env', '../.env.local']
+for (const envFile of envFiles) {
+  const envPath = resolve(import.meta.dirname, envFile)
+  if (!existsSync(envPath)) continue
+  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
+    const match = line.match(/^([A-Z0-9_]+)=(.*)$/)
+    if (match && process.env[match[1]] === undefined) process.env[match[1]] = match[2]
+  }
 }
 
 const { serve } = await import('@hono/node-server')

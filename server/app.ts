@@ -32,6 +32,7 @@ import { payoutRequestRoutes } from './payoutRequests.js'
 import { deviceRoutes } from './devices.js'
 import { gatewayRoutes } from './gateway.js'
 import { emailNotificationRoutes } from './emailNotifications.js'
+import { whatsappRoutes, whatsappWebhookRoutes } from './whatsapp.js'
 
 export const app = new Hono().basePath('/api')
 
@@ -68,4 +69,6 @@ app.route('/tx', txEditRoutes)
 app.route('/v1', publicApiRoutes)
 app.route('/v1/gateway', gatewayRoutes)
 app.route('/email-notifications', emailNotificationRoutes)
+app.route('/whatsapp', whatsappRoutes)
+app.route('/webhooks/whatsapp', whatsappWebhookRoutes)
 app.route('/', extraRoutes)

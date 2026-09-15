@@ -112,6 +112,7 @@ export const PAGE_CATALOG: Record<string, { category: string; label: string }> =
 
   support: { category: 'support', label: 'الدعم الفني' },
   team_tasks: { category: 'support', label: 'مهام فريق الدعم' },
+  whatsapp: { category: 'support', label: 'صندوق WhatsApp' },
   operator_handbook: { category: 'support', label: 'دليل المشغّل' },
   notifications: { category: 'support', label: 'الإشعارات' },
 }

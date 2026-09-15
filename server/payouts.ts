@@ -504,19 +504,17 @@ payoutRoutes.post(
       return c.json({ error: "not_pending", status: before.status }, 409);
     }
 
-    // Provider actions from this route are live-only. The worker still enforces
-    // the kill switch and amount cap, and verifies provider read-back before it
-    // can report executed_on_provider=true.
-    if (body?.mode !== "auto")
-      return c.json({ error: "live_provider_execution_required" }, 400);
-    const mode = "auto" as const;
+    // This is an authenticated manual action. It must execute live on Maven
+    // even when unattended payout automation is disabled. The worker still
+    // verifies Maven's resulting status before reporting success.
+    const mode = "manual" as const;
     const suppliedUtr =
       typeof body?.utr_number === "string"
         ? body.utr_number.trim().slice(0, 120)
         : "";
     const utrNumber =
       suppliedUtr || verifiedLinkedSms?.trx_id || verifiedLinkedSms?.trx_reference || "";
-    if (mode === "auto" && decision === "APPROVED" && !utrNumber)
+    if (decision === "APPROVED" && !utrNumber)
       return c.json({ error: "utr_required" }, 400);
 
     const actor = c.get("actor");

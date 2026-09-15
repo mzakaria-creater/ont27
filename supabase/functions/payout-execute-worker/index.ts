@@ -182,9 +182,14 @@ Deno.serve(async (req) => {
       return json({ error: `No payout for maven_id ${maven_id}` }, 404);
 
     const oneTimeBatchDecline = mode === "batch_decline";
+    // A manual panel action is explicitly authorized by the logged-in
+    // operator. It must still execute and verify on Maven when the automatic
+    // payout switch is off; that switch only controls unattended automation.
+    const manualExecution = mode === "manual";
     if (oneTimeBatchDecline && decision !== "DECLINED")
       return json({ error: "batch_decline_only" }, 400);
     const wantAuto = mode === "auto" || oneTimeBatchDecline;
+    const shouldExecute = wantAuto || manualExecution;
 
     // 1. Log first, always, whichever mode.
     const { data: logRow, error: logErr } = await sb
@@ -225,7 +230,7 @@ Deno.serve(async (req) => {
       );
     };
 
-    if (!wantAuto) {
+    if (!shouldExecute) {
       return json({
         ok: true,
         mode: "manual",
@@ -241,14 +246,14 @@ Deno.serve(async (req) => {
       .select("*")
       .eq("id", 1)
       .maybeSingle();
-    if (!oneTimeBatchDecline && !settings?.auto_execute_enabled) {
+    if (wantAuto && !oneTimeBatchDecline && !settings?.auto_execute_enabled) {
       return await fail(
         "Automatic payout execution is switched off. The decision is recorded; move the money on the portal.",
         409,
       );
     }
     if (
-      !oneTimeBatchDecline &&
+      wantAuto && !oneTimeBatchDecline &&
       settings.max_auto_amount != null &&
       Number(payout.amount) > Number(settings.max_auto_amount)
     ) {

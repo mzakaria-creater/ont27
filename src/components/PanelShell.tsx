@@ -99,6 +99,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/tv', icon: '🖥️', labelAr: 'شاشة TV', labelEn: 'TV screen', keys: ['sms_live'], group: 'overview' },
   { to: '/p2p-tv', icon: '📺', labelAr: 'شاشة P2P الحية', labelEn: 'P2P Live TV', keys: ['sms_live'], group: 'overview' },
   { to: '/complaints', icon: '🛎️', labelAr: 'الشكاوى', labelEn: 'Complaints', keys: ['support'], roles: COMPLAINT_ROLES, group: 'customers' },
+  { to: '/whatsapp', icon: '◉', labelAr: 'صندوق WhatsApp', labelEn: 'WhatsApp Inbox', keys: ['whatsapp', 'support'], group: 'customers' },
   { to: '/chat', icon: '💬', labelAr: 'محادثات الفريق', labelEn: 'Internal Chat', keys: [], group: 'customers' },
   { to: '/merchant-link-generator', icon: '🔗', labelAr: 'روابط الدفع', labelEn: 'Payment links', keys: ['checkout-builder'], group: 'payments' },
   // Management — merchants, wallets, money movement
@@ -162,7 +163,7 @@ const BUILT_PAGE_KEYS = new Set([
   'audit_log', 'audit-logs', 'review',
   'users', 'permissions', 'api-keys', 'webhooks', 'developers', 'settings',
   'reports', 'advanced_analysis',
-  'support', 'notifications',
+  'support', 'notifications', 'whatsapp',
   'sms_alerts',
   'sms_live',
   'checkout-builder',

@@ -14,6 +14,7 @@ import WrongfulDeclineRealtimePopup from './components/WrongfulDeclineRealtimePo
 import SmsFreezeRealtimePopup from './components/SmsFreezeRealtimePopup'
 import AppErrorBoundary from './components/AppErrorBoundary'
 import PanelShell from './components/PanelShell'
+import { MessageSquareWarning } from 'lucide-react'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Monitor = lazy(() => import('./pages/Monitor'))
@@ -71,6 +72,7 @@ const ReplayLab = lazy(() => import('./pages/ReplayLab'))
 const AirDroid = lazy(() => import('./pages/AirDroid'))
 const ApiDashboard = lazy(() => import('./pages/ApiDashboard'))
 const InternalChat = lazy(() => import('./pages/InternalChat'))
+const WhatsApp = lazy(() => import('./pages/WhatsApp'))
 const IntegrationGuide = lazy(() => import('./pages/IntegrationGuide'))
 const RevenueCenter = lazy(() => import('./pages/RevenueCenter'))
 const Welcome = lazy(() => import('./pages/Welcome'))
@@ -284,6 +286,65 @@ function TelegramTopIcon() {
   </div>
 }
 
+function ComplaintTopIcon({ userId }: { userId: string }) {
+  const { t } = useLocale()
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState<Array<{ id: number; message: string | null; created_at: string | null }>>([])
+  const storageKey = `ontarget:${userId}:complaint-top-seen`
+  const [lastSeen, setLastSeen] = useState(() => Number(localStorage.getItem(storageKey) ?? 0))
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let alive = true
+    const load = () => void api<{ alerts?: typeof rows }>('/api/telegram/live?type=complaint_filed&limit=30')
+      .then((result) => { if (alive) setRows(result.alerts ?? []) })
+      .catch(() => {})
+    load()
+    const timer = window.setInterval(load, 8_000)
+    return () => { alive = false; window.clearInterval(timer) }
+  }, [])
+
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target as Node)) setOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [])
+
+  const unread = rows.filter((row) => row.id > lastSeen).length
+  const markSeen = () => {
+    const latest = Math.max(0, ...rows.map((row) => row.id))
+    setLastSeen(latest)
+    localStorage.setItem(storageKey, String(latest))
+  }
+  const complaintUrl = (message: string | null) => {
+    const txId = message?.match(/(?:TRX|TX|transaction|معاملة|العملية)[^0-9]{0,12}(\d{7,12})/i)?.[1]
+    return txId ? `/complaints?tx_id=${encodeURIComponent(txId)}` : '/complaints'
+  }
+  const label = unread > 0
+    ? t(`شكاوى Telegram، ${unread} غير مقروءة`, `Telegram complaints, ${unread} unread`)
+    : t('شكاوى Telegram', 'Telegram complaints')
+
+  return <div className="top-complaint-wrap" ref={wrapRef}>
+    <button type="button" className="theme-btn top-complaint-btn" title={label} aria-label={label} aria-haspopup="dialog" aria-controls="telegram-complaint-popover" aria-expanded={open} onClick={() => { setOpen((value) => { const next = !value; if (next) markSeen(); return next }) }}>
+      <MessageSquareWarning size={17} />
+      {unread > 0 && <span className="bell-badge complaint-badge">{unread > 99 ? '99+' : unread}</span>}
+    </button>
+    {open && <div id="telegram-complaint-popover" className="top-complaint-popover" role="dialog" aria-label={t('الشكاوى القادمة من Telegram', 'Complaints received from Telegram')}>
+      <div className="top-complaint-popover-head"><div><strong>{t('شكاوى Telegram', 'Telegram complaints')}</strong><small>{t('تحديث تلقائي كل 8 ثوانٍ', 'Auto-refresh every 8 seconds')}</small></div><Link to="/complaints" onClick={() => setOpen(false)}>{t('فتح المركز', 'Open center')}</Link></div>
+      {rows.length === 0 ? <div className="alert-empty">{t('لا توجد شكاوى جديدة.', 'No new complaints.')}</div> : rows.slice(0, 8).map((row) => <Link key={row.id} to={complaintUrl(row.message)} className="top-complaint-row" onClick={() => setOpen(false)}><span className="complaint-row-dot" /><span><strong>{(row.message ?? t('شكوى جديدة', 'New complaint')).replace(/<[^>]+>/g, '').slice(0, 130)}</strong><small>{row.created_at ? new Date(row.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</small></span></Link>)}
+    </div>}
+  </div>
+}
+
 function Topbar() {
   const { user, logout, status, can } = useAuth()
   const { locale, toggleLocale, t } = useLocale()
@@ -360,6 +421,7 @@ function Topbar() {
       <div className="spacer" />
       <ChatTopIcon />
       {can('telegram_bot') || can('automation') ? <TelegramTopIcon /> : null}
+      {user?.id && can('support') && ['owner', 'admin', 'super_admin', 'operator', 'operations_admin'].includes(user.role) ? <ComplaintTopIcon userId={user.id} /> : null}
       <Bell />
       {isStaff && <div className="topbar-attendance" title={attendanceError ? t('تعذر قراءة حالة الحضور', 'Unable to read attendance status') : undefined}>
         <span className={`topbar-attendance-state ${attendance ? 'is-in' : 'is-out'}`}><span className="dot" />{attendance ? t('داخل', 'In') : t('خارج', 'Out')}</span>
@@ -474,6 +536,7 @@ export default function App() {
             <Route path="/admin/*" element={<PageGate keys={['settings','users','permissions']}><AdminPage /></PageGate>} />
             <Route path="/admin-transactions" element={<Navigate to="/transactions" replace />} />
             <Route path="/chat" element={<InternalChat />} />
+            <Route path="/whatsapp" element={<PageGate keys={['whatsapp','support']}><WhatsApp /></PageGate>} />
             <Route path="/notifications" element={<PageGate keys={['notifications']}><Notifications /></PageGate>} />
             <Route path="/sms-notifications" element={<PageGate keys={['sms_live', 'notifications']}><SmsNotifications /></PageGate>} />
             <Route path="/tv" element={<PageGate keys={['sms_live']}><TvScreen /></PageGate>} />
