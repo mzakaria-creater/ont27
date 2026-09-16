@@ -731,12 +731,20 @@ export default function Automation() {
               const v = settings[key]
               if (v === undefined || v === null) return null
               return (
-                <span key={key} className={`pay-status-badge ${v ? 'st-paid' : 'st-dim'}`}>
-                  {v ? '●' : '○'} {label}
-                </span>
+                <button
+                  key={key}
+                  type="button"
+                  className={`pay-status-badge flag-toggle ${v ? 'st-paid' : 'st-dim'}`}
+                  disabled={!canControl || settingsBusy === key}
+                  aria-pressed={v === true}
+                  onClick={() => void toggleGlobalSetting(key, v !== true)}
+                >
+                  {settingsBusy === key ? '…' : v ? '●' : '○'} {label}
+                </button>
               )
             })}
           </div>
+          {!canControl && <p className="sidebar-hint">{t('عرض فقط — تعديل هذه الإعدادات يتطلب صلاحية تحكم.', 'View only — editing these settings needs control permission.')}</p>}
         </section>
       )}
 

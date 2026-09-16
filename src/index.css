@@ -1844,6 +1844,11 @@ a.stat-card:hover { border-color: var(--accent); }
 
 /* ===== Automation / admin bits ===== */
 .flag-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.flag-toggle { border: 1px solid transparent; font: inherit; cursor: pointer; transition: filter .15s ease, transform .1s ease; }
+.flag-toggle:hover:not(:disabled) { filter: brightness(1.12); }
+.flag-toggle:active:not(:disabled) { transform: scale(.97); }
+.flag-toggle:disabled { cursor: not-allowed; opacity: .7; }
+.flag-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .perm-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .perm-chip { font-size: 9.5px; }
 
