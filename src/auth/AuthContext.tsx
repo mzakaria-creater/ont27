@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { api, ApiError } from '../lib/api'
+import { api, ApiError, refreshSession } from '../lib/api'
 import type { MeResponse, PagePermission, PanelUser } from '../lib/api'
 
 type AuthStatus = 'loading' | 'authed' | 'anon'
@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (status !== 'authed') return
     const iv = setInterval(() => {
-      void fetch('/api/auth/refresh', { method: 'POST', credentials: 'same-origin' })
+      void refreshSession()
     }, 12 * 60 * 1000)
     return () => clearInterval(iv)
   }, [status])

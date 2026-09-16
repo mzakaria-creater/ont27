@@ -22,13 +22,15 @@ async function rawFetch(path: string, init?: RequestInit): Promise<Response> {
 
 let refreshInFlight: Promise<boolean> | null = null
 
-async function tryRefresh(): Promise<boolean> {
+export async function refreshSession(): Promise<boolean> {
   refreshInFlight ??= rawFetch('/api/auth/refresh', { method: 'POST' })
     .then((r) => r.ok)
     .catch(() => false)
     .finally(() => { refreshInFlight = null })
   return refreshInFlight
 }
+
+async function tryRefresh(): Promise<boolean> { return refreshSession() }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   let res = await rawFetch(path, init)
