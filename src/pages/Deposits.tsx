@@ -170,7 +170,7 @@ export default function Deposits() {
   // which is the fix for operators double-clicking Approve during the (real,
   // multi-second) provider round-trip.
   const [rowBusy, setRowBusy] = useState<{ id: number; action: CardAction } | null>(null)
-  const [proofUrl, setProofUrl] = useState<string | null>(null)
+  const [proofTarget, setProofTarget] = useState<{ url: string; txId: number; status: string; ref?: string | null } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [retryLocked, setRetryLocked] = useState(false)
   const bulk = useBulk((id) => `/api/deposits/${id}/decision`, () => void load())
@@ -249,11 +249,13 @@ export default function Deposits() {
           type: 'phone',
           value,
           reason: `Blocked from the deposits card view · ${row.ontarget_ref ?? row.tx_id}`,
+          tx_id: row.tx_id,
         }),
       })
       setNotice(t(`تم حظر ${value}.`, `${value} is now blocked.`))
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) setNotice(t(`${value} محظور بالفعل.`, `${value} is already blocked.`))
+      if (e instanceof ApiError && e.code === 'sms_link_requires_manual_review') setErr(t('لا يمكن حظر العميل تلقائياً لأن المعاملة مرتبطة برسالة SMS — تحتاج مراجعة يدوية.', 'This client cannot be blocked automatically because the transaction has linked SMS — manual review is required.'))
+      else if (e instanceof ApiError && e.code === 'already_blacklisted') setNotice(t(`${value} محظور بالفعل.`, `${value} is already blocked.`))
       else if (e instanceof ApiError && e.status === 403) setErr(t('لا تملك صلاحية الحظر (can_edit على صفحات المخاطر).', 'You lack blocking permission (can_edit on a risk page).'))
       else setErr(t('تعذّر إضافة الرقم للقائمة السوداء.', 'Could not add the number to the blacklist.'))
     } finally {
@@ -388,7 +390,7 @@ export default function Deposits() {
               busy={rowBusy?.id === r.tx_id ? rowBusy.action : null}
               locked={retryLocked}
               onOpen={() => void openDetail(r.tx_id)}
-              onProof={setProofUrl}
+              onProof={(url) => setProofTarget({ url, txId: r.tx_id, status: r.status, ref: r.ontarget_ref })}
               onApprove={() => void quickDecide(r.tx_id, 'approve')}
               onDecline={() => void quickDecide(r.tx_id, 'decline')}
               onBlock={() => void blockSender(r)}
@@ -454,7 +456,7 @@ export default function Deposits() {
                         <div className="row-actions">
                           <button className="btn-ghost btn-sm" title="تفاصيل المعاملة" onClick={() => void openDetail(r.tx_id)}>👁</button>
                           {!r.sms && <a className="btn-ghost btn-sm" title="دور على رسالة بنفس المبلغ" href={`/sms?amount=${r.amount ?? ''}`}>🔎</a>}
-                          {r.proof_image_url && <ProofIconButton url={r.proof_image_url} onOpen={setProofUrl} compact />}
+                          {r.proof_image_url && <ProofIconButton url={r.proof_image_url} onOpen={(url) => setProofTarget({ url, txId: r.tx_id, status: r.status, ref: r.ontarget_ref })} compact />}
                           {r.status === 'PENDING' && can('deposits', 'can_approve') && <>
                             <button className="btn-primary btn-sm" disabled={rowBusy !== null || retryLocked} onClick={() => void quickDecide(r.tx_id, 'approve')}>{rowBusy?.id === r.tx_id && rowBusy.action === 'approve' ? '⏳' : '✅'}</button>
                             <button className="btn-ghost danger btn-sm" disabled={rowBusy !== null || retryLocked} onClick={() => void quickDecide(r.tx_id, 'decline')}>{rowBusy?.id === r.tx_id && rowBusy.action === 'decline' ? '⏳' : '❌'}</button>
@@ -534,8 +536,15 @@ export default function Deposits() {
         </div>
       )}
 
-      {proofUrl && (
-        <ProofModal url={proofUrl} title={t('إثبات الدفع', 'Payment proof')} onClose={() => setProofUrl(null)} />
+      {proofTarget && (
+        <ProofModal
+          url={proofTarget.url}
+          title={`${t('إثبات الدفع', 'Payment proof')} · ${proofTarget.ref ?? proofTarget.txId}`}
+          onClose={() => setProofTarget(null)}
+          actionBusy={rowBusy?.id === proofTarget.txId}
+          onApprove={can('deposits', 'can_approve') && proofTarget.status === 'PENDING' ? async () => { await quickDecide(proofTarget.txId, 'approve'); setProofTarget(null) } : undefined}
+          onDecline={can('deposits', 'can_approve') && proofTarget.status === 'PENDING' ? async () => { await quickDecide(proofTarget.txId, 'decline'); setProofTarget(null) } : undefined}
+        />
       )}
 
       {(selected || detailLoading) && (
@@ -590,7 +599,7 @@ export default function Deposits() {
                   )}
                 </dl>
 
-                {selected.proof_image_url && <ProofIconButton url={selected.proof_image_url} onOpen={setProofUrl} />}
+                {selected.proof_image_url && <ProofIconButton url={selected.proof_image_url} onOpen={(url) => setProofTarget({ url, txId: selected.tx_id, status: selected.status, ref: selected.ontarget_ref })} />}
 
                 {selectedSms && (
                   <div className="sms-match-card">

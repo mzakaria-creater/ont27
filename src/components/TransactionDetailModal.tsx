@@ -201,6 +201,27 @@ export default function TransactionDetailModal({ txRef, onClose, onChanged }: { 
     catch { setDecisionMsg(t('تعذّر رفع الحظر — تحقق من الصلاحيات.', 'Could not unblock — check permissions.')) }
   }
 
+  const blockClient = async () => {
+    if (!d?.sender_number || !window.confirm(t('حظر هذا العميل؟', 'Block this client?'))) return
+    setBusy(true)
+    setDecisionMsg(null)
+    try {
+      await api('/api/risk/blacklist', {
+        method: 'POST',
+        body: JSON.stringify({ type: 'phone', value: d.sender_number, tx_id: d.tx_id, reason: `Blocked from transaction detail · ${d.ontarget_ref ?? d.tx_id}` }),
+      })
+      setDecisionMsg(t('تم حظر العميل وتسجيل العملية.', 'Client blocked and the action was audited.'))
+      await load()
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'sms_link_requires_manual_review') setDecisionMsg(t('لا يمكن حظر العميل تلقائياً لأن المعاملة مرتبطة برسالة SMS — تحتاج مراجعة يدوية.', 'This client cannot be blocked automatically because the transaction has linked SMS — manual review is required.'))
+      else if (e instanceof ApiError && e.code === 'already_blacklisted') setDecisionMsg(t('العميل محظور بالفعل.', 'This client is already blocked.'))
+      else if (e instanceof ApiError && e.status === 403) setDecisionMsg(t('لا تملك صلاحية حظر العملاء.', 'You do not have permission to block clients.'))
+      else setDecisionMsg(t('تعذّر حظر العميل — حاول مرة أخرى.', 'Could not block the client — try again.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <DetailModal
       onClose={onClose}
@@ -222,7 +243,7 @@ export default function TransactionDetailModal({ txRef, onClose, onChanged }: { 
                       <Pencil size={15} aria-hidden="true" /> {t('تعديل', 'Edit')}
                     </a>
                   )}
-                  {canUnblock && d.sender_number && (d.is_blacklisted ? <button className="btn-ghost btn-sm" onClick={() => void unblockClient()}>🚫 {t('رفع حظر العميل', 'Unblock client')}</button> : <button className="btn-ghost danger btn-sm" onClick={async () => { if (window.confirm(t('حظر هذا العميل؟','Block this client?'))) { await api('/api/risk/blacklist', { method: 'POST', body: JSON.stringify({ type: 'phone', value: d.sender_number, reason: 'Blocked from transaction detail' }) }); void load() } }}>🚫 {t('حظر العميل', 'Block client')}</button>)}
+                  {canUnblock && d.sender_number && (d.is_blacklisted ? <button className="btn-ghost btn-sm" disabled={busy} onClick={() => void unblockClient()}>🚫 {t('رفع حظر العميل', 'Unblock client')}</button> : <button className="btn-ghost danger btn-sm" disabled={busy} onClick={() => void blockClient()}>🚫 {t('حظر العميل', 'Block client')}</button>)}
                   {masterChip(d.master_merchant)}
                 </div>
               </div>

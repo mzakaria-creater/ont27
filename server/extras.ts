@@ -11,6 +11,8 @@ import { listSmsAlerts, processWalletFreezeAlerts } from './smsAlerts.js'
 
 export const extraRoutes = new Hono<AuthEnv>()
 
+const normalizePhone = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
+
 extraRoutes.use('*', requireAuth)
 
 // ---- SMS balance chains ---------------------------------------------------
@@ -893,10 +895,12 @@ extraRoutes.post(
   requireAnyPerm(['risk', 'risk_audit', 'flagged', 'velocity', 'compliance', 'transactions', 'client_crm'], 'can_edit'),
   async (c) => {
     const body = await c.req.json().catch(() => null)
-    const value = typeof body?.value === 'string' ? body.value.trim() : ''
+    const rawValue = typeof body?.value === 'string' ? body.value.trim() : ''
     const type = typeof body?.type === 'string' && body.type.trim() ? body.type.trim().slice(0, 40) : 'phone'
     const reason = typeof body?.reason === 'string' ? body.reason.trim().slice(0, 300) : null
-    if (!value) return c.json({ error: 'value_required' }, 400)
+    if (!rawValue) return c.json({ error: 'value_required' }, 400)
+    const value = type === 'phone' ? normalizePhone(rawValue) : rawValue
+    if (type === 'phone' && !/^\d{10}$/.test(value)) return c.json({ error: 'invalid_phone' }, 400)
     const txId = Number(body?.tx_id)
     if (type === 'phone' && Number.isSafeInteger(txId) && txId > 0) {
       const [consumed, matched, maven] = await Promise.all([
@@ -916,12 +920,11 @@ extraRoutes.post(
     // and the insert went ahead. The upstream trigger had already piled up
     // thousands of duplicate rows before a unique index was added, which is
     // exactly the state this check silently mishandled.
-    const { data: existing, error: existErr } = await db
-      .from('api_risk_blacklist')
-      .select('id')
-      .eq('type', type)
-      .eq('value', value)
-      .limit(1)
+    const existingQuery = await db.from('api_risk_blacklist').select('id, value').eq('type', type).limit(10_000)
+    const existing = type === 'phone'
+      ? (existingQuery.data ?? []).filter((row) => normalizePhone(row.value) === value)
+      : (existingQuery.data ?? []).filter((row) => String(row.value ?? '') === value)
+    const existErr = existingQuery.error
     if (existErr) return c.json({ error: 'db_error', detail: existErr.message }, 500)
     if (existing?.length) return c.json({ error: 'already_blacklisted', id: existing[0].id }, 409)
     const { data, error } = await db.from('api_risk_blacklist')
