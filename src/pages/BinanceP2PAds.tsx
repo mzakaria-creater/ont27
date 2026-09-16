@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ExternalLink, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react'
 import PanelShell from '../components/PanelShell'
+import BinanceSubNav from '../components/BinanceSubNav'
 import { api } from '../lib/api'
 import { useLocale } from '../lib/locale'
 
@@ -19,6 +20,7 @@ export default function BinanceP2PAds() {
   useEffect(() => { void load() }, [])
 
   return <PanelShell>
+    <BinanceSubNav />
     <section className="page-head binance-egp-head"><div><span className="guide-eyebrow">READ ONLY · MARKETPLACE</span><h2>📣 {t('إعلانات Binance P2P', 'Binance P2P Live Ads')}</h2><p className="page-sub">USDT · EGP · Vodafone Cash</p></div><button className="btn-ghost btn-sm" disabled={loading} onClick={() => void load()}><RefreshCw size={15}/> {t('تحديث السعر', 'Refresh price')}</button></section>
     <div className="binance-egp-safety"><ShieldCheck size={20}/><div><strong>{t('عرض فقط — لا تنفيذ', 'View only — no execution')}</strong><p>{t('Binance لا توفر إعلانات P2P عبر API عامة موثقة. لن نستخدم واجهة موقع خاصة أو غير مستقرة.', 'Binance does not expose P2P advertisements through a documented public API. Private or unstable website endpoints are not used.')}</p></div></div>
     <section className="stat-grid">{prices.map((row) => <article className="stat-card" key={row.symbol}><span className="stat-label">{row.symbol}</span><strong className="stat-value mono">{Number(row.price).toLocaleString('en-US', { maximumFractionDigits: 8 })}</strong><span className="stat-sub">Binance Spot</span></article>)}</section>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Filter, RefreshCw, ShieldCheck, Smartphone, Users, WalletCards } from 'lucide-react'
 import PanelShell from '../components/PanelShell'
+import BinanceSubNav from '../components/BinanceSubNav'
 import { api, ApiError } from '../lib/api'
 import { useLocale } from '../lib/locale'
 
@@ -45,6 +46,7 @@ export default function BinanceP2PEgp() {
   const grouped = useMemo(() => traders.map((summary) => ({ summary, rows: orders.filter((row) => (row.trader ?? 'Unknown trader') === summary.trader) })), [orders, traders])
 
   return <PanelShell>
+    <BinanceSubNav />
     <section className="page-head binance-egp-head"><div><span className="guide-eyebrow">BINANCE C2C · EGP OPERATIONS</span><h2>{t('Binance P2P — Vodafone Cash', 'Binance P2P — EGP Vodafone Cash')}</h2><p className="page-sub">{t('تقرير حي مقسم حسب Trader مع إجمالي BUY وSELL لكل طرف.', 'Live report split by trader with BUY and SELL totals per counterparty.')}</p></div><button className="btn-ghost btn-sm" disabled={loading} onClick={() => void load()}><RefreshCw size={15} className={loading ? 'spin' : ''}/> {t('تحديث', 'Refresh')}</button></section>
     <div className="binance-egp-safety"><ShieldCheck size={20}/><div><strong>{t('قراءة محمية من Binance', 'Protected Binance read')}</strong><p>{t('المفتاح محفوظ داخل Vault ولا يظهر في المتصفح. لا يوجد تنفيذ تلقائي.', 'The key is stored in Vault and never reaches the browser. No automatic execution is enabled.')}</p></div></div>
     {error && <div className="card warn">{error}</div>}

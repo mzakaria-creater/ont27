@@ -64,7 +64,7 @@ export default function LinkGenerator() {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [newCheckoutUrl, setNewCheckoutUrl] = useState<string | null>(null)
   const [form, setForm] = useState({
-    title: '', merchant_id: '', amount_mode: 'open', amount: '',
+    title: '', merchant_id: '', amount_mode: 'open', amount: '', currency: 'EGP',
     min_amount: '', max_amount: '', expires_at: '', max_uses: '', client_name: '', client_reference: '', return_url: '',
     payment_method_codes: [] as string[], wallet_pool_id: '', allocation_mode: 'single_queue', multi_wallet_threshold: '50000',
     require_name: false,
@@ -114,6 +114,7 @@ export default function LinkGenerator() {
           merchant_id: form.merchant_id || undefined,
           amount_mode: form.amount_mode,
           amount: form.amount || undefined,
+          currency: form.currency,
           min_amount: form.min_amount || undefined,
           max_amount: form.max_amount || undefined,
           expires_at: form.expires_at || undefined,
@@ -129,7 +130,7 @@ export default function LinkGenerator() {
         }),
       })
       setNewCheckoutUrl(created.checkout_url ? `${location.origin}${created.checkout_url}` : null)
-      setForm({ title: '', merchant_id: '', amount_mode: 'open', amount: '', min_amount: '', max_amount: '', expires_at: '', max_uses: '', client_name: '', client_reference: '', return_url: '', payment_method_codes: [], wallet_pool_id: '', allocation_mode: 'single_queue', multi_wallet_threshold: '50000', require_name: false })
+      setForm({ title: '', merchant_id: '', amount_mode: 'open', amount: '', currency: 'EGP', min_amount: '', max_amount: '', expires_at: '', max_uses: '', client_name: '', client_reference: '', return_url: '', payment_method_codes: [], wallet_pool_id: '', allocation_mode: 'single_queue', multi_wallet_threshold: '50000', require_name: false })
       await load()
     } catch (err) {
       setError(err instanceof ApiError && err.status === 403 ? t('دورك لا يملك صلاحية إنشاء روابط', 'Your role cannot create links') : t('تعذر إنشاء الرابط', 'Failed to create link'))
@@ -193,14 +194,19 @@ export default function LinkGenerator() {
                 <option value="open">{t('مفتوح', 'Open')}</option>
                 <option value="fixed">{t('ثابت', 'Fixed')}</option>
               </select></label>
+            <label className="field"><span>{t('العملة', 'Currency')}</span>
+              <select value={form.currency} onChange={set('currency')}>
+                <option value="EGP">EGP</option>
+                <option value="USD">{t('USD — يُحوَّل للعميل إلى EGP بسعر اليوم', 'USD — converted to EGP for the customer at today’s rate')}</option>
+              </select></label>
             {form.amount_mode === 'fixed' ? (
-              <label className="field"><span>{t('المبلغ (EGP)', 'Amount (EGP)')}</span>
+              <label className="field"><span>{t('المبلغ', 'Amount')} ({form.currency})</span>
                 <input dir="ltr" inputMode="decimal" value={form.amount} onChange={set('amount')} required /></label>
             ) : (
               <>
-                <label className="field"><span>{t('حد أدنى', 'Min')}</span>
+                <label className="field"><span>{t('حد أدنى', 'Min')} ({form.currency})</span>
                   <input dir="ltr" inputMode="decimal" value={form.min_amount} onChange={set('min_amount')} /></label>
-                <label className="field"><span>{t('حد أقصى', 'Max')}</span>
+                <label className="field"><span>{t('حد أقصى', 'Max')} ({form.currency})</span>
                   <input dir="ltr" inputMode="decimal" value={form.max_amount} onChange={set('max_amount')} /></label>
               </>
             )}
@@ -227,7 +233,7 @@ export default function LinkGenerator() {
           <button className="btn-primary" disabled={busy}><Plus size={16}/>{busy ? t('جارٍ الإنشاء…', 'Creating…') : t('إنشاء رابط الدفع', 'Create payment link')}</button>
           {newCheckoutUrl && <div className="card success" role="status"><strong>{t('رابط Checkout الآمن جاهز','Secure checkout link ready')}</strong><span className="mono">{newCheckoutUrl}</span><button type="button" className="btn-ghost btn-sm" onClick={()=>void navigator.clipboard.writeText(newCheckoutUrl)}><Copy size={14}/>{t('نسخ','Copy')}</button><small>{t('يحتوي على رمز 256-bit؛ احتفظ به وشاركه مع العميل فقط.','Contains a 256-bit token; keep it private and share only with the customer.')}</small></div>}
         </form>
-        <aside className="card payment-link-preview" aria-label="Payment link preview"><span className="page-eyebrow">Live preview</span><div className="payment-link-preview-mark"><Link2 size={26}/></div><h3>{form.client_name || form.title || t('عنوان الدفع','Payment title')}</h3><strong className="mono">{previewAmount} EGP</strong><p>{merchants.find((m)=>m.id===form.merchant_id)?.name || t('بدون تاجر محدد','No merchant selected')}</p><div><span>{form.amount_mode === 'fixed' ? t('مبلغ ثابت','Fixed amount') : t('مبلغ مفتوح','Open amount')}</span><span>{form.payment_method_codes.length || t('كل الطرق','All methods')} {t('طريقة','methods')}</span></div><button type="button" className="btn-primary" disabled>{t('متابعة الدفع','Continue to payment')}</button></aside>
+        <aside className="card payment-link-preview" aria-label="Payment link preview"><span className="page-eyebrow">Live preview</span><div className="payment-link-preview-mark"><Link2 size={26}/></div><h3>{form.client_name || form.title || t('عنوان الدفع','Payment title')}</h3><strong className="mono">{previewAmount} {form.currency}</strong><p>{merchants.find((m)=>m.id===form.merchant_id)?.name || t('بدون تاجر محدد','No merchant selected')}</p><div><span>{form.amount_mode === 'fixed' ? t('مبلغ ثابت','Fixed amount') : t('مبلغ مفتوح','Open amount')}</span><span>{form.payment_method_codes.length || t('كل الطرق','All methods')} {t('طريقة','methods')}</span></div><button type="button" className="btn-primary" disabled>{t('متابعة الدفع','Continue to payment')}</button></aside>
         </section>
       )}
 

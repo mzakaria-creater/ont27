@@ -147,6 +147,10 @@ function publicSession(s: Record<string, unknown>) {
     merchant_name: meta.merchant_name ?? null,
     merchant_mid: meta.merchant_mid ?? null,
     master_mid: meta.master_mid ?? null,
+    usd_amount: meta.usd_amount ?? null,
+    fx_rate_used: meta.fx_rate_used ?? null,
+    customer_proof_url: meta.customer_proof_url ?? null,
+    customer_proof_note: meta.customer_proof_note ?? null,
     created_at: s.created_at,
     expires_at: s.expires_at,
     paid_at: s.paid_at,
@@ -218,7 +222,7 @@ payRoutes.post('/session', async (c) => {
 
   if (link?.require_name && !name) return c.json({ error: 'name_required' }, 400)
 
-  const currency = link?.currency ?? 'EGP'
+  let currency = link?.currency ?? 'EGP'
   let amount = link?.amount_mode === 'fixed' ? Number(link.amount) : rawAmount
   if (!Number.isFinite(amount) || amount <= 0) return c.json({ error: 'invalid_amount' }, 400)
   amount = Math.round(amount * 100) / 100
@@ -228,6 +232,22 @@ payRoutes.post('/session', async (c) => {
   if (link?.amount_mode === 'open') {
     if (link.min_amount !== null && amount < link.min_amount) return c.json({ error: 'amount_below_min', min: link.min_amount }, 400)
     if (link.max_amount !== null && amount > link.max_amount) return c.json({ error: 'amount_above_max', max: link.max_amount }, 400)
+  }
+
+  // Wallets, matching, and every downstream admin view assume EGP. A
+  // USD-denominated link is therefore converted to EGP right here, once,
+  // using the latest stored rate — the customer sees the conversion on the
+  // checkout page before submitting, and the original USD figure + rate
+  // used are kept in metadata for audit.
+  let usdAmount: number | null = null
+  let fxRate: number | null = null
+  if (currency === 'USD') {
+    const { data: rateRow } = await db.from('exchange_rates').select('rate').eq('currency_pair', 'USD/EGP').order('fetched_at', { ascending: false }).limit(1).maybeSingle()
+    if (!rateRow?.rate || !(Number(rateRow.rate) > 0)) return c.json({ error: 'rate_unavailable' }, 503)
+    fxRate = Number(rateRow.rate)
+    usdAmount = amount
+    amount = Math.round(amount * fxRate * 100) / 100
+    currency = 'EGP'
   }
 
   const allowedMethods = (link?.payment_method_codes ?? []).map((method) => method.toUpperCase())
@@ -289,6 +309,8 @@ payRoutes.post('/session', async (c) => {
         master_mid: identity.masterMid,
         client_reference: link?.client_reference ?? null,
         payment_method_code: wallet.paymentMethodCode ?? requestedMethod ?? null,
+        usd_amount: usdAmount,
+        fx_rate_used: fxRate,
       },
       checkout_token_hash: checkoutTokenHash,
     })
@@ -351,4 +373,63 @@ payRoutes.get('/session/:id', async (c) => {
     .maybeSingle()
   if (!session) return c.json({ error: 'not_found' }, 404)
   return c.json({ session: publicSession(session) })
+})
+
+// Latest stored USD/EGP rate, for the checkout page to show a live EGP
+// estimate while the customer is still typing a USD amount. Read-only,
+// public — the rate itself carries no sensitive information.
+payRoutes.get('/rate', async (c) => {
+  const pair = c.req.query('pair') === 'USDT/EGP' ? 'USDT/EGP' : 'USD/EGP'
+  const { data } = await db.from('exchange_rates').select('currency_pair, rate, fetched_at').eq('currency_pair', pair).order('fetched_at', { ascending: false }).limit(1).maybeSingle()
+  if (!data?.rate) return c.json({ error: 'rate_unavailable' }, 404)
+  return c.json({ pair: data.currency_pair, rate: Number(data.rate), fetched_at: data.fetched_at })
+})
+
+const CHECKOUT_PROOF_BUCKET = 'pop'
+const CHECKOUT_PROOF_PREFIX = 'checkout-proofs/'
+
+// Customer-submitted proof, added on top of the auto wallet-assignment flow
+// above: the customer still transfers to the wallet Binance/NGPay allocated,
+// then uploads a screenshot here so the session surfaces as a reviewable
+// item in All Transactions instead of relying only on automatic SMS
+// matching. No auth — this is the public checkout flow — so it is scoped
+// tightly to one existing, still-open session.
+payRoutes.post('/session/:id/proof', async (c) => {
+  const id = c.req.param('id')
+  if (!/^[0-9a-f-]{36}$/.test(id)) return c.json({ error: 'not_found' }, 404)
+  const { data: session } = await db.from('checkout_sessions').select('*').eq('id', id).maybeSingle()
+  if (!session) return c.json({ error: 'not_found' }, 404)
+  if (!['pending', 'processing'].includes(String(session.status))) return c.json({ error: 'session_not_open' }, 409)
+  if (session.expires_at && new Date(session.expires_at).getTime() < Date.now()) return c.json({ error: 'session_expired' }, 410)
+
+  const form = await c.req.formData().catch(() => null)
+  const file = form?.get('file')
+  const note = typeof form?.get('note') === 'string' ? String(form.get('note')).slice(0, 500) : null
+  if (!(file instanceof File) || file.size < 1) return c.json({ error: 'proof_file_required' }, 400)
+  if (file.size > 10 * 1024 * 1024) return c.json({ error: 'proof_file_too_large' }, 400)
+  if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type)) return c.json({ error: 'invalid_proof_type' }, 400)
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-100) || 'proof'
+  const path = `${CHECKOUT_PROOF_PREFIX}${id}/${Date.now()}-${safeName}`
+  const { error: uploadError } = await db.storage.from(CHECKOUT_PROOF_BUCKET).upload(path, new Uint8Array(await file.arrayBuffer()), { contentType: file.type, upsert: false })
+  if (uploadError) return c.json({ error: 'proof_upload_failed', detail: uploadError.message }, 500)
+  const { data: pub } = db.storage.from(CHECKOUT_PROOF_BUCKET).getPublicUrl(path)
+
+  const meta = (session.metadata ?? {}) as Record<string, unknown>
+  const { data: updated, error } = await db
+    .from('checkout_sessions')
+    .update({
+      status: session.status === 'pending' ? 'processing' : session.status,
+      metadata: { ...meta, customer_proof_url: pub.publicUrl, customer_proof_note: note },
+    })
+    .eq('id', id)
+    .select('*')
+    .maybeSingle()
+  if (error || !updated) return c.json({ error: 'db_error' }, 500)
+
+  void notifyTelegram(
+    `📎 إثبات دفع من العميل\nRef: <code>${session.reference}</code>\nAmount: ${session.amount} ${session.currency}\nProof: ${pub.publicUrl}`,
+  )
+
+  return c.json({ session: publicSession(updated) })
 })

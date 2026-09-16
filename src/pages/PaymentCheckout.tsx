@@ -42,6 +42,10 @@ export interface PaySession {
   return_url?: string | null
   merchant_mid?: string | null
   master_mid?: string | null
+  usd_amount?: number | null
+  fx_rate_used?: number | null
+  customer_proof_url?: string | null
+  customer_proof_note?: string | null
 }
 
 // Provider string -> the theme key the stylesheet defines. Matching on
@@ -182,6 +186,11 @@ export default function PaymentCheckout() {
   const [qr, setQr] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   const [idempotencyKey] = useState(() => `checkout-${crypto.randomUUID()}`)
+  const [rate, setRate] = useState<number | null>(null)
+  const [proofFile, setProofFile] = useState<File | null>(null)
+  const [proofNote, setProofNote] = useState('')
+  const [proofBusy, setProofBusy] = useState(false)
+  const [proofError, setProofError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!linkKey) return
@@ -192,6 +201,14 @@ export default function PaymentCheckout() {
       })
       .catch((err) => setLinkError(err instanceof ApiError && payErrors[err.code] ? t(payErrors[err.code][0], payErrors[err.code][1]) : t('تعذر تحميل الرابط', 'Failed to load the link')))
   }, [linkKey])
+
+  // Only USD-denominated links need a rate — wallets, matching, and every
+  // admin view assume EGP, so this is display-only here; the server converts
+  // for real (and re-checks the rate) at session creation.
+  useEffect(() => {
+    if (link?.currency !== 'USD') return
+    api<{ rate: number }>('/api/pay/rate').then((r) => setRate(r.rate)).catch(() => setRate(null))
+  }, [link?.currency])
 
   useEffect(() => {
     if (!session?.wallet_number) return
@@ -224,6 +241,24 @@ export default function PaymentCheckout() {
       setError(err instanceof ApiError && payErrors[err.code] ? t(payErrors[err.code][0], payErrors[err.code][1]) : (err instanceof ApiError ? t('حدث خطأ — حاول مرة أخرى', 'An error occurred — try again') : t('تعذر الاتصال بالخادم', 'Failed to reach the server')))
     } finally {
       setBusy(false)
+    }
+  }
+
+  const submitProof = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!session || !proofFile) return
+    setProofBusy(true)
+    setProofError(null)
+    try {
+      const form = new FormData()
+      form.set('file', proofFile)
+      if (proofNote.trim()) form.set('note', proofNote.trim())
+      const { session: updated } = await api<{ session: PaySession }>(`/api/pay/session/${session.id}/proof`, { method: 'POST', body: form })
+      setSession(updated)
+    } catch (err) {
+      setProofError(err instanceof ApiError && err.code === 'session_expired' ? t('انتهت صلاحية الجلسة.', 'The session has expired.') : t('تعذّر رفع الإثبات — حاول مرة أخرى.', 'Failed to upload proof — try again.'))
+    } finally {
+      setProofBusy(false)
     }
   }
 
@@ -310,6 +345,34 @@ export default function PaymentCheckout() {
                 {t('متابعة حالة الدفع ←', 'Track payment status →')}
               </Link>
               {session.return_url && <a className="btn-ghost pay-status-link" href={session.return_url}>{t('العودة إلى التاجر', 'Return to merchant')}</a>}
+
+              <div className="checkout-proof-block">
+                {session.customer_proof_url ? (
+                  <div className="checkout-proof-done">
+                    <span>✓</span>
+                    <div>
+                      <strong>{t('تم استلام إثبات الدفع', 'Proof received')}</strong>
+                      <p>{t('سيتم مراجعتها والتأكيد قريباً.', "It'll be reviewed and confirmed shortly.")}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <form className="checkout-proof-form" onSubmit={submitProof}>
+                    <h3>{t('بعد التحويل، ارفع إثبات الدفع', 'After transferring, upload your proof')}</h3>
+                    <label className="field">
+                      <span>{t('صورة الإثبات', 'Proof screenshot')}</span>
+                      <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(e) => setProofFile(e.target.files?.[0] ?? null)} required />
+                    </label>
+                    <label className="field">
+                      <span>{t('ملاحظة (اختياري)', 'Note (optional)')}</span>
+                      <input value={proofNote} onChange={(e) => setProofNote(e.target.value)} />
+                    </label>
+                    {proofError && <div className="login-error" role="alert">{proofError}</div>}
+                    <button className="btn-primary checkout-submit" type="submit" disabled={proofBusy || !proofFile}>
+                      {proofBusy ? t('جارٍ الرفع…', 'Uploading…') : t('إرسال إثبات الدفع', 'Submit payment proof')}
+                    </button>
+                  </form>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -336,6 +399,13 @@ export default function PaymentCheckout() {
                     : t('مفتوح', 'Open')}
               </span>
             </div>
+            {link?.currency === 'USD' && rate != null && (
+              <div className="checkout-fx-note">
+                {link.amount_mode === 'fixed' && link.amount != null
+                  ? `≈ ${groupDigits((link.amount * rate).toFixed(2))} EGP`
+                  : `${t('سعر الصرف', 'Rate')}: 1 USD ≈ ${rate.toLocaleString('en-US')} EGP`}
+              </div>
+            )}
             <div className="checkout-gold-line" />
             {link?.title && <div className="checkout-detail-row"><span>{t('عن', 'About')}</span><span>{link.title}</span></div>}
             {link?.client_name && <div className="checkout-detail-row"><span>{t('لصالح', 'For')}</span><span>{link.client_name}</span></div>}
@@ -388,6 +458,9 @@ export default function PaymentCheckout() {
                   readOnly={link?.amount_mode === 'fixed'}
                   required
                 />
+                {link?.currency === 'USD' && rate != null && Number(amount) > 0 && (
+                  <small className="checkout-fx-note">≈ {groupDigits((Number(amount) * rate).toFixed(2))} EGP</small>
+                )}
               </label>
               {error && <div className="login-error" role="alert">{error}</div>}
               <button className="btn-primary checkout-submit" type="submit" disabled={busy}>

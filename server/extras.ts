@@ -281,6 +281,7 @@ extraRoutes.get(
           payment_method: metadata.payment_method_code ?? metadata.provider ?? 'Payment link',
           receiving_wallet: metadata.wallet_number ?? null, first_seen_at: row.created_at, created_utc: row.created_at,
           checkout_return_url: row.success_url ?? metadata.return_url ?? null,
+          proof_image_url: metadata.customer_proof_url ?? null,
         }
       })
     }
