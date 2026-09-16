@@ -465,14 +465,30 @@ function RouteResetBoundary({ children }: { children: ReactNode }) {
   return <AppErrorBoundary resetKey={location.key}>{children}</AppErrorBoundary>
 }
 
+// Public, customer-facing routes never show the internal panel chrome
+// (topbar, staff-only realtime popups) — regardless of whether the person
+// viewing them happens to have a valid staff session in the same browser.
+// Checkout in particular must read as a fully separate site to the customer.
+const PUBLIC_ROUTES = ['/login', '/payment-checkout', '/payment-status', '/account-action']
+
+function AppShell({ children }: { children: ReactNode }) {
+  const location = useLocation()
+  if (PUBLIC_ROUTES.includes(location.pathname)) return <>{children}</>
+  return (
+    <div className="shell">
+      <Topbar />
+      <WrongfulDeclineRealtimePopup />
+      <SmsFreezeRealtimePopup />
+      {children}
+    </div>
+  )
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <LocaleProvider>
-        <div className="shell">
-          <Topbar />
-          <WrongfulDeclineRealtimePopup />
-          <SmsFreezeRealtimePopup />
+        <AppShell>
         <RouteResetBoundary>
         <Suspense fallback={<div className="route-loading" role="status"><span className="ld" /> Loading…</div>}>
         <Routes>
@@ -565,7 +581,7 @@ export default function App() {
         </Routes>
         </Suspense>
         </RouteResetBoundary>
-        </div>
+        </AppShell>
       </LocaleProvider>
     </BrowserRouter>
   )
