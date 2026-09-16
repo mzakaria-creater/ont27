@@ -11,7 +11,7 @@ import PageSizeSelect from '../components/PageSizeSelect'
 import ProofModal from '../components/ProofModal'
 import SenderIdentity from '../components/SenderIdentity'
 import { useAuth } from '../auth/AuthContext'
-import { AlertTriangle, ChevronDown, ChevronRight, Eye, Image, LayoutGrid, Pencil, Search, TableProperties, X } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronRight, Eye, Image, LayoutGrid, Pencil, Search, SlidersHorizontal, TableProperties, X } from 'lucide-react'
 import TransactionEditDialog from '../components/TransactionEditDialog'
 import { supabase } from '../lib/supabase'
 import { syncProviders } from '../lib/providerSync'
@@ -86,6 +86,8 @@ export default function Transactions() {
   const currencyValues = splitFilterValues(currency)
   const minAmount = params.get('min_amount') ?? ''
   const maxAmount = params.get('max_amount') ?? ''
+  const secondaryFilterCount = [from, to, merchant, method, minAmount, maxAmount].filter(Boolean).length + (currencyValues.length > 0 ? 1 : 0)
+  const [showMoreFilters, setShowMoreFilters] = useState(() => secondaryFilterCount > 0)
   const view = params.get('view') === 'cards' ? 'cards' : 'table'
   const page = Math.max(Number(params.get('page')) || 1, 1)
   const [q, setQ] = useState(params.get('q') ?? '')
@@ -226,24 +228,35 @@ export default function Transactions() {
       </section>
 
       <div className="filter-bar transaction-filter-toolbar">
-        <MultiSelectFilter label={t('نوع المعاملة','Transaction type')} allLabel={t('كل الأنواع','All types')} options={[{value:'deposit',label:t('إيداعات','Deposits')},{value:'payout',label:t('سحوبات','Payouts')}]} value={typeValues} onChange={(values)=>setFilter({type:values.join(',')})}/>
-        <MultiSelectFilter label={t('الحالة','Status')} allLabel={t('كل الحالات','All statuses')} options={STATUS_FILTERS.map((value)=>({value,label:statusMeta(value).label,count:counts[value]}))} value={statusValues} onChange={(values)=>setFilter({status:values.join(',')})}/>
-        <form className="search-row transaction-search-row trx-search-bar" role="search" onSubmit={(e) => { e.preventDefault(); setFilter({ q: q.trim() }) }}>
-          <Search size={16} aria-hidden="true" />
-          <input type="search" className="login-input search-input" aria-label={t('بحث المعاملات', 'Search transactions')} placeholder={t('بحث: مبلغ / مرسل / رقم عملية / مرجع تاجر / مستخدم…', 'Search: amount / sender / transaction / merchant ref / user…')} value={q} onChange={(e) => setQ(e.target.value)} />
-          {(q || appliedQ) && <button type="button" className="trx-search-clear" onClick={() => { setQ(''); setFilter({ q: '' }) }} aria-label={t('مسح البحث', 'Clear search')}><X size={15}/></button>}
-          <button type="submit" className="btn-primary btn-sm">{t('بحث', 'Search')}</button>
-        </form>
-        <div className="transaction-filter-fields">
-          <label className="filter-field">{t('من', 'From')}<input className="login-input" type="date" value={from} onChange={(e) => setFilter({ from: e.target.value })} /></label>
-          <label className="filter-field">{t('إلى', 'To')}<input className="login-input" type="date" value={to} onChange={(e) => setFilter({ to: e.target.value })} /></label>
-          <label className="filter-field">{t('التاجر', 'Merchant')}<input className="login-input" value={merchant} onChange={(e) => setFilter({ merchant: e.target.value })} /></label>
-          <label className="filter-field">{t('الطريقة', 'Method')}<input className="login-input" value={method} onChange={(e) => setFilter({ method: e.target.value })} /></label>
-          <MultiSelectFilter label={t('العملة','Currency')} allLabel={t('كل العملات','All currencies')} options={['EGP','USD','USDT'].map((value)=>({value,label:value}))} value={currencyValues} onChange={(values)=>setFilter({currency:values.join(',')})}/>
-          <label className="filter-field">{t('أدنى مبلغ', 'Min amount')}<input className="login-input" type="number" min="0" value={minAmount} onChange={(e) => setFilter({ min_amount: e.target.value })} /></label>
-          <label className="filter-field">{t('أقصى مبلغ', 'Max amount')}<input className="login-input" type="number" min="0" value={maxAmount} onChange={(e) => setFilter({ max_amount: e.target.value })} /></label>
-          <button className="btn-ghost btn-sm" onClick={() => setFilter({ from: '', to: '', merchant: '', method: '', currency: '', min_amount: '', max_amount: '', status: '', type: '', q: '' })}>{t('مسح الفلاتر', 'Clear filters')}</button>
+        <div className="trx-filter-primary">
+          <MultiSelectFilter label={t('نوع المعاملة','Transaction type')} allLabel={t('كل الأنواع','All types')} options={[{value:'deposit',label:t('إيداعات','Deposits')},{value:'payout',label:t('سحوبات','Payouts')}]} value={typeValues} onChange={(values)=>setFilter({type:values.join(',')})}/>
+          <MultiSelectFilter label={t('الحالة','Status')} allLabel={t('كل الحالات','All statuses')} options={STATUS_FILTERS.map((value)=>({value,label:statusMeta(value).label,count:counts[value]}))} value={statusValues} onChange={(values)=>setFilter({status:values.join(',')})}/>
+          <form className="search-row transaction-search-row trx-search-bar" role="search" onSubmit={(e) => { e.preventDefault(); setFilter({ q: q.trim() }) }}>
+            <Search size={16} aria-hidden="true" />
+            <input type="search" className="login-input search-input" aria-label={t('بحث المعاملات', 'Search transactions')} placeholder={t('بحث: مبلغ / مرسل / رقم عملية / مرجع تاجر / مستخدم…', 'Search: amount / sender / transaction / merchant ref / user…')} value={q} onChange={(e) => setQ(e.target.value)} />
+            {(q || appliedQ) && <button type="button" className="trx-search-clear" onClick={() => { setQ(''); setFilter({ q: '' }) }} aria-label={t('مسح البحث', 'Clear search')}><X size={15}/></button>}
+            <button type="submit" className="btn-primary btn-sm">{t('بحث', 'Search')}</button>
+          </form>
+          <button type="button" className={`btn-ghost btn-sm trx-more-filters-toggle${showMoreFilters ? ' active' : ''}`} aria-expanded={showMoreFilters} onClick={() => setShowMoreFilters((v) => !v)}>
+            <SlidersHorizontal size={14}/> {t('فلاتر إضافية', 'More filters')}
+            {secondaryFilterCount > 0 && <span className="trx-filter-count">{secondaryFilterCount}</span>}
+            <ChevronDown size={14} className={showMoreFilters ? 'trx-chevron-open' : ''}/>
+          </button>
+          {(secondaryFilterCount > 0 || statusValues.length > 0 || typeValues.length > 0 || appliedQ) && (
+            <button className="btn-ghost btn-sm" onClick={() => { setQ(''); setFilter({ from: '', to: '', merchant: '', method: '', currency: '', min_amount: '', max_amount: '', status: '', type: '', q: '' }) }}>{t('مسح الفلاتر', 'Clear filters')}</button>
+          )}
         </div>
+        {showMoreFilters && (
+          <div className="transaction-filter-fields">
+            <label className="filter-field">{t('من', 'From')}<input className="login-input" type="date" value={from} onChange={(e) => setFilter({ from: e.target.value })} /></label>
+            <label className="filter-field">{t('إلى', 'To')}<input className="login-input" type="date" value={to} onChange={(e) => setFilter({ to: e.target.value })} /></label>
+            <label className="filter-field">{t('التاجر', 'Merchant')}<input className="login-input" value={merchant} onChange={(e) => setFilter({ merchant: e.target.value })} /></label>
+            <label className="filter-field">{t('الطريقة', 'Method')}<input className="login-input" value={method} onChange={(e) => setFilter({ method: e.target.value })} /></label>
+            <MultiSelectFilter label={t('العملة','Currency')} allLabel={t('كل العملات','All currencies')} options={['EGP','USD','USDT'].map((value)=>({value,label:value}))} value={currencyValues} onChange={(values)=>setFilter({currency:values.join(',')})}/>
+            <label className="filter-field">{t('أدنى مبلغ', 'Min amount')}<input className="login-input" type="number" min="0" value={minAmount} onChange={(e) => setFilter({ min_amount: e.target.value })} /></label>
+            <label className="filter-field">{t('أقصى مبلغ', 'Max amount')}<input className="login-input" type="number" min="0" value={maxAmount} onChange={(e) => setFilter({ max_amount: e.target.value })} /></label>
+          </div>
+        )}
       </div>
 
       {err && <div className="card warn">{err}</div>}
@@ -262,10 +275,7 @@ export default function Transactions() {
                   <th>{t('الحالة', 'Status')}</th>
                   <th>{t('نوع الدفع', 'Payment Type')}</th>
                   <th>{t('المبلغ', 'Amount')}</th>
-                  <th>{t('بريد المستخدم', 'User Email')}</th>
-                  <th>{t('هاتف المستخدم', 'User Phone Number')}</th>
-                  <th>{t('اسم حساب المرسل', 'Sender Account Name')}</th>
-                  <th>{t('رقم حساب المرسل', 'Sender Account Number')}</th>
+                  <th>{t('الطرف', 'Party')}</th>
                   <th>{t('تاريخ الإنشاء UTC', 'Created UTC Date')}</th>
                 </tr>
               </thead>
@@ -283,27 +293,32 @@ export default function Transactions() {
                   const senderAccountName = r.kind === 'deposit' ? (r.sender_account_name ?? r.payment_method ?? party) : (r.account_name ?? party)
                   return (
                     <Fragment key={rowKey}>
-                      {r.kind === 'deposit' && (r.matched_sms ? <tr className={`tx-sms-raw-row tx-sms-above tx-pair-${Math.abs(Number(id ?? 0)) % 5}${r.status === 'DECLINED' ? ' tx-sms-declined-warning' : ''}`}><td colSpan={11}><div className="tx-sms-raw">{r.status === 'DECLINED' ? <span className="tx-sms-label tx-sms-warning-label"><AlertTriangle size={13} aria-hidden="true" /> SMS مع مرفوضة</span> : <span className="tx-sms-label">📨 SMS الخاص بالمعاملة</span>}<span className="mono">#{r.matched_sms.id}</span><span>{r.matched_sms.sender_name ?? r.matched_sms.sender_number ?? '—'} → {r.matched_sms.receiver_number ?? '—'}</span><span className="mono">{money(r.matched_sms.amount, r.currency ?? 'EGP')}</span>{r.matched_sms.balance_after != null && <strong className="tx-live-balance mono">رصيدك الحالي {money(r.matched_sms.balance_after, r.currency ?? 'EGP')}</strong>}<code className={r.status === 'DECLINED' ? 'is-warning-raw' : undefined}>{r.matched_sms.raw_sms ?? r.matched_sms.message ?? r.matched_sms.sms_first_line ?? '—'}</code></div></td></tr> : <tr className="tx-sms-raw-row tx-sms-missing"><td colSpan={11}><div className="tx-sms-raw"><span className="tx-sms-label">⚠️ SMS</span><strong>{t('لا توجد رسالة SMS مرتبطة', 'No SMS linked')}</strong><Link to={`/sms?amount=${r.amount ?? ''}`}>{t('البحث عن رسالة', 'Search SMS')}</Link></div></td></tr>)}
-                      <tr key={rowKey} className={`${r.status === 'PENDING' ? 'row-pending ' : ''}${r.matched_sms ? `tx-pair-${Math.abs(Number(id ?? 0)) % 5}` : ''}`}>
+                      <tr key={rowKey} className={r.status === 'PENDING' ? 'row-pending' : ''}>
                         <td><button type="button" className="tx-expand-btn" onClick={() => toggleExpanded(rowKey)} aria-expanded={isExpanded} aria-label={isExpanded ? t('إغلاق التفاصيل', 'Collapse details') : t('فتح التفاصيل', 'Expand details')}>{isExpanded ? <ChevronDown size={15}/> : <ChevronRight size={15}/>}</button></td>
                         <td><div className="portal-row-actions"><Link className="tx-action-primary" to={details}>{r.status === 'PENDING' ? <Pencil size={13}/> : <Eye size={13}/>}<span>{r.status === 'PENDING' ? t('تعديل', 'Edit') : t('عرض', 'View')}</span></Link>{id && (r.kind === 'deposit' ? <TransactionEditDialog txId={Number(id)} ontargetRef={r.ontarget_ref} status={r.status} amount={r.amount} currency={r.currency} gateway={r.gateway} onDone={() => void load()} /> : <Link className="btn-ghost btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}&edit=1`}><Pencil size={13}/> {t('تعديل', 'Edit')}</Link>)}{proofUrl && <button type="button" className="tx-proof-icon" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id), onApprove: r.status === 'PENDING' && r.kind === 'deposit' && can('deposits', 'can_approve') ? async () => { await decide(r, 'approve'); setProof(null) } : undefined, onDecline: r.status === 'PENDING' && r.kind === 'deposit' && can('deposits', 'can_approve') ? async () => { await decide(r, 'decline'); setProof(null) } : undefined })} aria-label={t('عرض الإثبات', 'View proof')} title={t('عرض الإثبات', 'View proof')}><Image size={15}/></button>}</div></td>
                         <td className="mono"><Link className="transaction-cell-link" to={details}>{r.is_checkout_session ? r.ontarget_ref : id}</Link>{r.is_checkout_session && <span className="deposit-kind is-first">🔗 Payment link</span>}{!r.is_checkout_session && r.ontarget_ref && String(r.ontarget_ref) !== String(id) && <div className="cell-sub mono">{r.ontarget_ref}</div>}{(r.merchant_reference ?? r.merchant_tx_reference) && <div className="cell-sub mono" title="NGPay merchant reference">{r.merchant_reference ?? r.merchant_tx_reference}</div>}{r.kind === 'deposit' && !r.is_checkout_session && <span className={`deposit-kind ${r.deposit_kind === 'retention_deposit' ? 'is-retention' : 'is-first'}`}>{r.deposit_kind === 'retention_deposit' ? `↻ ${t('Retention','Retention')}` : `★ ${t('First','First')}`}</span>}</td>
                         <td><span className={`portal-status-tag ${st.cls}`}>{st.label}</span></td>
                         <td><div className="portal-method-cell"><MethodLogo method={r.kind === 'deposit' ? r.payment_method : r.pay_by}/><span>{r.kind === 'deposit' ? (r.payment_method ?? t('إيداع', 'Deposit')) : (r.pay_by ?? t('سحب', 'Payout'))}</span></div></td>
-                        <td className="mono portal-amount-cell">{money(r.amount, r.currency ?? 'EGP')}{r.amount_sync_status === 'mismatch' && <div className="amount-critical-warning" title={r.amount_mismatch_reason ?? 'Maven amount confirmation required'}>⚠ CRITICAL</div>}</td>
-                        <td>{r.user_email ? <a href={`mailto:${r.user_email}`} className="transaction-cell-link">{r.user_email}</a> : '—'}</td>
-                        <td><SenderIdentity name={null} phone={clientPhone} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined}/></td>
-                        <td>{senderAccountName ?? '—'}</td>
-                        <td className="mono"><Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(r.sender_account_number ?? clientPhone ?? '')}`}>{r.sender_account_number ?? clientPhone ?? '—'}</Link></td>
+                        <td className="mono portal-amount-cell">
+                          {money(r.amount, r.currency ?? 'EGP')}
+                          {r.amount_sync_status === 'mismatch' && <div className="amount-critical-warning" title={r.amount_mismatch_reason ?? 'Maven amount confirmation required'}>⚠ CRITICAL</div>}
+                          {r.kind === 'deposit' && (r.matched_sms
+                            ? <button type="button" className={`tx-sms-chip ${r.status === 'DECLINED' ? 'is-warning' : 'is-matched'}`} onClick={() => toggleExpanded(rowKey)} title={`${r.matched_sms.sender_name ?? r.matched_sms.sender_number ?? '—'} · ${money(r.matched_sms.amount, r.currency ?? 'EGP')}`}>{r.status === 'DECLINED' ? <AlertTriangle size={11} aria-hidden="true" /> : '📨'} SMS</button>
+                            : <button type="button" className="tx-sms-chip is-missing" onClick={() => toggleExpanded(rowKey)}>{t('بدون SMS', 'No SMS')}</button>)}
+                        </td>
+                        <td><SenderIdentity name={party} phone={clientPhone} nameHref={party ? `/transactions?q=${encodeURIComponent(party)}` : undefined} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined}/></td>
                         <td className="mono">{depositTime(r)}</td>
                       </tr>
-                      {isExpanded && <tr key={`${rowKey}-details`} className="tx-expanded-row"><td colSpan={11}><div className="tx-expanded-grid">
-                        <div><span>{t('الطرف', 'Party')}</span><SenderIdentity name={party} phone={clientPhone} nameHref={party ? `/transactions?q=${encodeURIComponent(party)}` : undefined} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined}/></div>
+                      {isExpanded && <tr key={`${rowKey}-details`} className="tx-expanded-row"><td colSpan={8}><div className="tx-expanded-grid">
+                        <div><span>{t('بريد المستخدم', 'User email')}</span>{r.user_email ? <a href={`mailto:${r.user_email}`} className="transaction-cell-link">{r.user_email}</a> : '—'}</div>
+                        <div><span>{t('اسم حساب المرسل', 'Sender account name')}</span>{senderAccountName ?? '—'}</div>
+                        <div><span>{t('رقم حساب المرسل', 'Sender account number')}</span><Link className="mono transaction-cell-link" to={`/transactions?q=${encodeURIComponent(r.sender_account_number ?? clientPhone ?? '')}`}>{r.sender_account_number ?? clientPhone ?? '—'}</Link></div>
                         <div><span>{t('المحفظة المستلمة', 'Receiving wallet')}</span>{wallet ? <Link className="mono transaction-cell-link" to={`/transactions?type=deposit&q=${encodeURIComponent(wallet)}`}>{wallet}</Link> : '—'}</div>
                         <div><span>{t('التاجر', 'Merchant')}</span><MerchantLogo merchant={r.merchant ?? r.master_merchant}/></div>
                         <div><span>{t('البوابة', 'Gateway')}</span><strong>{r.gateway ?? '—'}</strong></div>
                         <div><span>{t('التكرار', 'Duplicates')}</span>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First transaction')}</div>
                         <div><span>{t('اعتمد بواسطة', 'Approved by')}</span><strong>{r.status === 'PENDING' ? '—' : (isAutomaticApprovalActor(r.approved_by) ? t('آلي (Auto)', 'Auto') : r.approved_by)}</strong></div>
+                        {r.kind === 'deposit' && <div className="tx-expanded-sms"><span>{t('دليل SMS', 'SMS evidence')}</span>{r.matched_sms ? <div className="tx-sms-raw">{r.status === 'DECLINED' ? <span className="tx-sms-label tx-sms-warning-label"><AlertTriangle size={13} aria-hidden="true" /> SMS مع مرفوضة</span> : <span className="tx-sms-label">📨 SMS الخاص بالمعاملة</span>}<span className="mono">#{r.matched_sms.id}</span><span>{r.matched_sms.sender_name ?? r.matched_sms.sender_number ?? '—'} → {r.matched_sms.receiver_number ?? '—'}</span><span className="mono">{money(r.matched_sms.amount, r.currency ?? 'EGP')}</span>{r.matched_sms.balance_after != null && <strong className="tx-live-balance mono">رصيدك الحالي {money(r.matched_sms.balance_after, r.currency ?? 'EGP')}</strong>}<code className={r.status === 'DECLINED' ? 'is-warning-raw' : undefined}>{r.matched_sms.raw_sms ?? r.matched_sms.message ?? r.matched_sms.sms_first_line ?? '—'}</code></div> : <div className="tx-sms-raw is-missing"><strong>{t('لا توجد رسالة SMS مرتبطة', 'No SMS linked')}</strong><Link to={`/sms?amount=${r.amount ?? ''}`}>{t('البحث عن رسالة', 'Search SMS')}</Link></div>}</div>}
                         <div className="tx-expanded-actions">{r.status === 'PENDING' && !r.is_checkout_session && r.kind === 'deposit' && can('deposits','can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r,'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.status === 'PENDING' && r.kind === 'payout' && can('payouts','can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.is_checkout_session && <span className="cell-sub">{t('جلسة رابط دفع — بانتظار ظهور المعاملة المزوّدة', 'Payment-link session — waiting for provider transaction')}</span>}</div>
                         {r.kind === 'deposit' && r.raw_preview && <details className="tx-raw-details"><summary>{t('عرض Raw المعاملة', 'View transaction raw')}</summary><pre>{JSON.stringify(r.raw_preview, null, 2)}</pre></details>}
                       </div></td></tr>}
@@ -326,7 +341,13 @@ export default function Transactions() {
               const details = r.is_checkout_session ? `/payment-status?id=${encodeURIComponent(r.checkout_session_id ?? '')}` : r.kind === 'deposit' && r.ontarget_ref ? `/transactions/${encodeURIComponent(r.ontarget_ref)}` : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`
               return <article key={`${r.kind}-${r.checkout_session_id ?? id}`} className={`all-tx-card${r.status === 'PENDING' ? ' pending' : ''}`}>
                 <header><Link className="mono transaction-cell-link" to={details}>{r.ontarget_ref ?? id}</Link><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></header>
-                <div className="all-tx-card-amount mono">{money(r.amount, r.currency ?? 'EGP')}{r.amount_sync_status === 'mismatch' && <div className="amount-critical-warning" title={r.amount_mismatch_reason ?? 'Maven amount confirmation required'}>⚠ CRITICAL</div>}</div>
+                <div className="all-tx-card-amount mono">
+                  {money(r.amount, r.currency ?? 'EGP')}
+                  {r.amount_sync_status === 'mismatch' && <div className="amount-critical-warning" title={r.amount_mismatch_reason ?? 'Maven amount confirmation required'}>⚠ CRITICAL</div>}
+                  {r.kind === 'deposit' && (r.matched_sms
+                    ? <span className={`tx-sms-chip ${r.status === 'DECLINED' ? 'is-warning' : 'is-matched'}`} title={`${r.matched_sms.sender_name ?? r.matched_sms.sender_number ?? '—'} · ${money(r.matched_sms.amount, r.currency ?? 'EGP')}`}>{r.status === 'DECLINED' ? <AlertTriangle size={11} aria-hidden="true" /> : '📨'} SMS</span>
+                    : <span className="tx-sms-chip is-missing">{t('بدون SMS', 'No SMS')}</span>)}
+                </div>
                 {r.kind === 'deposit' && r.matched_sms?.balance_after != null && <div className="tx-live-balance mono">رصيدك الحالي {money(r.matched_sms.balance_after, r.currency ?? 'EGP')}</div>}
                 {proofUrl && <button type="button" className="all-tx-card-proof" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id), onApprove: r.status === 'PENDING' && r.kind === 'deposit' && can('deposits', 'can_approve') ? async () => { await decide(r, 'approve'); setProof(null) } : undefined, onDecline: r.status === 'PENDING' && r.kind === 'deposit' && can('deposits', 'can_approve') ? async () => { await decide(r, 'decline'); setProof(null) } : undefined })}><img src={proofUrl} alt="" loading="lazy" /><span>{t('عرض إثبات الدفع', 'View payment proof')}</span></button>}
                 <div className="all-tx-card-brands"><MerchantLogo merchant={r.merchant ?? r.master_merchant} /><MethodLogo method={r.kind === 'deposit' ? r.payment_method : r.pay_by} /></div>
