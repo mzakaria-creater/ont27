@@ -26,8 +26,11 @@ const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'U
 
 // Fixed columns (expand / action / transaction id) always show; everything
 // else is opt-in/out via the column picker and persists per browser.
-const DEFAULT_VISIBLE_COLUMNS = ['status', 'type', 'amount', 'party', 'email', 'sender_account_name', 'sender_account_number', 'time']
-const COLUMNS_STORAGE_KEY = 'trx-visible-columns-v1'
+// Keep the operational columns visible on first load. Operators can still
+// hide any of them from the column picker; bumping the key makes the denser
+// layout apply to existing browsers that saved the previous short set.
+const DEFAULT_VISIBLE_COLUMNS = ['status', 'type', 'amount', 'party', 'email', 'sender_account_name', 'sender_account_number', 'time', 'merchant', 'gateway', 'duplicates', 'approved_by']
+const COLUMNS_STORAGE_KEY = 'trx-visible-columns-v2'
 
 interface TxRow {
   kind: 'deposit' | 'payout'
