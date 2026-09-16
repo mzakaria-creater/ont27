@@ -37,6 +37,7 @@ interface LinkRow {
   allocation_mode?: 'single_queue' | 'multi_wallet'
   multi_wallet_threshold?: number | null
   require_name?: boolean | null
+  allowed_account_ids?: string[] | null
   checkout_token_hash?: string | null
 }
 
@@ -269,6 +270,7 @@ payRoutes.post('/session', async (c) => {
   const wallet = await allocateWallet(currency, {
     poolId: link?.wallet_pool_id,
     methodCodes: requestedMethod ? [requestedMethod] : allowedMethods,
+    accountIds: link?.allowed_account_ids ?? undefined,
     amount,
     mode: link?.allocation_mode,
     multiWalletThreshold: link?.multi_wallet_threshold,

@@ -3794,6 +3794,12 @@ html, body { overflow-x: hidden; overflow-y: auto; }
 .link-routing-grid .field > span { display: flex; align-items: center; gap: 6px; }
 .link-routing-grid select[multiple] { min-height: 96px; padding: 8px; }
 .link-routing-grid small { color: var(--muted, #6b7280); font-size: 11px; }
+.link-account-picker { margin-top: 14px; }
+.link-account-picker > span { display: flex; align-items: center; gap: 6px; }
+.link-account-picker > small { color: var(--muted, #6b7280); font-size: 11px; margin-bottom: 4px; }
+.link-account-list { display: grid; gap: 4px; max-height: 220px; overflow-y: auto; padding: 8px; border: 1px solid var(--border, #e5e7eb); border-radius: 10px; background: var(--surface-raised, var(--surface)); }
+.link-account-option { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 7px; font-size: 12px; cursor: pointer; }
+.link-account-option:hover { background: var(--hover); }
 .pay-wallet-list { display: grid; gap: 8px; margin: 12px 0; }
 .pay-wallet-list > div { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; padding: 10px 12px; border: 1px solid var(--pay-border, #e5e7eb); border-radius: 10px; background: var(--pay-bg, rgba(255,255,255,.7)); color: var(--pay-ink); }
 .pay-wallet-list small { grid-column: 1 / -1; color: var(--pay-dim, #6b7280); }

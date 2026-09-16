@@ -19,6 +19,7 @@ export interface AllocatedWallet {
 export interface AllocationOptions {
   poolId?: string | null
   methodCodes?: string[]
+  accountIds?: string[]
   amount?: number
   mode?: 'single_queue' | 'multi_wallet'
   multiWalletThreshold?: number | null
@@ -31,13 +32,14 @@ export async function allocateWallet(currency: string, options: AllocationOption
   // Payment-link routing is deliberately resolved before the legacy channel
   // allocator. This keeps old links working while allowing a merchant to pin
   // new links to a pool and a selected set of methods.
-  if (options.poolId || (options.methodCodes && options.methodCodes.length)) {
+  if (options.poolId || (options.methodCodes && options.methodCodes.length) || (options.accountIds && options.accountIds.length)) {
     let accountsQuery = db
       .from('payment_accounts')
       .select('id, payment_method_id, account_number, device_name, label, current_balance, payment_methods!inner(method_code, method_name, channel_type)')
       .eq('is_active', true)
       .eq('currency', currency)
     if (options.poolId) accountsQuery = accountsQuery.eq('payment_pool_id', options.poolId)
+    if (options.accountIds && options.accountIds.length) accountsQuery = accountsQuery.in('id', options.accountIds)
     const { data: accounts } = await accountsQuery
     const codes = new Set((options.methodCodes ?? []).map((code) => code.toUpperCase()))
     const candidates = (accounts ?? []).filter((account) => {

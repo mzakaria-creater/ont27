@@ -40,6 +40,7 @@ interface PaymentLink {
   allocation_mode: 'single_queue' | 'multi_wallet'
   multi_wallet_threshold: number | null
   require_name: boolean
+  allowed_account_ids: string[] | null
   created_at: string
   status: LinkStatus
   stats: LinkStats
@@ -48,6 +49,7 @@ interface PaymentLink {
 interface Merchant { id: string; name: string; code: string | null; MID?: string | null; master_merchant_id?: string | null }
 interface LinkMethod { id: string; method_code: string; method_name: string; channel_type: string }
 interface LinkPool { id: string; pool_name: string; pool_code: string; allocation_strategy: string; rotation_enabled: boolean }
+interface LinkAccount { id: string; payment_method_id: string; account_number: string; account_name: string | null; label: string | null; currency: string | null; is_active: boolean }
 
 export default function LinkGenerator() {
   const { can } = useAuth()
@@ -56,6 +58,7 @@ export default function LinkGenerator() {
   const [merchants, setMerchants] = useState<Merchant[]>([])
   const [methods, setMethods] = useState<LinkMethod[]>([])
   const [pools, setPools] = useState<LinkPool[]>([])
+  const [accounts, setAccounts] = useState<LinkAccount[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
@@ -67,19 +70,20 @@ export default function LinkGenerator() {
     title: '', merchant_id: '', amount_mode: 'open', amount: '', currency: 'EGP',
     min_amount: '', max_amount: '', expires_at: '', max_uses: '', client_name: '', client_reference: '', return_url: '',
     payment_method_codes: [] as string[], wallet_pool_id: '', allocation_mode: 'single_queue', multi_wallet_threshold: '50000',
-    require_name: false,
+    require_name: false, allowed_account_ids: [] as string[],
   })
 
   const load = useCallback(async () => {
     try {
-      const [{ links }, { merchants, methods, pools }] = await Promise.all([
+      const [{ links }, { merchants, methods, pools, accounts }] = await Promise.all([
         api<{ links: PaymentLink[] }>('/api/links'),
-        api<{ merchants: Merchant[]; methods: LinkMethod[]; pools: LinkPool[] }>('/api/links/merchants'),
+        api<{ merchants: Merchant[]; methods: LinkMethod[]; pools: LinkPool[]; accounts: LinkAccount[] }>('/api/links/merchants'),
       ])
       setLinks(links)
       setMerchants(merchants)
       setMethods(methods)
       setPools(pools)
+      setAccounts(accounts)
     } catch (err) {
       setError(err instanceof ApiError && err.status === 403 ? t('دورك لا يملك صلاحية عرض روابط الدفع', 'Your role cannot view payment links') : t('تعذر تحميل الروابط', 'Failed to load links'))
     }
@@ -127,10 +131,11 @@ export default function LinkGenerator() {
           allocation_mode: form.allocation_mode,
           multi_wallet_threshold: form.allocation_mode === 'multi_wallet' ? form.multi_wallet_threshold || undefined : undefined,
           require_name: form.require_name,
+          allowed_account_ids: form.allowed_account_ids,
         }),
       })
       setNewCheckoutUrl(created.checkout_url ? `${location.origin}${created.checkout_url}` : null)
-      setForm({ title: '', merchant_id: '', amount_mode: 'open', amount: '', currency: 'EGP', min_amount: '', max_amount: '', expires_at: '', max_uses: '', client_name: '', client_reference: '', return_url: '', payment_method_codes: [], wallet_pool_id: '', allocation_mode: 'single_queue', multi_wallet_threshold: '50000', require_name: false })
+      setForm({ title: '', merchant_id: '', amount_mode: 'open', amount: '', currency: 'EGP', min_amount: '', max_amount: '', expires_at: '', max_uses: '', client_name: '', client_reference: '', return_url: '', payment_method_codes: [], wallet_pool_id: '', allocation_mode: 'single_queue', multi_wallet_threshold: '50000', require_name: false, allowed_account_ids: [] })
       await load()
     } catch (err) {
       setError(err instanceof ApiError && err.status === 403 ? t('دورك لا يملك صلاحية إنشاء روابط', 'Your role cannot create links') : t('تعذر إنشاء الرابط', 'Failed to create link'))
@@ -229,6 +234,25 @@ export default function LinkGenerator() {
             <label className="field"><span>{t('قاعدة التوزيع', 'Allocation rule')}</span><select value={form.allocation_mode} onChange={set('allocation_mode')}><option value="single_queue">{t('محفظة واحدة / queue', 'Single wallet / queue')}</option><option value="multi_wallet">{t('مجموعة محافظ للمبالغ الكبيرة', 'Multi-wallet for high amounts')}</option></select></label>
             {form.allocation_mode === 'multi_wallet' && <label className="field"><span>{t('يبدأ multi-wallet من', 'Multi-wallet threshold')}</span><input dir="ltr" inputMode="decimal" value={form.multi_wallet_threshold} onChange={set('multi_wallet_threshold')} /><small>EGP</small></label>}
           </div>
+          <div className="field link-account-picker">
+            <span><WalletCards size={14}/> {t('حسابات استقبال محددة (اختياري)', 'Specific receiving accounts (optional)')}</span>
+            <small>{t('اترك فارغاً للتوزيع حسب الطرق أعلاه. حدد حسابات معينة لتقييد هذا الرابط عليها فقط — مثال: 5 محافظ موبايل محددة + حساب InstaPay.', 'Leave empty to route by the methods above. Pick specific accounts to pin this link to exactly those — e.g. 5 chosen mobile wallets + one InstaPay account.')}</small>
+            {accounts.length === 0 && <p className="sidebar-hint">{t('لا توجد حسابات دفع نشطة بعد.', 'No active payment accounts yet.')}</p>}
+            <div className="link-account-list">
+              {accounts.map((a) => {
+                const method = methods.find((m) => m.id === a.payment_method_id)
+                const checked = form.allowed_account_ids.includes(a.id)
+                return (
+                  <label key={a.id} className="link-account-option">
+                    <input type="checkbox" checked={checked} onChange={() => setForm((f) => ({ ...f, allowed_account_ids: checked ? f.allowed_account_ids.filter((id) => id !== a.id) : [...f.allowed_account_ids, a.id] }))} />
+                    <span className="mono">{a.account_number}</span>
+                    <span className="cell-sub">{a.label ?? a.account_name ?? method?.method_name ?? '—'} · {method?.method_name ?? '—'} · {a.currency ?? 'EGP'}</span>
+                  </label>
+                )
+              })}
+            </div>
+            {form.allowed_account_ids.length > 0 && <span className="cell-sub">{form.allowed_account_ids.length} {t('حساب محدد', 'accounts selected')}</span>}
+          </div>
           {error && <div className="login-error" role="alert">{error}</div>}
           <button className="btn-primary" disabled={busy}><Plus size={16}/>{busy ? t('جارٍ الإنشاء…', 'Creating…') : t('إنشاء رابط الدفع', 'Create payment link')}</button>
           {newCheckoutUrl && <div className="card success" role="status"><strong>{t('رابط Checkout الآمن جاهز','Secure checkout link ready')}</strong><span className="mono">{newCheckoutUrl}</span><button type="button" className="btn-ghost btn-sm" onClick={()=>void navigator.clipboard.writeText(newCheckoutUrl)}><Copy size={14}/>{t('نسخ','Copy')}</button><small>{t('يحتوي على رمز 256-bit؛ احتفظ به وشاركه مع العميل فقط.','Contains a 256-bit token; keep it private and share only with the customer.')}</small></div>}
@@ -277,7 +301,7 @@ export default function LinkGenerator() {
               <Fragment key={l.id}>
               <tr className={l.status === 'active' ? '' : 'row-dim'}>
                 <td className="mono">{l.short_code}</td>
-                <td><strong>{l.client_name || l.title || '—'}</strong>{l.client_reference && <div className="cell-sub">{l.client_reference}</div>}<div className="cell-sub">{l.payment_method_codes?.join(', ') || t('كل الطرق','All methods')}</div></td>
+                <td><strong>{l.client_name || l.title || '—'}</strong>{l.client_reference && <div className="cell-sub">{l.client_reference}</div>}<div className="cell-sub">{l.allowed_account_ids?.length ? `${l.allowed_account_ids.length} ${t('حساب محدد','specific accounts')}` : l.payment_method_codes?.join(', ') || t('كل الطرق','All methods')}</div></td>
                 <td className="mono" dir="ltr">
                   {l.amount_mode === 'fixed' ? `${l.amount} ${l.currency}` : `${l.min_amount ?? '∗'} – ${l.max_amount ?? '∗'} ${l.currency}`}
                 </td>

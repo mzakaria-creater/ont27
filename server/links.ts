@@ -118,6 +118,7 @@ linkRoutes.post('/:id/duplicate', requirePerm('checkout-builder', 'can_create'),
       allocation_mode: src.allocation_mode ?? 'single_queue',
       multi_wallet_threshold: src.multi_wallet_threshold,
       require_name: src.require_name === true,
+      allowed_account_ids: src.allowed_account_ids ?? [],
       created_by: c.get('actor').sub,
       checkout_token_hash: checkoutToken.hash,
     })
@@ -131,13 +132,17 @@ linkRoutes.post('/:id/duplicate', requirePerm('checkout-builder', 'can_create'),
 })
 
 linkRoutes.get('/merchants', requirePerm('checkout-builder', 'can_view'), async (c) => {
-  const [{ data: merchants }, { data: methods }, { data: pools }, { data: masters }] = await Promise.all([
+  const [{ data: merchants }, { data: methods }, { data: pools }, { data: masters }, { data: accounts }] = await Promise.all([
     db.from('merchants').select('id, name, code, "MID", master_merchant_id').eq('active', true).order('name'),
     db.from('payment_methods').select('id, method_code, method_name, channel_type').eq('is_active', true).order('sort_order').order('method_name'),
     db.from('payment_pools').select('id, pool_name, pool_code, allocation_strategy, rotation_enabled').eq('is_active', true).order('pool_name'),
     db.from('master_merchants').select('id, name, code, mid').order('name'),
+    // Individual receiving accounts, for links that pin to specific wallets
+    // (not just a method type or a whole pool) — e.g. "these exact 5 mobile
+    // wallets, plus this InstaPay account".
+    db.from('payment_accounts').select('id, payment_method_id, account_number, account_name, label, currency, is_active').eq('is_active', true).order('account_number'),
   ])
-  return c.json({ merchants: merchants ?? [], masters: masters ?? [], methods: methods ?? [], pools: pools ?? [] })
+  return c.json({ merchants: merchants ?? [], masters: masters ?? [], methods: methods ?? [], pools: pools ?? [], accounts: accounts ?? [] })
 })
 
 linkRoutes.post('/', requirePerm('checkout-builder', 'can_create'), async (c) => {
@@ -170,6 +175,7 @@ linkRoutes.post('/', requirePerm('checkout-builder', 'can_create'), async (c) =>
       allocation_mode: body?.allocation_mode === 'multi_wallet' ? 'multi_wallet' : 'single_queue',
       multi_wallet_threshold: positiveNumber(body?.multi_wallet_threshold),
       require_name: body?.require_name === true,
+      allowed_account_ids: Array.isArray(body?.allowed_account_ids) ? body.allowed_account_ids.filter((x: unknown): x is string => typeof x === 'string' && /^[0-9a-f-]{36}$/i.test(x)).slice(0, 50) : [],
       created_by: c.get('actor').sub,
       checkout_token_hash: checkoutToken.hash,
     })
@@ -195,6 +201,7 @@ linkRoutes.patch('/:id', requirePerm('checkout-builder', 'can_edit'), async (c) 
   if (body?.allocation_mode === 'single_queue' || body?.allocation_mode === 'multi_wallet') updates.allocation_mode = body.allocation_mode
   if (body?.multi_wallet_threshold !== undefined) updates.multi_wallet_threshold = positiveNumber(body.multi_wallet_threshold)
   if (typeof body?.require_name === 'boolean') updates.require_name = body.require_name
+  if (Array.isArray(body?.allowed_account_ids)) updates.allowed_account_ids = body.allowed_account_ids.filter((x: unknown): x is string => typeof x === 'string' && /^[0-9a-f-]{36}$/i.test(x)).slice(0, 50)
   const { data: link, error } = await db
     .from('payment_links')
     .update(updates)
