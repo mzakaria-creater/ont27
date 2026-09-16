@@ -2145,6 +2145,11 @@ a.stat-card:hover { border-color: var(--accent); }
 
 /* Quick control */
 .control-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.automation-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; padding: 5px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.automation-tabs button { display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 8px; padding: 9px 12px; color: var(--text-dim); background: transparent; font: 700 11px inherit; cursor: pointer; }
+.automation-tabs button.active { color: var(--text); background: color-mix(in srgb, var(--accent) 16%, var(--surface)); box-shadow: inset 0 -2px var(--accent); }
+.automation-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media(max-width:560px){.automation-tabs{display:grid;grid-template-columns:1fr 1fr}.automation-tabs button{justify-content:center}}
 .automation-master-toggle { display: inline-flex; align-items: center; gap: 10px; min-width: 300px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); color: var(--text); text-align: start; cursor: pointer; }
 .automation-master-toggle:disabled { opacity: .6; cursor: not-allowed; }
 .automation-master-toggle > span:nth-child(2) { display: grid; gap: 2px; flex: 1; }

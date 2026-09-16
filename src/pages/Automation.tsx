@@ -4,7 +4,7 @@ import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { useAuth } from '../auth/AuthContext'
-import { CircleDollarSign, Filter, Search, SlidersHorizontal, X } from 'lucide-react'
+import { Archive, CircleDollarSign, Filter, GitBranch, Landmark, Power, Search, SlidersHorizontal, X } from 'lucide-react'
 import MultiSelectFilter from '../components/MultiSelectFilter'
 
 interface AutomationTemplate { id: string; settings: Record<string, number | boolean> }
@@ -148,6 +148,7 @@ export default function Automation() {
   const [ruleProviders, setRuleProviders] = useState<string[]>([])
   const [ruleStatuses, setRuleStatuses] = useState<string[]>([])
   const [ruleActions, setRuleActions] = useState<string[]>([])
+  const [tab, setTab] = useState<'control' | 'rules' | 'operations' | 'legacy'>('control')
 
   const reloadAutomation = () => api<NonNullable<typeof data>>('/api/automation').then(setData).catch(() => {})
 
@@ -203,6 +204,7 @@ export default function Automation() {
     setNewRule({ ...EMPTY_RULE, ...draft })
     setRuleConflict(null)
     setRuleMsg(null)
+    setTab('rules')
     window.requestAnimationFrame(() => ruleBuilderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
 
@@ -446,7 +448,14 @@ export default function Automation() {
       {err && <div className="card warn">{err}</div>}
       {!data && !err && <p className="sidebar-hint">جارٍ التحميل…</p>}
 
-      {settings && (
+      <div className="automation-tabs" role="tablist" aria-label={t('أقسام الأتمتة', 'Automation sections')}>
+        <button type="button" role="tab" aria-selected={tab === 'control'} className={tab === 'control' ? 'active' : ''} onClick={() => setTab('control')}><Power size={15} /> {t('التحكم', 'Control')}</button>
+        <button type="button" role="tab" aria-selected={tab === 'rules'} className={tab === 'rules' ? 'active' : ''} onClick={() => setTab('rules')}><GitBranch size={15} /> {t('القواعد', 'Rules')}{data ? ` (${data.rules.length})` : ''}</button>
+        <button type="button" role="tab" aria-selected={tab === 'operations'} className={tab === 'operations' ? 'active' : ''} onClick={() => setTab('operations')}><Landmark size={15} /> {t('العمليات', 'Operations')}</button>
+        <button type="button" role="tab" aria-selected={tab === 'legacy'} className={tab === 'legacy' ? 'active' : ''} onClick={() => setTab('legacy')}><Archive size={15} /> {t('أرشيف قديم', 'Legacy')}</button>
+      </div>
+
+      {tab === 'control' && settings && (
         <section className="card recent-card">
           <div className="recent-head">
             <h3>🚦 {t('المفتاح العام للأتمتة الحيّة', 'Live automation master switch')}</h3>
@@ -526,6 +535,7 @@ export default function Automation() {
         </section>
       )}
 
+      {tab === 'rules' && <>
       <section className="card recent-card">
         <div className="recent-head"><h3>➕ {t('قواعد المحرّك — قوالب جاهزة', 'Engine rules — quick templates')}</h3></div>
         <div className="template-grid">
@@ -646,8 +656,9 @@ export default function Automation() {
           </div>
         )}
       </section>
+      </>}
 
-      {tpl && (
+      {tab === 'legacy' && tpl && (
         <section className="card recent-card">
           <div className="recent-head">
             <h3>🗄️ {t('قوالب النظام القديم (غير مُستخدَمة بعد الآن)', 'Old-project templates (no longer used)')}</h3>
@@ -686,7 +697,7 @@ export default function Automation() {
         </section>
       )}
 
-      {crons && (
+      {tab === 'legacy' && crons && (
         <section className="card recent-card">
           <div className="recent-head">
             <h3>⏱️ صحة مهام الجدولة (النظام القديم)</h3>
@@ -707,7 +718,7 @@ export default function Automation() {
         </section>
       )}
 
-      {settings && (
+      {tab === 'control' && settings && (
         <section className="card recent-card">
           <div className="recent-head">
             <h3>⚙️ إعدادات المحرّك</h3>
@@ -729,7 +740,7 @@ export default function Automation() {
         </section>
       )}
 
-      {data && (
+      {tab === 'operations' && data && (
         <>
           <section className="card recent-card">
             <div className="recent-head"><h3>🧑‍💻 مهام المتصفح الأخيرة</h3></div>
