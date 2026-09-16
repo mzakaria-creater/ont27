@@ -6,6 +6,14 @@ import { notifyTelegram } from './notify.js'
 import { idempotencyKey, recordPaymentOperation } from './paymentArchitecture.js'
 
 const SESSION_TTL_MIN = 15
+// House margin on the stored Binance/exchange_rates USD/EGP rate, in EGP
+// per dollar — not a percentage, a flat offset. Deposits (customer buying
+// EGP from us) use the buy rate (raw + margin: the customer's dollars are
+// worth fewer EGP, in our favor). Withdrawals (customer selling us EGP for
+// USD) would use the sell rate (raw - margin) once a USD-denominated payout
+// flow exists — no such flow exists yet, so sell_rate is exposed on the
+// /rate endpoint for that future use but nothing consumes it today.
+const CHECKOUT_USD_MARGIN_EGP = 1
 
 interface LinkRow {
   id: string
@@ -244,7 +252,10 @@ payRoutes.post('/session', async (c) => {
   if (currency === 'USD') {
     const { data: rateRow } = await db.from('exchange_rates').select('rate').eq('currency_pair', 'USD/EGP').order('fetched_at', { ascending: false }).limit(1).maybeSingle()
     if (!rateRow?.rate || !(Number(rateRow.rate) > 0)) return c.json({ error: 'rate_unavailable' }, 503)
-    fxRate = Number(rateRow.rate)
+    // Buy rate: same margin the customer already saw quoted on the checkout
+    // page (GET /rate) before they submitted — must match exactly, or the
+    // amount charged here would silently differ from what they agreed to.
+    fxRate = Number(rateRow.rate) + CHECKOUT_USD_MARGIN_EGP
     usdAmount = amount
     amount = Math.round(amount * fxRate * 100) / 100
     currency = 'EGP'
@@ -382,7 +393,18 @@ payRoutes.get('/rate', async (c) => {
   const pair = c.req.query('pair') === 'USDT/EGP' ? 'USDT/EGP' : 'USD/EGP'
   const { data } = await db.from('exchange_rates').select('currency_pair, rate, fetched_at').eq('currency_pair', pair).order('fetched_at', { ascending: false }).limit(1).maybeSingle()
   if (!data?.rate) return c.json({ error: 'rate_unavailable' }, 404)
-  return c.json({ pair: data.currency_pair, rate: Number(data.rate), fetched_at: data.fetched_at })
+  const raw = Number(data.rate)
+  return c.json({
+    pair: data.currency_pair,
+    // `rate` is the buy/deposit rate — what checkout actually charges the
+    // customer (see POST /session). Kept as the primary field for backward
+    // compatibility with the checkout page's existing r.rate usage.
+    rate: raw + CHECKOUT_USD_MARGIN_EGP,
+    raw_rate: raw,
+    buy_rate: raw + CHECKOUT_USD_MARGIN_EGP,
+    sell_rate: raw - CHECKOUT_USD_MARGIN_EGP,
+    fetched_at: data.fetched_at,
+  })
 })
 
 const CHECKOUT_PROOF_BUCKET = 'pop'
