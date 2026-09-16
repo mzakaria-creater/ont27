@@ -301,7 +301,11 @@ payRoutes.post('/session', async (c) => {
       pay_amount: amount,
       customer_phone: phone,
       customer_name: name,
-      local_deposit_channel_id: wallet.channelId,
+      // Pool-based allocation (a link with payment_method_codes set) returns
+      // '' for channelId — there is no legacy local_deposit_channels row in
+      // that path. The column is a uuid FK, which rejects '' outright, so an
+      // empty string must become null or every such session insert 500s.
+      local_deposit_channel_id: wallet.channelId || null,
       payment_method_id: wallet.paymentMethodId ?? null,
       wallet_id: wallet.accountId ?? null,
       success_url: link?.return_url ?? null,
