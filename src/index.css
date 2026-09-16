@@ -3468,6 +3468,14 @@ html[data-pay-theme="etisalat"]      .pay-wrap { --pay-glow: #95c11f; --pay-glow
 .checkout-submit { width: 100%; }
 .pay-card.checkout-card .btn-ghost.pay-status-link, .pay-card.checkout-card a.pay-status-link { color: var(--pay-glow-light); }
 .checkout-fx-note { display: block; margin-top: 6px; color: var(--pay-glow-light); font-family: 'DM Mono', monospace; font-size: 11px; }
+.checkout-method-field { display: flex; flex-direction: column; gap: 7px; }
+.checkout-method-label { font-size: 9.5px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--pay-dim); }
+.checkout-method-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.checkout-method-tile { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 12px 8px; border: 1px solid var(--pay-border); border-radius: 12px; background: var(--pay-bg); color: var(--pay-dim); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; transition: border-color .15s ease, background .15s ease, color .15s ease; }
+.checkout-method-tile:hover { border-color: color-mix(in srgb, var(--pay-glow) 45%, var(--pay-border)); color: var(--pay-ink); }
+.checkout-method-tile.is-selected { border-color: var(--pay-glow); background: color-mix(in srgb, var(--pay-glow) 10%, var(--pay-bg)); color: var(--pay-ink); box-shadow: 0 0 0 1px color-mix(in srgb, var(--pay-glow) 40%, transparent); }
+.checkout-method-tile .method-logo { width: 30px; height: 30px; border-radius: 9px; }
+.checkout-method-native { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .checkout-proof-block { margin-top: 6px; padding-top: 18px; border-top: 1px solid var(--pay-border); }
 .checkout-proof-form { display: flex; flex-direction: column; gap: 12px; }
 .checkout-proof-form h3 { margin: 0; font-family: 'Cormorant Garamond', serif; font-size: 18px; font-weight: 500; color: var(--pay-ink); }

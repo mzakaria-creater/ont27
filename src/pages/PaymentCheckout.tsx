@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import QRCode from 'qrcode'
 import { api, ApiError } from '../lib/api'
 import { useLocale } from '../lib/locale'
+import MethodLogo from '../components/MethodLogo'
 
 interface PayLink {
   short_code: string
@@ -415,7 +416,31 @@ export default function PaymentCheckout() {
             <form onSubmit={onSubmit}>
               <h2 className="checkout-form-title">{link?.title ?? t('إيداع جديد', 'New deposit')}</h2>
               <p className="checkout-form-sub">{t('ادفع عبر المحفظة الإلكترونية', 'Pay via your mobile wallet')}</p>
-              {link?.payment_method_codes?.length ? <label className="field"><span>{t('طريقة الدفع', 'Payment method')}</span><select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} required><option value="">{t('اختر طريقة الدفع', 'Choose a payment method')}</option>{link.payment_method_codes.map((method) => <option key={method} value={method}>{providerLabel(method, method)}</option>)}</select></label> : null}
+              {link?.payment_method_codes?.length ? (
+                <div className="checkout-method-field" role="radiogroup" aria-label={t('طريقة الدفع', 'Payment method')}>
+                  <span className="checkout-method-label">{t('طريقة الدفع', 'Payment method')}</span>
+                  <div className="checkout-method-grid">
+                    {link.payment_method_codes.map((method) => (
+                      <button
+                        key={method}
+                        type="button"
+                        role="radio"
+                        aria-checked={paymentMethod === method}
+                        className={`checkout-method-tile${paymentMethod === method ? ' is-selected' : ''}`}
+                        onClick={() => setPaymentMethod(method)}
+                      >
+                        <MethodLogo method={method} />
+                        <span>{providerLabel(method, method)}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {/* Native required field kept invisible for form validation/keyboard users — the tiles above are the real control. */}
+                  <select className="checkout-method-native" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} required aria-hidden="true" tabIndex={-1}>
+                    <option value="">{t('اختر طريقة الدفع', 'Choose a payment method')}</option>
+                    {link.payment_method_codes.map((method) => <option key={method} value={method}>{providerLabel(method, method)}</option>)}
+                  </select>
+                </div>
+              ) : null}
               <label className="field">
                 <span>{t('رقم الموبايل', 'Mobile number')}</span>
                 {/* type="tel" as well as inputMode: inputMode alone still asks some
