@@ -324,7 +324,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
           // shown separately so a mapping cannot hide the SMS evidence.
           const receivingWallet = r.sms_category === 'withdrawal'
             ? r.linked_wallet_number ?? r.receiver_number ?? r.wallet_number
-            : r.confirmed_wallet_number ?? r.wallet_number ?? r.receiver_number ?? r.matched_receiving_wallet
+            : r.matched_receiving_wallet ?? r.confirmed_wallet_number ?? r.wallet_number ?? r.receiver_number
           return (
             <button key={r.id} type="button" onClick={() => setSelected(r)} className={`sms-feed-item sms-feed-button${linked ? ' matched' : ''}${!linked && (r.sms_category === 'deposit' || r.sms_category === 'withdrawal') ? ' unlinked' : ''}${r.sms_category === 'withdrawal' ? ' withdrawal' : ''}`} aria-label={`SMS ${r.id} details`}>
               <div className="sms-feed-head">
@@ -346,7 +346,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
       {selected && (() => {
         const selectedWallet = selected.sms_category === 'withdrawal'
           ? selected.linked_wallet_number ?? selected.receiver_number ?? selected.wallet_number
-          : selected.confirmed_wallet_number ?? selected.wallet_number ?? selected.receiver_number ?? selected.matched_receiving_wallet
+          : selected.matched_receiving_wallet ?? selected.confirmed_wallet_number ?? selected.wallet_number ?? selected.receiver_number
         const selectedBalance = selected.balance_after ?? selected.wallet_balance_after
         const selectedRaw = selected.raw_sms ?? selected.message ?? selected.sms_first_line
         const selectedLinked = selected.sms_category === 'withdrawal' ? selected.linked_wallet_number != null : selected.matched_tx_id != null
