@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from './auth/AuthContext'
 import ProtectedRoute from './auth/ProtectedRoute'
 import PageGate from './auth/PageGate'
@@ -27,7 +27,15 @@ const MavenWallets = lazy(() => import('./pages/MavenWallets'))
 const NgpayWalletManagement = lazy(() => import('./pages/NgpayWalletManagement'))
 const SmsLive = lazy(() => import('./pages/SmsLive'))
 const Transactions = lazy(() => import('./pages/Transactions'))
-const TransactionDetail = lazy(() => import('./pages/TransactionDetail'))
+
+// The dedicated transaction-detail page was retired in favor of a modal
+// opened from All Transactions. This keeps the many existing
+// `/transactions/:ref` links throughout the app (dashboard, approvals,
+// reports, alerts, …) working by redirecting into that modal via ?open=.
+function TransactionDetailRedirect() {
+  const { ref } = useParams<{ ref: string }>()
+  return <Navigate to={`/transactions?open=${encodeURIComponent(ref ?? '')}`} replace />
+}
 const Approvals = lazy(() => import('./pages/Approvals'))
 const Settlements = lazy(() => import('./pages/Settlements'))
 const MerchantSettlements = lazy(() => import('./pages/MerchantSettlements'))
@@ -492,7 +500,7 @@ export default function App() {
             <Route path="/payouts" element={<PageGate keys={['payouts']}><Payouts /></PageGate>} />
             <Route path="/payout-requests" element={<PageGate keys={['payouts']}><PayoutRequests /></PageGate>} />
             <Route path="/transactions" element={<PageGate keys={['transactions','all_transactions']}><Transactions /></PageGate>} />
-            <Route path="/transactions/:ref" element={<PageGate keys={['transactions','all_transactions','deposits']}><TransactionDetail /></PageGate>} />
+            <Route path="/transactions/:ref" element={<TransactionDetailRedirect />} />
             <Route path="/approvals" element={<PageGate keys={['approvals','approval-queue']}><Approvals /></PageGate>} />
             <Route path="/team-tasks" element={<PageGate keys={['support']}><TeamTasks /></PageGate>} />
             <Route path="/operator-handbook" element={<PageGate keys={['support']}><OperatorHandbook /></PageGate>} />

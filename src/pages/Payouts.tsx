@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Eye, MessageSquare, Pencil, Save, Search, X } from "lucide-react";
+import { Check, Eye, MessageSquare, Pencil, Save, Search, SlidersHorizontal, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import PanelShell from "../components/PanelShell";
 import MultiSelectFilter, { splitFilterValues } from "../components/MultiSelectFilter";
@@ -13,9 +13,14 @@ import { usePageSize } from "../lib/pageSize";
 import PageSizeSelect from "../components/PageSizeSelect";
 import ProofModal from "../components/ProofModal";
 import ProofIconButton from "../components/ProofIconButton";
+import DetailModal from "../components/DetailModal";
+import ColumnPicker, { useVisibleColumns } from "../components/ColumnPicker";
+import type { ColumnDef } from "../components/ColumnPicker";
 
 const STATUS_FILTERS = ["PENDING", "APPROVED", "DECLINED"];
 const CURRENCY = "EGP";
+const COLUMNS_STORAGE_KEY = "payout-visible-columns-v1";
+const DEFAULT_VISIBLE_COLUMNS = ["merchant_ref", "payment_type", "user_phone", "user_account_name", "user_account_number", "utr", "merchant"];
 
 export interface PayoutRow {
   maven_id: number;
@@ -106,6 +111,7 @@ export default function Payouts() {
   const status = params.get("status") ?? "";
   const statusValues = splitFilterValues(status);
   const page = Math.max(Number(params.get("page")) || 1, 1);
+  const [tab, setTab] = useState<"queue" | "settings">("queue");
   const [q, setQ] = useState(params.get("q") ?? "");
   const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -145,6 +151,7 @@ export default function Payouts() {
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const [augustRejectBusy, setAugustRejectBusy] = useState(false);
   const [augustRejectMessage, setAugustRejectMessage] = useState<string | null>(null);
+  const [quickBusy, setQuickBusy] = useState<number | null>(null);
   const appliedQ = params.get("q") ?? "";
   useEffect(() => setQ(appliedQ), [appliedQ]);
   const appliedFrom = params.get("from") ?? "";
@@ -155,6 +162,26 @@ export default function Payouts() {
   const [to, setTo] = useState(appliedTo);
   const [merchantFilter, setMerchantFilter] = useState(appliedMerchant);
   const [methodFilter, setMethodFilter] = useState(appliedMethod);
+  const secondaryFilterCount = [appliedFrom, appliedTo, appliedMerchant, appliedMethod].filter(Boolean).length;
+  const [showMoreFilters, setShowMoreFilters] = useState(() => secondaryFilterCount > 0);
+
+  const ALL_COLUMNS: ColumnDef[] = [
+    { id: "merchant_ref", label: t("مرجع التاجر", "Merchant Reference") },
+    { id: "payment_type", label: t("نوع الدفع", "Payment Type") },
+    { id: "user_phone", label: t("رقم هاتف المستخدم", "User Phone Num.") },
+    { id: "user_account_name", label: t("اسم حساب المستخدم", "User Account Name") },
+    { id: "user_account_number", label: t("رقم حساب المستخدم", "User Account Number") },
+    { id: "bank_name", label: t("اسم البنك", "Bank Name") },
+    { id: "bank_ifsc", label: t("رمز IFSC", "Bank IFSC") },
+    { id: "utr", label: t("رقم UTR", "UTR Number") },
+    { id: "currency", label: t("العملة", "Currency") },
+    { id: "commission", label: t("العمولة", "Commission") },
+    { id: "commission_pct", label: t("نسبة العمولة", "Commission %") },
+    { id: "master_merchant", label: t("التاجر الرئيسي", "Master Merchant") },
+    { id: "merchant", label: t("التاجر", "Merchant") },
+  ];
+  const [visibleCols, setVisibleCols] = useVisibleColumns(COLUMNS_STORAGE_KEY, ALL_COLUMNS.map((c) => c.id), DEFAULT_VISIBLE_COLUMNS);
+  const shownColumns = ALL_COLUMNS.filter((c) => visibleCols.has(c.id));
 
   useEffect(() => {
     void api<{ settings: ExecSettings }>("/api/payouts/settings/execution")
@@ -520,6 +547,25 @@ export default function Payouts() {
       setDecisionBusy(false);
     }
   };
+  // One-click decline directly from the row — unlike approval, a decline
+  // needs neither proof nor UTR, so it does not require opening the detail
+  // modal first. Mirrors the same pattern on All Transactions.
+  const quickDecline = async (row: PayoutRow) => {
+    if (!window.confirm(t("تأكيد رفض هذا السحب مباشرة على NagoPay؟", "Decline this payout live on NagoPay?"))) return;
+    setQuickBusy(row.maven_id);
+    setErr(null);
+    try {
+      await api(`/api/payouts/${row.maven_id}/decision`, {
+        method: "POST",
+        body: JSON.stringify({ decision: "DECLINED", remark: "Declined from payout queue", mode: "auto" }),
+      });
+      await load(true);
+    } catch (e) {
+      setErr(e instanceof ApiError ? `${t("فشل تنفيذ القرار", "Decision failed")}: ${e.code}` : t("فشل تنفيذ القرار.", "Decision failed."));
+    } finally {
+      setQuickBusy(null);
+    }
+  };
   const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1;
   const selectedRows = (data?.rows ?? []).filter((row) => selectedIds.has(row.maven_id));
   const toggleSelected = (mavenId: number) => {
@@ -603,6 +649,25 @@ export default function Payouts() {
     } finally { setAugustRejectBusy(false); }
   };
 
+  const cell = (colId: string, row: PayoutRow) => {
+    switch (colId) {
+      case "merchant_ref": return <td key={colId} className="mono">{row.merchant_reference ?? "—"}</td>;
+      case "payment_type": return <td key={colId}><MethodLogo method={row.payment_type} /></td>;
+      case "user_phone": return <td key={colId} className="mono">{row.mobile_no ?? "—"}</td>;
+      case "user_account_name": return <td key={colId}>{row.account_name ?? "—"}</td>;
+      case "user_account_number": return <td key={colId} className="mono">{row.user_account_number ?? "—"}</td>;
+      case "bank_name": return <td key={colId}>{row.bank_name ?? "—"}</td>;
+      case "bank_ifsc": return <td key={colId} className="mono">{row.bank_ifsc ?? "—"}</td>;
+      case "utr": return <td key={colId} className="mono">{row.utr_number ?? "—"}</td>;
+      case "currency": return <td key={colId} className="mono">{row.currency ?? CURRENCY}</td>;
+      case "commission": return <td key={colId} className="mono">{row.commission == null ? "—" : money(row.commission, row.currency ?? CURRENCY)}</td>;
+      case "commission_pct": return <td key={colId} className="mono">{row.commission_percentage == null ? "—" : `${row.commission_percentage.toFixed(2)}%`}</td>;
+      case "master_merchant": return <td key={colId}>{row.master_merchant ? <MerchantLogo merchant={row.master_merchant} /> : "—"}</td>;
+      case "merchant": return <td key={colId}><MerchantLogo merchant={row.merchant} /></td>;
+      default: return null;
+    }
+  };
+
   return (
     <PanelShell>
       <section className="page-head">
@@ -615,7 +680,15 @@ export default function Payouts() {
           {data && <> · {data.total.toLocaleString("en-US")}</>}
         </p>
       </section>
-      {user?.role === "super_admin" && (
+
+      <div className="automation-tabs" role="tablist" aria-label={t("أقسام السحوبات", "Payout sections")}>
+        <button type="button" role="tab" aria-selected={tab === "queue"} className={tab === "queue" ? "active" : ""} onClick={() => setTab("queue")}>{t("قائمة الانتظار", "Queue")}</button>
+        {user?.role === "super_admin" && (
+          <button type="button" role="tab" aria-selected={tab === "settings"} className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>{t("إعدادات التنفيذ", "Execution settings")}</button>
+        )}
+      </div>
+
+      {tab === "settings" && user?.role === "super_admin" && (
         <section className="card payout-execution-settings">
           <div>
             <strong>
@@ -678,61 +751,44 @@ export default function Payouts() {
           </div>
         </section>
       )}
+
+      {tab === "queue" && (
+      <>
       <section className="card payout-filter-panel transaction-filter-toolbar">
-        <div className="payout-filter-presets">
-          <button className="btn-ghost btn-sm" onClick={() => applyDatePreset("today")}>{t("اليوم", "Today")}</button>
-          <button className="btn-ghost btn-sm" onClick={() => applyDatePreset("week")}>{t("هذا الأسبوع", "This week")}</button>
-          <button className="btn-ghost btn-sm" onClick={() => applyDatePreset("month")}>{t("هذا الشهر", "This month")}</button>
-        </div>
-        <form
-          className="payout-filter-grid"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setFilter({
-              from,
-              to,
-              merchant: merchantFilter.trim(),
-              method: methodFilter.trim(),
-              q: q.trim(),
-            });
-          }}
-        >
-          <label className="field-label">
-            {t("من", "From")}
-            <input className="login-input" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
-          </label>
-          <label className="field-label">
-            {t("إلى", "To")}
-            <input className="login-input" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
-          </label>
-          <label className="field-label">
-            {t("التاجر", "Merchant")}
-            <input className="login-input" value={merchantFilter} onChange={(e) => setMerchantFilter(e.target.value)} placeholder={t("كل التجار", "All merchants")} />
-          </label>
-          <label className="field-label">
-            {t("طريقة الدفع", "Payment method")}
-            <input className="login-input" value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)} placeholder={t("كل الطرق", "All methods")} />
-          </label>
-          <label className="field-label payout-filter-search trx-search-label">
-            {t("بحث", "Search")}
-            <span className="trx-search-control"><Search size={16} aria-hidden="true"/><input type="search" className="login-input" value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("بحث السحوبات", "Search payouts")} placeholder={t("مبلغ / اسم / هاتف / رقم عملية / مرجع تاجر / مستخدم", "Amount / name / phone / transaction / merchant ref / user")} />{q && <button type="button" className="trx-search-clear" onClick={() => setQ("")} aria-label={t("مسح البحث", "Clear search")}><X size={15}/></button>}</span>
-          </label>
-          <button type="submit" className="btn-primary btn-sm">{t("تطبيق", "Apply")}</button>
-          <button
-            type="button"
-            className="btn-ghost btn-sm"
-            onClick={() => {
-              setFrom(""); setTo(""); setMerchantFilter(""); setMethodFilter(""); setQ("");
-              setParams(new URLSearchParams());
-            }}
+        <div className="trx-filter-primary">
+          <div className="payout-filter-presets">
+            <button className="btn-ghost btn-sm" onClick={() => applyDatePreset("today")}>{t("اليوم", "Today")}</button>
+            <button className="btn-ghost btn-sm" onClick={() => applyDatePreset("week")}>{t("هذا الأسبوع", "This week")}</button>
+            <button className="btn-ghost btn-sm" onClick={() => applyDatePreset("month")}>{t("هذا الشهر", "This month")}</button>
+          </div>
+          <MultiSelectFilter label={t("الحالة", "Status")} allLabel={t("كل الحالات", "All statuses")} options={STATUS_FILTERS.map((value)=>({value,label:statusMeta(value).label}))} value={statusValues} onChange={(values)=>setFilter({status:values.join(",")})}/>
+          <form
+            className="search-row transaction-search-row trx-search-bar"
+            role="search"
+            onSubmit={(e) => { e.preventDefault(); setFilter({ q: q.trim() }); }}
           >
-            {t("إعادة ضبط", "Reset")}
+            <Search size={16} aria-hidden="true" />
+            <input type="search" className="login-input search-input" value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("بحث السحوبات", "Search payouts")} placeholder={t("مبلغ / اسم / هاتف / رقم عملية / مرجع تاجر", "Amount / name / phone / transaction / merchant ref")} />
+            {q && <button type="button" className="trx-search-clear" onClick={() => { setQ(""); setFilter({ q: "" }) }} aria-label={t("مسح البحث", "Clear search")}><X size={15}/></button>}
+            <button type="submit" className="btn-primary btn-sm">{t("بحث", "Search")}</button>
+          </form>
+          <button type="button" className={`btn-ghost btn-sm trx-more-filters-toggle${showMoreFilters ? " active" : ""}`} aria-expanded={showMoreFilters} onClick={() => setShowMoreFilters((v) => !v)}>
+            <SlidersHorizontal size={14}/> {t("فلاتر إضافية", "More filters")}
+            {secondaryFilterCount > 0 && <span className="trx-filter-count">{secondaryFilterCount}</span>}
           </button>
-        </form>
+          <ColumnPicker columns={ALL_COLUMNS} visible={visibleCols} onChange={setVisibleCols} label={t("الأعمدة", "Columns")} />
+        </div>
+        {showMoreFilters && (
+          <div className="transaction-filter-fields">
+            <label className="filter-field">{t("من", "From")}<input className="login-input" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} /></label>
+            <label className="filter-field">{t("إلى", "To")}<input className="login-input" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} /></label>
+            <label className="filter-field">{t("التاجر", "Merchant")}<input className="login-input" value={merchantFilter} onChange={(e) => setMerchantFilter(e.target.value)} placeholder={t("كل التجار", "All merchants")} /></label>
+            <label className="filter-field">{t("طريقة الدفع", "Payment method")}<input className="login-input" value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)} placeholder={t("كل الطرق", "All methods")} /></label>
+            <button className="btn-primary btn-sm" onClick={() => setFilter({ from, to, merchant: merchantFilter.trim(), method: methodFilter.trim() })}>{t("تطبيق", "Apply")}</button>
+            <button className="btn-ghost btn-sm" onClick={() => { setFrom(""); setTo(""); setMerchantFilter(""); setMethodFilter(""); setQ(""); setParams(new URLSearchParams()); }}>{t("إعادة ضبط", "Reset")}</button>
+          </div>
+        )}
       </section>
-      <div className="filter-bar">
-        <MultiSelectFilter label={t("الحالة", "Status")} allLabel={t("كل الحالات", "All statuses")} options={STATUS_FILTERS.map((value)=>({value,label:statusMeta(value).label}))} value={statusValues} onChange={(values)=>setFilter({status:values.join(",")})}/>
-      </div>
       {can("payouts", "can_approve") && selectedIds.size > 0 && (
         <section className="card payout-bulk-bar">
           <strong>{selectedIds.size} {t("محدد", "selected")}</strong>
@@ -775,37 +831,21 @@ export default function Payouts() {
                     </span>
                   </th>
                   <th>{t("رقم المعاملة", "Transaction ID")}</th>
-                  <th>{t("مرجع التاجر", "Merchant Reference")}</th>
                   <th>{t("الحالة", "Status")}</th>
-                  <th>{t("نوع الدفع", "Payment Type")}</th>
-                  <th>{t("رقم هاتف المستخدم", "User Phone Num.")}</th>
-                  <th>{t("اسم حساب المستخدم", "User Account Name")}</th>
-                  <th>{t("رقم حساب المستخدم", "User Account Number")}</th>
-                  <th>{t("اسم البنك", "Bank Name")}</th>
-                  <th>{t("رمز IFSC", "Bank IFSC")}</th>
-                  <th>{t("رقم UTR", "UTR Number")}</th>
-                  <th>{t("العملة", "Currency")}</th>
                   <th>{t("المبلغ", "Amount")}</th>
-                  <th>{t("العمولة", "Commission")}</th>
-                  <th>{t("نسبة العمولة", "Commission %")}</th>
-                  <th>{t("التاجر الرئيسي", "Master Merchant")}</th>
-                  <th>{t("التاجر", "Merchant")}</th>
+                  {shownColumns.map((c) => <th key={c.id}>{c.label}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {data.rows.map((row) => {
                   const st = statusMeta(row.status);
+                  const isPending = row.status === "PENDING";
+                  const canApprove = can("payouts", "can_approve");
                   return (
-                    <tr
-                      key={row.maven_id}
-                      onClick={() => void openDetail(row.maven_id)}
-                    >
-                      <td
-                        className="payout-action-cell"
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                    <tr key={row.maven_id} onClick={() => void openDetail(row.maven_id)}>
+                      <td className="payout-action-cell" onClick={(e) => e.stopPropagation()}>
                         <div className="row-actions">
-                          {row.status === "PENDING" && can("payouts", "can_approve") && (
+                          {isPending && canApprove && (
                             <input
                               type="checkbox"
                               checked={selectedIds.has(row.maven_id)}
@@ -813,125 +853,50 @@ export default function Payouts() {
                               onChange={() => toggleSelected(row.maven_id)}
                             />
                           )}
-                          <button
-                            className="btn-ghost btn-sm icon-text-btn"
-                            onClick={() => void openDetail(row.maven_id)}
-                          >
-                            <Eye size={15} aria-hidden="true" />
-                            {row.status === "PENDING" &&
-                            can("payouts", "can_approve")
-                              ? t("رفع إثبات ودفع", "Upload proof & Pay")
-                              : t("تفاصيل", "Details")}
-                          </button>
-                          {can("payouts", "can_edit") && (
-                            <button
-                              type="button"
-                              className="btn-ghost btn-sm icon-text-btn"
-                              title={t("تعديل السحب", "Edit payout")}
-                              onClick={() =>
-                                void openDetail(row.maven_id, true)
-                              }
-                            >
-                              <Pencil size={15} aria-hidden="true" />
-                              {t("تعديل", "Edit")}
+                          {isPending && canApprove ? (
+                            <>
+                              <button className="btn-primary btn-sm icon-text-btn" onClick={() => void openDetail(row.maven_id)}>
+                                <Check size={13} aria-hidden="true" /> {t("مراجعة ودفع", "Review & pay")}
+                              </button>
+                              <button className="btn-ghost btn-sm danger icon-text-btn" disabled={quickBusy === row.maven_id} onClick={() => void quickDecline(row)}>
+                                <X size={13} aria-hidden="true" /> {quickBusy === row.maven_id ? t("جارٍ…", "…") : t("رفض", "Decline")}
+                              </button>
+                            </>
+                          ) : (
+                            <button className="btn-ghost btn-sm icon-text-btn" onClick={() => void openDetail(row.maven_id)}>
+                              <Eye size={15} aria-hidden="true" /> {t("تفاصيل", "Details")}
                             </button>
                           )}
-                          {row.status === "PENDING" &&
-                            can("payouts", "can_approve") && (
-                              <select
-                                className="payout-status-action-select"
-                                aria-label={t("اختيار إجراء الحالة", "Select status action")}
-                                value=""
-                                onChange={(e) => {
-                                  const nextStatus = e.target.value;
-                                  if (!nextStatus) return;
-                                  if (can("payouts", "can_edit"))
-                                    void openDetail(row.maven_id, true, nextStatus);
-                                  else void openDetail(row.maven_id);
-                                }}
-                              >
-                                <option value="">{t("تغيير الحالة…", "Change status…")}</option>
-                                <option value="APPROVED">{t("مدفوع PAID", "Mark PAID")}</option>
-                                <option value="DECLINED">{t("مرفوض DECLINED", "Mark DECLINED")}</option>
-                              </select>
-                            )}
-                          {row.status === "DECLINED" &&
-                            (user?.role === "owner" || user?.role === "super_admin") && (
-                              <select
-                                className="payout-status-action-select"
-                                aria-label={t("اختيار إجراء الحالة", "Select status action")}
-                                value=""
-                                onChange={(e) => {
-                                  if (e.target.value === "REOPEN") void reopenDeclined(row.maven_id);
-                                }}
-                              >
-                                <option value="">{t("تغيير الحالة…", "Change status…")}</option>
-                                <option value="REOPEN">{t("إعادة إلى PENDING", "Reopen as PENDING")}</option>
-                              </select>
-                            )}
+                          {can("payouts", "can_edit") && (
+                            <button type="button" className="btn-ghost btn-sm icon-text-btn" title={t("تعديل السحب", "Edit payout")} onClick={() => void openDetail(row.maven_id, true)}>
+                              <Pencil size={15} aria-hidden="true" />
+                            </button>
+                          )}
+                          {row.status === "DECLINED" && (user?.role === "owner" || user?.role === "super_admin") && (
+                            <button type="button" className="btn-ghost btn-sm icon-text-btn" onClick={() => void reopenDeclined(row.maven_id)}>
+                              {t("إعادة فتح", "Reopen")}
+                            </button>
+                          )}
                           {row.linked_sms && (
                             <button
                               type="button"
                               className="proof-icon-button is-compact payout-sms-linked"
                               title={`WD SMS #${row.linked_sms.id} · ${row.linked_sms.trx_id ?? row.linked_sms.trx_reference ?? "—"}`}
-                              aria-label={t(
-                                "رسالة سحب مرتبطة",
-                                "Linked withdrawal SMS",
-                              )}
+                              aria-label={t("رسالة سحب مرتبطة", "Linked withdrawal SMS")}
                               onClick={() => void openDetail(row.maven_id)}
                             >
                               <MessageSquare size={16} aria-hidden="true" />
                             </button>
                           )}
                           {row.image_url && (
-                            <ProofIconButton
-                              url={row.image_url}
-                              onOpen={setViewedProofUrl}
-                              compact
-                            />
+                            <ProofIconButton url={row.image_url} onOpen={setViewedProofUrl} compact />
                           )}
                         </div>
                       </td>
                       <td className="mono">{row.maven_id}</td>
-                      <td className="mono">{row.merchant_reference ?? "—"}</td>
-                      <td>
-                        <span className={`pay-status-badge ${st.cls}`}>
-                          {st.label}
-                        </span>
-                      </td>
-                      <td>
-                        <MethodLogo method={row.payment_type} />
-                      </td>
-                      <td className="mono">{row.mobile_no ?? "—"}</td>
-                      <td>{row.account_name ?? "—"}</td>
-                      <td className="mono">{row.user_account_number ?? "—"}</td>
-                      <td>{row.bank_name ?? "—"}</td>
-                      <td className="mono">{row.bank_ifsc ?? "—"}</td>
-                      <td className="mono">{row.utr_number ?? "—"}</td>
-                      <td className="mono">{row.currency ?? CURRENCY}</td>
-                      <td className="mono">
-                        {money(row.amount, row.currency ?? CURRENCY)}
-                      </td>
-                      <td className="mono">
-                        {row.commission == null
-                          ? "—"
-                          : money(row.commission, row.currency ?? CURRENCY)}
-                      </td>
-                      <td className="mono">
-                        {row.commission_percentage == null
-                          ? "—"
-                          : `${row.commission_percentage.toFixed(2)}%`}
-                      </td>
-                      <td>
-                        {row.master_merchant ? (
-                          <MerchantLogo merchant={row.master_merchant} />
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td>
-                        <MerchantLogo merchant={row.merchant} />
-                      </td>
+                      <td><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></td>
+                      <td className="mono">{money(row.amount, row.currency ?? CURRENCY)}</td>
+                      {shownColumns.map((c) => cell(c.id, row))}
                     </tr>
                   );
                 })}
@@ -968,6 +933,8 @@ export default function Payouts() {
           </div>
         )}
       </section>
+      </>
+      )}
       {viewedProofUrl && (
         <ProofModal
           url={viewedProofUrl}
@@ -976,46 +943,25 @@ export default function Payouts() {
         />
       )}
       {(selected || detailLoading) && (
-        <div
-          className="drawer-backdrop"
-          onClick={() => !decisionBusy && setSelected(null)}
+        <DetailModal
+          onClose={() => !decisionBusy && setSelected(null)}
+          busy={decisionBusy}
+          title={selected ? <span className="mono">{selected.ontarget_ref ?? selected.maven_id}</span> : t("جارٍ التحميل…", "Loading…")}
+          badge={selected && <span className={`pay-status-badge ${statusMeta(selected.status).cls}`}>{statusMeta(selected.status).label}</span>}
+          headerExtra={selected && can("payouts", "can_edit") && !editing && (
+            <button className="btn-ghost btn-sm icon-text-btn" onClick={() => setEditing(true)}>
+              <Pencil size={15} aria-hidden="true" /> {t("تعديل", "Edit")}
+            </button>
+          )}
         >
-          <aside className="drawer" onClick={(e) => e.stopPropagation()}>
             {detailLoading && (
               <p className="sidebar-hint">{t("جارٍ التحميل…", "Loading…")}</p>
             )}
             {selected && (
               <>
-                <div className="drawer-head">
-                  <h3 className="mono">
-                    {selected.ontarget_ref ?? selected.maven_id}
-                  </h3>
-                  <div className="row-actions">
-                    {can("payouts", "can_edit") && !editing && (
-                      <button
-                        className="btn-ghost btn-sm icon-text-btn"
-                        onClick={() => setEditing(true)}
-                      >
-                        <Pencil size={15} aria-hidden="true" />
-                        {t("تعديل", "Edit")}
-                      </button>
-                    )}
-                    <button
-                      className="btn-ghost btn-sm"
-                      onClick={() => setSelected(null)}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
                 <div className="drawer-amount">
                   <span className="mono">
                     {money(selected.amount, CURRENCY)}
-                  </span>
-                  <span
-                    className={`pay-status-badge ${statusMeta(selected.status).cls}`}
-                  >
-                    {statusMeta(selected.status).label}
                   </span>
                 </div>
                 {editing && can("payouts", "can_edit") && (
@@ -1349,8 +1295,7 @@ export default function Payouts() {
                   )}
               </>
             )}
-          </aside>
-        </div>
+        </DetailModal>
       )}
     </PanelShell>
   );

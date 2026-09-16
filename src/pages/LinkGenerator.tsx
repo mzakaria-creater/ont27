@@ -39,6 +39,7 @@ interface PaymentLink {
   wallet_pool_id: string | null
   allocation_mode: 'single_queue' | 'multi_wallet'
   multi_wallet_threshold: number | null
+  require_name: boolean
   created_at: string
   status: LinkStatus
   stats: LinkStats
@@ -66,6 +67,7 @@ export default function LinkGenerator() {
     title: '', merchant_id: '', amount_mode: 'open', amount: '',
     min_amount: '', max_amount: '', expires_at: '', max_uses: '', client_name: '', client_reference: '', return_url: '',
     payment_method_codes: [] as string[], wallet_pool_id: '', allocation_mode: 'single_queue', multi_wallet_threshold: '50000',
+    require_name: false,
   })
 
   const load = useCallback(async () => {
@@ -123,10 +125,11 @@ export default function LinkGenerator() {
           wallet_pool_id: form.wallet_pool_id || undefined,
           allocation_mode: form.allocation_mode,
           multi_wallet_threshold: form.allocation_mode === 'multi_wallet' ? form.multi_wallet_threshold || undefined : undefined,
+          require_name: form.require_name,
         }),
       })
       setNewCheckoutUrl(created.checkout_url ? `${location.origin}${created.checkout_url}` : null)
-      setForm({ title: '', merchant_id: '', amount_mode: 'open', amount: '', min_amount: '', max_amount: '', expires_at: '', max_uses: '', client_name: '', client_reference: '', return_url: '', payment_method_codes: [], wallet_pool_id: '', allocation_mode: 'single_queue', multi_wallet_threshold: '50000' })
+      setForm({ title: '', merchant_id: '', amount_mode: 'open', amount: '', min_amount: '', max_amount: '', expires_at: '', max_uses: '', client_name: '', client_reference: '', return_url: '', payment_method_codes: [], wallet_pool_id: '', allocation_mode: 'single_queue', multi_wallet_threshold: '50000', require_name: false })
       await load()
     } catch (err) {
       setError(err instanceof ApiError && err.status === 403 ? t('دورك لا يملك صلاحية إنشاء روابط', 'Your role cannot create links') : t('تعذر إنشاء الرابط', 'Failed to create link'))
@@ -206,6 +209,7 @@ export default function LinkGenerator() {
             <label className="field"><span>{t('حد الاستخدامات', 'Usage limit')}</span>
               <input dir="ltr" inputMode="numeric" value={form.max_uses} onChange={set('max_uses')} /></label>
             <label className="field"><span>{t('رابط الرجوع للتاجر', 'Merchant return URL')}</span><input dir="ltr" type="url" value={form.return_url} onChange={set('return_url')} placeholder="https://merchant.example/success" /></label>
+            <label className="login-remember"><input type="checkbox" checked={form.require_name} onChange={(e) => setForm((f) => ({ ...f, require_name: e.target.checked }))} />{t('إلزام العميل بإدخال الاسم عند الدفع', "Require the customer's name at checkout")}</label>
           </div>
           <div className="link-routing-grid">
             <label className="field"><span><Route size={14}/> {t('طرق الدفع المسموحة', 'Allowed payment methods')}</span>

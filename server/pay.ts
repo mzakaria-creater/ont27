@@ -28,6 +28,7 @@ interface LinkRow {
   wallet_pool_id?: string | null
   allocation_mode?: 'single_queue' | 'multi_wallet'
   multi_wallet_threshold?: number | null
+  require_name?: boolean | null
   checkout_token_hash?: string | null
 }
 
@@ -182,6 +183,7 @@ payRoutes.get('/link/:code', async (c) => {
       payment_method_codes: link.payment_method_codes ?? [],
       allocation_mode: link.allocation_mode ?? 'single_queue',
       multi_wallet_threshold: link.multi_wallet_threshold ?? null,
+      require_name: link.require_name === true,
       merchant_mid: identity.merchantMid,
       master_mid: identity.masterMid,
     },
@@ -213,6 +215,8 @@ payRoutes.post('/session', async (c) => {
     if (unusable) return c.json({ error: unusable }, 410)
     link = data
   }
+
+  if (link?.require_name && !name) return c.json({ error: 'name_required' }, 400)
 
   const currency = link?.currency ?? 'EGP'
   let amount = link?.amount_mode === 'fixed' ? Number(link.amount) : rawAmount

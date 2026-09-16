@@ -1,19 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import PanelShell from '../components/PanelShell'
-import ProofModal from '../components/ProofModal'
-import TransactionEditPanel from '../components/TransactionEditPanel'
+import ProofModal from './ProofModal'
+import TransactionEditPanel from './TransactionEditPanel'
+import DetailModal from './DetailModal'
 import { api, ApiError } from '../lib/api'
 import { depositTime, isAutomaticApprovalActor, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import type { DepositDetail } from '../lib/deposits'
 import { Activity, AlertTriangle, Bot, CheckCircle2, CircleDollarSign, Clock3, Database, FileJson, History, MessageSquareText, Pencil, UserRound, Workflow } from 'lucide-react'
-import DepositKindBadge from '../components/DepositKindBadge'
+import DepositKindBadge from './DepositKindBadge'
 
-// تفاصيل المعاملة — full-page detail view keyed by OUR ontarget_ref.
-// Handles all 7 real statuses and all 3 gateways (NagupayP2P live,
-// RSC/AVADAPAY test) — raw jsonb shown collapsible, never normalized.
+// Popup rebuild of the old standalone /transactions/:ref page. Same data
+// contract and business logic (decision worker, blacklist, edit panel) —
+// only the chrome changed, from a full page to a modal opened from the list.
 
 interface MatchedSms {
   id: number
@@ -143,8 +142,7 @@ function jsonSummary(value: Record<string, unknown> | null | undefined): string 
   return Object.entries(value).map(([key, item]) => `${key}: ${Array.isArray(item) ? item.join(', ') : String(item ?? '—')}`).join(' · ')
 }
 
-export default function TransactionDetail() {
-  const { ref } = useParams<{ ref: string }>()
+export default function TransactionDetailModal({ txRef, onClose, onChanged }: { txRef: string; onClose: () => void; onChanged?: () => void }) {
   const { can, user } = useAuth()
   const { t } = useLocale()
   const [data, setData] = useState<DetailResponse | null>(null)
@@ -154,16 +152,15 @@ export default function TransactionDetail() {
   const [proofOpen, setProofOpen] = useState(false)
 
   const load = useCallback(async () => {
-    if (!ref) return
     try {
-      setData(await api<DetailResponse>(`/api/deposits/by-ref/${encodeURIComponent(ref)}`))
+      setData(await api<DetailResponse>(`/api/deposits/by-ref/${encodeURIComponent(txRef)}`))
       setErr(null)
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) setErr(t('لا توجد معاملة بهذا الرقم.', 'No transaction with this reference.'))
       else if (e instanceof ApiError && e.status === 403) setErr(t('لا تملك صلاحية عرض المعاملات.', 'You do not have permission to view transactions.'))
       else setErr(t('تعذّر تحميل المعاملة.', 'Failed to load the transaction.'))
     }
-  }, [ref])
+  }, [txRef])
 
   useEffect(() => { void load() }, [load])
 
@@ -189,6 +186,7 @@ export default function TransactionDetail() {
           : t(`تم القرار محلياً — لكن التنفيذ التلقائي على المزود الخارجي ${res.old_sync === 'skipped' ? 'غير مفعّل لهذا النشر' : 'فشل'} — نفّذه من غرفة التحكم.`, `Decision recorded locally — automatic provider execution ${res.old_sync === 'skipped' ? 'is not enabled for this deployment' : 'failed'} — perform it from the control room.`),
       )
       void load()
+      onChanged?.()
     } catch (e) {
       if (e instanceof ApiError && e.code === 'not_pending') setDecisionMsg(t('حالة المعاملة اتغيّرت بالفعل — أعد التحميل.', 'Transaction status already changed — reload.'))
       else setDecisionMsg(t('فشل تنفيذ القرار — حاول مرة أخرى.', 'Failed to apply the decision — try again.'))
@@ -204,23 +202,20 @@ export default function TransactionDetail() {
   }
 
   return (
-    <PanelShell>
+    <DetailModal
+      onClose={onClose}
+      busy={busy}
+      title={<span className="mono">{d?.ontarget_ref ?? d?.tx_id ?? txRef}</span>}
+      subtitle={d && <>{t('مرجع التاجر', 'Merchant ref')}: <span className="mono">{d.merchant_tx_reference ?? '—'}</span> · {t('البوابة', 'Gateway')}: <span className="mono">{d.gateway ?? '—'}</span></>}
+      badge={st && <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>}
+    >
       {err && <div className="card warn">{err}</div>}
       {!data && !err && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
       {d && st && (
         <div className="txd-grid">
-          {/* main column */}
           <div className="txd-main">
             <section className="card recent-card">
               <div className="recent-head">
-                <div>
-                  <h2 className="mono" style={{ margin: 0 }}>{d.ontarget_ref ?? d.tx_id}</h2>
-                  <p className="page-sub">
-                    {t('مرجع التاجر', 'Merchant ref')}: <span className="mono">{d.merchant_tx_reference ?? '—'}</span>
-                    {' · '}{t('البوابة', 'Gateway')}: <span className="mono">{d.gateway ?? '—'}</span>
-                    {d.gateway !== 'NagupayP2P' && d.gateway && <span className="pay-status-badge st-under"> {t('بيانات اختبار', 'test data')}</span>}
-                  </p>
-                </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   {canDirectEdit && (
                     <a className="btn-primary btn-sm" href="#transaction-edit-panel">
@@ -229,7 +224,6 @@ export default function TransactionDetail() {
                   )}
                   {canUnblock && d.sender_number && (d.is_blacklisted ? <button className="btn-ghost btn-sm" onClick={() => void unblockClient()}>🚫 {t('رفع حظر العميل', 'Unblock client')}</button> : <button className="btn-ghost danger btn-sm" onClick={async () => { if (window.confirm(t('حظر هذا العميل؟','Block this client?'))) { await api('/api/risk/blacklist', { method: 'POST', body: JSON.stringify({ type: 'phone', value: d.sender_number, reason: 'Blocked from transaction detail' }) }); void load() } }}>🚫 {t('حظر العميل', 'Block client')}</button>)}
                   {masterChip(d.master_merchant)}
-                  <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
                 </div>
               </div>
 
@@ -359,7 +353,6 @@ export default function TransactionDetail() {
             )}
           </div>
 
-          {/* side column */}
           <aside className="txd-side">
             {can('deposits', 'can_approve') && (
               <section className="card recent-card">
@@ -382,7 +375,7 @@ export default function TransactionDetail() {
             <section className="card recent-card">
               <div className="section-label txd-section-title" style={{ marginTop: 0 }}><History size={16} aria-hidden="true" />{t('سجل الإجراءات الكامل', 'Complete action history')}</div>
               <div className="timeline txd-history" style={{ marginTop: 0 }}>
-                {data.history.map((event) => {
+                {data?.history.map((event) => {
                   const Icon = eventIcon(event.type)
                   const before = jsonSummary(event.before)
                   const after = jsonSummary(event.after)
@@ -397,7 +390,7 @@ export default function TransactionDetail() {
                     </div>
                   </div>
                 })}
-                {data.history.length === 0 && <p className="cell-sub">{t('لا توجد إجراءات مسجلة بعد.', 'No recorded actions yet.')}</p>}
+                {data?.history.length === 0 && <p className="cell-sub">{t('لا توجد إجراءات مسجلة بعد.', 'No recorded actions yet.')}</p>}
                 {data?.sms && (
                   <div className="timeline-item">
                     <div className="timeline-icon done"><MessageSquareText size={14} aria-hidden="true" /></div>
@@ -411,7 +404,7 @@ export default function TransactionDetail() {
               </div>
             </section>
 
-            {(data.provider.review || data.provider.jobs.length > 0 || data.provider.events.length > 0) && (
+            {data && (data.provider.review || data.provider.jobs.length > 0 || data.provider.events.length > 0) && (
               <section className="card recent-card">
                 <div className="section-label txd-section-title" style={{ marginTop: 0 }}><Workflow size={16} aria-hidden="true" />{t('تشخيص NagoPay والتنفيذ', 'NagoPay & execution diagnostics')}</div>
                 <div className="txd-provider-stats">
@@ -446,11 +439,9 @@ export default function TransactionDetail() {
                 amount={data.deposit.amount}
                 currency={data.deposit.currency}
                 gateway={data.deposit.gateway}
-                onDone={() => void load()}
+                onDone={() => { void load(); onChanged?.() }}
               />
             )}
-
-            <Link to="/deposits" className="btn-ghost btn-sm">→ {t('رجوع للإيداعات', 'Back to deposits')}</Link>
           </aside>
         </div>
       )}
@@ -464,6 +455,6 @@ export default function TransactionDetail() {
           onDecline={can('deposits', 'can_approve') && data.deposit.status === 'PENDING' ? () => decide('decline') : undefined}
         />
       )}
-    </PanelShell>
+    </DetailModal>
   )
 }

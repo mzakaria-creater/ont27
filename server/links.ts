@@ -117,6 +117,7 @@ linkRoutes.post('/:id/duplicate', requirePerm('checkout-builder', 'can_create'),
       wallet_pool_id: src.wallet_pool_id,
       allocation_mode: src.allocation_mode ?? 'single_queue',
       multi_wallet_threshold: src.multi_wallet_threshold,
+      require_name: src.require_name === true,
       created_by: c.get('actor').sub,
       checkout_token_hash: checkoutToken.hash,
     })
@@ -168,6 +169,7 @@ linkRoutes.post('/', requirePerm('checkout-builder', 'can_create'), async (c) =>
       wallet_pool_id: typeof body?.wallet_pool_id === 'string' && body.wallet_pool_id ? body.wallet_pool_id : null,
       allocation_mode: body?.allocation_mode === 'multi_wallet' ? 'multi_wallet' : 'single_queue',
       multi_wallet_threshold: positiveNumber(body?.multi_wallet_threshold),
+      require_name: body?.require_name === true,
       created_by: c.get('actor').sub,
       checkout_token_hash: checkoutToken.hash,
     })
@@ -192,6 +194,7 @@ linkRoutes.patch('/:id', requirePerm('checkout-builder', 'can_edit'), async (c) 
   if (typeof body?.wallet_pool_id === 'string' || body?.wallet_pool_id === null) updates.wallet_pool_id = body.wallet_pool_id || null
   if (body?.allocation_mode === 'single_queue' || body?.allocation_mode === 'multi_wallet') updates.allocation_mode = body.allocation_mode
   if (body?.multi_wallet_threshold !== undefined) updates.multi_wallet_threshold = positiveNumber(body.multi_wallet_threshold)
+  if (typeof body?.require_name === 'boolean') updates.require_name = body.require_name
   const { data: link, error } = await db
     .from('payment_links')
     .update(updates)

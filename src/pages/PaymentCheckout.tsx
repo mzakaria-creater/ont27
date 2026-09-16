@@ -19,6 +19,7 @@ interface PayLink {
   payment_method_codes: string[]
   allocation_mode: 'single_queue' | 'multi_wallet'
   multi_wallet_threshold: number | null
+  require_name: boolean
   merchant_mid?: string | null
   master_mid?: string | null
 }
@@ -104,6 +105,49 @@ function BrandBar({ merchant, t }: { merchant: string | null; t: (a: string, e: 
   )
 }
 
+function LockIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="11" width="18" height="11" rx="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  )
+}
+
+// Countdown against the session's own TTL window (created_at → expires_at),
+// not a fixed constant — the server owns SESSION_TTL_MIN and could change it.
+// Self-ticking so the parent re-renders only once, when the session arrives.
+function SessionExpiry({ createdAt, expiresAt, t }: { createdAt: string; expiresAt: string; t: (a: string, e: string) => string }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const iv = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(iv)
+  }, [])
+  const created = new Date(createdAt).getTime()
+  const expiry = new Date(expiresAt).getTime()
+  const total = Math.max(expiry - created, 1)
+  const left = expiry - now
+  const pct = Math.max(0, Math.min(100, (left / total) * 100))
+  const urgency = left <= 0 ? '' : pct < 10 ? 'critical' : pct < 25 ? 'warn' : ''
+  const m = Math.max(Math.floor(left / 60000), 0)
+  const s = Math.max(Math.floor((left % 60000) / 1000), 0)
+  return (
+    <div className="checkout-expiry">
+      <div className="checkout-expiry-label">{t('صالح حتى', 'Session expires in')}</div>
+      <div className="checkout-expiry-track"><div className={`checkout-expiry-fill ${urgency}`} style={{ width: `${pct}%` }} /></div>
+      <div className="checkout-expiry-time">{left <= 0 ? t('منتهية الصلاحية', 'Expired') : m > 0 ? `${m}${t('د', 'm')} ${String(s).padStart(2, '0')}${t('ث', 's')}` : `${s}${t('ث', 's')}`}</div>
+    </div>
+  )
+}
+
+const sessionStatusLabel: Record<string, [string, string]> = {
+  pending: ['بانتظار التحويل', 'Awaiting transfer'],
+  processing: ['جارٍ التحقق', 'Verifying'],
+  approved: ['تم الدفع', 'Paid'],
+  declined: ['مرفوض', 'Declined'],
+  expired: ['منتهية الصلاحية', 'Expired'],
+}
+
 const payErrors: Record<string, [string, string]> = {
   invalid_phone: ['أدخل رقم موبايل مصري صحيح (01xxxxxxxxx)', 'Enter a valid Egyptian mobile (01xxxxxxxxx)'],
   invalid_amount: ['أدخل مبلغاً صحيحاً', 'Enter a valid amount'],
@@ -111,6 +155,7 @@ const payErrors: Record<string, [string, string]> = {
   link_disabled: ['رابط الدفع موقوف', 'Payment link disabled'],
   link_expired: ['انتهت صلاحية رابط الدفع', 'Payment link expired'],
   link_exhausted: ['اكتمل عدد استخدامات هذا الرابط', "This link's usage limit is reached"],
+  name_required: ['هذا الرابط يتطلب إدخال الاسم', 'This link requires your name'],
   no_channel_available: ['لا توجد قناة دفع متاحة حالياً — حاول لاحقاً', 'No payment channel available now — try later'],
   amount_below_min: ['المبلغ أقل من الحد الأدنى', 'Amount is below the minimum'],
   amount_above_max: ['المبلغ أكبر من الحد الأقصى', 'Amount is above the maximum'],
@@ -195,7 +240,27 @@ export default function PaymentCheckout() {
 
   if (linkError) {
     return (
-      <div className="pay-wrap"><div className="card pay-card"><h2>⚠️ {linkError}</h2></div></div>
+      <div className="pay-wrap checkout-state-wrap">
+        <div>
+          <div className="checkout-state-icon">⚠️</div>
+          <div className="checkout-state-title">{t('تعذّر تحميل رابط الدفع', 'Unable to load this link')}</div>
+          <div className="checkout-state-msg">{linkError}</div>
+        </div>
+      </div>
+    )
+  }
+
+  // linkKey present but the fetch hasn't resolved yet. No linkKey at all is a
+  // deliberately supported code-less mode (see onSubmit), so that case falls
+  // straight through to the form below instead of loading forever.
+  if (linkKey && !link) {
+    return (
+      <div className="pay-wrap checkout-loader-wrap">
+        <div className="checkout-loader">
+          <div className="checkout-loader-logo">On Target</div>
+          <div className="checkout-loader-track" />
+        </div>
+      </div>
     )
   }
 
@@ -205,39 +270,48 @@ export default function PaymentCheckout() {
       <div className="pay-wrap">
         <PayOrbit />
         <BrandBar merchant={link?.title ?? null} t={t} />
-        <div className="card pay-card">
-          <img src="/logo.svg" alt="OnTarget" className="login-logo" />
-          <p className="login-sub">{t('حوّل المبلغ من محفظتك إلى الرقم التالي', 'Transfer the amount from your wallet to the number below')}</p>
-          <div className="pay-amount">{session.amount} <span>{session.currency}</span></div>
-          <div className="pay-channel">{pLabel}</div>
-          {(session.merchant_mid || session.master_mid) && <div className="pay-merchant-id">MID: <span className="mono">{session.merchant_mid ?? session.master_mid}</span></div>}
-          {session.wallets?.length ? <div className="pay-wallet-list">{session.wallets.map((wallet) => <div key={`${wallet.walletNumber}-${wallet.device}`}><span className="mono">{wallet.walletNumber}</span><strong>{wallet.amount} {session.currency}</strong><small>{providerLabel(wallet.provider, wallet.device)}</small></div>)}</div> : <div className="pay-wallet mono">{session.wallet_number}</div>}
-          {qr && <img src={qr} alt="QR" className="pay-qr" />}
-          <div className="pay-actions">
-            <button className="btn-primary" onClick={() => void copy(session.wallet_number ?? '', 'wallet')}>
-              {copied === 'wallet' ? t('✓ تم النسخ', '✓ Copied') : t('نسخ رقم المحفظة', 'Copy wallet number')}
-            </button>
-            {session.deeplink && (
-              <a className="btn-primary" href={session.deeplink}>{t('فتح التطبيق', 'Open app')}</a>
-            )}
-            {qr && (
-              <a className="btn-ghost" href={qr} download={`ontarget-${session.reference}.png`}>{t('تحميل QR', 'Download QR')}</a>
-            )}
-            <button
-              className="btn-ghost"
-              onClick={() => void copy(`${location.origin}/payment-status?id=${session.id}`, 'status')}
-            >
-              {copied === 'status' ? t('✓ تم النسخ', '✓ Copied') : t('نسخ رابط المتابعة', 'Copy tracking link')}
-            </button>
+        <div className="card pay-card checkout-card">
+          <div className="checkout-split">
+            <div className="checkout-left">
+              <img src="/logo.svg" alt="OnTarget" className="login-logo" />
+              <div className="checkout-amount-label">{t('المبلغ المطلوب', 'Amount due')}</div>
+              <div className="checkout-amount"><span className="checkout-amount-cur">{session.currency}</span><span className="checkout-amount-num">{groupDigits(String(session.amount))}</span></div>
+              <div className="checkout-gold-line" />
+              <div className="checkout-detail-row"><span>{t('المرجع', 'Reference')}</span><span className="mono hi">{session.reference}</span></div>
+              {(session.merchant_mid || session.master_mid) && <div className="checkout-detail-row"><span>MID</span><span className="mono">{session.merchant_mid ?? session.master_mid}</span></div>}
+              <div className="checkout-detail-row"><span>{t('الحالة', 'Status')}</span><span className={`checkout-status-badge is-${session.status}`}>{t(...(sessionStatusLabel[session.status] ?? sessionStatusLabel.pending))}</span></div>
+              <SessionExpiry createdAt={session.created_at} expiresAt={session.expires_at} t={t} />
+              <div className="checkout-security"><LockIcon /> {t('اتصال مشفّر 256-bit · دفع آمن', '256-bit SSL encrypted · Secure payment')}</div>
+            </div>
+            <div className="checkout-right">
+              <h2 className="checkout-form-title">{t('أكمل التحويل', 'Complete the transfer')}</h2>
+              <p className="checkout-form-sub">{t('حوّل المبلغ من محفظتك إلى الرقم التالي', 'Transfer the amount from your wallet to the number below')}</p>
+              <div className="pay-channel">{pLabel}</div>
+              {session.wallets?.length ? <div className="pay-wallet-list">{session.wallets.map((wallet) => <div key={`${wallet.walletNumber}-${wallet.device}`}><span className="mono">{wallet.walletNumber}</span><strong>{wallet.amount} {session.currency}</strong><small>{providerLabel(wallet.provider, wallet.device)}</small></div>)}</div> : <div className="pay-wallet mono">{session.wallet_number}</div>}
+              {qr && <img src={qr} alt="QR" className="pay-qr" />}
+              <div className="pay-actions">
+                <button className="btn-primary" onClick={() => void copy(session.wallet_number ?? '', 'wallet')}>
+                  {copied === 'wallet' ? t('✓ تم النسخ', '✓ Copied') : t('نسخ رقم المحفظة', 'Copy wallet number')}
+                </button>
+                {session.deeplink && (
+                  <a className="btn-primary" href={session.deeplink}>{t('فتح التطبيق', 'Open app')}</a>
+                )}
+                {qr && (
+                  <a className="btn-ghost" href={qr} download={`ontarget-${session.reference}.png`}>{t('تحميل QR', 'Download QR')}</a>
+                )}
+                <button
+                  className="btn-ghost"
+                  onClick={() => void copy(`${location.origin}/payment-status?id=${session.id}`, 'status')}
+                >
+                  {copied === 'status' ? t('✓ تم النسخ', '✓ Copied') : t('نسخ رابط المتابعة', 'Copy tracking link')}
+                </button>
+              </div>
+              <Link className="btn-ghost pay-status-link" to={`/payment-status?id=${session.id}`}>
+                {t('متابعة حالة الدفع ←', 'Track payment status →')}
+              </Link>
+              {session.return_url && <a className="btn-ghost pay-status-link" href={session.return_url}>{t('العودة إلى التاجر', 'Return to merchant')}</a>}
+            </div>
           </div>
-          <p className="pay-note">
-            {t('المرجع', 'Reference')}: <span className="mono">{session.reference}</span> · {t('صالح حتى', 'valid until')}{' '}
-            {new Date(session.expires_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
-          </p>
-          <Link className="btn-ghost pay-status-link" to={`/payment-status?id=${session.id}`}>
-            {t('متابعة حالة الدفع ←', 'Track payment status →')}
-          </Link>
-          {session.return_url && <a className="btn-ghost pay-status-link" href={session.return_url}>{t('العودة إلى التاجر', 'Return to merchant')}</a>}
         </div>
       </div>
     )
@@ -247,59 +321,82 @@ export default function PaymentCheckout() {
     <div className="pay-wrap">
       <PayOrbit />
       <BrandBar merchant={link?.title ?? null} t={t} />
-      <form className="card pay-card" onSubmit={onSubmit}>
-        <img src="/logo.svg" alt="OnTarget" className="login-logo" />
-        <h2>{link?.title ?? t('إيداع جديد', 'New deposit')}</h2>
-        <p className="login-sub">{t('ادفع عبر المحفظة الإلكترونية', 'Pay via your mobile wallet')}</p>
-        {link?.payment_method_codes?.length ? <label className="field"><span>{t('طريقة الدفع', 'Payment method')}</span><select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} required><option value="">{t('اختر طريقة الدفع', 'Choose a payment method')}</option>{link.payment_method_codes.map((method) => <option key={method} value={method}>{providerLabel(method, method)}</option>)}</select></label> : null}
-        <label className="field">
-          <span>{t('رقم الموبايل', 'Mobile number')}</span>
-          {/* type="tel" as well as inputMode: inputMode alone still asks some
-              Android keyboards for the full QWERTY layout, and the wallet
-              number is the very first thing a paying customer types. Digits
-              only, capped at the 11 an Egyptian mobile has. */}
-          <input
-            type="tel"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            autoComplete="tel"
-            maxLength={11}
-            dir="ltr"
-            placeholder="01012345678"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
-            required
-            autoFocus
-          />
-        </label>
-        <label className="field">
-          <span>{t('الاسم (اختياري)', 'Name (optional)')}</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <label className="field">
-          <span>
-            {t('المبلغ', 'Amount')} ({link?.currency ?? 'EGP'})
-            {link?.amount_mode === 'open' && link.min_amount !== null && ` · ${t('من', 'from')} ${link.min_amount}`}
-            {link?.amount_mode === 'open' && link.max_amount !== null && ` ${t('إلى', 'to')} ${link.max_amount}`}
-          </span>
-          {/* Grouped for reading, ungrouped in state. Stripping on the way in
-              means a pasted "5,000" is accepted rather than rejected as
-              non-numeric. */}
-          <input
-            type="tel"
-            inputMode="decimal"
-            dir="ltr"
-            value={groupDigits(amount)}
-            onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
-            readOnly={link?.amount_mode === 'fixed'}
-            required
-          />
-        </label>
-        {error && <div className="login-error" role="alert">{error}</div>}
-        <button className="btn-primary" type="submit" disabled={busy}>
-          {busy ? t('جارٍ التجهيز…', 'Preparing…') : t('متابعة الدفع', 'Continue to payment')}
-        </button>
-      </form>
+      <div className="card pay-card checkout-card">
+        <div className="checkout-split">
+          <div className="checkout-left">
+            <img src="/logo.svg" alt="OnTarget" className="login-logo" />
+            <div className="checkout-amount-label">{t('المبلغ', 'Amount')}</div>
+            <div className="checkout-amount">
+              <span className="checkout-amount-cur">{link?.currency ?? 'EGP'}</span>
+              <span className="checkout-amount-num">
+                {link?.amount_mode === 'fixed' && link.amount != null
+                  ? groupDigits(String(link.amount))
+                  : link?.min_amount != null || link?.max_amount != null
+                    ? `${link?.min_amount ?? '∗'}–${link?.max_amount ?? '∗'}`
+                    : t('مفتوح', 'Open')}
+              </span>
+            </div>
+            <div className="checkout-gold-line" />
+            {link?.title && <div className="checkout-detail-row"><span>{t('عن', 'About')}</span><span>{link.title}</span></div>}
+            {link?.client_name && <div className="checkout-detail-row"><span>{t('لصالح', 'For')}</span><span>{link.client_name}</span></div>}
+            <div className="checkout-security"><LockIcon /> {t('اتصال مشفّر 256-bit · دفع آمن', '256-bit SSL encrypted · Secure payment')}</div>
+          </div>
+          <div className="checkout-right">
+            <form onSubmit={onSubmit}>
+              <h2 className="checkout-form-title">{link?.title ?? t('إيداع جديد', 'New deposit')}</h2>
+              <p className="checkout-form-sub">{t('ادفع عبر المحفظة الإلكترونية', 'Pay via your mobile wallet')}</p>
+              {link?.payment_method_codes?.length ? <label className="field"><span>{t('طريقة الدفع', 'Payment method')}</span><select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} required><option value="">{t('اختر طريقة الدفع', 'Choose a payment method')}</option>{link.payment_method_codes.map((method) => <option key={method} value={method}>{providerLabel(method, method)}</option>)}</select></label> : null}
+              <label className="field">
+                <span>{t('رقم الموبايل', 'Mobile number')}</span>
+                {/* type="tel" as well as inputMode: inputMode alone still asks some
+                    Android keyboards for the full QWERTY layout, and the wallet
+                    number is the very first thing a paying customer types. Digits
+                    only, capped at the 11 an Egyptian mobile has. */}
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoComplete="tel"
+                  maxLength={11}
+                  dir="ltr"
+                  placeholder="01012345678"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                  required
+                  autoFocus
+                />
+              </label>
+              <label className="field">
+                <span>{link?.require_name ? t('الاسم', 'Name') : t('الاسم (اختياري)', 'Name (optional)')}</span>
+                <input value={name} onChange={(e) => setName(e.target.value)} required={link?.require_name === true} />
+              </label>
+              <label className="field">
+                <span>
+                  {t('المبلغ', 'Amount')} ({link?.currency ?? 'EGP'})
+                  {link?.amount_mode === 'open' && link.min_amount !== null && ` · ${t('من', 'from')} ${link.min_amount}`}
+                  {link?.amount_mode === 'open' && link.max_amount !== null && ` ${t('إلى', 'to')} ${link.max_amount}`}
+                </span>
+                {/* Grouped for reading, ungrouped in state. Stripping on the way in
+                    means a pasted "5,000" is accepted rather than rejected as
+                    non-numeric. */}
+                <input
+                  type="tel"
+                  inputMode="decimal"
+                  dir="ltr"
+                  value={groupDigits(amount)}
+                  onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
+                  readOnly={link?.amount_mode === 'fixed'}
+                  required
+                />
+              </label>
+              {error && <div className="login-error" role="alert">{error}</div>}
+              <button className="btn-primary checkout-submit" type="submit" disabled={busy}>
+                {busy ? t('جارٍ التجهيز…', 'Preparing…') : t('متابعة الدفع', 'Continue to payment')}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
