@@ -139,7 +139,7 @@ function Bell() {
       setData(normalized)
     }).catch(() => {})
     load()
-    const iv = setInterval(load, 10_000)
+    const iv = setInterval(load, 20_000)
     return () => clearInterval(iv)
   }, [])
 
@@ -278,7 +278,7 @@ function TelegramTopIcon() {
   useEffect(() => {
     let alive = true
     const load = () => void api<{ alerts?: typeof rows }>('/api/telegram/live?limit=12').then((result) => { if (alive) setRows(result.alerts ?? []) }).catch(() => {})
-    load(); const timer = window.setInterval(load, 10_000)
+    load(); const timer = window.setInterval(load, 20_000)
     return () => { alive = false; window.clearInterval(timer) }
   }, [])
   const unread = rows.filter((row) => row.id > lastSeen).length
@@ -308,7 +308,7 @@ function ComplaintTopIcon({ userId }: { userId: string }) {
       .then((result) => { if (alive) setRows(result.alerts ?? []) })
       .catch(() => {})
     load()
-    const timer = window.setInterval(load, 8_000)
+    const timer = window.setInterval(load, 20_000)
     return () => { alive = false; window.clearInterval(timer) }
   }, [])
 
@@ -347,7 +347,7 @@ function ComplaintTopIcon({ userId }: { userId: string }) {
       {unread > 0 && <span className="bell-badge complaint-badge">{unread > 99 ? '99+' : unread}</span>}
     </button>
     {open && <div id="telegram-complaint-popover" className="top-complaint-popover" role="dialog" aria-label={t('الشكاوى القادمة من Telegram', 'Complaints received from Telegram')}>
-      <div className="top-complaint-popover-head"><div><strong>{t('شكاوى Telegram', 'Telegram complaints')}</strong><small>{t('تحديث تلقائي كل 8 ثوانٍ', 'Auto-refresh every 8 seconds')}</small></div><Link to="/complaints" onClick={() => setOpen(false)}>{t('فتح المركز', 'Open center')}</Link></div>
+      <div className="top-complaint-popover-head"><div><strong>{t('شكاوى Telegram', 'Telegram complaints')}</strong><small>{t('تحديث تلقائي كل 20 ثانية', 'Auto-refresh every 20 seconds')}</small></div><Link to="/complaints" onClick={() => setOpen(false)}>{t('فتح المركز', 'Open center')}</Link></div>
       {rows.length === 0 ? <div className="alert-empty">{t('لا توجد شكاوى جديدة.', 'No new complaints.')}</div> : rows.slice(0, 8).map((row) => <Link key={row.id} to={complaintUrl(row.message)} className="top-complaint-row" onClick={() => setOpen(false)}><span className="complaint-row-dot" /><span><strong>{(row.message ?? t('شكوى جديدة', 'New complaint')).replace(/<[^>]+>/g, '').slice(0, 130)}</strong><small>{row.created_at ? new Date(row.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</small></span></Link>)}
     </div>}
   </div>

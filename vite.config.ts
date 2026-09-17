@@ -9,4 +9,17 @@ export default defineConfig({
       '/api': 'http://localhost:8787',
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Vendor libs rarely change between deploys; splitting them into their
+        // own chunk lets the browser reuse a cached copy across app updates
+        // instead of re-downloading React/Supabase on every release.
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-supabase': ['@supabase/supabase-js'],
+        },
+      },
+    },
+  },
 })

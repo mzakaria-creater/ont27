@@ -412,7 +412,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
       setChatUnread(unread)
       window.dispatchEvent(new CustomEvent('ontarget:chat-unread', { detail: unread }))
     }).catch(() => {})
-    check(); const timer = setInterval(check, 6000)
+    check(); const timer = setInterval(check, 20_000)
     return () => clearInterval(timer)
   }, [pathname])
 
@@ -446,7 +446,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
       }).catch(() => {}))
       await Promise.all(jobs)
     }
-    void update(); const timer = window.setInterval(update, 6_000)
+    void update(); const timer = window.setInterval(update, 20_000)
     return () => { alive = false; window.clearInterval(timer) }
   }, [can, canTelegramLive, user?.id])
 
