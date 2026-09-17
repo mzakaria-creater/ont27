@@ -897,9 +897,12 @@ extraRoutes.post(
   async (c) => {
     const body = await c.req.json().catch(() => null)
     const rawValue = typeof body?.value === 'string' ? body.value.trim() : ''
-    const type = typeof body?.type === 'string' && body.type.trim() ? body.type.trim().slice(0, 40) : 'phone'
+    const type = typeof body?.type === 'string' && body.type.trim() ? body.type.trim().toLowerCase().slice(0, 40) : 'phone'
     const reason = typeof body?.reason === 'string' ? body.reason.trim().slice(0, 300) : null
     if (!rawValue) return c.json({ error: 'value_required' }, 400)
+    // Blacklist enforcement is identity-safe only for phone numbers. Names and
+    // emails are not stable identifiers and must never trigger MelBet declines.
+    if (!['phone', 'country', 'city'].includes(type)) return c.json({ error: 'unsupported_blacklist_type', allowed: ['phone', 'country', 'city'] }, 400)
     const value = type === 'phone' ? normalizePhone(rawValue) : rawValue
     if (type === 'phone' && !/^\d{10}$/.test(value)) return c.json({ error: 'invalid_phone' }, 400)
     const txId = Number(body?.tx_id)
