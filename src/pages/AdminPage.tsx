@@ -485,10 +485,6 @@ export default function AdminPage() {
                     />
                   </label>
                   <label>
-                    Phone number
-                    <input className="login-input" placeholder="01xxxxxxxxx" />
-                  </label>
-                  <label>
                     Role
                     <select
                       required
@@ -504,14 +500,6 @@ export default function AdminPage() {
                           {role.label} ({role.role_key})
                         </option>
                       ))}
-                    </select>
-                  </label>
-                  <label>
-                    Payment type
-                    <select className="login-input">
-                      <option>None selected</option>
-                      <option>Mobile Wallet</option>
-                      <option>Bank transfer</option>
                     </select>
                   </label>
                   <label className="user-active-row">
