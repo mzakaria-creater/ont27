@@ -93,10 +93,13 @@
   --ngpay-bg: rgba(59, 156, 94, 0.1);
   --payfuture: #5d4fb8;
   --payfuture-bg: rgba(123, 111, 212, 0.1);
-  --accent: #a5680f;
+  /* Same indigo brand hue as dark mode (--brand-purple/--brand-blue below),
+     darkened for AA contrast on a white surface instead of the unrelated
+     gold that used to sit here (it was a literal copy of --status-pending). */
+  --accent: #4f46e5;
   --shadow-hover: 0 10px 30px rgba(0, 0, 0, 0.1);
   --shadow-panel: 0 24px 60px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(15,23,42,.04);
-  --focus-ring: 0 0 0 3px rgba(165,104,15,.2);
+  --focus-ring: 0 0 0 3px rgba(79,70,229,.22);
   --card: var(--surface-raised);
   --surface-2: #f5f6f8;
   --surface-soft: #f7f8fa;
