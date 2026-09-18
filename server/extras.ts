@@ -660,25 +660,51 @@ extraRoutes.get('/wallet-report', requireAnyPerm(['sms_live', 'wallets'], 'can_v
   return c.json({ rows, days, from, to, limits: { daily: WALLET_DAILY_LIMIT, monthly: WALLET_MONTHLY_LIMIT, warning_ratio: WALLET_LIMIT_WARNING_RATIO }, as_of: new Date().toISOString(), time_zone: CAIRO_TIME_ZONE })
 })
 
-// Lightweight paid-volume totals used by the live SMS safety alert.
+// Lightweight paid-volume totals used by the live SMS safety alert. Counts
+// only PAID transactions that have real SMS evidence (sms_maven_matches —
+// the same table attachSms() in deposits.ts uses), grouped by the
+// SMS-confirmed receiving wallet rather than the allocated to_account_number
+// — that's proof of where the money actually landed, not just where Maven
+// intended to route it. Restricted to wallets Maven currently reports as
+// live so a retired number can no longer trigger the alert.
 extraRoutes.get('/wallet-paid-totals', requireAnyPerm(['sms_live', 'wallets'], 'can_view'), async (c) => {
   const monthStart = cairoBoundary(`${cairoToday().slice(0, 7)}-01`)
-  const { data, error } = await db.from('maven_transactions')
-    .select('tx_id, ontarget_ref, merchant, sub_merchant, amount, status, receiving_wallet, to_account_number')
-    .gte('first_seen_at', monthStart)
-    .in('status', ['PAID', 'APPROVED', 'SUCCESS', 'COMPLETED'])
-    .limit(20_000)
-  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  const [txResult, liveResult] = await Promise.all([
+    db.from('maven_transactions')
+      .select('tx_id, ontarget_ref, merchant, sub_merchant, amount, status, receiving_wallet, to_account_number')
+      .gte('first_seen_at', monthStart)
+      .in('status', ['PAID', 'APPROVED', 'SUCCESS', 'COMPLETED'])
+      .limit(20_000),
+    (async () => {
+      const old = oldDb()
+      if (!old) return [] as { phone_number?: string | null }[]
+      const { data } = await old.rpc('maven_banks_live_list')
+      return Array.isArray(data) ? data as { phone_number?: string | null }[] : []
+    })(),
+  ])
+  if (txResult.error) return c.json({ error: 'db_error', detail: txResult.error.message }, 500)
+  const rows = txResult.data ?? []
+  const liveWallets = new Set(liveResult.map((row) => walletDigits(row.phone_number)).filter(Boolean))
+
+  const ids = rows.map((row) => row.tx_id).filter((id): id is number => id != null)
+  const { data: matches, error: matchError } = ids.length
+    ? await db.from('sms_maven_matches').select('tx_id, receiving_wallet').in('tx_id', ids)
+    : { data: [], error: null }
+  if (matchError) return c.json({ error: 'db_error', detail: matchError.message }, 500)
+  const smsWalletByTx = new Map((matches ?? []).map((m) => [m.tx_id, walletDigits(m.receiving_wallet)]))
+
   const totals = new Map<string, { paid_amount: number; transaction_ref: string | null; merchant: string | null }>()
-  for (const row of data ?? []) {
-    const wallet = walletDigits(row.receiving_wallet ?? row.to_account_number)
+  for (const row of rows) {
+    const smsWallet = row.tx_id == null ? undefined : smsWalletByTx.get(row.tx_id)
+    if (!smsWallet) continue // no SMS evidence — do not count toward the wallet-limit alert
+    if (liveWallets.size > 0 && !liveWallets.has(smsWallet)) continue // wallet is no longer a live Maven receiving number
     const amount = Number(row.amount ?? 0)
-    if (!wallet || !Number.isFinite(amount)) continue
-    const current = totals.get(wallet) ?? { paid_amount: 0, transaction_ref: null, merchant: null }
+    if (!Number.isFinite(amount)) continue
+    const current = totals.get(smsWallet) ?? { paid_amount: 0, transaction_ref: null, merchant: null }
     current.paid_amount += amount
     current.transaction_ref ??= row.ontarget_ref ?? (row.tx_id == null ? null : String(row.tx_id))
     current.merchant ??= row.sub_merchant ?? row.merchant ?? null
-    totals.set(wallet, current)
+    totals.set(smsWallet, current)
   }
   return c.json({ rows: [...totals.entries()].map(([wallet, value]) => ({ wallet, paid_amount: Math.round(value.paid_amount * 100) / 100, transaction_ref: value.transaction_ref, merchant: value.merchant })).sort((a, b) => b.paid_amount - a.paid_amount) })
 })
