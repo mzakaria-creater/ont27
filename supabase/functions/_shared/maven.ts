@@ -52,8 +52,13 @@ export async function listTransactions(cookie: string, start: number, from: stri
 }
 export function toDbRow(row: MavenRow) {
   const txId = Number(row.TransactionId ?? 0); if (!txId) return null;
-  const candidates = [row.BankWalletNumber, row.BankAccountNumber, row.AccountNumber, row.ToBankAccountNumber];
-  const account = candidates.find((v) => typeof v === "string" && v.trim() && v.trim().toUpperCase() !== "NA")?.trim() ?? null;
+  // Maven can return two different numbers during wallet rotation:
+  // BankWalletNumber is the provider's bank/device slot, while
+  // ToBankAccountNumber (also exposed as AccountNumber) is the receiver that
+  // the customer actually paid. SMS evidence uses that receiver number, so it
+  // must be the canonical transaction wallet for matching.
+  const receiverCandidates = [row.ToBankAccountNumber, row.AccountNumber, row.BankAccountNumber, row.BankWalletNumber];
+  const account = receiverCandidates.find((v) => typeof v === "string" && v.trim() && v.trim().toUpperCase() !== "NA")?.trim() ?? null;
   const created = parseDate(row.CreatedDateUTC) ?? parseDate(row.CreatedDate);
   const modified = parseDate(row.ModifiedDateUTC) ?? parseDate(row.ModifiedDate);
   const image = Array.isArray(row.ImageUrl) ? row.ImageUrl[0] ?? null : null;
