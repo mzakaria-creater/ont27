@@ -9,7 +9,7 @@ import { depositTime, money } from '../lib/deposits'
 import type { PagePermission } from '../lib/api'
 import { useLocale } from '../lib/locale'
 import { installNotificationAudioUnlock, playNotificationTone } from '../lib/notificationSounds'
-import { BarChart3, Bot, ChevronDown, CircleDollarSign, LayoutDashboard, Menu, MessageSquareText, Minimize2, PanelLeftClose, PanelLeftOpen, Search, Send, Settings, Users, WalletCards, X } from 'lucide-react'
+import { BarChart3, Bot, ChevronDown, CircleDollarSign, LayoutDashboard, Menu, MessageSquareText, Minimize2, PanelLeftClose, PanelLeftOpen, Plus, Search, Send, Settings, Users, WalletCards, X } from 'lucide-react'
 
 // Shared authed layout ("Live Transaction Monitor" skin): nav rail (real pages
 // first, then the role's remaining permitted modules as "قريباً" placeholders),
@@ -302,7 +302,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
     <aside id="live-sms-widget" className="sms-rail" aria-label="Live SMS" onPointerDown={(event) => event.stopPropagation()}>
       <div className="sms-rail-head">
         <span className="sms-rail-title"><MessageSquareText size={16} aria-hidden="true" />SMS مباشر</span>
-        <span className="sms-rail-head-actions"><span className="live-dot"><span className="ld" />حي</span><button type="button" className="sms-widget-icon-btn" onClick={onMinimize} aria-label="Minimize Live SMS" title="Minimize"><Minimize2 size={15} /></button></span>
+        <span className="sms-rail-head-actions"><span className="live-dot"><span className="ld" />حي</span><Link to="/sms?manual=1" className="sms-widget-icon-btn" aria-label="Add SMS manually" title="إضافة SMS يدوياً"><Plus size={15} /></Link><button type="button" className="sms-widget-icon-btn" onClick={onMinimize} aria-label="Minimize Live SMS" title="Minimize"><Minimize2 size={15} /></button></span>
       </div>
       {devices.length > 0 && (
         <div className="device-chips">

@@ -390,6 +390,16 @@ export default function SmsLive() {
     }
   }, [requestedSmsId])
 
+  // Deep link from the floating SMS widget's "Add" button (?manual=1).
+  const manualRequested = params.get('manual') === '1'
+  useEffect(() => {
+    if (!manualRequested) return
+    setManualOpen(true)
+    const next = new URLSearchParams(params)
+    next.delete('manual')
+    setParams(next, { replace: true })
+  }, [manualRequested])
+
   const closeDetail = () => {
     setSelected(null)
     const next = new URLSearchParams(params)
