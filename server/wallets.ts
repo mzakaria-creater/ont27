@@ -19,6 +19,26 @@ walletRoutes.get('/live', requirePerm('wallets', 'can_view'), async (c) => {
   return c.json({ live: Array.isArray(data) ? data : [] })
 })
 
+// Maven has not exposed an endpoint to actually change which number receives
+// customer funds (see the disclaimer on this table's "Change" action). This
+// only records the operator's intent in the audit log so there is a paper
+// trail to act on manually — it never touches routing.
+walletRoutes.post('/live/replacement-request', requirePerm('wallets', 'can_edit'), async (c) => {
+  const body = await c.req.json<{ bank_ids?: unknown; new_wallet_number?: unknown }>().catch(() => null)
+  const bankIds = Array.isArray(body?.bank_ids)
+    ? [...new Set(body.bank_ids.map((value) => String(value ?? '').trim()).filter(Boolean))]
+    : []
+  const newNumber = String(body?.new_wallet_number ?? '').replace(/\D/g, '')
+  if (!bankIds.length || !/^\d{8,20}$/.test(newNumber)) return c.json({ error: 'invalid_replacement_request' }, 400)
+  const actor = c.get('actor')
+  await db.from('audit_log').insert({
+    actor_type: 'panel_user', actor_id: actor.sub, actor_name: actor.username,
+    action: 'live_wallet_replacement_requested', entity: 'maven_live_wallet', entity_id: bankIds.join(','),
+    after: { bank_ids: bankIds, requested_new_wallet_number: newNumber, note: 'Maven has not exposed a number-change API — recorded request only, no routing change made.' },
+  })
+  return c.json({ ok: true, bank_ids: bankIds, new_wallet_number: newNumber })
+})
+
 walletRoutes.get('/', requirePerm('wallets', 'can_view'), async (c) => {
   // Authoritative live wallet list straight from Maven (checked every few
   // minutes by the old system) — wallet_device_map is only the device

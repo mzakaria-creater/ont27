@@ -57,6 +57,11 @@ export default function MavenWallets() {
   const [selectedLive, setSelectedLive] = useState<string[]>([])
   const [livePage, setLivePage] = useState(1)
   const [replacementThreshold, setReplacementThreshold] = useState('85')
+  const [replaceTarget, setReplaceTarget] = useState<string[] | null>(null)
+  const [replaceNewNumber, setReplaceNewNumber] = useState('')
+  const [replaceBusy, setReplaceBusy] = useState(false)
+  const [replaceError, setReplaceError] = useState<string | null>(null)
+  const [replaceNotice, setReplaceNotice] = useState<string | null>(null)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const refreshSequence = useRef(0)
 
@@ -142,9 +147,32 @@ export default function MavenWallets() {
   const livePageSize = 10
   const livePageCount = Math.max(1, Math.ceil(liveRows.length / livePageSize))
   const visibleLiveRows = liveRows.slice((livePage - 1) * livePageSize, livePage * livePageSize)
-  const allVisibleLiveSelected = visibleLiveRows.length > 0 && visibleLiveRows.every((row) => selectedLive.includes(row.bank_id ?? ''))
+  // "Select all" covers every live wallet across all pages, not just the
+  // page currently on screen — an operator picking a bulk action expects
+  // "all" to mean all 106, not the 10 they can see.
+  const allLiveSelected = liveRows.length > 0 && liveRows.every((row) => selectedLive.includes(row.bank_id ?? ''))
   const toggleLive = (bankId: string) => setSelectedLive((current) => current.includes(bankId) ? current.filter((item) => item !== bankId) : [...current, bankId])
-  const replaceLive = (_bankId: string | null) => setError(t('واجهة الاستبدال جاهزة، لكن مصدر Maven لا يوفّر endpoint تغيير الرقم في التطبيق بعد.', 'The replacement UI is ready, but Maven has not exposed a number-change endpoint to this app yet.'))
+  const toggleAllLive = () => setSelectedLive(allLiveSelected ? [] : [...new Set(liveRows.map((row) => row.bank_id ?? '').filter(Boolean))])
+
+  const openReplace = (bankIds: string[]) => { setReplaceTarget(bankIds.filter(Boolean)); setReplaceNewNumber(''); setReplaceError(null) }
+  const submitReplace = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!replaceTarget) return
+    setReplaceBusy(true); setReplaceError(null)
+    try {
+      await api('/api/wallets/live/replacement-request', {
+        method: 'POST',
+        body: JSON.stringify({ bank_ids: replaceTarget, new_wallet_number: replaceNewNumber }),
+      })
+      setReplaceNotice(t(
+        `تم تسجيل طلب الاستبدال إلى ${replaceNewNumber} — لن يتغيّر التوجيه الفعلي لأن Maven لم يوفّر endpoint بعد.`,
+        `Replacement request to ${replaceNewNumber} recorded — actual routing is unchanged since Maven has not exposed that API yet.`,
+      ))
+      setReplaceTarget(null)
+    } catch {
+      setReplaceError(t('رقم المحفظة غير صحيح أو فشل الحفظ.', 'Invalid wallet number or the request failed to save.'))
+    } finally { setReplaceBusy(false) }
+  }
 
   const toggleProvider = (provider: string) => setSelectedProviders((current) => current.includes(provider) ? current.filter((item) => item !== provider) : [...current, provider])
 
@@ -227,11 +255,12 @@ export default function MavenWallets() {
       </section>
 
       {error && <div className="card warn">{error}</div>}
+      {replaceNotice && <div className="card">{replaceNotice} <button type="button" className="btn-ghost btn-sm" onClick={() => setReplaceNotice(null)}>{t('إغلاق', 'Dismiss')}</button></div>}
       <section className="card maven-live-accounts">
         <div className="recent-head"><div><h3>{t('أرقام الاستقبال الحية', 'Live receiving numbers')}</h3><p className="cell-sub">{t('البيانات القادمة من Maven — اختر عدة أرقام لإدارة الاستبدال.', 'Maven source data — select multiple numbers for replacement management.')}</p></div><button className="btn-ghost btn-sm" type="button" onClick={() => void refresh()}><RefreshCw size={15} /> {t('تحديث', 'Refresh')}</button></div>
-        <div className="maven-live-toolbar"><label className="maven-select-all"><input type="checkbox" checked={allVisibleLiveSelected} onChange={() => setSelectedLive((current) => allVisibleLiveSelected ? current.filter((id) => !visibleLiveRows.some((row) => (row.bank_id ?? '') === id)) : [...new Set([...current, ...visibleLiveRows.map((row) => row.bank_id ?? '').filter(Boolean)])])} /> {t('تحديد الكل', 'Select all')}</label><span>{selectedLive.length} {t('محدد', 'selected')}</span><button className="btn-ghost btn-sm" type="button" disabled={!selectedLive.length} onClick={() => replaceLive(null)}><Pencil size={14} /> {t('غيّر المحدد لرقم واحد', 'Change selected to one number')}</button><label className="maven-threshold"><Target size={14} /> {t('الاستبدال التلقائي عند', 'Auto replacement at')} <select value={replacementThreshold} onChange={(event) => setReplacementThreshold(event.target.value)}><option value="80">80%</option><option value="85">85%</option><option value="90">90%</option></select></label></div>
+        <div className="maven-live-toolbar"><label className="maven-select-all"><input type="checkbox" checked={allLiveSelected} onChange={toggleAllLive} /> {t('تحديد الكل', 'Select all')} <span className="cell-sub">({liveRows.length})</span></label><span>{selectedLive.length} {t('محدد', 'selected')}</span><button className="btn-ghost btn-sm" type="button" disabled={!selectedLive.length} onClick={() => openReplace(selectedLive)}><Pencil size={14} /> {t('غيّر المحدد لرقم واحد', 'Change selected to one number')}</button><label className="maven-threshold"><Target size={14} /> {t('الاستبدال التلقائي عند', 'Auto replacement at')} <select value={replacementThreshold} onChange={(event) => setReplacementThreshold(event.target.value)}><option value="80">80%</option><option value="85">85%</option><option value="90">90%</option></select></label></div>
         <div className="table-wrap maven-table-wrap"><table className="data-table maven-live-table"><thead><tr><th></th><th>{t('البنك', 'Bank')}</th><th>{t('النوع / التاجر', 'Type / merchant')}</th><th>{t('الرقم الحالي', 'Current number')}</th><th>{t('آخر فحص', 'Last checked')}</th><th>{t('إجراء', 'Action')}</th></tr></thead><tbody>
-          {visibleLiveRows.map((row) => { const id = row.bank_id ?? ''; return <tr key={`${id}-${row.phone_number ?? ''}`}><td><input type="checkbox" checked={selectedLive.includes(id)} onChange={() => toggleLive(id)} aria-label={`${t('تحديد', 'Select')} ${id}`} /></td><td className="mono">{id || '—'}</td><td><strong>{row.payment_type ?? '—'}</strong><div className="cell-sub">{row.account_name ?? t('غير محدد', 'Not specified')}</div></td><td className="mono">{row.phone_number ?? '—'}</td><td className="cell-sub">{depositTime({ first_seen_at: row.last_checked })}</td><td><button className="btn-ghost btn-sm maven-change-btn" type="button" onClick={() => replaceLive(row.bank_id)}><Pencil size={14} /> {t('غيّر', 'Change')}</button></td></tr> })}
+          {visibleLiveRows.map((row) => { const id = row.bank_id ?? ''; return <tr key={`${id}-${row.phone_number ?? ''}`}><td><input type="checkbox" checked={selectedLive.includes(id)} onChange={() => toggleLive(id)} aria-label={`${t('تحديد', 'Select')} ${id}`} /></td><td className="mono">{id || '—'}</td><td><strong>{row.payment_type ?? '—'}</strong><div className="cell-sub">{row.account_name ?? t('غير محدد', 'Not specified')}</div></td><td className="mono">{row.phone_number ?? '—'}</td><td className="cell-sub">{depositTime({ first_seen_at: row.last_checked })}</td><td><button className="btn-ghost btn-sm maven-change-btn" type="button" onClick={() => openReplace([id])}><Pencil size={14} /> {t('غيّر', 'Change')}</button></td></tr> })}
           {!visibleLiveRows.length && <tr><td colSpan={6} className="maven-empty">{t('لا توجد أرقام حية من Maven حالياً.', 'No live Maven receiving numbers currently available.')}</td></tr>}
         </tbody></table></div>
         <div className="maven-pagination"><span>{liveRows.length ? `${(livePage - 1) * livePageSize + 1}-${Math.min(livePage * livePageSize, liveRows.length)} / ${liveRows.length}` : '0 / 0'}</span><button className="btn-ghost btn-sm" type="button" disabled={livePage <= 1} onClick={() => setLivePage((page) => page - 1)}>{t('السابق', 'Previous')}</button><strong>{livePage} / {livePageCount}</strong><button className="btn-ghost btn-sm" type="button" disabled={livePage >= livePageCount} onClick={() => setLivePage((page) => page + 1)}>{t('التالي', 'Next')}</button></div>
@@ -317,6 +346,21 @@ export default function MavenWallets() {
                 : <label className="filter-field">{t('المبلغ (EGP)', 'Amount (EGP)')}<input className="login-input" type="number" min="1" value={rotationThreshold} onChange={(e) => setRotationThreshold(e.target.value)} /></label>}
               {rotationError && <div className="card warn">{rotationError}</div>}
               <button className="btn-primary btn-sm" disabled={rotationBusy}>{rotationBusy ? t('جارٍ الإنشاء…', 'Creating…') : t('إنشاء القاعدة', 'Create rule')}</button>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {replaceTarget && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !replaceBusy) setReplaceTarget(null) }}>
+          <section className="card" style={{ maxWidth: 460 }} role="dialog" aria-modal="true" aria-labelledby="replace-title">
+            <div className="recent-head"><h3 id="replace-title"><Pencil size={17} /> {t('استبدال رقم الاستقبال', 'Change receiving number')}</h3><button type="button" className="icon-action" disabled={replaceBusy} onClick={() => setReplaceTarget(null)} aria-label={t('إغلاق', 'Close')}><X size={17} /></button></div>
+            <p className="cell-sub">{t('المحدد:', 'Selected:')} <span className="mono">{replaceTarget.join('، ')}</span></p>
+            <div className="card warn">{t('واجهة تسجيل الطلب فقط — Maven لا يوفّر endpoint لتغيير الرقم فعلياً بعد. الحفظ يسجّل الطلب في سجل التدقيق ولا يغيّر أي توجيه.', 'This only records a request — Maven has not exposed an endpoint to actually change the number yet. Saving logs it to the audit trail and changes no routing.')}</div>
+            <form className="control-row" onSubmit={submitReplace}>
+              <input className="login-input" required inputMode="tel" placeholder={t('رقم المحفظة الجديد', 'New wallet number')} value={replaceNewNumber} onChange={(e) => setReplaceNewNumber(e.target.value.replace(/\D/g, ''))} />
+              {replaceError && <div className="card warn">{replaceError}</div>}
+              <button className="btn-primary btn-sm" disabled={replaceBusy || !/^\d{8,20}$/.test(replaceNewNumber)}>{replaceBusy ? t('جارٍ التسجيل…', 'Saving…') : t('تسجيل الطلب', 'Save request')}</button>
             </form>
           </section>
         </div>
