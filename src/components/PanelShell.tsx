@@ -446,7 +446,10 @@ export default function PanelShell({ children }: { children: ReactNode }) {
       }).catch(() => {}))
       await Promise.all(jobs)
     }
-    void update(); const timer = window.setInterval(update, 20_000)
+    // SMS unread/unlinked feeds the live-SMS launcher badge — operators need
+    // that fresh, so this one stays fast even though other background badge
+    // polls in this file were slowed down for load (see chat-unread below).
+    void update(); const timer = window.setInterval(update, 6_000)
     return () => { alive = false; window.clearInterval(timer) }
   }, [can, canTelegramLive, user?.id])
 
