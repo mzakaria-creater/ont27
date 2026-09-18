@@ -428,6 +428,71 @@ walletRoutes.post('/:walletNumber/assignment', requirePerm('wallets', 'can_edit'
 // customer being paid rather than the wallet paying them — 121 of 150
 // withdrawals in a 7-day sample. Grouped the old way, money leaving a wallet
 // was filed under a stranger's phone number.
+// ---- Wallet rotation groups: display-only priority rotation ----
+//
+// enrich_priority only feeds /allocation/simulate above — it never changes
+// which wallet Maven actually routes customer funds to (Maven has not
+// exposed that API yet). A rotation group is therefore an internal ordering
+// aid, not a live routing control; the /api/cron/wallet-rotation job
+// advances it every 5 minutes.
+walletRoutes.get('/rotation-groups', requirePerm('wallets', 'can_view'), async (c) => {
+  const { data, error } = await db
+    .from('wallet_rotation_groups')
+    .select('id, wallet_numbers, mode, interval_minutes, amount_threshold, current_index, last_rotated_at, amount_received_since_rotation, active, created_by, created_at')
+    .order('created_at', { ascending: false })
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  return c.json({ groups: data ?? [] })
+})
+
+walletRoutes.post('/rotation-groups', requirePerm('wallets', 'can_edit'), async (c) => {
+  const body = await c.req.json<{ wallet_numbers?: unknown; mode?: unknown; interval_minutes?: unknown; amount_threshold?: unknown }>().catch(() => null)
+  const wallets = Array.isArray(body?.wallet_numbers)
+    ? [...new Set(body.wallet_numbers.map((value) => String(value ?? '').replace(/\D/g, '')).filter((value) => /^\d{8,20}$/.test(value)))]
+    : []
+  if (wallets.length < 2) return c.json({ error: 'at_least_two_wallets_required' }, 400)
+  const mode = body?.mode === 'amount' ? 'amount' : body?.mode === 'time' ? 'time' : null
+  if (!mode) return c.json({ error: 'invalid_mode' }, 400)
+  const intervalMinutes = mode === 'time' ? Number(body?.interval_minutes) : null
+  const amountThreshold = mode === 'amount' ? Number(body?.amount_threshold) : null
+  if (mode === 'time' && (!Number.isFinite(intervalMinutes) || (intervalMinutes ?? 0) <= 0)) return c.json({ error: 'invalid_interval_minutes' }, 400)
+  if (mode === 'amount' && (!Number.isFinite(amountThreshold) || (amountThreshold ?? 0) <= 0)) return c.json({ error: 'invalid_amount_threshold' }, 400)
+
+  const { data: existing, error: existingError } = await db.from('wallet_device_map').select('to_account_number').in('to_account_number', wallets)
+  if (existingError) return c.json({ error: 'db_error', detail: existingError.message }, 500)
+  const missing = wallets.filter((wallet) => !(existing ?? []).some((row) => row.to_account_number === wallet))
+  if (missing.length) return c.json({ error: 'unknown_wallets', missing }, 400)
+
+  const actor = c.get('actor')
+  const { data, error } = await db.from('wallet_rotation_groups').insert({
+    wallet_numbers: wallets,
+    mode,
+    interval_minutes: intervalMinutes,
+    amount_threshold: amountThreshold,
+    created_by: actor.username,
+  }).select('id, wallet_numbers, mode, interval_minutes, amount_threshold, current_index, last_rotated_at, amount_received_since_rotation, active, created_by, created_at').single()
+  if (error) return c.json({ error: 'rotation_group_create_failed', detail: error.message }, 400)
+  await db.from('audit_log').insert({ actor_type: 'panel_user', actor_id: actor.sub, actor_name: actor.username, action: 'wallet_rotation_group_created', entity: 'wallet_rotation_groups', entity_id: data.id, after: data })
+  return c.json({ ok: true, group: data }, 201)
+})
+
+walletRoutes.patch('/rotation-groups/:id', requirePerm('wallets', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json<{ active?: unknown }>().catch(() => null)
+  if (typeof body?.active !== 'boolean') return c.json({ error: 'invalid_patch' }, 400)
+  const { data, error } = await db.from('wallet_rotation_groups').update({ active: body.active, updated_at: new Date().toISOString() }).eq('id', id)
+    .select('id, wallet_numbers, mode, interval_minutes, amount_threshold, current_index, last_rotated_at, amount_received_since_rotation, active, created_by, created_at').maybeSingle()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  if (!data) return c.json({ error: 'rotation_group_not_found' }, 404)
+  return c.json({ ok: true, group: data })
+})
+
+walletRoutes.delete('/rotation-groups/:id', requirePerm('wallets', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  const { error } = await db.from('wallet_rotation_groups').delete().eq('id', id)
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  return c.json({ ok: true })
+})
+
 walletRoutes.get(
   '/movements',
   requireAnyPerm(['wallets', 'treasury', 'reports', 'sms_live'], 'can_view'),

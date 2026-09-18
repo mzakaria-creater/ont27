@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, CheckCircle2, CircleDollarSign, Download, Filter, Pencil, RefreshCw, Search, ShieldAlert, Smartphone, Target, WalletCards, Wifi, WifiOff } from 'lucide-react'
+import { Activity, CheckCircle2, CircleDollarSign, Download, Filter, Pencil, Plus, RefreshCw, RotateCw, Search, ShieldAlert, Smartphone, Target, Trash2, WalletCards, Wifi, WifiOff, X } from 'lucide-react'
 import PanelShell from '../components/PanelShell'
+import { useAuth } from '../auth/AuthContext'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -29,11 +30,25 @@ interface DeviceRow {
 
 interface LiveWallet { bank_id: string | null; account_name: string | null; payment_type: string | null; phone_number: string | null; last_checked: string | null }
 interface WalletsResponse { wallets: WalletRow[]; devices: DeviceRow[]; live: LiveWallet[] }
-
+interface RotationGroup {
+  id: string
+  wallet_numbers: string[]
+  mode: 'time' | 'amount'
+  interval_minutes: number | null
+  amount_threshold: number | null
+  current_index: number
+  last_rotated_at: string | null
+  amount_received_since_rotation: number
+  active: boolean
+  created_by: string | null
+  created_at: string
+}
 const providers = ['Orange Money', 'Vodafone Cash', 'Etisalat Cash', 'WE Pay', 'InstaPay']
+const emptyNewWallet = { wallet_number: '', provider: 'Orange Money', merchant: '', daily_limit: '' }
 
 export default function MavenWallets() {
   const { t } = useLocale()
+  const { can } = useAuth()
   const [data, setData] = useState<WalletsResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
@@ -44,6 +59,29 @@ export default function MavenWallets() {
   const [replacementThreshold, setReplacementThreshold] = useState('85')
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const refreshSequence = useRef(0)
+
+  const [selectedWallets, setSelectedWallets] = useState<string[]>([])
+  const [addWalletOpen, setAddWalletOpen] = useState(false)
+  const [newWallet, setNewWallet] = useState({ wallet_number: '', provider: 'Orange Money', merchant: '', daily_limit: '' })
+  const [addWalletBusy, setAddWalletBusy] = useState(false)
+  const [addWalletError, setAddWalletError] = useState<string | null>(null)
+
+  const [rotationGroups, setRotationGroups] = useState<RotationGroup[]>([])
+  const [rotationModalOpen, setRotationModalOpen] = useState(false)
+  const [rotationMode, setRotationMode] = useState<'time' | 'amount'>('time')
+  const [rotationInterval, setRotationInterval] = useState('60')
+  const [rotationThreshold, setRotationThreshold] = useState('10000')
+  const [rotationBusy, setRotationBusy] = useState(false)
+  const [rotationError, setRotationError] = useState<string | null>(null)
+
+  const canManageRotation = can('wallets', 'can_edit')
+  const canCreateWallet = can('wallets', 'can_create')
+
+  const loadRotationGroups = useCallback(async () => {
+    try { setRotationGroups((await api<{ groups: RotationGroup[] }>('/api/wallets/rotation-groups')).groups) }
+    catch { /* the rotation panel is optional chrome; a failed load just leaves the list empty */ }
+  }, [])
+  useEffect(() => { if (canManageRotation) void loadRotationGroups() }, [canManageRotation, loadRotationGroups])
 
   const refresh = useCallback(async () => {
     const sequence = ++refreshSequence.current
@@ -110,6 +148,55 @@ export default function MavenWallets() {
 
   const toggleProvider = (provider: string) => setSelectedProviders((current) => current.includes(provider) ? current.filter((item) => item !== provider) : [...current, provider])
 
+  const visibleWalletNumbers = rows.map((wallet) => wallet.to_account_number)
+  const allVisibleWalletsSelected = visibleWalletNumbers.length > 0 && visibleWalletNumbers.every((number) => selectedWallets.includes(number))
+  const toggleWallet = (number: string) => setSelectedWallets((current) => current.includes(number) ? current.filter((item) => item !== number) : [...current, number])
+  const toggleAllWallets = () => setSelectedWallets((current) => allVisibleWalletsSelected
+    ? current.filter((number) => !visibleWalletNumbers.includes(number))
+    : [...new Set([...current, ...visibleWalletNumbers])])
+
+  const addWallet = async (event: React.FormEvent) => {
+    event.preventDefault(); setAddWalletBusy(true); setAddWalletError(null)
+    try {
+      await api('/api/wallets', { method: 'POST', body: JSON.stringify(newWallet) })
+      setNewWallet(emptyNewWallet); setAddWalletOpen(false); await refresh()
+    } catch (e) {
+      setAddWalletError(e instanceof ApiError && e.code === 'wallet_already_exists'
+        ? t('هذه المحفظة موجودة بالفعل.', 'This wallet already exists.')
+        : t('فشل إضافة المحفظة.', 'Failed to add wallet.'))
+    } finally { setAddWalletBusy(false) }
+  }
+
+  const createRotationGroup = async (event: React.FormEvent) => {
+    event.preventDefault(); setRotationBusy(true); setRotationError(null)
+    try {
+      await api('/api/wallets/rotation-groups', {
+        method: 'POST',
+        body: JSON.stringify({
+          wallet_numbers: selectedWallets,
+          mode: rotationMode,
+          interval_minutes: rotationMode === 'time' ? Number(rotationInterval) : undefined,
+          amount_threshold: rotationMode === 'amount' ? Number(rotationThreshold) : undefined,
+        }),
+      })
+      setSelectedWallets([]); setRotationModalOpen(false); await loadRotationGroups()
+    } catch (e) {
+      setRotationError(e instanceof ApiError && e.code === 'at_least_two_wallets_required'
+        ? t('اختر محفظتين على الأقل.', 'Select at least two wallets.')
+        : t('تعذّر إنشاء قاعدة الدوران.', 'Unable to create the rotation rule.'))
+    } finally { setRotationBusy(false) }
+  }
+
+  const toggleRotationGroupActive = async (group: RotationGroup) => {
+    try { await api(`/api/wallets/rotation-groups/${group.id}`, { method: 'PATCH', body: JSON.stringify({ active: !group.active }) }); await loadRotationGroups() }
+    catch { setRotationError(t('تعذّر تحديث قاعدة الدوران.', 'Unable to update the rotation rule.')) }
+  }
+  const deleteRotationGroup = async (group: RotationGroup) => {
+    if (!window.confirm(t('حذف قاعدة الدوران دي؟', 'Delete this rotation rule?'))) return
+    try { await api(`/api/wallets/rotation-groups/${group.id}`, { method: 'DELETE' }); await loadRotationGroups() }
+    catch { setRotationError(t('تعذّر حذف قاعدة الدوران.', 'Unable to delete the rotation rule.')) }
+  }
+
   return (
     <PanelShell>
       <section className="maven-wallets-head">
@@ -150,16 +237,90 @@ export default function MavenWallets() {
         <div className="maven-pagination"><span>{liveRows.length ? `${(livePage - 1) * livePageSize + 1}-${Math.min(livePage * livePageSize, liveRows.length)} / ${liveRows.length}` : '0 / 0'}</span><button className="btn-ghost btn-sm" type="button" disabled={livePage <= 1} onClick={() => setLivePage((page) => page - 1)}>{t('السابق', 'Previous')}</button><strong>{livePage} / {livePageCount}</strong><button className="btn-ghost btn-sm" type="button" disabled={livePage >= livePageCount} onClick={() => setLivePage((page) => page + 1)}>{t('التالي', 'Next')}</button></div>
       </section>
       <section className="card maven-wallet-table-card">
-        <div className="recent-head"><div><h3>{t('أرقام الاستقبال — محافظ Maven', 'Maven receiving wallets')}</h3><p className="cell-sub">{rows.length.toLocaleString()} {t('محفظة مطابقة للفلاتر', 'wallets match the filters')} · {t('مزامنة تلقائية كل 60 ثانية', 'Auto-sync every 60 seconds')}</p></div><button className="btn-ghost btn-sm" type="button" onClick={() => window.print()}><Download size={15} /> {t('تصدير / طباعة', 'Export / print')}</button></div>
-        <div className="table-wrap maven-table-wrap"><table className="data-table maven-table"><thead><tr><th>#</th><th>{t('رقم المحفظة / الحساب', 'Wallet / account')}</th><th>{t('المزوّد', 'Provider')}</th><th>{t('الجهاز و SIM', 'Device & SIM')}</th><th>{t('الرصيد الحالي', 'Current balance')}</th><th>{t('الحالة', 'Status')}</th><th>{t('الحد اليومي', 'Daily limit')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('آخر تحديث', 'Last update')}</th></tr></thead><tbody>
+        <div className="recent-head"><div><h3>{t('أرقام الاستقبال — محافظ Maven', 'Maven receiving wallets')}</h3><p className="cell-sub">{rows.length.toLocaleString()} {t('محفظة مطابقة للفلاتر', 'wallets match the filters')} · {t('مزامنة تلقائية كل 60 ثانية', 'Auto-sync every 60 seconds')}</p></div><div className="maven-wallet-table-actions">
+          {selectedWallets.length > 0 && <span className="cell-sub">{selectedWallets.length} {t('محددة', 'selected')}</span>}
+          {canManageRotation && <button className="btn-ghost btn-sm" type="button" disabled={selectedWallets.length < 2} onClick={() => setRotationModalOpen(true)}><RotateCw size={14} /> {t('إنشاء ترتيب دوران للمحدد', 'Create rotation rule for selected')}</button>}
+          {canCreateWallet && <button className="btn-ghost btn-sm" type="button" onClick={() => setAddWalletOpen(true)}><Plus size={14} /> {t('إضافة محفظة جديدة', 'Add new wallet')}</button>}
+          <button className="btn-ghost btn-sm" type="button" onClick={() => window.print()}><Download size={15} /> {t('تصدير / طباعة', 'Export / print')}</button>
+        </div></div>
+        <div className="table-wrap maven-table-wrap"><table className="data-table maven-table"><thead><tr>{canManageRotation && <th><input type="checkbox" checked={allVisibleWalletsSelected} onChange={toggleAllWallets} aria-label={t('تحديد كل المحافظ الظاهرة', 'Select all visible wallets')} /></th>}<th>#</th><th>{t('رقم المحفظة / الحساب', 'Wallet / account')}</th><th>{t('المزوّد', 'Provider')}</th><th>{t('الجهاز و SIM', 'Device & SIM')}</th><th>{t('الرصيد الحالي', 'Current balance')}</th><th>{t('الحالة', 'Status')}</th><th>{t('الحد اليومي', 'Daily limit')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('آخر تحديث', 'Last update')}</th></tr></thead><tbody>
           {rows.map((wallet, index) => {
             const device = wallet.device ? deviceMap.get(`${wallet.device}#${wallet.sim_slot ?? 0}`) ?? deviceMap.get(`${wallet.device}#0`) : undefined
             const online = device?.online === true
-            return <tr key={`${wallet.to_account_number}-${wallet.sim_slot ?? 0}`}><td><span className="maven-row-number">{index + 1}</span></td><td><strong className="mono">{wallet.to_account_number}</strong><div className="cell-sub">{wallet.payment_type ?? t('استقبال', 'Receiving')}</div></td><td><span className="maven-provider">{wallet.provider ?? '—'}</span></td><td>{device ? <><strong className="mono">{device.device}</strong><div className="cell-sub">SIM {device.sim_slot ?? 0}{device.sim_number ? ` · ${device.sim_number}` : ''}</div></> : <span className="cell-sub"><Smartphone size={14} /> {t('غير مربوط', 'Unassigned')}</span>}</td><td><strong className="maven-balance">{device?.balance != null ? money(device.balance, 'EGP') : '—'}</strong>{device?.balance_at && <div className="cell-sub">{depositTime({ first_seen_at: device.balance_at })}</div>}</td><td><span className={`maven-status ${online ? 'online' : device ? 'offline' : 'unknown'}`}>{online ? <CheckCircle2 size={14} /> : device ? <WifiOff size={14} /> : <ShieldAlert size={14} />}{online ? t('متصل', 'Online') : device ? t('غير متصل', 'Offline') : t('غير معروف', 'Unknown')}</span>{device?.battery != null && <div className="cell-sub">🔋 {device.battery}%</div>}</td><td className="mono">{money(wallet.daily_limit ?? 60_000, 'EGP')}</td><td>{wallet.merchant ?? <span className="cell-sub">{t('عام', 'General')}</span>}</td><td className="cell-sub mono">{depositTime({ first_seen_at: device?.last_seen_at ?? wallet.updated_at })}</td></tr>
+            return <tr key={`${wallet.to_account_number}-${wallet.sim_slot ?? 0}`}>{canManageRotation && <td><input type="checkbox" checked={selectedWallets.includes(wallet.to_account_number)} onChange={() => toggleWallet(wallet.to_account_number)} aria-label={`${t('تحديد', 'Select')} ${wallet.to_account_number}`} /></td>}<td><span className="maven-row-number">{index + 1}</span></td><td><strong className="mono">{wallet.to_account_number}</strong><div className="cell-sub">{wallet.payment_type ?? t('استقبال', 'Receiving')}</div></td><td><span className="maven-provider">{wallet.provider ?? '—'}</span></td><td>{device ? <><strong className="mono">{device.device}</strong><div className="cell-sub">SIM {device.sim_slot ?? 0}{device.sim_number ? ` · ${device.sim_number}` : ''}</div></> : <span className="cell-sub"><Smartphone size={14} /> {t('غير مربوط', 'Unassigned')}</span>}</td><td><strong className="maven-balance">{device?.balance != null ? money(device.balance, 'EGP') : '—'}</strong>{device?.balance_at && <div className="cell-sub">{depositTime({ first_seen_at: device.balance_at })}</div>}</td><td><span className={`maven-status ${online ? 'online' : device ? 'offline' : 'unknown'}`}>{online ? <CheckCircle2 size={14} /> : device ? <WifiOff size={14} /> : <ShieldAlert size={14} />}{online ? t('متصل', 'Online') : device ? t('غير متصل', 'Offline') : t('غير معروف', 'Unknown')}</span>{device?.battery != null && <div className="cell-sub">🔋 {device.battery}%</div>}</td><td className="mono">{money(wallet.daily_limit ?? 60_000, 'EGP')}</td><td>{wallet.merchant ?? <span className="cell-sub">{t('عام', 'General')}</span>}</td><td className="cell-sub mono">{depositTime({ first_seen_at: device?.last_seen_at ?? wallet.updated_at })}</td></tr>
           })}
-          {rows.length === 0 && <tr><td colSpan={9} className="maven-empty">{t('لا توجد محافظ مطابقة للفلاتر.', 'No wallets match the current filters.')}</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={canManageRotation ? 10 : 9} className="maven-empty">{t('لا توجد محافظ مطابقة للفلاتر.', 'No wallets match the current filters.')}</td></tr>}
         </tbody></table></div>
       </section>
+
+      {canManageRotation && (
+        <section className="card maven-rotation-card">
+          <div className="recent-head">
+            <div><h3><RotateCw size={17} /> {t('قواعد دوران الأولوية', 'Priority rotation rules')}</h3><p className="cell-sub">{t('محاكاة داخلية فقط — لا تغيّر الرقم الذي يستقبل فلوس العملاء فعلياً؛ Maven هو من يحدد ذلك ولم يوفّر endpoint لتغييره بعد.', 'Internal simulation only — it never changes the number that actually receives customer funds; Maven controls that and has not exposed an endpoint to change it yet.')}</p></div>
+          </div>
+          {rotationError && <div className="card warn">{rotationError}</div>}
+          {rotationGroups.length === 0 && <p className="sidebar-hint">{t('لا توجد قواعد دوران. حدد محفظتين أو أكتر من الجدول فوق وأنشئ قاعدة.', 'No rotation rules yet. Select two or more wallets in the table above to create one.')}</p>}
+          {rotationGroups.length > 0 && (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead><tr><th>{t('المحافظ', 'Wallets')}</th><th>{t('النمط', 'Mode')}</th><th>{t('آخر دوران', 'Last rotated')}</th><th>{t('الحالة', 'Status')}</th><th /></tr></thead>
+                <tbody>
+                  {rotationGroups.map((group) => (
+                    <tr key={group.id}>
+                      <td className="mono">{group.wallet_numbers.join('، ')}</td>
+                      <td>{group.mode === 'time' ? `${t('كل', 'every')} ${group.interval_minutes} ${t('دقيقة', 'min')}` : `${t('بعد استقبال', 'after receiving')} ${money(group.amount_threshold, 'EGP')} (${money(group.amount_received_since_rotation, 'EGP')})`}</td>
+                      <td className="cell-sub mono">{group.last_rotated_at ? depositTime({ first_seen_at: group.last_rotated_at }) : t('لم يحدث بعد', 'Not yet')}</td>
+                      <td><span className={`pay-status-badge ${group.active ? 'st-paid' : 'st-dim'}`}>{group.active ? t('نشط', 'Active') : t('موقوف', 'Paused')}</span></td>
+                      <td className="row-actions">
+                        <button className="btn-ghost btn-sm" type="button" onClick={() => void toggleRotationGroupActive(group)}>{group.active ? t('إيقاف', 'Pause') : t('تفعيل', 'Resume')}</button>
+                        <button className="btn-ghost danger btn-sm" type="button" onClick={() => void deleteRotationGroup(group)}><Trash2 size={14} /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {addWalletOpen && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !addWalletBusy) setAddWalletOpen(false) }}>
+          <section className="card" style={{ maxWidth: 440 }} role="dialog" aria-modal="true" aria-labelledby="add-wallet-title">
+            <div className="recent-head"><h3 id="add-wallet-title">{t('إضافة محفظة جديدة', 'Add new wallet')}</h3><button type="button" className="icon-action" disabled={addWalletBusy} onClick={() => setAddWalletOpen(false)} aria-label={t('إغلاق', 'Close')}><X size={17} /></button></div>
+            <form className="control-row" onSubmit={addWallet}>
+              <input className="login-input" required inputMode="tel" placeholder={t('رقم المحفظة', 'Wallet phone number')} value={newWallet.wallet_number} onChange={(e) => setNewWallet({ ...newWallet, wallet_number: e.target.value })} />
+              <select className="login-input" value={newWallet.provider} onChange={(e) => setNewWallet({ ...newWallet, provider: e.target.value })}>{providers.map((p) => <option key={p}>{p}</option>)}</select>
+              <input className="login-input" placeholder={t('التاجر (اختياري)', 'Merchant (optional)')} value={newWallet.merchant} onChange={(e) => setNewWallet({ ...newWallet, merchant: e.target.value })} />
+              <input className="login-input" type="number" min="1" placeholder={t('الحد اليومي', 'Daily limit')} value={newWallet.daily_limit} onChange={(e) => setNewWallet({ ...newWallet, daily_limit: e.target.value })} />
+              {addWalletError && <div className="card warn">{addWalletError}</div>}
+              <button className="btn-primary btn-sm" disabled={addWalletBusy}>{addWalletBusy ? t('جارٍ الحفظ…', 'Saving…') : t('إضافة', 'Add')}</button>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {rotationModalOpen && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !rotationBusy) setRotationModalOpen(false) }}>
+          <section className="card" style={{ maxWidth: 460 }} role="dialog" aria-modal="true" aria-labelledby="rotation-title">
+            <div className="recent-head"><h3 id="rotation-title"><RotateCw size={17} /> {t('ترتيب دوران تلقائي', 'Automatic rotation rule')}</h3><button type="button" className="icon-action" disabled={rotationBusy} onClick={() => setRotationModalOpen(false)} aria-label={t('إغلاق', 'Close')}><X size={17} /></button></div>
+            <p className="cell-sub">{t('المحافظ المحددة:', 'Selected wallets:')} <span className="mono">{selectedWallets.join('، ')}</span></p>
+            <form className="control-row" onSubmit={createRotationGroup}>
+              <label className="filter-field">{t('النمط', 'Mode')}
+                <select className="login-input" value={rotationMode} onChange={(e) => setRotationMode(e.target.value as 'time' | 'amount')}>
+                  <option value="time">{t('كل فترة زمنية', 'Every time interval')}</option>
+                  <option value="amount">{t('بعد استقبال مبلغ', 'After receiving an amount')}</option>
+                </select>
+              </label>
+              {rotationMode === 'time'
+                ? <label className="filter-field">{t('الفترة (دقائق)', 'Interval (minutes)')}<input className="login-input" type="number" min="5" value={rotationInterval} onChange={(e) => setRotationInterval(e.target.value)} /></label>
+                : <label className="filter-field">{t('المبلغ (EGP)', 'Amount (EGP)')}<input className="login-input" type="number" min="1" value={rotationThreshold} onChange={(e) => setRotationThreshold(e.target.value)} /></label>}
+              {rotationError && <div className="card warn">{rotationError}</div>}
+              <button className="btn-primary btn-sm" disabled={rotationBusy}>{rotationBusy ? t('جارٍ الإنشاء…', 'Creating…') : t('إنشاء القاعدة', 'Create rule')}</button>
+            </form>
+          </section>
+        </div>
+      )}
     </PanelShell>
   )
 }

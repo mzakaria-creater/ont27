@@ -627,6 +627,69 @@ deltaSyncRoutes.get('/auto-decline', async (c) => {
   return c.json({ ok: true, results: data ?? [] , at: new Date().toISOString() })
 })
 
+// Wallet rotation groups are a display-only priority simulator: enrich_priority
+// only feeds /api/wallets/allocation/simulate (see wallets.ts) — Maven, not
+// this panel, decides which number actually receives customer funds, and has
+// not exposed an API to change that. Every 5 minutes this walks active groups
+// and, once a group's time interval or received-amount threshold is met,
+// advances enrich_priority to the next wallet in the rotation order.
+const ROTATION_RECEIVED_STATUSES = ['PAID', 'APPROVED', 'SUCCESS', 'COMPLETED']
+
+deltaSyncRoutes.get('/wallet-rotation', async (c) => {
+  const secret = process.env.CRON_SECRET
+  if (!secret || c.req.header('authorization') !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401)
+  if (!(await claimDistributedLease(50, 'wallet_rotation_groups'))) return c.json({ ok: true, skipped: 'distributed_lease' })
+
+  const { data: groups, error: groupsError } = await db
+    .from('wallet_rotation_groups')
+    .select('id, wallet_numbers, mode, interval_minutes, amount_threshold, current_index, last_rotated_at')
+    .eq('active', true)
+  if (groupsError) return c.json({ ok: false, error: groupsError.message }, 502)
+  if (!groups?.length) return c.json({ ok: true, rotated: [], at: new Date().toISOString() })
+
+  const now = Date.now()
+  const rotated: string[] = []
+  for (const group of groups) {
+    const wallets: string[] = Array.isArray(group.wallet_numbers) ? group.wallet_numbers : []
+    if (wallets.length < 2) continue
+
+    let due = false
+    let receivedSince = 0
+    if (group.mode === 'time') {
+      const last = group.last_rotated_at ? new Date(group.last_rotated_at).getTime() : 0
+      due = !group.last_rotated_at || now - last >= (group.interval_minutes ?? 0) * 60_000
+    } else {
+      const since = group.last_rotated_at ?? new Date(0).toISOString()
+      const { data: rows } = await db
+        .from('maven_transactions')
+        .select('amount')
+        .in('receiving_wallet', wallets)
+        .in('status', ROTATION_RECEIVED_STATUSES)
+        .gte('first_seen_at', since)
+      receivedSince = (rows ?? []).reduce((total, row) => total + (Number(row.amount) || 0), 0)
+      due = receivedSince >= (Number(group.amount_threshold) || Infinity)
+      await db.from('wallet_rotation_groups').update({ amount_received_since_rotation: receivedSince }).eq('id', group.id)
+    }
+    if (!due) continue
+
+    const nextIndex = (group.current_index + 1) % wallets.length
+    await Promise.all(wallets.map((wallet, position) =>
+      db.from('wallet_device_map').update({
+        enrich_priority: ((position - nextIndex + wallets.length) % wallets.length) + 1,
+        updated_at: new Date().toISOString(),
+      }).eq('to_account_number', wallet),
+    ))
+    await db.from('wallet_rotation_groups').update({
+      current_index: nextIndex,
+      last_rotated_at: new Date().toISOString(),
+      amount_received_since_rotation: 0,
+      updated_at: new Date().toISOString(),
+    }).eq('id', group.id)
+    rotated.push(group.id)
+  }
+  return c.json({ ok: true, rotated, at: new Date().toISOString() })
+})
+
 // Piggyback trigger from the authed panel. Throttled per warm lambda; the
 // overlap-window upsert keeps concurrent runs idempotent.
 //
