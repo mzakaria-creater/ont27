@@ -97,9 +97,9 @@ extraRoutes.get(
 )
 
 const DEPOSIT_COLS =
-  'tx_id, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, receiving_wallet, to_account_number, payment_method, gateway, merchant, master_merchant, approved_by, proof_image_url, first_seen_at, created_utc, maven_raw_row, provider_amount, local_amount, amount_sync_status, amount_mismatch_reason, amount_confirmed_at, amount_confirmed_by, settlement_blocked'
+  'tx_id, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, receiving_wallet, to_account_number, to_account_name, payment_method, gateway, merchant, master_merchant, approved_by, proof_image_url, first_seen_at, created_utc, modified_utc, maven_raw_row, provider_amount, local_amount, amount_sync_status, amount_mismatch_reason, amount_confirmed_at, amount_confirmed_by, settlement_blocked'
 const PAYOUT_COLS =
-  'maven_id, ontarget_ref, status, amount, pay_by, merchant, account_name, mobile_no, agent_name, approved_by, image_url, first_seen_at, created_utc'
+  'maven_id, ontarget_ref, status, amount, pay_by, merchant, account_name, mobile_no, agent_name, approved_by, image_url, first_seen_at, created_utc, updated_utc'
 
 const WALLET_DAILY_LIMIT = 60_000
 const WALLET_MONTHLY_LIMIT = 200_000
@@ -404,7 +404,7 @@ extraRoutes.get(
 // Note: sender_number is the same value the provider sends as raw->>'PhoneNo'
 // (verified: 0 of 801 recent NGPay rows differ), so there is only ONE customer
 // phone here — it is deliberately not rendered twice under two labels.
-const APPROVAL_DEPOSIT_COLS = `${DEPOSIT_COLS}, to_account_name, to_bank`
+const APPROVAL_DEPOSIT_COLS = `${DEPOSIT_COLS}, to_bank`
 
 extraRoutes.get(
   '/approvals',

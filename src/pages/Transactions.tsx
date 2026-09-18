@@ -53,6 +53,7 @@ interface TxRow {
   sender_account_name?: string | null
   user_email?: string | null
   account_name?: string | null
+  to_account_name?: string | null
   mobile_no?: string | null
   payment_method?: string | null
   pay_by?: string | null
@@ -66,6 +67,8 @@ interface TxRow {
   approved_by: string | null
   first_seen_at: string | null
   created_utc: string | null
+  modified_utc?: string | null
+  updated_utc?: string | null
   client_transaction_count?: number
   deposit_kind?: 'first_deposit' | 'retention_deposit' | null
   previous_approved_deposits?: number
@@ -121,6 +124,8 @@ export default function Transactions() {
     { id: 'sender_account_name', label: t('اسم حساب المرسل', 'Sender Account Name') },
     { id: 'sender_account_number', label: t('رقم حساب المرسل', 'Sender Account Number') },
     { id: 'time', label: t('تاريخ الإنشاء UTC', 'Created UTC Date') },
+    { id: 'modified_time', label: t('تاريخ التعديل UTC', 'Modified UTC Date') },
+    { id: 'to_account_name', label: t('اسم حساب المستلم', 'To Account Name') },
     { id: 'merchant', label: t('التاجر', 'Merchant') },
     { id: 'gateway', label: t('البوابة', 'Gateway') },
     { id: 'duplicates', label: t('التكرار', 'Duplicates') },
@@ -347,6 +352,8 @@ export default function Transactions() {
                       case 'sender_account_name': return <td key={colId}>{senderAccountName ?? '—'}</td>
                       case 'sender_account_number': return <td key={colId} className="mono"><Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(r.sender_account_number ?? clientPhone ?? '')}`}>{r.sender_account_number ?? clientPhone ?? '—'}</Link></td>
                       case 'time': return <td key={colId} className="mono">{depositTime(r)}</td>
+                      case 'modified_time': return <td key={colId} className="mono">{depositTime({ created_utc: r.kind === 'deposit' ? r.modified_utc : r.updated_utc })}</td>
+                      case 'to_account_name': return <td key={colId}>{(r.kind === 'deposit' ? r.to_account_name : null) ?? '—'}</td>
                       case 'merchant': return <td key={colId}><MerchantLogo merchant={r.merchant ?? r.master_merchant}/></td>
                       case 'gateway': return <td key={colId} className="mono">{r.gateway ?? '—'}</td>
                       case 'duplicates': return <td key={colId}>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First transaction')}</td>
