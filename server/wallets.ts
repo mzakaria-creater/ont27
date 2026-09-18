@@ -73,6 +73,34 @@ walletRoutes.post('/live/replacement/commit', requirePerm('wallets', 'can_edit')
   return c.json({ ok: true, bank_id: bankId, changed_from: result.body.changed_from, changed_to: result.body.changed_to })
 })
 
+// Maven's admin back office has no pure "add a brand new wallet" action —
+// add_new requires an existing bank_id as a template: it copies that
+// wallet's bank/payment-type info onto a new entry, then disables the
+// reference wallet. Net effect: retire one slot, replace it with a fresh
+// number, full history kept on Maven's side. The live wallet count (106)
+// does not grow — this is a replacement, not an addition.
+walletRoutes.post('/live/add-new/commit', requirePerm('wallets', 'can_create'), async (c) => {
+  const body = await c.req.json<{ bank_id?: unknown; new_wallet_number?: unknown; new_name?: unknown }>().catch(() => null)
+  const bankId = String(body?.bank_id ?? '').trim()
+  const newNumber = String(body?.new_wallet_number ?? '').replace(/\D/g, '')
+  const newName = typeof body?.new_name === 'string' ? body.new_name.trim().slice(0, 160) || undefined : undefined
+  if (!bankId || !/^\d{8,20}$/.test(newNumber)) return c.json({ error: 'invalid_add_new_request' }, 400)
+  const actor = c.get('actor')
+  const result = await callMavenWalletSwitch({ bank_id: bankId, mode: 'add_new', new_number: newNumber, new_name: newName, confirm: true })
+  const applied = result.ok && result.body.ok === true
+  await db.from('audit_log').insert({
+    actor_type: 'panel_user', actor_id: actor.sub, actor_name: actor.username,
+    action: applied ? 'live_wallet_added_replacing_old' : 'live_wallet_add_new_failed',
+    entity: 'maven_live_wallet', entity_id: bankId,
+    after: { reference_bank_id: bankId, requested_new_wallet_number: newNumber, new_name: newName ?? null, maven_response: result.body },
+  })
+  if (!applied) return c.json({ error: 'maven_add_new_failed', detail: result.body }, 502)
+  return c.json({
+    ok: true, added_number: result.body.added_number, disabled_old_id: result.body.disabled_old_id,
+    old_number: result.body.old_number, new_number_visible: result.body.new_number_visible,
+  })
+})
+
 walletRoutes.get('/', requirePerm('wallets', 'can_view'), async (c) => {
   // Authoritative live wallet list straight from Maven (checked every few
   // minutes by the old system) — wallet_device_map is only the device
