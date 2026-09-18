@@ -7,7 +7,7 @@ import { depositTime, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
-import { LayoutGrid, TableProperties } from 'lucide-react'
+import { LayoutGrid, TableProperties, X } from 'lucide-react'
 import MethodLogo from '../components/MethodLogo'
 import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectFilter'
 
@@ -220,6 +220,12 @@ export default function SmsLive() {
   const [candLoading, setCandLoading] = useState(false)
   const [linkBusy, setLinkBusy] = useState(false)
   const [linkErr, setLinkErr] = useState<string | null>(null)
+  const [quickLinkRow, setQuickLinkRow] = useState<SmsRow | null>(null)
+  const [quickLinkQuery, setQuickLinkQuery] = useState('')
+  const [quickLinkCandidates, setQuickLinkCandidates] = useState<CandidateTx[] | null>(null)
+  const [quickLinkLoading, setQuickLinkLoading] = useState(false)
+  const [quickLinkBusy, setQuickLinkBusy] = useState(false)
+  const [quickLinkError, setQuickLinkError] = useState<string | null>(null)
   const [metaName, setMetaName] = useState('')
   const [metaNotes, setMetaNotes] = useState('')
   const [metaCategory, setMetaCategory] = useState('')
@@ -321,6 +327,39 @@ export default function SmsLive() {
     } finally {
       setCandLoading(false)
     }
+  }
+
+  // Quick-link from a card: pick a transaction without opening the full
+  // detail drawer. Deposit SMS only — withdrawal assignment needs the
+  // drawer's extra fields (assignment type, wallet, name).
+  const loadQuickLinkCandidates = async (id: number, search?: string) => {
+    setQuickLinkLoading(true)
+    try {
+      const qs = search ? `?q=${encodeURIComponent(search)}` : ''
+      const res = await api<{ candidates: CandidateTx[] }>(`/api/sms/${id}/candidates${qs}`)
+      setQuickLinkCandidates(res.candidates)
+    } catch {
+      setQuickLinkCandidates([])
+    } finally {
+      setQuickLinkLoading(false)
+    }
+  }
+  const openQuickLink = (row: SmsRow) => {
+    setQuickLinkRow(row); setQuickLinkQuery(''); setQuickLinkCandidates(null); setQuickLinkError(null)
+    void loadQuickLinkCandidates(row.id)
+  }
+  const submitQuickLink = async (txId: number) => {
+    if (!quickLinkRow) return
+    setQuickLinkBusy(true); setQuickLinkError(null)
+    try {
+      await api(`/api/sms/${quickLinkRow.id}/link`, { method: 'POST', body: JSON.stringify({ tx_id: txId }) })
+      setQuickLinkRow(null)
+      void load(true)
+    } catch (e) {
+      setQuickLinkError(e instanceof ApiError && e.code === 'amount_mismatch'
+        ? t('المبلغ غير مطابق — افتح التفاصيل الكاملة للتأكيد.', 'Amount mismatch — open full details to confirm.')
+        : t('فشل الربط.', 'Link failed.'))
+    } finally { setQuickLinkBusy(false) }
   }
 
   const openDetail = async (id: number) => {
@@ -749,12 +788,64 @@ export default function SmsLive() {
                   <div className="cell-sub sms-card-preview">{firstLine(r)}</div>
                 </button>
                 {!linked && !r.is_blocked && (
-                  <button type="button" className={`sms-card-assign-action ${r.sms_category === 'withdrawal' ? 'is-payout' : ''}`} onClick={(event) => { event.stopPropagation(); void openDetail(r.id) }}>
-                    {r.sms_category === 'withdrawal' ? t('تعيين السحب', 'Assign withdrawal') : t('تعيين لمعاملة', 'Assign to transaction')} <span aria-hidden="true">→</span>
-                  </button>
+                  <div className="sms-card-actions-row">
+                    <button type="button" className={`sms-card-assign-action ${r.sms_category === 'withdrawal' ? 'is-payout' : ''}`} onClick={(event) => { event.stopPropagation(); void openDetail(r.id) }}>
+                      {r.sms_category === 'withdrawal' ? t('تعيين السحب', 'Assign withdrawal') : t('تعيين لمعاملة', 'Assign to transaction')} <span aria-hidden="true">→</span>
+                    </button>
+                    {r.sms_category !== 'withdrawal' && (
+                      <button type="button" className="sms-card-quick-link" onClick={(event) => { event.stopPropagation(); openQuickLink(r) }}>
+                        🔗 {t('ربط', 'Link')}
+                      </button>
+                    )}
+                  </div>
                 )}
               </article>
             })}
+          </div>
+        )}
+        {quickLinkRow && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !quickLinkBusy) setQuickLinkRow(null) }}>
+            <section className="card" style={{ maxWidth: 480 }} role="dialog" aria-modal="true" aria-labelledby="quick-link-title">
+              <div className="recent-head">
+                <h3 id="quick-link-title">🔗 {t('ربط SMS #', 'Link SMS #')}{quickLinkRow.id} {t('بمعاملة', 'to a transaction')}</h3>
+                <button type="button" className="icon-action" disabled={quickLinkBusy} onClick={() => setQuickLinkRow(null)} aria-label={t('إغلاق', 'Close')}><X size={17} /></button>
+              </div>
+              <p className="cell-sub">{money(quickLinkRow.amount, 'EGP')} · {quickLinkRow.sender_name ?? quickLinkRow.sender_number ?? t('مرسل غير معروف', 'Unknown sender')}</p>
+              <form className="search-row" onSubmit={(e) => { e.preventDefault(); void loadQuickLinkCandidates(quickLinkRow.id, quickLinkQuery.trim() || undefined) }}>
+                <input
+                  className="login-input search-input"
+                  placeholder={t('بحث بالمرجع أو tx_id… (فارغ = نفس المبلغ)', 'Search by ref or tx_id… (empty = same amount)')}
+                  value={quickLinkQuery}
+                  onChange={(e) => setQuickLinkQuery(e.target.value)}
+                />
+                <button type="submit" className="btn-ghost btn-sm" disabled={quickLinkLoading}>{t('بحث', 'Search')}</button>
+              </form>
+              {quickLinkError && <div className="card warn">{quickLinkError}</div>}
+              {quickLinkLoading && <p className="sidebar-hint">{t('جارٍ البحث…', 'Searching…')}</p>}
+              {quickLinkCandidates && quickLinkCandidates.length === 0 && !quickLinkLoading && (
+                <p className="sidebar-hint">{t('لا توجد معاملات مرشّحة — جرّب البحث بالمرجع.', 'No candidate transactions — try searching by ref.')}</p>
+              )}
+              {quickLinkCandidates && quickLinkCandidates.length > 0 && (
+                <ul className="cand-list">
+                  {quickLinkCandidates.map((cand) => (
+                    <li key={cand.tx_id} className="cand-item">
+                      <div className="cand-info">
+                        <span className="mono">{cand.ontarget_ref ?? cand.tx_id}</span>
+                        <span className={`pay-status-badge ${statusMeta(cand.status).cls}`}>{statusMeta(cand.status).label}</span>
+                        <div className="cell-sub">
+                          <span className="mono">{money(cand.amount, cand.currency)}</span>
+                          {' · '}{cand.sender_name ?? cand.sender_number ?? '—'}
+                          {' · '}{cand.merchant ?? '—'}
+                        </div>
+                      </div>
+                      <button className="btn-primary btn-sm" disabled={quickLinkBusy} onClick={() => void submitQuickLink(cand.tx_id)}>
+                        {t('ربط', 'Link')}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           </div>
         )}
         {data && totalPages > 1 && (
