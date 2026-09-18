@@ -23,20 +23,54 @@ walletRoutes.get('/live', requirePerm('wallets', 'can_view'), async (c) => {
 // customer funds (see the disclaimer on this table's "Change" action). This
 // only records the operator's intent in the audit log so there is a paper
 // trail to act on manually — it never touches routing.
-walletRoutes.post('/live/replacement-request', requirePerm('wallets', 'can_edit'), async (c) => {
-  const body = await c.req.json<{ bank_ids?: unknown; new_wallet_number?: unknown }>().catch(() => null)
-  const bankIds = Array.isArray(body?.bank_ids)
-    ? [...new Set(body.bank_ids.map((value) => String(value ?? '').trim()).filter(Boolean))]
-    : []
+// Real (not simulated) change of a live Maven receiving number. It works by
+// driving the same admin back office a human operator uses
+// (https://bo.maven-consulting.co/Supplier — login + P2PBanks form submit),
+// automated by the maven-wallet-switch edge function on the old project.
+// There is no documented REST API for this; it is HTML-form automation, so
+// it can break silently if Maven changes that site, and a wrong bank_id or
+// number changes real live routing immediately. Always preview before commit.
+const MAVEN_WALLET_SWITCH_URL = 'https://yvwppyoaksyhycimvgtw.supabase.co/functions/v1/maven-wallet-switch'
+async function callMavenWalletSwitch(body: Record<string, unknown>): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
+  try {
+    const res = await fetch(MAVEN_WALLET_SWITCH_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20_000),
+    })
+    const json = await res.json().catch(() => ({})) as Record<string, unknown>
+    return { ok: res.ok, status: res.status, body: json }
+  } catch (e) {
+    return { ok: false, status: 0, body: { error: (e as Error).message } }
+  }
+}
+
+walletRoutes.post('/live/replacement/preview', requirePerm('wallets', 'can_edit'), async (c) => {
+  const body = await c.req.json<{ bank_id?: unknown }>().catch(() => null)
+  const bankId = String(body?.bank_id ?? '').trim()
+  if (!bankId) return c.json({ error: 'bank_id_required' }, 400)
+  const result = await callMavenWalletSwitch({ bank_id: bankId, mode: 'read' })
+  if (!result.ok || result.body.ok !== true) return c.json({ error: 'maven_read_failed', detail: result.body }, 502)
+  return c.json({ ok: true, bank_id: bankId, current: result.body.current })
+})
+
+walletRoutes.post('/live/replacement/commit', requirePerm('wallets', 'can_edit'), async (c) => {
+  const body = await c.req.json<{ bank_id?: unknown; new_wallet_number?: unknown }>().catch(() => null)
+  const bankId = String(body?.bank_id ?? '').trim()
   const newNumber = String(body?.new_wallet_number ?? '').replace(/\D/g, '')
-  if (!bankIds.length || !/^\d{8,20}$/.test(newNumber)) return c.json({ error: 'invalid_replacement_request' }, 400)
+  if (!bankId || !/^\d{8,20}$/.test(newNumber)) return c.json({ error: 'invalid_replacement_request' }, 400)
   const actor = c.get('actor')
+  const result = await callMavenWalletSwitch({ bank_id: bankId, mode: 'edit', new_number: newNumber, confirm: true })
+  const applied = result.ok && result.body.ok === true
   await db.from('audit_log').insert({
     actor_type: 'panel_user', actor_id: actor.sub, actor_name: actor.username,
-    action: 'live_wallet_replacement_requested', entity: 'maven_live_wallet', entity_id: bankIds.join(','),
-    after: { bank_ids: bankIds, requested_new_wallet_number: newNumber, note: 'Maven has not exposed a number-change API — recorded request only, no routing change made.' },
+    action: applied ? 'live_wallet_replaced' : 'live_wallet_replace_failed',
+    entity: 'maven_live_wallet', entity_id: bankId,
+    after: { bank_id: bankId, requested_new_wallet_number: newNumber, maven_response: result.body },
   })
-  return c.json({ ok: true, bank_ids: bankIds, new_wallet_number: newNumber })
+  if (!applied) return c.json({ error: 'maven_change_failed', detail: result.body }, 502)
+  return c.json({ ok: true, bank_id: bankId, changed_from: result.body.changed_from, changed_to: result.body.changed_to })
 })
 
 walletRoutes.get('/', requirePerm('wallets', 'can_view'), async (c) => {
