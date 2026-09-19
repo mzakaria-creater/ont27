@@ -270,8 +270,11 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
     const load = async () => {
       try {
         const sync = syncProviders()
+        // Only financial SMS belong in the live rail — non-financial "unknown"
+        // category messages (promos, OTP guides, hidden-content notifications)
+        // are noise here even though they're still visible on the full /sms page.
         const [list, dev] = await Promise.all([
-          api<{ rows: RailSms[] }>(`/api/sms?from=${cairoWeekStart()}&to=${cairoToday()}&limit=5000`),
+          api<{ rows: RailSms[] }>(`/api/sms?from=${cairoWeekStart()}&to=${cairoToday()}&category=deposit,withdrawal&limit=5000`),
           api<{ devices: RailDevice[] }>('/api/sms/devices'),
         ])
         if (!alive) return
@@ -279,7 +282,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
         setDevices(dev.devices)
         if (await sync) {
           const [freshList, freshDev] = await Promise.all([
-            api<{ rows: RailSms[] }>(`/api/sms?from=${cairoWeekStart()}&to=${cairoToday()}&limit=5000`),
+            api<{ rows: RailSms[] }>(`/api/sms?from=${cairoWeekStart()}&to=${cairoToday()}&category=deposit,withdrawal&limit=5000`),
             api<{ devices: RailDevice[] }>('/api/sms/devices'),
           ])
           if (!alive) return
@@ -325,8 +328,13 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
             ? r.linked_wallet_number ?? r.receiver_number ?? r.wallet_number
             : r.matched_receiving_wallet ?? r.confirmed_wallet_number ?? r.wallet_number ?? r.receiver_number
           const rawText = r.raw_sms ?? r.message ?? r.sms_first_line
+          // One color, one meaning: withdrawal is always red regardless of
+          // link status (money leaving is its own kind of thing to watch);
+          // among deposits, green means a transaction is already attached and
+          // yellow means it still needs an operator to assign one.
+          const cardState = r.sms_category === 'withdrawal' ? 'is-withdrawal' : linked ? 'is-linked' : 'is-unlinked'
           return (
-            <button key={r.id} type="button" onClick={() => setSelected(r)} className={`sms-feed-item sms-feed-button${linked ? ' is-linked' : ''}${!linked && (r.sms_category === 'deposit' || r.sms_category === 'withdrawal') ? ' is-unlinked' : ''}${r.sms_category === 'withdrawal' ? ' is-withdrawal' : ''}`} aria-label={`SMS ${r.id} details`}>
+            <button key={r.id} type="button" onClick={() => setSelected(r)} className={`sms-feed-item sms-feed-button ${cardState}`} aria-label={`SMS ${r.id} details`}>
               <div className="sms-feed-head">
                 <span className="sms-feed-device">{r.device_name ?? '—'}{r.sim_slot != null && <> · SIM{r.sim_slot}</>}</span>
                 <span className="sms-feed-time mono">{depositTime({ first_seen_at: r.received_at })}</span>

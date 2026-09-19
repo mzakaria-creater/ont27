@@ -1676,9 +1676,15 @@ a.stat-card:hover { border-color: var(--accent); }
 }
 .sms-feed-item:hover { border-color: var(--text-muted); background: var(--hover-2); transform: translateY(-1px); }
 .sms-feed-button { width: 100%; text-align: start; font: inherit; color: inherit; }
-.sms-feed-item.is-linked { box-shadow: inset 3px 0 0 var(--status-paid); }
-.sms-feed-item.is-unlinked { box-shadow: inset 3px 0 0 var(--status-pending); }
-.sms-feed-item.is-withdrawal { box-shadow: inset 3px 0 0 var(--status-declined); }
+/* One highlight per card, at a glance: yellow = deposit still needs an
+   operator to assign a transaction, green = already assigned, red = a
+   withdrawal (money leaving), regardless of its own link status. */
+.sms-feed-item.is-linked { box-shadow: inset 3px 0 0 var(--status-paid); background: color-mix(in srgb, var(--status-paid) 11%, var(--surface)); border-color: color-mix(in srgb, var(--status-paid) 35%, var(--border-soft)); }
+.sms-feed-item.is-linked:hover { background: color-mix(in srgb, var(--status-paid) 18%, var(--surface)); }
+.sms-feed-item.is-unlinked { box-shadow: inset 3px 0 0 var(--status-pending); background: color-mix(in srgb, var(--status-pending) 13%, var(--surface)); border-color: color-mix(in srgb, var(--status-pending) 40%, var(--border-soft)); }
+.sms-feed-item.is-unlinked:hover { background: color-mix(in srgb, var(--status-pending) 20%, var(--surface)); }
+.sms-feed-item.is-withdrawal { box-shadow: inset 3px 0 0 var(--status-declined); background: color-mix(in srgb, var(--status-declined) 11%, var(--surface)); border-color: color-mix(in srgb, var(--status-declined) 38%, var(--border-soft)); }
+.sms-feed-item.is-withdrawal:hover { background: color-mix(in srgb, var(--status-declined) 18%, var(--surface)); }
 .sms-widget-launcher.has-unlinked { border-color: #eab308; box-shadow: var(--shadow-panel), 0 0 0 3px rgba(234,179,8,.2), 0 0 24px rgba(234,179,8,.34); }
 .unlinked-badge { background: #ca8a04; box-shadow: 0 0 18px rgba(234,179,8,.72); }
 .sms-feed-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
