@@ -324,6 +324,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
           const receivingWallet = r.sms_category === 'withdrawal'
             ? r.linked_wallet_number ?? r.receiver_number ?? r.wallet_number
             : r.matched_receiving_wallet ?? r.confirmed_wallet_number ?? r.wallet_number ?? r.receiver_number
+          const rawText = r.raw_sms ?? r.message ?? r.sms_first_line
           return (
             <button key={r.id} type="button" onClick={() => setSelected(r)} className={`sms-feed-item sms-feed-button${linked ? ' is-linked' : ''}${!linked && (r.sms_category === 'deposit' || r.sms_category === 'withdrawal') ? ' is-unlinked' : ''}${r.sms_category === 'withdrawal' ? ' is-withdrawal' : ''}`} aria-label={`SMS ${r.id} details`}>
               <div className="sms-feed-head">
@@ -341,6 +342,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
                   {walletLinked ? `👛 ${r.linked_wallet_number}` : linked ? `🔗 ${r.matched_ontarget_ref ?? r.matched_tx_id}` : r.sms_category === 'deposit' ? 'بانتظار مطابقة' : r.sms_category === 'withdrawal' ? 'محفظة غير معروفة' : 'غير مالية'}
                 </span>
               </div>
+              {rawText && <div className="sms-feed-raw" dir="auto">{rawText}</div>}
               {balance != null && <div className="sms-feed-balance mono"><span className="sms-balance-dot" aria-hidden="true" />الرصيد {money(balance, 'EGP')}</div>}
             </button>
           )

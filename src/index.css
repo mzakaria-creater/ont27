@@ -1697,6 +1697,7 @@ a.stat-card:hover { border-color: var(--accent); }
 .sms-feed-pill.is-linked { background: var(--green-bg); color: var(--status-paid); }
 .sms-feed-pill.is-wait { background: var(--amber-bg); color: var(--status-pending); }
 .sms-feed-pill.is-info { background: var(--hover-2); color: var(--text-muted); }
+.sms-feed-raw { margin-top: 6px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: var(--text-muted); font-size: 10px; line-height: 1.4; }
 .sms-feed-balance { display: flex; align-items: center; gap: 5px; margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--border-soft); color: var(--text-dim); font-size: 10px; }
 .sms-balance-line { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 7px 9px; border: 1px solid var(--green-border); border-radius: 8px; background: var(--green-bg); color: var(--status-paid); font-size: 10.5px; }
 .sms-balance-line strong { margin-inline-start: auto; color: var(--text); font-size: 11px; }
