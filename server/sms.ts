@@ -16,6 +16,37 @@ smsRoutes.use('*', requireAuth)
 const LIST_COLUMNS =
   'id, received_at, device_name, sim_slot, sender_number, sender_name, receiver_number, wallet_number, confirmed_wallet_number, amount, balance_after, sms_category, match_status, matched, review_required, is_blocked, block_reason, blocked_at, blocked_by, trx_id, matched_transaction_id, maven_transaction_id, consumed_by_tx_id, provider, sms_sender, sms_first_line, raw_sms, message, raw_payload, webhook_name, webhook_address, method, ocr_text, score, auto_match_score, processed_at, maven_synced, maven_synced_at, maven_status_sent'
 
+// Three separate ingestion paths (the sms-inbound webhook, a direct "live"
+// path, and the legacy_mirror replication job) all write into inbound_sms,
+// and regularly write the SAME physical SMS twice within a few seconds of
+// each other under the same trx_id — confirmed by inspecting live rows, not
+// assumed. That's an ingestion-side issue outside this repo (those pipelines
+// run as Supabase Edge Functions on a different project); this only hides
+// the duplicate in what operators see. Keeps whichever twin is more useful:
+// already matched/consumed, then has a real amount, then has a real
+// sender_number, then the lowest id (stable, deterministic tie-break).
+function dedupeByTrxId(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  const bestByTrx = new Map<string, Record<string, unknown>>()
+  const passthrough: Record<string, unknown>[] = []
+  for (const row of rows) {
+    const trxId = row.trx_id
+    if (typeof trxId !== 'string' || !trxId.trim()) { passthrough.push(row); continue }
+    const current = bestByTrx.get(trxId)
+    if (!current) { bestByTrx.set(trxId, row); continue }
+    const score = (r: Record<string, unknown>) =>
+      (r.consumed_by_tx_id != null || r.matched === true ? 4 : 0) +
+      (r.amount != null ? 2 : 0) +
+      (r.sender_number != null ? 1 : 0)
+    if (score(row) > score(current) || (score(row) === score(current) && Number(row.id) < Number(current.id))) {
+      bestByTrx.set(trxId, row)
+    }
+  }
+  return [...passthrough, ...bestByTrx.values()].sort((a, b) => {
+    const byTime = String(b.received_at ?? '').localeCompare(String(a.received_at ?? ''))
+    return byTime !== 0 ? byTime : Number(b.id) - Number(a.id)
+  })
+}
+
 function sinceIso(hours: number): string {
   return new Date(Date.now() - hours * 3_600_000).toISOString()
 }
@@ -398,7 +429,7 @@ smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
 
   const { data, count, error } = await query
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  const rows = (data ?? []) as unknown as Record<string, unknown>[]
+  const rows = dedupeByTrxId((data ?? []) as unknown as Record<string, unknown>[])
   await markAmbiguousWallets(rows)
   await attachMatchedRef(rows)
   return c.json({ rows, total: count ?? 0, limit, offset })
