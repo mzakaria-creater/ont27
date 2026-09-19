@@ -99,6 +99,7 @@ export default function Wallets() {
   const [editor, setEditor] = useState<WalletRow | null>(null)
   const [targetDevice, setTargetDevice] = useState('')
   const [targetSim, setTargetSim] = useState('0')
+  const [targetMerchant, setTargetMerchant] = useState('')
   const [saving, setSaving] = useState(false)
   const [amount, setAmount] = useState('')
   const [strategy, setStrategy] = useState<Strategy>('lowest_usage')
@@ -145,7 +146,7 @@ export default function Wallets() {
     try {
       await api(`/api/wallets/${encodeURIComponent(editor.to_account_number)}/assignment`, {
         method: 'POST',
-        body: JSON.stringify({ device: targetDevice, sim_slot: Number(targetSim) }),
+        body: JSON.stringify({ device: targetDevice, sim_slot: Number(targetSim), merchant: targetMerchant.trim() || null }),
       })
       setData(await api<WalletsResponse>('/api/wallets'))
       setEditor(null)
@@ -165,6 +166,11 @@ export default function Wallets() {
       (w.device ? map.get(`${w.device}#${w.sim_slot ?? 0}`) ?? map.get(`${w.device}#0`) : undefined) ??
       (data?.devices ?? []).find((d) => d.device === w.device)
   }, [data])
+
+  const knownMerchants = useMemo(
+    () => [...new Set((data?.wallets ?? []).map((w) => w.merchant).filter((m): m is string => Boolean(m)))].sort(),
+    [data],
+  )
 
   const filtered = useMemo(() => {
     if (!data) return null
@@ -342,6 +348,14 @@ export default function Wallets() {
             <select className="login-input control-input" value={targetSim} onChange={(e) => setTargetSim(e.target.value)} disabled={!targetDevice}>
               {data.devices.filter((device) => device.device === targetDevice).map((device) => <option key={device.sim_slot ?? 0} value={String(device.sim_slot ?? 0)}>SIM {device.sim_slot ?? 0}</option>)}
             </select>
+            <input
+              className="login-input control-input"
+              list="known-merchants"
+              placeholder={t('التاجر (اختياري)', 'Merchant (optional)')}
+              value={targetMerchant}
+              onChange={(e) => setTargetMerchant(e.target.value)}
+            />
+            <datalist id="known-merchants">{knownMerchants.map((m) => <option key={m} value={m} />)}</datalist>
             <button className="btn-primary btn-sm" disabled={saving || !targetDevice} onClick={() => void reassign()}>
               {saving ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ التغيير', 'Save mapping')}
             </button>
@@ -431,7 +445,7 @@ export default function Wallets() {
                       </td>
                       <td className="mono">{w.daily_limit != null ? money(w.daily_limit, 'EGP') : '—'}</td>
                       <td className="mono">{depositTime({ first_seen_at: w.updated_at })}</td>
-                      <td><button className="btn-ghost btn-sm" onClick={() => { setEditor(w); setTargetDevice(w.device ?? ''); setTargetSim(String(w.sim_slot ?? 0)) }}>{t('تغيير', 'Change')}</button></td>
+                      <td><button className="btn-ghost btn-sm" onClick={() => { setEditor(w); setTargetDevice(w.device ?? ''); setTargetSim(String(w.sim_slot ?? 0)); setTargetMerchant(w.merchant ?? '') }}>{t('تغيير', 'Change')}</button></td>
                     </tr>
                   )
                 })}

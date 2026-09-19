@@ -440,9 +440,11 @@ walletRoutes.post('/ngpay/bulk-replace', requirePerm('wallets', 'can_edit'), asy
 
 walletRoutes.post('/:walletNumber/assignment', requirePerm('wallets', 'can_edit'), async (c) => {
   const walletNumber = decodeURIComponent(c.req.param('walletNumber')).trim()
-  const body = await c.req.json<{ device?: string; sim_slot?: number | null; note?: string }>().catch(() => null)
+  const body = await c.req.json<{ device?: string; sim_slot?: number | null; merchant?: string | null; note?: string }>().catch(() => null)
   const device = body?.device?.trim()
   const simSlot = body?.sim_slot == null ? null : Number(body.sim_slot)
+  // '' clears the merchant; undefined leaves it untouched.
+  const merchant = body?.merchant === undefined ? undefined : (body.merchant?.trim() || null)
 
   if (!walletNumber || !device || (simSlot != null && (!Number.isInteger(simSlot) || simSlot < 0))) {
     return c.json({ error: 'invalid_assignment' }, 400)
@@ -459,21 +461,24 @@ walletRoutes.post('/:walletNumber/assignment', requirePerm('wallets', 'can_edit'
 
   const { data: before, error: beforeError } = await db
     .from('wallet_device_map')
-    .select('to_account_number, device, sim_slot')
+    .select('to_account_number, device, sim_slot, merchant')
     .eq('to_account_number', walletNumber)
     .maybeSingle()
   if (beforeError) return c.json({ error: 'db_error', detail: beforeError.message }, 500)
   if (!before) return c.json({ error: 'wallet_not_found' }, 404)
 
+  const patch: Record<string, unknown> = {
+    device,
+    sim_slot: simSlot,
+    auto_inferred: false,
+    confidence: 100,
+    updated_at: new Date().toISOString(),
+  }
+  if (merchant !== undefined) patch.merchant = merchant
+
   const { error: updateError } = await db
     .from('wallet_device_map')
-    .update({
-      device,
-      sim_slot: simSlot,
-      auto_inferred: false,
-      confidence: 100,
-      updated_at: new Date().toISOString(),
-    })
+    .update(patch)
     .eq('to_account_number', walletNumber)
   if (updateError) return c.json({ error: 'db_error', detail: updateError.message }, 500)
 
@@ -493,12 +498,12 @@ walletRoutes.post('/:walletNumber/assignment', requirePerm('wallets', 'can_edit'
       action: 'wallet_device_reassigned',
       entity: 'wallet_device_map',
       entity_id: walletNumber,
-      before: { device: before.device, sim_slot: before.sim_slot },
-      after: { device, sim_slot: simSlot },
+      before: { device: before.device, sim_slot: before.sim_slot, merchant: before.merchant },
+      after: { device, sim_slot: simSlot, merchant: merchant === undefined ? before.merchant : merchant },
     }),
   ]).catch(() => {})
 
-  return c.json({ ok: true, wallet: walletNumber, device, sim_slot: simSlot })
+  return c.json({ ok: true, wallet: walletNumber, device, sim_slot: simSlot, merchant: merchant === undefined ? before.merchant : merchant })
 })
 // ---- Wallet movements: money in and out per wallet, both directions ----
 //
