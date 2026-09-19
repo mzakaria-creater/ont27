@@ -370,8 +370,33 @@ async function depositDetail(c: Context<AuthEnv>, txId: string) {
   const phoneKey = String(data.sender_number ?? '').replace(/\D/g, '').slice(-10)
   const { data: blocked } = phoneKey ? await db.from('api_risk_blacklist').select('value').eq('type', 'phone').limit(10_000) : { data: [] as { value: string }[] }
   const isBlacklisted = (blocked ?? []).some((row) => String(row.value ?? '').replace(/\D/g, '').slice(-10) === phoneKey)
+
+  // The reverse of GET /sms/:id/candidates: a transaction with no linked
+  // SMS suggests unassigned deposit SMS that plausibly belong to it, so an
+  // operator does not have to go hunting through the SMS Live page to find
+  // and link the right one by hand.
+  let smsCandidates: Record<string, unknown>[] = []
+  if (!smsMatch && data.amount != null) {
+    const at = data.first_seen_at ? Date.parse(String(data.first_seen_at)) : NaN
+    let candQuery = db.from('inbound_sms')
+      .select('id, received_at, device_name, sender_name, sender_number, receiver_number, wallet_number, confirmed_wallet_number, amount, balance_after, sms_category, provider, sms_first_line')
+      .eq('sms_category', 'deposit')
+      .eq('amount', data.amount)
+      .is('consumed_by_tx_id', null)
+      .is('matched_transaction_id', null)
+      .or('is_blocked.eq.false,is_blocked.is.null')
+      .or('is_duplicate.eq.false,is_duplicate.is.null')
+      .order('received_at', { ascending: false })
+      .limit(10)
+    if (Number.isFinite(at)) {
+      candQuery = candQuery.gte('received_at', new Date(at - 3 * 86_400_000).toISOString()).lte('received_at', new Date(at + 3 * 86_400_000).toISOString())
+    }
+    const { data: cands } = await candQuery
+    smsCandidates = cands ?? []
+  }
+
   return c.json({
-    deposit: { ...data, raw, is_blacklisted: isBlacklisted, merchant_reference: providerReference(data as unknown as Record<string, unknown>) }, sms: smsMatch, client, history,
+    deposit: { ...data, raw, is_blacklisted: isBlacklisted, merchant_reference: providerReference(data as unknown as Record<string, unknown>) }, sms: smsMatch, smsCandidates, client, history,
     provider: { review: reviewRows[0] ?? null, jobs: jobRows, events: providerRows },
   })
 }

@@ -53,6 +53,17 @@ interface ClientHistory {
   declined: number
 }
 
+interface SmsCandidate {
+  id: number
+  received_at: string | null
+  device_name: string | null
+  sender_name: string | null
+  sender_number: string | null
+  amount: number | null
+  balance_after: number | null
+  sms_first_line: string | null
+}
+
 interface SmsQueues { waiting: QueueSms[]; unlinked: QueueSms[] }
 
 function smsFirstLine(s: MatchedSms): string {
@@ -79,6 +90,8 @@ export default function Deposits() {
   const [selected, setSelected] = useState<DepositDetail | null>(null)
   const [selectedSms, setSelectedSms] = useState<MatchedSms | null>(null)
   const [selectedClient, setSelectedClient] = useState<ClientHistory | null>(null)
+  const [smsCandidates, setSmsCandidates] = useState<SmsCandidate[]>([])
+  const [linkingSmsId, setLinkingSmsId] = useState<number | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [decisionBusy, setDecisionBusy] = useState(false)
   const [decisionErr, setDecisionErr] = useState<string | null>(null)
@@ -153,15 +166,30 @@ export default function Deposits() {
     setDecisionErr(null)
     setSelectedSms(null)
     setSelectedClient(null)
+    setSmsCandidates([])
     try {
-      const res = await api<{ deposit: DepositDetail; sms: MatchedSms | null; client: ClientHistory | null }>(`/api/deposits/${txId}`)
+      const res = await api<{ deposit: DepositDetail; sms: MatchedSms | null; smsCandidates?: SmsCandidate[]; client: ClientHistory | null }>(`/api/deposits/${txId}`)
       setSelected(res.deposit)
       setSelectedSms(res.sms)
       setSelectedClient(res.client)
+      setSmsCandidates(res.smsCandidates ?? [])
     } catch {
       setErr('تعذّر تحميل تفاصيل الإيداع.')
     } finally {
       setDetailLoading(false)
+    }
+  }
+
+  const linkSuggestedSms = async (smsId: number) => {
+    if (!selected) return
+    setLinkingSmsId(smsId)
+    try {
+      await api(`/api/sms/${smsId}/link`, { method: 'POST', body: JSON.stringify({ tx_id: selected.tx_id }) })
+      await openDetail(selected.tx_id)
+    } catch {
+      setDecisionErr(t('تعذّر ربط الرسالة بالمعاملة.', 'Could not link the SMS to this transaction.'))
+    } finally {
+      setLinkingSmsId(null)
     }
   }
 
@@ -620,6 +648,37 @@ export default function Deposits() {
                         <span className="mono">الرصيد بعدها {money(selectedSms.balance_after, 'EGP')}</span>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {!selectedSms && smsCandidates.length > 0 && (
+                  <div className="sms-match-card sms-suggest-card">
+                    <div className="sms-match-head">
+                      <span className="sms-match-title">💡 {t('رسائل SMS محتملة لهذه المعاملة', 'Possible SMS matches for this transaction')}</span>
+                    </div>
+                    <ul className="cand-list">
+                      {smsCandidates.map((cand) => (
+                        <li key={cand.id} className="cand-item">
+                          <div className="cand-info">
+                            <span className="mono">SMS #{cand.id}</span>
+                            <span className="mono">{money(cand.amount, 'EGP')}</span>
+                            <div className="cell-sub">
+                              {cand.sender_name ?? cand.sender_number ?? '—'}
+                              {' · '}{cand.device_name ?? '—'}
+                              {' · '}{depositTime({ first_seen_at: cand.received_at })}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn-primary btn-sm"
+                            disabled={linkingSmsId === cand.id}
+                            onClick={() => void linkSuggestedSms(cand.id)}
+                          >
+                            {linkingSmsId === cand.id ? t('جارٍ الربط…', 'Linking…') : t('ربط', 'Link')}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
 
