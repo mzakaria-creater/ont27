@@ -318,7 +318,6 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
         {rows.map((r) => {
           const walletLinked = r.sms_category === 'withdrawal' && r.linked_wallet_number != null
           const linked = walletLinked || r.matched_tx_id != null
-          const rawText = r.raw_sms ?? r.message ?? r.sms_first_line
           const balance = r.balance_after ?? r.wallet_balance_after
           // Keep the raw SMS wallet visible; the matched transaction wallet is
           // shown separately so a mapping cannot hide the SMS evidence.
@@ -326,19 +325,23 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
             ? r.linked_wallet_number ?? r.receiver_number ?? r.wallet_number
             : r.matched_receiving_wallet ?? r.confirmed_wallet_number ?? r.wallet_number ?? r.receiver_number
           return (
-            <button key={r.id} type="button" onClick={() => setSelected(r)} className={`sms-feed-item sms-feed-button${linked ? ' matched' : ''}${!linked && (r.sms_category === 'deposit' || r.sms_category === 'withdrawal') ? ' unlinked' : ''}${r.sms_category === 'withdrawal' ? ' withdrawal' : ''}`} aria-label={`SMS ${r.id} details`}>
+            <button key={r.id} type="button" onClick={() => setSelected(r)} className={`sms-feed-item sms-feed-button${linked ? ' is-linked' : ''}${!linked && (r.sms_category === 'deposit' || r.sms_category === 'withdrawal') ? ' is-unlinked' : ''}${r.sms_category === 'withdrawal' ? ' is-withdrawal' : ''}`} aria-label={`SMS ${r.id} details`}>
               <div className="sms-feed-head">
                 <span className="sms-feed-device">{r.device_name ?? '—'}{r.sim_slot != null && <> · SIM{r.sim_slot}</>}</span>
                 <span className="sms-feed-time mono">{depositTime({ first_seen_at: r.received_at })}</span>
               </div>
-              <div className="sms-feed-body">{r.sms_category === 'withdrawal' ? 'تحويل' : 'استلام'} {money(r.amount, 'EGP')}{' '}{r.sender_name ?? r.sender_number ? `— ${r.sender_name ?? r.sender_number}` : ''}</div>
-              <div className="sms-feed-wallet"><WalletCards size={13} aria-hidden="true" /><span>{r.sms_category === 'withdrawal' ? 'المحفظة الدافعة' : 'المحفظة المستقبِلة'}</span><strong className="mono">{receivingWallet ?? '—'}</strong></div>
-              {rawText && <div className="sms-feed-raw" dir="auto">{rawText}</div>}
-              {balance != null && <div className="sms-balance-line"><span className="sms-balance-dot" aria-hidden="true" /> <span>{'الرصيد الحالي'}</span><strong className="mono">{money(balance, 'EGP')}</strong></div>}
-              {walletLinked && <div className="cell-sub mono">{r.linked_wallet_number}</div>}
-              <div className={`sms-feed-status ${linked ? 'link' : r.sms_category === 'deposit' || r.sms_category === 'withdrawal' ? 'wait' : 'info'}`}>
-                {walletLinked ? <>👛 محفظة <span className="mono">{r.linked_wallet_number}</span></> : linked ? <>🔗 مرتبطة <span className="mono">{r.matched_ontarget_ref ?? r.matched_tx_id}</span></> : r.sms_category === 'deposit' ? '⏳ بانتظار مطابقة' : r.sms_category === 'withdrawal' ? '⚠ محفظة غير معروفة' : 'غير مالية'}
+              <div className="sms-feed-main">
+                <span className={`sms-feed-dir ${r.sms_category === 'withdrawal' ? 'out' : 'in'}`} aria-hidden="true">{r.sms_category === 'withdrawal' ? '↗' : '↙'}</span>
+                <span className="sms-feed-amount mono">{money(r.amount, 'EGP')}</span>
+                <span className="sms-feed-sender">{r.sender_name ?? r.sender_number ?? '—'}</span>
               </div>
+              <div className="sms-feed-foot">
+                <span className="sms-feed-wallet mono"><WalletCards size={11} aria-hidden="true" />{receivingWallet ?? '—'}</span>
+                <span className={`sms-feed-pill ${linked ? 'is-linked' : r.sms_category === 'deposit' || r.sms_category === 'withdrawal' ? 'is-wait' : 'is-info'}`}>
+                  {walletLinked ? `👛 ${r.linked_wallet_number}` : linked ? `🔗 ${r.matched_ontarget_ref ?? r.matched_tx_id}` : r.sms_category === 'deposit' ? 'بانتظار مطابقة' : r.sms_category === 'withdrawal' ? 'محفظة غير معروفة' : 'غير مالية'}
+                </span>
+              </div>
+              {balance != null && <div className="sms-feed-balance mono"><span className="sms-balance-dot" aria-hidden="true" />الرصيد {money(balance, 'EGP')}</div>}
             </button>
           )
         })}

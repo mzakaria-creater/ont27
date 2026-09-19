@@ -1667,29 +1667,37 @@ a.stat-card:hover { border-color: var(--accent); }
 .sms-feed::-webkit-scrollbar { width: 6px; }
 .sms-feed::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--text-muted); }
 .sms-feed-item {
-  border-radius: 12px; padding: 10px 11px; border: 1px solid var(--border-soft); background: var(--hover);
-  transition: transform 0.2s var(--ease), border-color 0.2s var(--ease); cursor: pointer; text-decoration: none; color: inherit;
+  border-radius: 12px; padding: 10px 11px; border: 1px solid var(--border-soft); background: var(--surface);
+  box-shadow: inset 3px 0 0 transparent;
+  transition: transform 0.15s var(--ease), border-color 0.15s var(--ease), background 0.15s var(--ease); cursor: pointer; text-decoration: none; color: inherit;
   display: block;
 }
-.sms-feed-item:hover { border-color: var(--text-muted); background: var(--hover-2); }
+.sms-feed-item:hover { border-color: var(--text-muted); background: var(--hover-2); transform: translateY(-1px); }
 .sms-feed-button { width: 100%; text-align: start; font: inherit; color: inherit; }
-.sms-feed-item.matched { background: var(--green-bg); border-color: var(--green-border); }
-.sms-feed-item.unlinked { border: 2px solid #eab308; background: rgba(234,179,8,.09); box-shadow: inset 3px 0 0 #eab308, 0 0 12px rgba(234,179,8,.16); }
+.sms-feed-item.is-linked { box-shadow: inset 3px 0 0 var(--status-paid); }
+.sms-feed-item.is-unlinked { box-shadow: inset 3px 0 0 var(--status-pending); }
+.sms-feed-item.is-withdrawal { box-shadow: inset 3px 0 0 var(--status-declined); }
 .sms-widget-launcher.has-unlinked { border-color: #eab308; box-shadow: var(--shadow-panel), 0 0 0 3px rgba(234,179,8,.2), 0 0 24px rgba(234,179,8,.34); }
 .unlinked-badge { background: #ca8a04; box-shadow: 0 0 18px rgba(234,179,8,.72); }
-.sms-feed-item.withdrawal, .sms-feed-item.withdrawal.matched { border: 2px solid #ef4444; background: rgba(239,68,68,.09); box-shadow: inset 3px 0 0 #ef4444; }
-.sms-feed-item.withdrawal .sms-feed-device { color: #f87171; }
-.sms-feed-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
-.sms-feed-device { font-size: 9.5px; font-weight: 600; color: var(--text-dim); }
-.sms-feed-item.matched .sms-feed-device { color: var(--status-paid); }
+.sms-feed-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.sms-feed-device { font-size: 9.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .02em; }
 .sms-feed-time { font-size: 9px; color: var(--text-muted); }
-.sms-feed-body { font-size: 10.5px; color: var(--text-dim); line-height: 1.5; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.sms-feed-raw { margin-top: 7px; padding: 8px 9px; border: 1px solid var(--border-soft); border-radius: 9px; background: color-mix(in srgb,var(--bg) 74%,transparent); color: var(--text); font: 500 10.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace; white-space: pre-wrap; overflow-wrap: anywhere; unicode-bidi: plaintext; }
+.sms-feed-main { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; min-width: 0; }
+.sms-feed-dir { flex: 0 0 auto; font-size: 12px; }
+.sms-feed-dir.in { color: var(--status-paid); }
+.sms-feed-dir.out { color: var(--status-declined); }
+.sms-feed-amount { flex: 0 0 auto; font-size: 14px; font-weight: 800; color: var(--text); }
+.sms-feed-sender { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); font-size: 10.5px; min-width: 0; }
+.sms-feed-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sms-feed-wallet { display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 10px; min-width: 0; }
+.sms-feed-wallet svg { flex: 0 0 auto; }
+.sms-feed-pill { flex: 0 0 auto; padding: 2px 7px; border-radius: 999px; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.sms-feed-pill.is-linked { background: var(--green-bg); color: var(--status-paid); }
+.sms-feed-pill.is-wait { background: var(--amber-bg); color: var(--status-pending); }
+.sms-feed-pill.is-info { background: var(--hover-2); color: var(--text-muted); }
+.sms-feed-balance { display: flex; align-items: center; gap: 5px; margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--border-soft); color: var(--text-dim); font-size: 10px; }
 .sms-balance-line { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 7px 9px; border: 1px solid var(--green-border); border-radius: 8px; background: var(--green-bg); color: var(--status-paid); font-size: 10.5px; }
 .sms-balance-line strong { margin-inline-start: auto; color: var(--text); font-size: 11px; }
-.sms-feed-wallet { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 7px 9px; border: 1px solid var(--blue-border, rgba(96,165,250,.35)); border-radius: 8px; background: rgba(59,130,246,.10); color: var(--text-muted); font-size: 10.5px; }
-.sms-feed-wallet svg { color: var(--status-info, #60a5fa); flex: 0 0 auto; }
-.sms-feed-wallet strong { margin-inline-start: auto; color: var(--text); font-size: 11px; direction: ltr; }
 .sms-detail-sheet { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: flex-end; justify-content: center; padding: 20px; background: rgba(3, 7, 18, .38); backdrop-filter: blur(3px); }
 .sms-detail-sheet-card { width: min(560px, 100%); max-height: min(75vh, 680px); overflow: auto; border: 1px solid var(--border); border-radius: 18px; padding: 18px; background: var(--surface); color: var(--text); box-shadow: 0 20px 60px rgba(0,0,0,.32); animation: sms-sheet-in .2s ease-out; }
 .sms-detail-sheet-card header, .sms-detail-sheet-card footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -1710,17 +1718,13 @@ a.stat-card:hover { border-color: var(--accent); }
 .sms-provider-report-bubble{padding:14px;border-radius:16px;background:#1d1d1f;border:1px solid rgba(255,255,255,.06);text-align:center}.sms-provider-report-bubble>strong{display:block;color:#d1d5db;font-size:12px;font-weight:700}.sms-provider-report-amount{margin:6px 0 12px;color:#f8fafc;font-size:30px;font-weight:800;letter-spacing:-.04em}
 .sms-provider-report-bubble dl{display:grid;grid-template-columns:auto 1fr;gap:8px 12px;margin:0;padding-top:12px;border-top:1px solid rgba(255,255,255,.16);text-align:start;font-size:11px}.sms-provider-report-bubble dt{color:#9ca3af}.sms-provider-report-bubble dd{margin:0;color:#f3f4f6;text-align:end;overflow-wrap:anywhere}.sms-provider-report>.cell-sub{display:block;margin-top:9px;color:#a7f3d0;text-align:center}
 @media(max-width:520px){.sms-provider-report{padding:12px}.sms-provider-report-amount{font-size:28px}.sms-provider-report-bubble dl{font-size:12px}}
-.sms-feed-status { margin-top: 5px; font-size: 9px; display: flex; align-items: center; gap: 3px; }
-.sms-feed-status.link { color: var(--status-paid); }
-.sms-feed-status.wait { color: var(--status-pending); }
-.sms-feed-status.info { color: var(--text-muted); }
 @media (max-width: 520px) {
   .sms-rail { inset-inline: 8px; width: auto; bottom: 72px; max-height: calc(100dvh - 92px); border-radius: 16px; }
   .sms-widget-launcher { inset-inline-end: 10px; bottom: 10px; }
   .telegram-widget-launcher{inset-inline-end:68px;bottom:10px;width:48px;padding:0}.telegram-widget-launcher .sms-widget-label,.telegram-widget-launcher .telegram-widget-pulse{display:none}
   .sms-widget-label { display: none; }
-  .sms-feed-raw { font-size: 12px; line-height: 1.65; max-height: none; }
-  .sms-feed-body { font-size: 12px; }
+  .sms-feed-amount { font-size: 15px; }
+  .sms-feed-sender { font-size: 11px; }
 }
 
 /* KPI cards */
@@ -3663,7 +3667,8 @@ html[data-pay-theme="etisalat"]      .pay-wrap { --pay-glow: #95c11f; --pay-glow
 .kpi-label { font-size: 12px; }
 .sms-feed-device { font-size: 11px; }
 .sms-feed-time { font-size: 10.5px; }
-.sms-feed-body, .sms-feed-status { font-size: 12px; }
+.sms-feed-sender, .sms-feed-wallet, .sms-feed-balance { font-size: 12px; }
+.sms-feed-pill { font-size: 10.5px; }
 .tv-item-head { font-size: 12px; }
 .tv-item-sub { font-size: 11.5px; }
 .tv-payout { font-size: 12.5px; }
