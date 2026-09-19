@@ -194,8 +194,17 @@ Deno.serve(async (req: Request) => {
     const explicitCategory = firstValue(payload, "sms_category", "category", "type");
     const categoryText = String(explicitCategory ?? "").trim().toLowerCase();
     const messageText = message.toLowerCase();
-    const isWithdrawal = /(withdraw|withdrawal|debit|sent|paid out|سحب|خصم|تحويل إلى|تحويل الي|تم خصم)/i.test(messageText);
-    const isIncoming = /(received|deposit|credited|credit|incoming|تم استلام|استلام|إيداع|تحويل أموال|تحويل اموال|تم تحويل)/i.test(messageText);
+    // "تحويل أموال" (money transfer) alone appears in BOTH directions —
+    // Orange Cash's outgoing confirmation is "عملية تحويل أموال ناجحة بمبلغ
+    // X، لرقم Y، رسوم التحويل Z" (to a number, with a transfer fee) and its
+    // incoming one is "تم استلام عملية تحويل أموال بمبلغ X من Y" (received,
+    // from a sender) — confirmed live on SMS #1000826, an 11,300 EGP
+    // outgoing transfer that the old بare-substring check miscategorized as
+    // a deposit because it contains "تحويل أموال" too. "لرقم" (to number)
+    // and "رسوم التحويل" (transfer fee) only ever appear on the outgoing
+    // side; "تم استلام"/"إيداع" only ever appear on the incoming side.
+    const isWithdrawal = /(withdraw|withdrawal|debit|sent|paid out|سحب|خصم|تحويل إلى|تحويل الي|تم خصم|لرقم|رسوم\s*التحويل)/i.test(messageText);
+    const isIncoming = /(received|deposit|credited|credit|incoming|تم استلام|إيداع)/i.test(messageText);
 
     const textWallet = walletValue !== null ? String(walletValue) : extractWalletFromText(message);
     // Only fall back to a device-mapped wallet when the message already
