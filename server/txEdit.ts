@@ -208,27 +208,36 @@ async function applyEdit(
   const isProviderDecision =
     isNgPayGateway(tx) &&
     PROVIDER_STATUSES.has(providerDecisionStatus) &&
-    (currentStatus === 'PENDING' ||
-      (currentStatus === 'DECLINED' && providerDecisionStatus === 'PAID') ||
-      (currentStatus === providerDecisionStatus && edit.amount != null))
+    // Every provider status edit must go through Maven. Previously a PAID →
+    // DECLINED edit fell through to a local-only update, leaving Maven PAID
+    // while the panel displayed DECLINED. The worker will safely reject an
+    // unsupported reversal; the panel must never invent a provider status.
+    (edit.status != null || currentStatus === 'PENDING' || edit.amount != null)
 
   if (isProviderDecision) {
     const baseUrl = process.env.SUPABASE_URL
     const serviceKey = process.env.SUPABASE_SECRET_KEY
     if (!baseUrl || !serviceKey) return { ok: false, error: 'worker_not_configured' }
-    const res = await fetch(`${baseUrl}/functions/v1/ngpay-approve`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        tx_id: txId,
-        decision: providerDecisionStatus,
-        actor_name: actorName,
-        remark: edit.reason,
-        source: currentStatus === 'DECLINED' && providerDecisionStatus === 'PAID' ? 'direct_edit' : 'panel_decision',
-        allow_reversal: currentStatus === 'DECLINED' && providerDecisionStatus === 'PAID',
-        override_amount: edit.amount ?? undefined,
-      }),
-    })
+    let res: Response
+    try {
+      res = await fetch(`${baseUrl}/functions/v1/ngpay-approve`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(75_000),
+        headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          tx_id: txId,
+          decision: providerDecisionStatus,
+          actor_name: actorName,
+          remark: edit.reason,
+          source: currentStatus === 'DECLINED' && providerDecisionStatus === 'PAID' ? 'direct_edit' : 'panel_decision',
+          allow_reversal: edit.status != null && edit.status !== currentStatus &&
+            ['PAID', 'DECLINED'].includes(currentStatus) && ['PAID', 'DECLINED'].includes(providerDecisionStatus),
+          override_amount: edit.amount ?? undefined,
+        }),
+      })
+    } catch (error) {
+      return { ok: false, error: 'worker_failed', detail: { error: error instanceof Error ? error.message : 'provider request failed' } }
+    }
     const out = await res.json().catch(() => ({ error: 'worker_invalid_response' })) as Record<string, unknown>
     if (!res.ok || out.executed_on_provider !== true) {
       return { ok: false, error: 'worker_failed', detail: out }
@@ -243,7 +252,7 @@ async function applyEdit(
       approved_by: actorName,
       last_status_change: mirrorNow,
       updated_at: mirrorNow,
-    }).eq('tx_id', txId).eq('status', 'PENDING')
+    }).eq('tx_id', txId).eq('status', currentStatus)
     if (mirrorErr) console.error('provider edit mirror update failed', { txId, error: mirrorErr.message })
   } else if (edit.status != null) {
     patch.status = edit.status
