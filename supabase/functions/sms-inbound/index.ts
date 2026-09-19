@@ -58,8 +58,12 @@ function extractReference(message: string): string | null {
 // Orange Cash deposits rarely include the sender's phone number, and
 // repairPaidSmsMatches() then falls back to matching by sender name — which
 // stays null (and the SMS unmatchable) unless we pull it from "... من <name>،".
+// Anchored to "، رصيدك" (the deposit-confirmation clause) specifically —
+// plain "من\s+([^،\n]+)،" also matched promotional text like "اشحن ... من
+// محفظة اورنچ كاش،" ("from the Orange Cash wallet,"), extracting a wallet
+// label as if it were a person's name.
 function extractSenderName(message: string): string | null {
-  return message.match(/من\s+([^،\n]{2,60})،/)?.[1]?.trim() || null;
+  return message.match(/من\s+([^،\n]{2,60})،\s*رصيدك/)?.[1]?.trim() || null;
 }
 
 // Vodafone-style messages state the receiving wallet explicitly
@@ -179,14 +183,26 @@ Deno.serve(async (req: Request) => {
     let reference = referenceValue === null ? null : String(referenceValue);
     if (!reference) reference = extractReference(message);
 
-    const textWallet = walletValue !== null ? String(walletValue) : extractWalletFromText(message);
-    const wallet = await resolveWallet(device, simSlotValue, textWallet, amount, balance).catch(() => null);
-
     const explicitCategory = firstValue(payload, "sms_category", "category", "type");
     const categoryText = String(explicitCategory ?? "").trim().toLowerCase();
     const messageText = message.toLowerCase();
     const isWithdrawal = /(withdraw|withdrawal|debit|sent|paid out|سحب|خصم|تحويل إلى|تحويل الي|تم خصم)/i.test(messageText);
     const isIncoming = /(received|deposit|credited|credit|incoming|تم استلام|استلام|إيداع|تحويل أموال|تحويل اموال|تم تحويل)/i.test(messageText);
+
+    const textWallet = walletValue !== null ? String(walletValue) : extractWalletFromText(message);
+    // Only fall back to a device-mapped wallet when the message already
+    // looks financial (an explicit wallet found in the text is fine either
+    // way — that's real evidence, not a guess). Otherwise a promotional
+    // message with no deposit/withdrawal wording at all still ends up
+    // carrying a real wallet number just because its device has exactly one
+    // mapped SIM, polluting an "unknown" row with data that implies evidence
+    // that was never actually there.
+    const wallet = textWallet
+      ? textWallet
+      : (isIncoming || isWithdrawal || amount !== null)
+        ? await resolveWallet(device, simSlotValue, null, amount, balance).catch(() => null)
+        : null;
+
     const smsCategory = ["deposit", "received", "income", "withdrawal", "expense"].includes(categoryText)
       ? categoryText
       : isWithdrawal
