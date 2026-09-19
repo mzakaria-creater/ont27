@@ -4,6 +4,7 @@ import { requireAuth, requirePerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 import { learnTrustedSmsName } from './clientIdentity.js'
 import { autoApproveMatchedPayout } from './payoutSmsMatcher.js'
+import { flagAmbiguousCandidates } from './duplicateDetection.js'
 
 // SMS Live = inbound_sms (device-forwarded wallet SMS). The panel surfaces the
 // live queue + its Maven transaction links, mirroring the old "SMS operations
@@ -556,7 +557,14 @@ smsRoutes.get('/:id/candidates', requirePerm('sms_live', 'can_view'), async (c) 
       }
     }
   }
-  return c.json({ candidates: (data ?? []).filter((row) => !linkedIds.has(Number(row.tx_id))) })
+  const unlinkedCandidates = (data ?? []).filter((row) => !linkedIds.has(Number(row.tx_id)))
+  // Same client + same amount within 5 minutes, both still unlinked — the
+  // classic accidental-duplicate-submission case. Flag it instead of
+  // silently letting an operator pick either one.
+  const ambiguous = flagAmbiguousCandidates(unlinkedCandidates.map((row) => ({
+    tx_id: Number(row.tx_id), sender_number: row.sender_number, amount: row.amount, first_seen_at: row.first_seen_at,
+  })))
+  return c.json({ candidates: unlinkedCandidates.map((row) => ({ ...row, is_duplicate_group: ambiguous.has(Number(row.tx_id)) })) })
 })
 
 smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {

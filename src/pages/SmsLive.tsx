@@ -162,6 +162,7 @@ interface CandidateTx {
   receiving_wallet?: string | null
   to_account_number?: string | null
   first_seen_at: string | null
+  is_duplicate_group?: boolean
 }
 
 function firstLine(r: SmsRow): string {
@@ -853,10 +854,11 @@ export default function SmsLive() {
               {quickLinkCandidates && quickLinkCandidates.length > 0 && (
                 <ul className="cand-list">
                   {quickLinkCandidates.map((cand) => (
-                    <li key={cand.tx_id} className="cand-item">
+                    <li key={cand.tx_id} className={`cand-item${cand.is_duplicate_group ? ' is-duplicate' : ''}`}>
                       <div className="cand-info">
                         <span className="mono">{cand.ontarget_ref ?? cand.tx_id}</span>
                         <span className={`pay-status-badge ${statusMeta(cand.status).cls}`}>{statusMeta(cand.status).label}</span>
+                        {cand.is_duplicate_group && <span className="pay-status-badge is-duplicate-badge" title={t('نفس العميل والمبلغ خلال 5 دقائق — تحقق قبل الربط', 'Same client and amount within 5 minutes — verify before linking')}>{t('محتمل تكرار', 'Possible duplicate')}</span>}
                         <div className="cell-sub">
                           <span className="mono">{money(cand.amount, cand.currency)}</span>
                           {' · '}{cand.sender_name ?? cand.sender_number ?? '—'}
@@ -1052,10 +1054,11 @@ export default function SmsLive() {
                     {candidates && candidates.length > 0 && (
                       <ul className="cand-list">
                         {candidates.map((cand) => (
-                          <li key={cand.tx_id} className="cand-item">
+                          <li key={cand.tx_id} className={`cand-item${cand.is_duplicate_group ? ' is-duplicate' : ''}`}>
                             <div className="cand-info">
                               <span className="mono">{cand.ontarget_ref ?? cand.tx_id}</span>
                               <span className={`pay-status-badge ${statusMeta(cand.status).cls}`}>{statusMeta(cand.status).label}</span>
+                              {cand.is_duplicate_group && <span className="pay-status-badge is-duplicate-badge" title={t('نفس العميل والمبلغ خلال 5 دقائق — تحقق قبل الربط', 'Same client and amount within 5 minutes — verify before linking')}>{t('محتمل تكرار', 'Possible duplicate')}</span>}
                               <div className="cell-sub">
                                 <span className="mono">{money(cand.amount, cand.currency)}</span>
                                 {' · '}{cand.sender_name ?? cand.sender_number ?? '—'}

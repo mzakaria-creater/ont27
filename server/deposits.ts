@@ -8,6 +8,7 @@ import type { AuthEnv } from './rbac.js'
 import { MAX_PAGE } from './paging.js'
 import { learnTrustedSmsName } from './clientIdentity.js'
 import { notifyApprovedTransaction } from './approvalEmail.js'
+import { detectDuplicateTransactions } from './duplicateDetection.js'
 
 // Deposits = maven_transactions (ground truth for the deposit flow).
 // Real statuses observed in panel-v2 data: PENDING | PAID | APPROVED |
@@ -222,8 +223,14 @@ depositRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
 
   const { data, count, error } = await query
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  const rows = (data ?? []).map((row) => ({ ...(row as unknown as Record<string, unknown>), merchant_reference: providerReference(row as unknown as Record<string, unknown>) }))
+  const rows: Record<string, unknown>[] = (data ?? []).map((row) => ({ ...(row as unknown as Record<string, unknown>), merchant_reference: providerReference(row as unknown as Record<string, unknown>) }))
   await Promise.all([attachSms(rows), attachDepositContext(rows)])
+  const duplicateTxIds = detectDuplicateTransactions(rows.map((r) => ({
+    tx_id: Number(r.tx_id), sender_number: r.sender_number as string | null,
+    amount: r.amount == null ? null : Number(r.amount), first_seen_at: r.first_seen_at as string | null,
+    hasSms: r.sms != null,
+  })))
+  for (const row of rows) if (duplicateTxIds.has(Number(row.tx_id))) row.is_duplicate = true
   return c.json({ rows, total: count ?? 0, limit, offset })
 })
 
@@ -414,12 +421,31 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
     const serviceKey = process.env.SUPABASE_SECRET_KEY
     if (!baseUrl || !serviceKey) return c.json({ error: 'worker_not_configured' }, 500)
     const workerStartedAt = performance.now()
-    const workerResponse = await fetch(`${baseUrl}/functions/v1/ngpay-approve`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
-      body: JSON.stringify({ tx_id: Number(txId), decision: target, actor_name: actor.username, remark: note ?? undefined }),
-    })
-    const workerResult = await workerResponse.json().catch(() => ({ error: 'worker_invalid_response' })) as Record<string, unknown>
+    let workerResponse: Response
+    let workerResult: Record<string, unknown>
+    try {
+      workerResponse = await fetch(`${baseUrl}/functions/v1/ngpay-approve`, {
+        method: 'POST',
+        // Do not leave the operator's button spinning forever if the worker or
+        // provider stalls. The worker bounds its own Maven calls; this outer
+        // guard also bounds the panel API request and returns a retryable error.
+        signal: AbortSignal.timeout(75_000),
+        headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
+        body: JSON.stringify({ tx_id: Number(txId), decision: target, actor_name: actor.username, remark: note ?? undefined }),
+      })
+      workerResult = await workerResponse.json().catch(() => ({ error: 'worker_invalid_response' })) as Record<string, unknown>
+    } catch (error) {
+      const message = error instanceof Error && error.name === 'TimeoutError'
+        ? 'Provider execution timed out — no confirmed decision was returned. Retry after checking Maven.'
+        : error instanceof Error ? error.message : 'Provider worker request failed'
+      await db.from('audit_log').insert({
+        actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
+        action: `deposit.${action}`, entity: 'maven_transactions', entity_id: txId,
+        before: { status: before.status },
+        after: { status: target, note, provider_execution: 'ngpay-approve', executed_on_provider: false, worker: { error: message } },
+      })
+      return c.json({ error: 'worker_failed', worker: { error: message } }, 504)
+    }
     const executed = workerResponse.ok && workerResult.executed_on_provider === true
     const workerMs = Math.round(performance.now() - workerStartedAt)
     if (!workerResponse.ok) {

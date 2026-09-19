@@ -40,6 +40,7 @@ export interface DepositRow {
   first_seen_at: string | null
   last_status_change: string | null
   created_utc: string | null
+  is_duplicate?: boolean
 }
 
 export interface DepositDetail extends DepositRow {

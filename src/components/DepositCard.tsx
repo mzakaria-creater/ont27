@@ -48,6 +48,7 @@ export default function DepositCard({
         </button>
         <div className="dep-status-stack">
           <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
+          {row.is_duplicate && <span className="sms-missing-warning is-duplicate" title={t('نفس العميل والمبلغ خلال 5 دقائق، ورسالة SMS واحدة فقط تؤكد الدفع — راجع قبل الاعتماد', 'Same client and amount within 5 minutes, only one SMS confirms payment — review before approving')}><AlertTriangle size={12} aria-hidden="true" /> {t('معاملة مكررة', 'Duplicate')}</span>}
           {approvedWithoutSms && <span className="sms-missing-warning" title={t('معاملة معتمدة بدون SMS مرتبطة', 'Approved transaction without linked SMS')}><AlertTriangle size={12} aria-hidden="true" /> {t('بدون SMS', 'No SMS')}</span>}
           {row.ngpay_status && (
             <span className={`provider-row-status ${st.cls}`} title={t('الحالة القادمة من NagoPay', 'Status received from NagoPay')}>

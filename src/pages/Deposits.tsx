@@ -438,7 +438,7 @@ export default function Deposits() {
                   return (
                     <tr
                       key={r.tx_id}
-                      className={`${r.status === 'PENDING' ? 'row-pending' : ''}${approvedWithoutSms ? ' row-sms-warning' : ''}${declinedWithSms ? ' row-declined-sms-warning' : ''}`}
+                      className={`${r.status === 'PENDING' ? 'row-pending' : ''}${approvedWithoutSms ? ' row-sms-warning' : ''}${declinedWithSms ? ' row-declined-sms-warning' : ''}${r.is_duplicate ? ' row-duplicate-warning' : ''}`}
                       onClick={() => void openDetail(r.tx_id)}
                     >
                       {can('deposits', 'can_approve') && (
@@ -464,6 +464,7 @@ export default function Deposits() {
                         </div>
                       </td>
                       <td className="mono">
+                        {r.is_duplicate && <span className="sms-missing-warning-dot is-duplicate" title="Same client and amount within 5 minutes, only one SMS confirms payment" aria-label="Possible duplicate transaction"><AlertTriangle size={11} aria-hidden="true" /></span>}
                         {approvedWithoutSms && <span className="sms-missing-warning-dot" title="Approved transaction without linked SMS" aria-label="Approved transaction without linked SMS"><AlertTriangle size={11} aria-hidden="true" /></span>}
                         {r.ontarget_ref ?? r.tx_id}
                         {(r.merchant_reference ?? r.merchant_tx_reference) && (
