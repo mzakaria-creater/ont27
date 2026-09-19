@@ -70,11 +70,19 @@ function extractSenderName(message: string): string | null {
 // ("... على رقم محفظتك"); Orange Cash generally does not, so the reliable
 // fallback there is the wallet currently mapped to this device (+ SIM slot
 // when the caller sends one).
+//
+// There used to be a second fallback here -- "grab any 01xxxxxxxxx-shaped
+// number anywhere in the message" -- which was actively wrong, not just
+// unhelpful: an Orange Cash deposit confirmation embeds the SENDER's own
+// phone number right in their name ("...من احمد سليمان الوردانى
+// سالم-01222486081، رصيدك...", no space before the number), and that regex
+// happily matched it and reported it as the RECEIVING wallet. Confirmed live
+// on SMS #1000813: it produced receiver_number = the sender's own number,
+// not the real receiving wallet. Orange Cash messages never actually state
+// the receiving wallet in text at all, so guessing from a stray phone-shaped
+// substring is worse than leaving it null and trusting the device mapping.
 function extractWalletFromText(message: string): string | null {
-  const m = message.match(/(?:على\s+رقم\s+محفظتك|إلى\s+رقم\s+محفظتك|رقم\s+المحفظة)\D*(01\d{9})/);
-  if (m) return m[1];
-  const any = message.match(/01\d{9}/g);
-  return any ? any[any.length - 1] : null;
+  return message.match(/(?:على\s+رقم\s+محفظتك|إلى\s+رقم\s+محفظتك|رقم\s+المحفظة)\D*(01\d{9})/)?.[1] ?? null
 }
 
 // A device can have more than one SIM (and therefore more than one mapped
