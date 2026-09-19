@@ -204,10 +204,17 @@ async function applyEdit(
   // An amount-only edit still has to go through Maven. The panel may omit
   // status when the operator only changes the amount, so use the current
   // provider status as the decision in that case.
-  const providerDecisionStatus = edit.status ?? currentStatus
+  const localTargetStatus = edit.status ?? currentStatus
+  // Maven has no "APPROVED" state — ngpay-approve rejects it outright — but
+  // the rest of the panel already treats APPROVED and PAID as the same
+  // outcome (see APPROVED_STATUSES in deposits.ts), and operators were
+  // observed flipping the same transaction between the two within minutes,
+  // expecting APPROVED to also execute. So APPROVED executes as a PAID
+  // decision on the provider; the local row keeps whichever label was chosen.
+  const mavenDecision = localTargetStatus === 'APPROVED' ? 'PAID' : localTargetStatus
   const isProviderDecision =
     isNgPayGateway(tx) &&
-    PROVIDER_STATUSES.has(providerDecisionStatus) &&
+    PROVIDER_STATUSES.has(mavenDecision) &&
     // Every provider status edit must go through Maven. Previously a PAID →
     // DECLINED edit fell through to a local-only update, leaving Maven PAID
     // while the panel displayed DECLINED. The worker will safely reject an
@@ -226,12 +233,12 @@ async function applyEdit(
         headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
         body: JSON.stringify({
           tx_id: txId,
-          decision: providerDecisionStatus,
+          decision: mavenDecision,
           actor_name: actorName,
           remark: edit.reason,
-          source: currentStatus === 'DECLINED' && providerDecisionStatus === 'PAID' ? 'direct_edit' : 'panel_decision',
+          source: currentStatus === 'DECLINED' && mavenDecision === 'PAID' ? 'direct_edit' : 'panel_decision',
           allow_reversal: edit.status != null && edit.status !== currentStatus &&
-            ['PAID', 'DECLINED'].includes(currentStatus) && ['PAID', 'DECLINED'].includes(providerDecisionStatus),
+            ['PAID', 'DECLINED'].includes(currentStatus) && ['PAID', 'DECLINED'].includes(mavenDecision),
           override_amount: edit.amount ?? undefined,
         }),
       })
@@ -248,7 +255,7 @@ async function applyEdit(
     // now so the queue does not wait for a later provider sync repaint.
     const mirrorNow = new Date().toISOString()
     const { error: mirrorErr } = await db.from('maven_transactions').update({
-      status: providerDecisionStatus,
+      status: localTargetStatus,
       approved_by: actorName,
       last_status_change: mirrorNow,
       updated_at: mirrorNow,

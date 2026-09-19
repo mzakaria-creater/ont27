@@ -23,12 +23,13 @@ export default function TransactionEditDialog({ txId, ontargetRef, status, amoun
   const { user } = useAuth(); const steward = DIRECT_STATUS_ROLES.has(user?.role ?? ''); const canEditAmount = new Set(['super_admin', 'owner', 'admin']).has(user?.role ?? '') || user?.username?.toLowerCase() === 'ahmedmano.solly'
   const [open, setOpen] = useState(false); const [nextStatus, setNextStatus] = useState(''); const [nextAmount, setNextAmount] = useState(''); const [reason, setReason] = useState(''); const [reasonChoice, setReasonChoice] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [done, setDone] = useState<string | null>(null)
   const changing = (nextStatus !== '' && nextStatus !== status) || (nextAmount !== '' && Number(nextAmount) !== Number(amount ?? 0))
+  // Mirrors server/txEdit.ts's isProviderDecision exactly: any explicit
+  // status edit targeting a real provider outcome always executes, no matter
+  // the current status; APPROVED executes as PAID since Maven has no
+  // "Approved" state of its own (see the server-side comment).
   const provider = changing && gateway === 'NagupayP2P' && (
-    // Amount corrections are provider operations too, even when the status
-    // select is left blank. Previously the dialog labelled these "local only"
-    // and operators could not tell that Maven confirmation was required.
-    (nextAmount !== '' && canEditAmount && ['PENDING', 'PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID', 'OVERPAID'].includes(status)) ||
-    (nextStatus !== '' && ['PENDING', 'DECLINED', 'PAID'].includes(status) && ['PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID', 'OVERPAID'].includes(nextStatus))
+    (nextAmount !== '' && canEditAmount && ['PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID', 'OVERPAID', 'APPROVED'].includes(status)) ||
+    (nextStatus !== '' && ['PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID', 'OVERPAID', 'APPROVED'].includes(nextStatus))
   )
   const submit = async () => {
     if (!changing || !reason.trim()) return
