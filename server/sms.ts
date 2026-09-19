@@ -58,6 +58,20 @@ type SmsFilterInput = {
   amount?: string
   from?: string
   to?: string
+  provider?: string
+}
+
+// Same channel groupings MethodLogo already uses to pick each row's icon —
+// the provider filter deliberately matches that, not a separate taxonomy.
+// The raw `provider` column is inconsistent (orange-cash, Orange Money,
+// vodafone-cash, ...), so each channel is an OR-group of ilike patterns
+// rather than an exact match.
+const PROVIDER_FILTER_PATTERNS: Record<string, string[]> = {
+  orange_cash: ['%orange%'],
+  vodafone_cash: ['%vodafone%', '%vf-cash%', '%vf cash%'],
+  we_pay: ['%we pay%', '%wepay%', '%we-pay%'],
+  instapay: ['%instapay%', '%insta pay%'],
+  alex_bank: ['%alexbank%', '%alex bank%', '%bank of alexandria%'],
 }
 
 const CAIRO_TIME_ZONE = 'Africa/Cairo'
@@ -120,12 +134,15 @@ function isPotentialDeposit(sms: QueueSms) {
 // deliberately shared: adding a filter to the table without adding it to the
 // cards was the reason their numbers previously looked stale/wrong.
 function applySmsFilters(query: any, filters: SmsFilterInput) {
-  const { category, match, q, amount, from, to } = filters
+  const { category, match, q, amount, from, to, provider } = filters
   // Only approved financial inbox senders belong in Live SMS or matching.
   // Unsupported messages are retained for audit but hidden from operations.
   query = query.or('is_blocked.eq.false,is_blocked.is.null')
   const categories = (category ?? '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean)
   if (categories.length) query = query.in('sms_category', categories)
+  const providers = (provider ?? '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean)
+  const providerPatterns = providers.flatMap((key) => PROVIDER_FILTER_PATTERNS[key] ?? [])
+  if (providerPatterns.length) query = query.or(providerPatterns.map((pattern) => `provider.ilike.${pattern}`).join(','))
   if (from) query = query.gte('received_at', cairoBoundary(from))
   if (to) query = query.lte('received_at', cairoBoundary(to, true))
   // Link state is derived from every authoritative/legacy link column. The
@@ -309,6 +326,7 @@ smsRoutes.get('/stats', requirePerm('sms_live', 'can_view'), async (c) => {
     amount: c.req.query('amount')?.trim(),
     from: c.req.query('from')?.trim(),
     to: c.req.query('to')?.trim(),
+    provider: c.req.query('provider')?.trim(),
   }
 
   const countWhere = async (apply: (q: any) => any) => {
@@ -405,6 +423,7 @@ smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
   const q = c.req.query('q')?.trim()
   const from = c.req.query('from')?.trim()
   const to = c.req.query('to')?.trim()
+  const provider = c.req.query('provider')?.trim()
   // The live P2P wall requests a full month so wallet totals and the latest
   // SMS balance are correct. Keep a bounded server-side cap, while allowing
   // the existing paginated screens to continue using their smaller limits.
@@ -425,7 +444,7 @@ smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
   // 2026-07-11. On the live TV wall that made a busy matching engine look
   // stalled for hours at a time.
   const amount = c.req.query('amount')?.trim()
-  query = applySmsFilters(query, { category, match, q, amount, from, to })
+  query = applySmsFilters(query, { category, match, q, amount, from, to, provider })
 
   const { data, count, error } = await query
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)

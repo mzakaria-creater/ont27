@@ -38,6 +38,16 @@ const MATCH_FILTERS = [
   { key: 'review', ar: 'تحتاج مراجعة', en: 'Needs review' },
 ]
 
+// Same 5 channels + grouping MethodLogo already uses for the per-row icon —
+// server-side matching (applySmsFilters) mirrors these exact keys.
+const PROVIDER_FILTERS = [
+  { key: 'orange_cash', ar: 'أورانج كاش', en: 'Orange Cash' },
+  { key: 'vodafone_cash', ar: 'فودافون كاش', en: 'Vodafone Cash' },
+  { key: 'we_pay', ar: 'وي باي', en: 'WE Pay' },
+  { key: 'instapay', ar: 'إنستاباي', en: 'InstaPay' },
+  { key: 'alex_bank', ar: 'بنك الإسكندرية', en: 'Alex Bank' },
+]
+
 interface SmsRow {
   id: number
   received_at: string | null
@@ -201,6 +211,8 @@ export default function SmsLive() {
   const [params, setParams] = useSearchParams()
   const category = params.get('category') ?? ''
   const categoryValues = splitFilterValues(category)
+  const provider = params.get('provider') ?? ''
+  const providerValues = splitFilterValues(provider)
   const match = params.get('match') ?? ''
   const page = Math.max(Number(params.get('page')) || 1, 1)
   const from = params.get('from') ?? ''
@@ -267,6 +279,7 @@ export default function SmsLive() {
       offset: String((page - 1) * pageSize),
     })
     if (category) search.set('category', category)
+    if (provider) search.set('provider', provider)
     if (match) search.set('match', match)
     if (appliedQ) search.set('q', appliedQ)
     if (amount) search.set('amount', amount)
@@ -288,7 +301,7 @@ export default function SmsLive() {
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [category, match, appliedQ, amount, from, to, page, pageSize])
+  }, [category, provider, match, appliedQ, amount, from, to, page, pageSize])
 
   useEffect(() => { void load() }, [load])
 
@@ -297,7 +310,7 @@ export default function SmsLive() {
     return () => clearInterval(iv)
   }, [load])
 
-  const setFilter = (next: { category?: string; match?: string; q?: string; amount?: string; from?: string; to?: string; page?: number }) => {
+  const setFilter = (next: { category?: string; provider?: string; match?: string; q?: string; amount?: string; from?: string; to?: string; page?: number }) => {
     const p = new URLSearchParams(params)
     const setOrDel = (key: string, v: string | undefined) => {
       if (v === undefined) return
@@ -305,6 +318,7 @@ export default function SmsLive() {
       p.delete('page')
     }
     setOrDel('category', next.category)
+    setOrDel('provider', next.provider)
     setOrDel('match', next.match)
     setOrDel('q', next.q)
     setOrDel('amount', next.amount)
@@ -648,6 +662,7 @@ export default function SmsLive() {
       <div className="filter-bar">
         <div className="chip-row">
           <MultiSelectFilter label={t('التصنيف','Category')} allLabel={t('كل التصنيفات','All categories')} options={['deposit','withdrawal','smslive','unknown'].map((value)=>({value,label:t(CATEGORY_META[value].ar,CATEGORY_META[value].en)}))} value={categoryValues} onChange={(values)=>setFilter({category:values.join(',')})}/>
+          <MultiSelectFilter label={t('المزوّد','Provider')} allLabel={t('كل المزوّدين','All providers')} options={PROVIDER_FILTERS.map((p)=>({value:p.key,label:t(p.ar,p.en)}))} value={providerValues} onChange={(values)=>setFilter({provider:values.join(',')})}/>
           <span className="chip-sep" />
           {MATCH_FILTERS.map((f) => (
             <button
