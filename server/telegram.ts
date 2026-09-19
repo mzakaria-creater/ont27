@@ -37,7 +37,7 @@ telegramRoutes.get('/', requireAnyPerm(TG_KEYS, 'can_view'), async (c) => {
     db.from('maven_runtime_config').select('value').eq('name', 'TELEGRAM_BOT_TOKEN').eq('owner_name', 'global').maybeSingle(),
     db.from('telegram_chats').select('id, chat_id, label, is_active, created_at, receives_daily_report').order('created_at'),
     db.from('telegram_alert_gates').select('alert_type, label, enabled, updated_at').order('alert_type'),
-    db.from('telegram_alerts').select('id, alert_type, chat_id, message, ok, error, created_at').order('created_at', { ascending: false }).limit(30),
+    db.from('telegram_alerts').select('id, alert_type, chat_id, message, ok, error, created_at').order('created_at', { ascending: false }).limit(150),
   ])
   // Bot identity (mirrors @ontargetEGBot into the panel) + whether its updates
   // are bound to an external webhook (e.g. n8n) — in which case live message
@@ -106,6 +106,49 @@ telegramRoutes.patch('/gates/:type', requireAnyPerm(TG_KEYS, 'can_edit'), async 
   if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
   if (!data) return c.json({ error: 'not_found' }, 404)
   return c.json({ gate: data })
+})
+
+// Free-form message to one chat — distinct from the gated alert_type system,
+// which only ever sends fixed operational templates. This is a direct
+// sendMessage call using the same stored token /test already proves works,
+// so an operator can actually converse with the bot's chats from inside the
+// panel instead of switching to the Telegram app.
+telegramRoutes.post('/chats/:id/send', requireAnyPerm(TG_KEYS, 'can_edit'), async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const text = typeof body?.text === 'string' ? body.text.trim().slice(0, 4000) : ''
+  if (!text) return c.json({ error: 'empty_message' }, 400)
+
+  const [{ data: chat }, { data: tokenRow }] = await Promise.all([
+    db.from('telegram_chats').select('id, chat_id, label').eq('id', c.req.param('id')).maybeSingle(),
+    db.from('maven_runtime_config').select('value').eq('name', 'TELEGRAM_BOT_TOKEN').eq('owner_name', 'global').maybeSingle(),
+  ])
+  if (!chat) return c.json({ error: 'chat_not_found' }, 404)
+  const token = tokenRow?.value
+  if (!token) return c.json({ error: 'token_not_configured' }, 500)
+
+  const actor = c.get('actor')
+  let ok = false
+  let errorMessage: string | null = null
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: chat.chat_id, text: `${text}\n\n— ${actor.username}` }),
+    })
+    const out = await res.json().catch(() => ({})) as { ok?: boolean; description?: string }
+    ok = out.ok === true
+    if (!ok) errorMessage = out.description ?? `HTTP ${res.status}`
+  } catch (e) {
+    errorMessage = e instanceof Error ? e.message : 'send_failed'
+  }
+
+  const { data: saved } = await db.from('telegram_alerts').insert({
+    alert_type: 'manual_message', chat_id: chat.chat_id, message: text, ok, error: errorMessage,
+  }).select('id, alert_type, chat_id, message, ok, error, created_at').single()
+
+  await audit(actor, 'telegram.manual_message', chat.chat_id, { text, ok, error: errorMessage })
+  if (!ok) return c.json({ error: 'send_failed', detail: errorMessage }, 502)
+  return c.json({ ok: true, alert: saved })
 })
 
 // Fire a test alert through the real edge function so the whole path is proven.
