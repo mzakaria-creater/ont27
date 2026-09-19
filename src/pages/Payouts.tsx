@@ -895,7 +895,7 @@ export default function Payouts() {
                       </td>
                       <td className="mono">{row.maven_id}</td>
                       <td><span className={`pay-status-badge ${st.cls}`}>{st.label}</span></td>
-                      <td className="mono">{money(row.amount, row.currency ?? CURRENCY)}</td>
+                      <td className="mono data-table-amount">{money(row.amount, row.currency ?? CURRENCY)}</td>
                       {shownColumns.map((c) => cell(c.id, row))}
                     </tr>
                   );

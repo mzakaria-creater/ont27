@@ -308,7 +308,7 @@ export default function Approvals() {
                       {r.ontarget_ref ?? r.tx_id}
                       {r.merchant_tx_reference && <div className="cell-sub mono">{r.merchant_tx_reference}</div>}
                     </td>
-                    <td className="mono">{money(r.amount, r.currency)}</td>
+                    <td className="mono data-table-amount">{money(r.amount, r.currency)}</td>
                     <td><SenderIdentity name={r.sender_name} phone={r.sender_number} unknown="—" />{r.sender_account_number&&r.sender_account_number!==r.sender_number&&<div className="cell-sub mono">{t('حساب المرسل','Sender account')}: {r.sender_account_number}</div>}</td>
                     <td>
                       <span className="mono">{r.receiving_wallet ?? r.to_account_number ?? '—'}</span>
@@ -401,7 +401,7 @@ export default function Approvals() {
                 {visiblePayouts.map((r) => (
                   <tr key={r.maven_id} className="row-pending">
                     <td className="mono">{r.ontarget_ref ?? r.maven_id}<div className="cell-sub mono">{r.maven_id}</div></td>
-                    <td className="mono">{money(r.amount, 'EGP')}</td>
+                    <td className="mono data-table-amount">{money(r.amount, 'EGP')}</td>
                     <td>{r.account_name ?? '—'}{r.mobile_no && <div className="cell-sub mono">{r.mobile_no}</div>}</td>
                     <td><MethodLogo method={r.pay_by} /></td>
                     <td><MerchantLogo merchant={r.merchant} /></td>

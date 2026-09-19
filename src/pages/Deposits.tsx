@@ -499,7 +499,7 @@ export default function Deposits() {
                           <div className="cell-sub mono" title="NGPay merchant reference">{r.merchant_reference ?? r.merchant_tx_reference}</div>
                         )}
                       </td>
-                      <td className="mono">{money(r.amount, r.currency)}{r.amount_sync_status === 'mismatch' && <div className="amount-critical-warning" title={r.amount_mismatch_reason ?? 'Maven amount confirmation required'}>⚠ CRITICAL</div>}</td>
+                      <td className="mono data-table-amount">{money(r.amount, r.currency)}{r.amount_sync_status === 'mismatch' && <div className="amount-critical-warning" title={r.amount_mismatch_reason ?? 'Maven amount confirmation required'}>⚠ CRITICAL</div>}</td>
                       <td>
                         {r.sender_name ?? '—'}
                         {r.sender_number && <div className="cell-sub mono">{r.sender_number}</div>}
