@@ -6,6 +6,7 @@ import MultiSelectFilter from '../components/MultiSelectFilter'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 
 // Wallet SMS report — per-wallet reconciliation (idea adapted from the old
 // wallet-sms-report, rebuilt in the panel's own design). Each receiving wallet
@@ -36,6 +37,7 @@ interface WalletDetail { wallet: string; sms: WalletSms[]; transactions: WalletT
 
 export default function WalletReport() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [rows, setRows] = useState<WalletRow[] | null>(null)
   const [days, setDays] = useState(30)
   const [from, setFrom] = useState('')
@@ -132,7 +134,23 @@ export default function WalletReport() {
     <section className="card recent-card">
       {!rows && !err && <p className="sidebar-hint">{t('جارٍ الحساب…', 'Calculating…')}</p>}
       {rows && filteredRows.length === 0 && <p>{t('لا توجد بيانات مطابقة.', 'No matching wallet data.')}</p>}
-      {filteredRows.length > 0 && <div className="table-wrap"><table className="data-table">
+      {filteredRows.length > 0 && (isMobile ? (
+        <div className="risk-card-list">
+          {filteredRows.map((r) => (
+            <div key={r.wallet} className="risk-row-card" onClick={() => void openDetail(r.wallet)} role="button" tabIndex={0}>
+              <div className="risk-row-card-head"><span className="mono">{r.wallet}</span><span className="mono">{money(r.balance, 'EGP')}</span></div>
+              <div className="cell-sub">{r.device ?? '—'}{r.merchant && ` · ${r.merchant}`}</div>
+              <div className="cell-sub mono">{r.sms_count} SMS ({money(r.sms_amount, 'EGP')}) · {t('إيداعات', 'Deposits')} {r.deposits_count} ({money(r.deposits_amount, 'EGP')}) · {t('سحوبات', 'Withdrawals')} {r.withdrawals_count} ({money(r.withdrawals_amount, 'EGP')})</div>
+              <div className="risk-row-card-foot">
+                {r.unconfirmed > 0 ? <span className="pay-status-badge st-pending">{r.unconfirmed} {t('غير مؤكدة', 'unconfirmed')}</span> : null}
+                <span>{t('الاستفادة', 'Utilization')} {(r.utilization_pct ?? 0).toFixed(1)}%{r.limit_warning === 'limit_reached' ? ' · LIMIT' : r.limit_warning === 'limit_soon' ? ' · SOON' : ''}</span>
+              </div>
+              <Link className="btn-ghost btn-sm" to={`/sms?q=${encodeURIComponent(r.wallet)}`} onClick={(e) => e.stopPropagation()}>{t('👁 الرسائل', '👁 Messages')}</Link>
+            </div>
+          ))}
+        </div>
+      ) : (
+      <div className="table-wrap"><table className="data-table">
         <thead><tr>
           <th>{t('المحفظة', 'Wallet')}</th><th>{t('الجهاز / التاجر', 'Device / merchant')}</th>
           <th>SMS</th><th>{t('مبلغ SMS', 'SMS amount')}</th>
@@ -161,7 +179,8 @@ export default function WalletReport() {
             <td onClick={(e) => e.stopPropagation()}><Link className="btn-ghost btn-sm" to={`/sms?q=${encodeURIComponent(r.wallet)}`}>{t('👁 الرسائل', '👁 Messages')}</Link></td>
           </tr>
         ))}</tbody>
-      </table></div>}
+      </table></div>
+      ))}
     </section>
 
     {(detail || detailBusy) && (
@@ -175,7 +194,16 @@ export default function WalletReport() {
             <div className="section-label" style={{ marginTop: 0 }}>{t('خط زمني للمحفظة', 'Wallet timeline')} ({timeline.length})</div>
             <div className="wallet-timeline">{timeline.length === 0 ? <p className="sidebar-hint">{t('لا يوجد نشاط زمني.', 'No timeline activity.')}</p> : timeline.map((item, index) => <div className="wallet-timeline-item" key={`${item.kind}-${item.at}-${index}`}><span className={`wallet-timeline-dot ${item.kind === 'SMS' ? 'sms' : 'trx'}`} /><div><strong>{item.kind}</strong> · {item.label}<div className="cell-sub mono">{item.at ? new Date(item.at).toLocaleString('en-GB', { timeZone: 'Africa/Cairo', dateStyle: 'short', timeStyle: 'short' }) : '—'} · {money(item.amount, 'EGP')}</div></div></div>)}</div>
             <div className="section-label" style={{ marginTop: 0 }}>{t('المعاملات على هذه المحفظة', 'Transactions to this wallet')} ({detail.transactions.length})</div>
-            {detail.transactions.length === 0 ? <p className="sidebar-hint">{t('لا توجد معاملات مرتبطة.', 'No linked transactions.')}</p> : (
+            {detail.transactions.length === 0 ? <p className="sidebar-hint">{t('لا توجد معاملات مرتبطة.', 'No linked transactions.')}</p> : isMobile ? (
+              <div className="risk-card-list">
+                {detail.transactions.map((tx) => (
+                  <Link key={tx.ontarget_ref} to={`/transactions/${encodeURIComponent(tx.ontarget_ref)}`} className="risk-row-card">
+                    <div className="risk-row-card-head"><span className="mono">{tx.ontarget_ref}</span><span className="mono">{money(tx.amount, 'EGP')}</span></div>
+                    <div className="risk-row-card-foot"><span className={`pay-status-badge ${stCls(tx.status)}`}>{tx.status ?? '—'}</span><span>{tx.sender_name ?? '—'}</span></div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
               <div className="table-wrap"><table className="data-table">
                 <thead><tr><th>{t('المرجع', 'Ref')}</th><th>{t('الحالة', 'Status')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('المُرسِل', 'Sender')}</th></tr></thead>
                 <tbody>{detail.transactions.map((tx) => <tr key={tx.ontarget_ref}><td className="mono"><Link to={`/transactions/${encodeURIComponent(tx.ontarget_ref)}`}>{tx.ontarget_ref}</Link></td><td><span className={`pay-status-badge ${stCls(tx.status)}`}>{tx.status ?? '—'}</span></td><td className="mono">{money(tx.amount, 'EGP')}</td><td>{tx.sender_name ?? '—'}</td></tr>)}</tbody>

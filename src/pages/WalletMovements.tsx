@@ -3,6 +3,7 @@ import PanelShell from '../components/PanelShell'
 import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 
 // Money in and out per wallet, both directions.
 //
@@ -52,6 +53,7 @@ const LOW_BALANCE = 500
 
 export default function WalletMovements() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [days, setDays] = useState<number>(7)
   const [data, setData] = useState<Movements | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -168,6 +170,22 @@ export default function WalletMovements() {
 
           <section className="card">
             <div className="section-label">{t('لكل محفظة', 'Per wallet')}</div>
+            {isMobile ? (
+              <div className="risk-card-list">
+                {data.wallets.map((w) => (
+                  <div key={w.wallet} className="risk-row-card">
+                    <div className="risk-row-card-head"><span className="mono">{w.wallet}</span><span className="mono">{money(w.net, 'EGP')}</span></div>
+                    {!w.mapped && <div className="cell-sub">{t('غير مُعرَّفة في خريطة الأجهزة', 'not in the device map')}</div>}
+                    <div className="cell-sub">{w.device ?? '—'}{w.simSlot ? ` / SIM${w.simSlot}` : ''} · {t('رصيد', 'balance')} {w.balance == null ? '—' : money(w.balance, 'EGP')}</div>
+                    <div className="cell-sub mono">{t('وارد', 'In')} {money(w.inAmount, 'EGP')} ({w.deposits}) · {t('صادر', 'Out')} {money(w.outAmount, 'EGP')} ({w.withdrawals})</div>
+                    <div className="risk-row-card-foot">
+                      <span>{t('مطابقة', 'Match')} {w.matchRate == null ? '—' : `${w.matchRate}%`}{w.deposits > 0 && ` (${w.matched}/${w.deposits})`}</span>
+                      <span className="mono muted">{w.lastSmsAt ? new Date(w.lastSmsAt).toLocaleString() : '—'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
@@ -219,6 +237,7 @@ export default function WalletMovements() {
                 </tbody>
               </table>
             </div>
+            )}
             <p className="cell-sub">
               {t(
                 'الرصيد هو آخر قيمة أعلنتها رسالة من المحفظة، لا استعلام حيّ من المزوّد — فهو صحيح لحظة تلك الرسالة فقط.',

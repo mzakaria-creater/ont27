@@ -5,6 +5,7 @@ import PanelShell from '../components/PanelShell'
 import MultiSelectFilter from '../components/MultiSelectFilter'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
+import { useIsMobile } from '../lib/useIsMobile'
 
 type ChainRow = {
   sms_id: number; prev_sms_id: number; chain_root: number; wallet: string | null; inferred_wallet: string | null
@@ -18,6 +19,7 @@ const cairoTime = (value: string | null) => value ? new Date(value).toLocaleStri
 const label = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 
 export default function SmsBalanceChains() {
+  const isMobile = useIsMobile()
   const [data, setData] = useState<Response | null>(null)
   const [query, setQuery] = useState('')
   const [providers, setProviders] = useState<string[]>([])
@@ -67,7 +69,15 @@ export default function SmsBalanceChains() {
     </div>
     {error && <div className="card warn">{error}</div>}
     <section className="card recent-card">
-      {loading && !data ? <p className="sidebar-hint">Loading balance chains…</p> : rows.length === 0 ? <p className="sidebar-hint">No SMS balance chains match the selected filters.</p> : <div className="table-wrap"><table className="data-table"><thead><tr>
+      {loading && !data ? <p className="sidebar-hint">Loading balance chains…</p> : rows.length === 0 ? <p className="sidebar-hint">No SMS balance chains match the selected filters.</p> : isMobile ? <div className="risk-card-list">{rows.map((row) => <div key={`${row.sms_id}-${row.prev_sms_id}`} className="risk-row-card">
+        <div className="risk-row-card-head"><Link to={`/sms?q=${row.sms_id}`} className="mono">#{row.sms_id}</Link>{row.continuity === 'ok' ? <span className="pay-status-badge st-paid"><CheckCircle2 size={13} /> OK</span> : row.continuity === 'warning' ? <span className="pay-status-badge st-declined"><AlertTriangle size={13} /> Warning</span> : <span className="pay-status-badge st-pending">Unknown</span>}</div>
+        <div className="cell-sub">{row.wallet ?? row.inferred_wallet ?? '—'} · {row.provider ?? '—'} · {row.device?.toUpperCase() ?? '—'}{row.sim_slot && ` SIM ${row.sim_slot}`}</div>
+        <div className="cell-sub mono">{money(row.amount, 'EGP')} · prev {money(row.previous_balance, 'EGP')} → now {money(row.current_balance, 'EGP')} · Δ {money(row.delta, 'EGP')} (exp {money(row.expected_delta, 'EGP')})</div>
+        <div className="risk-row-card-foot">
+          <span>{row.evidence_tx_links > 0 ? <span className="positive-text">{row.evidence_tx_links} trx</span> : '—'}{row.matched_transaction_id && <> · <Link to={`/transactions/${row.matched_transaction_id}`}>#{row.matched_transaction_id}</Link></>}</span>
+          <span className="mono muted">{cairoTime(row.received_at)}</span>
+        </div>
+      </div>)}</div> : <div className="table-wrap"><table className="data-table"><thead><tr>
         <th>SMS / Previous</th><th>Chain root</th><th>Wallet</th><th>Provider</th><th>Device / SIM</th><th>Amount</th><th>Previous balance</th><th>Current balance</th><th>Delta / expected</th><th>Evidence</th><th>Received</th><th>Continuity</th>
       </tr></thead><tbody>{rows.map((row) => <tr key={`${row.sms_id}-${row.prev_sms_id}`}>
         <td className="mono"><Link to={`/sms?q=${row.sms_id}`}>#{row.sms_id}</Link><div className="cell-sub">prev #{row.prev_sms_id}</div></td>
