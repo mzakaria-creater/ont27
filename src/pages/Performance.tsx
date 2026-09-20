@@ -6,6 +6,7 @@ import MultiSelectFilter from '../components/MultiSelectFilter'
 import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 
 // PSP and merchant performance.
 //
@@ -124,6 +125,7 @@ function Signal({ g, t }: { g: Group; t: (a: string, e: string) => string }) {
 
 export default function Performance() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [dimension, setDimension] = useState<string>('payment_method')
   const [win, setWin] = useState<(typeof WINDOWS)[number]>(WINDOWS[2])
   const [gateway, setGateway] = useState<string>('NagupayP2P')
@@ -302,6 +304,26 @@ export default function Performance() {
 
           <section className="card">
             <div className="section-label">{t('التفصيل', 'Breakdown')}</div>
+            {visibleGroups.length === 0 && <p className="cell-sub">{t('لا توجد بيانات في هذه النافذة.', 'No data in this window.')}</p>}
+            {visibleGroups.length > 0 && (isMobile ? (
+              <div className="risk-card-list">
+                {visibleGroups.map((g) => (
+                  <div key={g.key} className="risk-row-card">
+                    <div className="risk-row-card-head">
+                      {dimension === 'payment_method'
+                        ? <span className="method-cell"><MethodLogo method={g.key} /><span className="method-name">{g.key}</span></span>
+                        : <span className="mono">{g.key}</span>}
+                      <span className="mono">{money(g.volume, 'EGP')}</span>
+                    </div>
+                    <div className="cell-sub">{g.approvalRate == null ? '—' : `${g.approvalRate}%`} · <Signal g={g} t={t} /> · {g.paid} / {g.declined}</div>
+                    <div className="risk-row-card-foot">
+                      <span>{t('متوسط','Avg')} {g.avgTicket == null ? '—' : money(g.avgTicket, 'EGP')}</span>
+                      <span className="mono muted">{secs(g.p50SettleSec, t)} / {secs(g.p90SettleSec, t)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
@@ -316,9 +338,6 @@ export default function Performance() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleGroups.length === 0 && (
-                    <tr><td colSpan={7} className="cell-sub">{t('لا توجد بيانات في هذه النافذة.', 'No data in this window.')}</td></tr>
-                  )}
                   {visibleGroups.map((g) => (
                     <tr key={g.key}>
                       <td>
@@ -340,6 +359,7 @@ export default function Performance() {
                 </tbody>
               </table>
             </div>
+            ))}
             <p className="cell-sub">
               {t(
                 'زمن التسوية يُقاس من إنشاء المزوّد للمعاملة حتى الحالة التي نحملها الآن، وهو يشمل تأخير المُجمِّع لدينا (~85 ثانية وسيطاً) — فهو زمن ملحوظ لا زمن قرارنا وحده.',
