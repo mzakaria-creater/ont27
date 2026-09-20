@@ -4,6 +4,7 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 
 // Mismatch detector — automates the anomaly hunt that was done by hand today.
 // Read-only by design: it surfaces suspects for a human to judge, it never
@@ -39,6 +40,7 @@ function fmt(ts: string | null): string {
 
 export default function Mismatch() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [data, setData] = useState<Data | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [hours, setHours] = useState(24)
@@ -153,7 +155,21 @@ export default function Mismatch() {
             )}
           </p>
           {data.undocumented.length === 0 && <p>{t('لا توجد قرارات غير موثّقة في هذه النافذة ✅', 'No undocumented decisions in this window ✅')}</p>}
-          {data.undocumented.length > 0 && (
+          {data.undocumented.length > 0 && (isMobile ? (
+            <div className="risk-card-list">
+              {data.undocumented.map((r) => (
+                <div key={r.tx_id} className="risk-row-card">
+                  <div className="risk-row-card-head"><span className="mono">{r.ontarget_ref ?? r.tx_id}</span><span className="mono">{money(r.amount, 'EGP')}</span></div>
+                  <div className="cell-sub">{r.sender_name ?? '—'} · {t('نُفِّذ بواسطة', 'Decided by')} {r.approved_by ?? t('غير معروف', 'unknown')}</div>
+                  <div className="risk-row-card-foot">
+                    <span className={`pay-status-badge ${r.status === 'PAID' ? 'st-paid' : 'st-declined'}`}>{r.status}</span>
+                    <span className="mono muted">{fmt(r.modified_utc)}</span>
+                  </div>
+                  {r.ontarget_ref && <Link className="btn-ghost btn-sm" to={`/transactions/${r.ontarget_ref}`}>{t('فتح', 'Open')}</Link>}
+                </div>
+              ))}
+            </div>
+          ) : (
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
@@ -179,7 +195,7 @@ export default function Mismatch() {
                 </tbody>
               </table>
             </div>
-          )}
+          ))}
         </section>
       )}
 
@@ -196,7 +212,21 @@ export default function Mismatch() {
             )}
           </p>
           {decisionTotal === 0 && <p>{t('كل قرار مؤكَّد منعكس في قاعدتنا ✅', 'Every confirmed decision is reflected locally ✅')}</p>}
-          {decisionTotal > 0 && (
+          {decisionTotal > 0 && (isMobile ? (
+            <div className="risk-card-list">
+              {data.decisionMismatch.map((r) => (
+                <div key={`${r.tx_id}-${r.decided_at}`} className="risk-row-card">
+                  <div className="risk-row-card-head"><span className="mono">{r.ontarget_ref ?? r.tx_id}</span><span className={`pay-status-badge ${r.decision === 'PAID' ? 'st-paid' : 'st-declined'}`}>{r.decision}</span></div>
+                  <div className="cell-sub">{t('حالتنا الآن', 'Our status')} <span className="pay-status-badge st-pending">{r.status_now}</span> · {r.actor_name ?? '—'}</div>
+                  <div className="risk-row-card-foot">
+                    <span className="mono">{fmt(r.decided_at)} · {r.minutes_stale ?? '—'} {t('دقيقة', 'min')}</span>
+                    {r.status_rolled_back ? <span className="pay-status-badge st-declined">{t('أُعيدت للخلف', 'Rolled back')}</span> : null}
+                  </div>
+                  {r.ontarget_ref && <Link className="btn-ghost btn-sm" to={`/transactions/${r.ontarget_ref}`}>{t('فتح', 'Open')}</Link>}
+                </div>
+              ))}
+            </div>
+          ) : (
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
@@ -224,7 +254,7 @@ export default function Mismatch() {
                 </tbody>
               </table>
             </div>
-          )}
+          ))}
         </section>
       )}
 
@@ -241,7 +271,25 @@ export default function Mismatch() {
             )}
           </p>
           {data.smsMismatch.length === 0 && <p>{t('لا توجد حالات مطابقة ✅', 'No candidates ✅')}</p>}
-          {data.smsMismatch.length > 0 && (
+          {data.smsMismatch.length > 0 && (isMobile ? (
+            <div className="risk-card-list">
+              {data.smsMismatch.map((r) => {
+                const nameDiffers = !!r.tx_sender && !!r.sms_sender && r.tx_sender.trim().toLowerCase() !== r.sms_sender.trim().toLowerCase()
+                return (
+                  <div key={`${r.tx_id}-${r.sms_id}`} className="risk-row-card">
+                    <div className="risk-row-card-head"><span className="mono">{r.ontarget_ref ?? r.tx_id}</span><span className="mono">{money(r.amount, 'EGP')}</span></div>
+                    <div className="cell-sub">{r.tx_sender ?? '—'} ← {r.sms_sender ?? '—'}{nameDiffers && <span className="warn-text"> ({t('اسم مختلف', 'name differs')})</span>}</div>
+                    <div className="cell-sub mono">{r.to_account_number ?? '—'} · {r.device_name ?? ''}</div>
+                    <div className="risk-row-card-foot">
+                      <span className="pay-status-badge st-pending">SMS_MISMATCH</span>
+                      <span className="mono muted">{r.minutes_offset != null ? t(`${r.minutes_offset} د`, `${r.minutes_offset} min`) : '—'}</span>
+                    </div>
+                    {r.ontarget_ref && <Link className="btn-ghost btn-sm" to={`/transactions/${r.ontarget_ref}`}>{t('فتح', 'Open')}</Link>}
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
@@ -274,7 +322,7 @@ export default function Mismatch() {
                 </tbody>
               </table>
             </div>
-          )}
+          ))}
         </section>
       )}
 
@@ -284,7 +332,19 @@ export default function Mismatch() {
             <h3>🔄 {t('فروقات المزامنة مع المشروع القديم', 'Sync gaps vs the old project')}</h3>
           </div>
           {!data.syncGap && <p className="sidebar-hint">{t('تعذّر الوصول إلى المشروع القديم — الفحص غير متاح الآن.', 'The old project is not reachable — this check is unavailable right now.')}</p>}
-          {data.syncGap && (
+          {data.syncGap && (isMobile ? (
+            <div className="risk-card-list">
+              {gapEntries.map(([tbl, v]) => {
+                const diff = v.old != null && v.current != null ? v.old - v.current : null
+                return (
+                  <div key={tbl} className="risk-row-card">
+                    <div className="risk-row-card-head"><span className="mono">{tbl}</span>{diff === 0 ? <span className="pay-status-badge st-paid">{t('متطابق', 'In sync')}</span> : <span className="pay-status-badge st-pending">SYNC_GAP</span>}</div>
+                    <div className="risk-row-card-foot"><span>{t('القديم', 'Old')} <b className="mono">{v.old ?? '—'}</b></span><span>{t('الحالي', 'Current')} <b className="mono">{v.current ?? '—'}</b></span><span>{t('الفرق', 'Diff')} <b className="mono">{diff == null ? '—' : diff === 0 ? '0' : diff > 0 ? `−${diff}` : `+${Math.abs(diff)}`}</b></span></div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
             <div className="table-wrap">
               <table className="data-table">
                 <thead><tr><th>{t('الجدول', 'Table')}</th><th>{t('القديم', 'Old')}</th><th>{t('الحالي', 'Current')}</th><th>{t('الفرق', 'Diff')}</th><th>{t('التصنيف', 'Flag')}</th></tr></thead>
@@ -308,7 +368,7 @@ export default function Mismatch() {
                 </tbody>
               </table>
             </div>
-          )}
+          ))}
         </section>
       )}
     </PanelShell>
