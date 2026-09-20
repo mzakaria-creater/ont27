@@ -55,6 +55,23 @@ function extractReference(message: string): string | null {
   return message.match(/رقم\s*(?:المعاملة|العملية)\s*[:：]?\s*(\d+)/)?.[1] ?? null;
 }
 
+// Real provider traffic that is never a deposit/withdrawal event on its own:
+// balance-check pings ("رصيدك الحالي ... شكرا لاستخدامك"), promo/loyalty texts
+// ("مبروك! كسبت ... هدية", "... تحويشة"), and bare envelope-header fragments
+// the forwarder app sends alongside the real message body ("From : X()" with
+// no content). None of these carry "بمبلغ" (the amount clause every real
+// transfer confirmation has), so that absence plus the specific wording is
+// enough to route them away from inbound_sms instead of piling up as
+// unclassifiable "unknown" rows.
+function classifyNotification(message: string): string | null {
+  const trimmed = message.trim();
+  if (/^From\s*:/i.test(trimmed) && trimmed.length < 60) return "envelope_fragment";
+  if (/بمبلغ/.test(message)) return null;
+  if (/رصيدك\s*الحالي/.test(message)) return "balance_check";
+  if (/(هدية|تحويشة|مبروك)/.test(message)) return "promo";
+  return null;
+}
+
 // Orange Cash deposits rarely include the sender's phone number, and
 // repairPaidSmsMatches() then falls back to matching by sender name — which
 // stays null (and the SMS unmatchable) unless we pull it from "... من <name>،".
@@ -240,6 +257,37 @@ Deno.serve(async (req: Request) => {
         : (isIncoming || (amount !== null && wallet !== null))
           ? "deposit"
           : "unknown";
+
+    // Genuine provider chatter that isn't a transaction (balance pings,
+    // promo/loyalty texts, envelope-only fragments) goes to its own table
+    // instead of inbound_sms — but only when it's actually from the provider.
+    // A peer-phone sender never gets the benefit of the doubt here: it stays
+    // in inbound_sms, blocked, where fraud review already looks for it.
+    if (smsCategory === "unknown" && !isPeerPhoneSender) {
+      const notificationType = classifyNotification(message);
+      if (notificationType) {
+        const { data: note, error: noteError } = await supabaseAdmin
+          .from("sms_provider_notifications")
+          .insert({
+            device_name: device,
+            provider: String(providerValue),
+            sender_number: rawSender,
+            sender_name: (firstValue(payload, "sender_name", "name") === null ? null : String(firstValue(payload, "sender_name", "name"))) ?? extractSenderName(message),
+            message,
+            sms_first_line: message.split(/\r?\n/)[0]?.slice(0, 500) ?? message,
+            notification_type: notificationType,
+            raw_payload: payload,
+            received_at: new Date().toISOString(),
+          })
+          .select("id")
+          .single();
+        if (noteError) {
+          console.error("sms_provider_notifications insert failed", noteError);
+          return response({ error: "Could not store notification" }, 500);
+        }
+        return response({ ok: true, notification: true, notification_type: notificationType, id: note.id }, 201);
+      }
+    }
 
     // Write both the live column names the panel's matching logic reads
     // (sender_number, receiver_number/wallet_number, trx_id, sms_category)
