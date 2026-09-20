@@ -10,6 +10,7 @@ import UserLogo from "../components/UserLogo";
 import MerchantLogo from "../components/MerchantLogo";
 import MethodLogo from "../components/MethodLogo";
 import { Eye, EyeOff } from "lucide-react";
+import { useIsMobile } from "../lib/useIsMobile";
 
 type Tab =
   | "users"
@@ -69,6 +70,7 @@ const pathTabs = Object.fromEntries(
 
 export default function AdminPage() {
   const { t } = useLocale();
+  const isMobile = useIsMobile();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>(() => pathTabs[pathname] ?? "users");
@@ -553,6 +555,49 @@ export default function AdminPage() {
             </section>
           )}
           <section className="card recent-card">
+            {isMobile ? (
+              <div className="risk-card-list">
+                {data.users.map((row) => {
+                  const ovr = (data.userPermissions ?? []).filter(
+                    (o) => o.user_id === row.id,
+                  ).length;
+                  const loginLocked = Boolean(
+                    row.locked_until &&
+                      new Date(row.locked_until).getTime() > Date.now(),
+                  );
+                  const state =
+                    row.account_status ??
+                    (row.active ? "active" : "inactive");
+                  return (
+                    <div key={row.id} className="risk-row-card">
+                      <div className="risk-row-card-head">
+                        <span>{row.display_name ?? row.username}</span>
+                        <span className={`pay-status-badge ${state === "active" && !loginLocked ? "st-paid" : state === "frozen" ? "st-pending" : "st-declined"}`}>
+                          {loginLocked ? "Login locked" : state}
+                        </span>
+                      </div>
+                      <div className="cell-sub mono">{row.username}{row.email && row.email !== row.username && ` · ${row.email}`}</div>
+                      <div className="cell-sub">{row.role} · {t("استثناءات", "Exceptions")} {ovr > 0 ? ovr : "—"} · {t("آخر دخول", "Last login")} {row.last_login_at ?? "—"}</div>
+                      {row.frozen_until && <div className="cell-sub">until {row.frozen_until}</div>}
+                      {row.status_reason && <div className="cell-sub">{row.status_reason}</div>}
+                      <div className="user-action-grid">
+                        <button className="btn-ghost btn-sm" onClick={() => setEditing(row as UserRow)}>{t("تعديل", "Update")}</button>
+                        <button className="btn-ghost btn-sm" onClick={() => void setAccountState(row, "active")}>Activate</button>
+                        <button className="btn-ghost btn-sm" onClick={() => void setAccountState(row, "inactive")}>Deactivate</button>
+                        <button className="btn-ghost btn-sm" onClick={() => void setAccountState(row, "frozen")}>Freeze</button>
+                        <button className="btn-ghost danger btn-sm" onClick={() => void setAccountState(row, "rejected")}>Reject</button>
+                        <button className="btn-ghost btn-sm" onClick={() => void unblockLogin(row as UserRow)}>Unblock login</button>
+                        {["agent", "operator", "operations_admin", "operator_admin", "operation_admin"].includes(row.role) && (
+                          <button className="btn-primary btn-sm" onClick={() => navigate(`/hr?user=${encodeURIComponent(row.id)}`)}>{t("HR · حضور", "HR · Attendance")}</button>
+                        )}
+                        <button className="btn-primary btn-sm" onClick={() => void sendUserLink(row, "magic_login")}>Send magic link</button>
+                        <button className="btn-ghost btn-sm" onClick={() => void sendUserLink(row, "password_reset")}>Send reset</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
@@ -682,6 +727,7 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+            )}
           </section>
         </>
       )}
@@ -974,6 +1020,47 @@ export default function AdminPage() {
             <div className="recent-head">
               <h3>{t("الافتراضيات حسب Master", "Master defaults")}</h3>
             </div>
+            {isMobile ? (
+              <div className="risk-card-list">
+                {data.feeDefaults.map((row) => {
+                  const master = data.masters.find(
+                    (m) => m.id === row.master_merchant_id,
+                  );
+                  return (
+                    <div key={row.id} className="risk-row-card">
+                      <div className="risk-row-card-head"><strong>{master?.name ?? row.master_merchant_id}</strong></div>
+                      <label className="cell-sub">Payin %<input defaultValue={row.payin_commission_pct} className="login-input control-input mono" id={`pin-${row.id}`} /></label>
+                      <label className="cell-sub">Payout %<input defaultValue={row.payout_commission_pct} className="login-input control-input mono" id={`pout-${row.id}`} /></label>
+                      <label className="cell-sub">{t("رسم ثابت", "Flat fee")}<input defaultValue={row.flat_fee_egp} className="login-input control-input mono" id={`flat-${row.id}`} /></label>
+                      <button
+                        className="btn-primary btn-sm"
+                        onClick={() =>
+                          void call(
+                            `/api/admin/fees/defaults/${row.id}`,
+                            "PUT",
+                            {
+                              payin_commission_pct: (
+                                document.getElementById(`pin-${row.id}`) as HTMLInputElement
+                              ).value,
+                              payout_commission_pct: (
+                                document.getElementById(`pout-${row.id}`) as HTMLInputElement
+                              ).value,
+                              flat_fee_egp: (
+                                document.getElementById(`flat-${row.id}`) as HTMLInputElement
+                              ).value,
+                              min_monthly_commitment_usd: row.min_monthly_commitment_usd,
+                              notes: row.notes,
+                            },
+                          )
+                        }
+                      >
+                        {t("حفظ", "Save")}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
@@ -1053,6 +1140,7 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+            )}
           </section>
           <form className="card control-row" onSubmit={createOverride}>
             <strong>{t("استثناء تاجر فرعي", "Sub-merchant override")}</strong>
@@ -1116,6 +1204,45 @@ export default function AdminPage() {
                 {t("استثناءات التجار الفرعيين", "Sub-merchant overrides")}
               </h3>
             </div>
+            {isMobile ? (
+              <div className="risk-card-list">
+                {data.hierarchy.map((row) => {
+                  const master = data.masters.find(
+                    (m) => m.id === row.master_merchant_id,
+                  );
+                  return (
+                    <div key={row.id} className="risk-row-card">
+                      <div className="risk-row-card-head"><strong>{row.name}</strong><span className="cell-sub">{master?.code ?? "—"}</span></div>
+                      <label className="cell-sub">Payin %<input id={`hpin-${row.id}`} className="login-input control-input mono" defaultValue={row.payin_commission_pct ?? row.commission_rate ?? 0} /></label>
+                      <label className="cell-sub">Payout %<input id={`hpout-${row.id}`} className="login-input control-input mono" defaultValue={row.payout_commission_pct ?? 0} /></label>
+                      <label className="cell-sub"><input id={`hactive-${row.id}`} type="checkbox" defaultChecked={row.active} /> {t("نشط", "Active")}</label>
+                      <button
+                        className="btn-primary btn-sm"
+                        onClick={() =>
+                          void call(
+                            `/api/admin/fees/hierarchy/${row.id}`,
+                            "PUT",
+                            {
+                              payin_commission_pct: (
+                                document.getElementById(`hpin-${row.id}`) as HTMLInputElement
+                              ).value,
+                              payout_commission_pct: (
+                                document.getElementById(`hpout-${row.id}`) as HTMLInputElement
+                              ).value,
+                              active: (
+                                document.getElementById(`hactive-${row.id}`) as HTMLInputElement
+                              ).checked,
+                            },
+                          )
+                        }
+                      >
+                        {t("حفظ", "Save")}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
@@ -1198,6 +1325,7 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+            )}
           </section>
         </>
       )}
@@ -1209,6 +1337,35 @@ export default function AdminPage() {
               "A daily reference limit; it does not change wallet_device_map or SMS matching.",
             )}
           </p>
+          {isMobile ? (
+            <div className="risk-card-list">
+              {data.accounts.map((row) => {
+                const limit = data.capacities.find(
+                  (x) => x.payment_account_id === row.id,
+                );
+                return (
+                  <div key={row.id} className="risk-row-card">
+                    <div className="risk-row-card-head"><span className="mono">{row.account_number}</span><span className="cell-sub">{row.device_name ?? "—"}</span></div>
+                    <div className="cell-sub">{row.label}</div>
+                    <label className="cell-sub">{t("الحد اليومي", "Daily limit")}<input defaultValue={limit?.daily_limit ?? 10000} id={`limit-${row.id}`} className="login-input control-input mono" type="number" min="0" /></label>
+                    <div className="cell-sub">{t("المستخدم", "Used")} <span className="mono">{limit?.current_daily_used ?? 0}</span></div>
+                    <button
+                      className="btn-primary btn-sm"
+                      onClick={() =>
+                        void call(`/api/admin/capacity/${row.id}`, "PUT", {
+                          daily_limit: (
+                            document.getElementById(`limit-${row.id}`) as HTMLInputElement
+                          ).value,
+                        })
+                      }
+                    >
+                      {t("حفظ", "Save")}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -1264,6 +1421,7 @@ export default function AdminPage() {
               </tbody>
             </table>
           </div>
+          )}
         </section>
       )}
       {data && tab === "keys" && (
@@ -1322,6 +1480,27 @@ export default function AdminPage() {
             </div>
           )}
           <section className="card recent-card">
+            {isMobile ? (
+              <div className="risk-card-list">
+                {data.apiKeys.map((row) => (
+                  <div key={row.id} className="risk-row-card">
+                    <div className="risk-row-card-head"><span>{row.key_name}</span><span className={`pay-status-badge ${row.is_active ? "st-paid" : "st-dim"}`}>{row.is_active ? t("نشط", "Active") : t("ملغى", "Revoked")}</span></div>
+                    <div className="cell-sub mono" style={{ wordBreak: "break-all" }}>{row.api_key}</div>
+                    <div className="cell-sub">{row.environment}</div>
+                    {row.is_active && (
+                      <button
+                        className="btn-ghost danger btn-sm"
+                        onClick={() =>
+                          void call(`/api/admin/api-keys/${row.id}/revoke`, "POST")
+                        }
+                      >
+                        {t("إلغاء", "Revoke")}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
@@ -1364,6 +1543,7 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+            )}
           </section>
         </>
       )}
