@@ -5,6 +5,7 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 
 type Preset = 'today' | 'this_week' | 'last_week' | 'this_month' | 'last_month' | 'custom'
 interface Summary { depositCount: number; depositVolume: number; payoutCount: number; payoutVolume: number; declined: number; pending: number; attempts: number; fees: number }
@@ -41,6 +42,7 @@ const rangeFor = (preset: Exclude<Preset, 'custom'>) => {
 
 export default function ExecutiveDashboard() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [search, setSearch] = useSearchParams()
   const initialPreset = (search.get('preset') as Preset) || 'this_month'
   const initialRange = initialPreset === 'custom'
@@ -149,10 +151,42 @@ export default function ExecutiveDashboard() {
     <div className="executive-kpi-grid" aria-live="polite">{kpis.map(({ icon: Icon, label, value, sub }) => <div className="executive-kpi" key={label}><div className="executive-kpi-icon"><Icon size={17} aria-hidden="true" /></div><span>{label}</span><strong>{value}</strong><small>{sub}</small></div>)}</div>
 
     <div className="responsive-content-grid executive-content-grid">
-      <section className="card recent-card"><div className="recent-head"><h3>{t('اتجاه التدفق النقدي', 'Cash-flow trend')}</h3><span className="cell-sub">{applied.from} → {applied.to}</span></div><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('التاريخ', 'Date')}</th><th>{t('وارد', 'Incoming')}</th><th>{t('صادر', 'Outgoing')}</th><th>{t('الصافي', 'Net')}</th></tr></thead><tbody>{(data?.daily ?? []).map((row) => <tr key={row.date}><td className="mono">{row.date}</td><td><span className="mono">{money(row.incoming, 'EGP')}</span><div className="analytics-bar"><i style={{ width: `${row.incoming / maxFlow * 100}%` }} /></div></td><td><span className="mono">{money(row.outgoing, 'EGP')}</span><div className="analytics-bar analytics-bar-out"><i style={{ width: `${row.outgoing / maxFlow * 100}%` }} /></div></td><td className="mono">{money(row.incoming - row.outgoing, 'EGP')}</td></tr>)}</tbody></table></div></section>
+      <section className="card recent-card"><div className="recent-head"><h3>{t('اتجاه التدفق النقدي', 'Cash-flow trend')}</h3><span className="cell-sub">{applied.from} → {applied.to}</span></div>
+      {isMobile ? (
+        <div className="risk-card-list">
+          {(data?.daily ?? []).map((row) => (
+            <div key={row.date} className="risk-row-card">
+              <div className="risk-row-card-head"><span className="mono">{row.date}</span><span className="mono">{money(row.incoming - row.outgoing, 'EGP')}</span></div>
+              <div className="cell-sub mono">{t('وارد','In')} {money(row.incoming, 'EGP')} · {t('صادر','Out')} {money(row.outgoing, 'EGP')}</div>
+              <div className="analytics-bar"><i style={{ width: `${row.incoming / maxFlow * 100}%` }} /></div>
+              <div className="analytics-bar analytics-bar-out"><i style={{ width: `${row.outgoing / maxFlow * 100}%` }} /></div>
+            </div>
+          ))}
+        </div>
+      ) : (
+      <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('التاريخ', 'Date')}</th><th>{t('وارد', 'Incoming')}</th><th>{t('صادر', 'Outgoing')}</th><th>{t('الصافي', 'Net')}</th></tr></thead><tbody>{(data?.daily ?? []).map((row) => <tr key={row.date}><td className="mono">{row.date}</td><td><span className="mono">{money(row.incoming, 'EGP')}</span><div className="analytics-bar"><i style={{ width: `${row.incoming / maxFlow * 100}%` }} /></div></td><td><span className="mono">{money(row.outgoing, 'EGP')}</span><div className="analytics-bar analytics-bar-out"><i style={{ width: `${row.outgoing / maxFlow * 100}%` }} /></div></td><td className="mono">{money(row.incoming - row.outgoing, 'EGP')}</td></tr>)}</tbody></table></div>
+      )}</section>
       <section className="card recent-card executive-queue-card"><div className="recent-head"><h3>{t('الحالة التشغيلية', 'Operating status')}</h3><Link className="pay-status-link" to="/approvals">{t('فتح المراجعة', 'Open review')} ←</Link></div><div className="executive-queue-list"><div><span>{t('إيداعات معلقة', 'Pending deposits')}</span><strong>{data?.queues.pendingDeposits ?? '…'}</strong></div><div><span>{t('سحوبات معلقة', 'Pending payouts')}</span><strong>{data?.queues.pendingPayouts ?? '…'}</strong></div><div><span>{t('SMS للمراجعة', 'SMS review')}</span><strong>{data?.queues.smsReview ?? '…'}</strong></div><div><span>{t('أجهزة متصلة', 'Online devices')}</span><strong>{data ? `${data.devices.online}/${data.devices.total}` : '…'}</strong></div></div></section>
     </div>
 
-    <section className="card recent-card executive-pivot"><div className="recent-head"><div><div className="allocation-title"><Table2 size={18} aria-hidden="true" /><h3>{t('الجدول المحوري', 'Pivot table')}</h3></div><span className="cell-sub">{t('التاجر × طريقة الدفع × الحالة — العدد والقيمة', 'Merchant × payment method × status — count and value')}</span></div><span className="cell-sub">{data?.pivot.length ?? 0} {t('صف', 'rows')}</span></div><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('التاجر', 'Merchant')}</th><th>{t('الطريقة', 'Method')}</th><th>{t('مدفوع', 'Paid')}</th><th>{t('معلق', 'Pending')}</th><th>{t('مرفوض', 'Declined')}</th><th>{t('الإجمالي', 'Total')}</th></tr></thead><tbody>{(data?.pivot ?? []).map((row) => <tr key={`${row.merchant}-${row.method}`}><td><strong>{row.merchant}</strong></td><td>{row.method}</td><td><span className="pivot-count">{row.paidCount}</span><div className="mono pivot-money">{money(row.paidVolume, 'EGP')}</div></td><td><span className="pivot-count pending">{row.pendingCount}</span><div className="mono pivot-money">{money(row.pendingVolume, 'EGP')}</div></td><td><span className="pivot-count declined">{row.declinedCount}</span><div className="mono pivot-money">{money(row.declinedVolume, 'EGP')}</div></td><td><strong className="mono">{money(row.totalVolume, 'EGP')}</strong><div className="cell-sub">{row.totalCount} {t('عملية', 'transactions')}</div></td></tr>)}</tbody></table>{data && data.pivot.length === 0 && <div className="executive-empty">{t('لا توجد بيانات مطابقة للفلاتر.', 'No data matches the selected filters.')}</div>}</div></section>
+    <section className="card recent-card executive-pivot"><div className="recent-head"><div><div className="allocation-title"><Table2 size={18} aria-hidden="true" /><h3>{t('الجدول المحوري', 'Pivot table')}</h3></div><span className="cell-sub">{t('التاجر × طريقة الدفع × الحالة — العدد والقيمة', 'Merchant × payment method × status — count and value')}</span></div><span className="cell-sub">{data?.pivot.length ?? 0} {t('صف', 'rows')}</span></div>
+    {data && data.pivot.length === 0 && <div className="executive-empty">{t('لا توجد بيانات مطابقة للفلاتر.', 'No data matches the selected filters.')}</div>}
+    {(data?.pivot.length ?? 0) > 0 && (isMobile ? (
+      <div className="risk-card-list">
+        {(data?.pivot ?? []).map((row) => (
+          <div key={`${row.merchant}-${row.method}`} className="risk-row-card">
+            <div className="risk-row-card-head"><strong>{row.merchant}</strong><span className="mono">{money(row.totalVolume, 'EGP')}</span></div>
+            <div className="cell-sub">{row.method} · {row.totalCount} {t('عملية', 'transactions')}</div>
+            <div className="risk-row-card-foot">
+              <span className="pivot-count">{row.paidCount} {t('مدفوع','paid')} ({money(row.paidVolume, 'EGP')})</span>
+              <span className="pivot-count pending">{row.pendingCount} {t('معلق','pending')} ({money(row.pendingVolume, 'EGP')})</span>
+              <span className="pivot-count declined">{row.declinedCount} {t('مرفوض','declined')} ({money(row.declinedVolume, 'EGP')})</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    ) : (
+    <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('التاجر', 'Merchant')}</th><th>{t('الطريقة', 'Method')}</th><th>{t('مدفوع', 'Paid')}</th><th>{t('معلق', 'Pending')}</th><th>{t('مرفوض', 'Declined')}</th><th>{t('الإجمالي', 'Total')}</th></tr></thead><tbody>{(data?.pivot ?? []).map((row) => <tr key={`${row.merchant}-${row.method}`}><td><strong>{row.merchant}</strong></td><td>{row.method}</td><td><span className="pivot-count">{row.paidCount}</span><div className="mono pivot-money">{money(row.paidVolume, 'EGP')}</div></td><td><span className="pivot-count pending">{row.pendingCount}</span><div className="mono pivot-money">{money(row.pendingVolume, 'EGP')}</div></td><td><span className="pivot-count declined">{row.declinedCount}</span><div className="mono pivot-money">{money(row.declinedVolume, 'EGP')}</div></td><td><strong className="mono">{money(row.totalVolume, 'EGP')}</strong><div className="cell-sub">{row.totalCount} {t('عملية', 'transactions')}</div></td></tr>)}</tbody></table></div>
+    ))}</section>
   </PanelShell>
 }
