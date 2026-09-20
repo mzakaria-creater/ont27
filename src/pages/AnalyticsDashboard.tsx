@@ -8,6 +8,7 @@ import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { RotateCcw, Search } from 'lucide-react'
 import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectFilter'
+import { useIsMobile } from '../lib/useIsMobile'
 
 type Tab = 'overview' | 'transactions' | 'wallets' | 'merchants' | 'reports'
 interface WindowStats { depositCount: number; depositVolume: number; payoutCount: number; payoutVolume: number; declined: number; attempts: number }
@@ -22,6 +23,7 @@ const EMPTY_FILTERS = { q: '', type: '', status: '', merchant: '', method: '', f
 
 export default function AnalyticsDashboard() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [tab, setTab] = useState<Tab>('overview')
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('day')
   const [executive, setExecutive] = useState<ExecutiveData | null>(null)
@@ -128,20 +130,96 @@ export default function AnalyticsDashboard() {
         <div className="kpi-card"><div className="kpi-value">{money(reportTotals.commission + reportTotals.fees, 'EGP')}</div><div className="kpi-label">{t('إيراد الرسوم', 'Revenue from fees')}</div><div className="cell-sub">{t('القيم المسجلة فقط', 'recorded values only')}</div></div>
       </div>
       <div className="responsive-content-grid executive-content-grid">
-        <section className="card recent-card"><div className="recent-head"><h3>{t('التدفق اليومي', 'Daily cash flow')}</h3><span className="cell-sub">{t('آخر 14 يوماً', 'Last 14 days')}</span></div><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('التاريخ', 'Date')}</th><th>{t('وارد', 'Incoming')}</th><th>{t('صادر', 'Outgoing')}</th><th>{t('الصافي', 'Net')}</th></tr></thead><tbody>{(executive?.daily ?? []).slice(0, 14).map((row) => <tr key={row.date}><td className="mono">{row.date}</td><td className="mono">{money(row.incoming, 'EGP')}<div className="analytics-bar"><i style={{ width: `${(row.incoming / maxDaily) * 100}%` }} /></div></td><td className="mono">{money(row.outgoing, 'EGP')}<div className="analytics-bar analytics-bar-out"><i style={{ width: `${(row.outgoing / maxDaily) * 100}%` }} /></div></td><td className="mono">{money(row.incoming - row.outgoing, 'EGP')}</td></tr>)}</tbody></table></div></section>
-        <section className="card recent-card"><div className="recent-head"><h3>{t('أحدث المعاملات', 'Latest transactions')}</h3><Link className="pay-status-link" to="/transactions">{t('الكل', 'All')} ←</Link></div><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('المرجع', 'Reference')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('الحالة', 'Status')}</th></tr></thead><tbody>{transactions.slice(0, 8).map((row) => <tr key={`${row.kind}-${row.tx_id ?? row.maven_id}`}><td className="mono">{row.ontarget_ref ?? '—'}</td><td className="mono">{money(row.amount, 'EGP')}</td><td><span className={`pay-status-badge ${approved(row.status) ? 'st-paid' : 'st-dim'}`}>{row.status ?? '—'}</span></td></tr>)}</tbody></table></div></section>
+        <section className="card recent-card"><div className="recent-head"><h3>{t('التدفق اليومي', 'Daily cash flow')}</h3><span className="cell-sub">{t('آخر 14 يوماً', 'Last 14 days')}</span></div>
+        {isMobile ? (
+          <div className="risk-card-list">
+            {(executive?.daily ?? []).slice(0, 14).map((row) => (
+              <div key={row.date} className="risk-row-card">
+                <div className="risk-row-card-head"><span className="mono">{row.date}</span><span className="mono">{money(row.incoming - row.outgoing, 'EGP')}</span></div>
+                <div className="cell-sub mono">{t('وارد','In')} {money(row.incoming, 'EGP')} · {t('صادر','Out')} {money(row.outgoing, 'EGP')}</div>
+                <div className="analytics-bar"><i style={{ width: `${(row.incoming / maxDaily) * 100}%` }} /></div>
+                <div className="analytics-bar analytics-bar-out"><i style={{ width: `${(row.outgoing / maxDaily) * 100}%` }} /></div>
+              </div>
+            ))}
+          </div>
+        ) : (
+        <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('التاريخ', 'Date')}</th><th>{t('وارد', 'Incoming')}</th><th>{t('صادر', 'Outgoing')}</th><th>{t('الصافي', 'Net')}</th></tr></thead><tbody>{(executive?.daily ?? []).slice(0, 14).map((row) => <tr key={row.date}><td className="mono">{row.date}</td><td className="mono">{money(row.incoming, 'EGP')}<div className="analytics-bar"><i style={{ width: `${(row.incoming / maxDaily) * 100}%` }} /></div></td><td className="mono">{money(row.outgoing, 'EGP')}<div className="analytics-bar analytics-bar-out"><i style={{ width: `${(row.outgoing / maxDaily) * 100}%` }} /></div></td><td className="mono">{money(row.incoming - row.outgoing, 'EGP')}</td></tr>)}</tbody></table></div>
+        )}</section>
+        <section className="card recent-card"><div className="recent-head"><h3>{t('أحدث المعاملات', 'Latest transactions')}</h3><Link className="pay-status-link" to="/transactions">{t('الكل', 'All')} ←</Link></div>
+        {isMobile ? (
+          <div className="risk-card-list">
+            {transactions.slice(0, 8).map((row) => (
+              <div key={`${row.kind}-${row.tx_id ?? row.maven_id}`} className="risk-row-card">
+                <div className="risk-row-card-head"><span className="mono">{row.ontarget_ref ?? '—'}</span><span className="mono">{money(row.amount, 'EGP')}</span></div>
+                <div className="risk-row-card-foot"><span className={`pay-status-badge ${approved(row.status) ? 'st-paid' : 'st-dim'}`}>{row.status ?? '—'}</span></div>
+              </div>
+            ))}
+          </div>
+        ) : (
+        <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('المرجع', 'Reference')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('الحالة', 'Status')}</th></tr></thead><tbody>{transactions.slice(0, 8).map((row) => <tr key={`${row.kind}-${row.tx_id ?? row.maven_id}`}><td className="mono">{row.ontarget_ref ?? '—'}</td><td className="mono">{money(row.amount, 'EGP')}</td><td><span className={`pay-status-badge ${approved(row.status) ? 'st-paid' : 'st-dim'}`}>{row.status ?? '—'}</span></td></tr>)}</tbody></table></div>
+        )}</section>
       </div>
       <div className="responsive-content-grid executive-content-grid">
-        <section className="card recent-card"><div className="recent-head"><h3>{t('توزيع طرق الدفع', 'Payment method split')}</h3></div><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('الطريقة', 'Method')}</th><th>{t('الحجم', 'Volume')}</th><th>{t('العمليات', 'Count')}</th></tr></thead><tbody>{(reports?.byMethod ?? []).slice(0, 8).map((row, index) => { const label = row.method ?? row.key?.split('||')[0] ?? '—'; return <tr key={`${label}-${row.master ?? index}`}><td>{label}</td><td className="mono">{money(row.amount ?? row.volume ?? 0, 'EGP')}</td><td className="mono">{row.count}</td></tr> })}</tbody></table></div></section>
+        <section className="card recent-card"><div className="recent-head"><h3>{t('توزيع طرق الدفع', 'Payment method split')}</h3></div>
+        {isMobile ? (
+          <div className="risk-card-list">
+            {(reports?.byMethod ?? []).slice(0, 8).map((row, index) => { const label = row.method ?? row.key?.split('||')[0] ?? '—'; return (
+              <div key={`${label}-${row.master ?? index}`} className="risk-row-card">
+                <div className="risk-row-card-head"><span>{label}</span><span className="mono">{money(row.amount ?? row.volume ?? 0, 'EGP')}</span></div>
+                <div className="cell-sub">{row.count} {t('عملية','ops')}</div>
+              </div>
+            ) })}
+          </div>
+        ) : (
+        <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('الطريقة', 'Method')}</th><th>{t('الحجم', 'Volume')}</th><th>{t('العمليات', 'Count')}</th></tr></thead><tbody>{(reports?.byMethod ?? []).slice(0, 8).map((row, index) => { const label = row.method ?? row.key?.split('||')[0] ?? '—'; return <tr key={`${label}-${row.master ?? index}`}><td>{label}</td><td className="mono">{money(row.amount ?? row.volume ?? 0, 'EGP')}</td><td className="mono">{row.count}</td></tr> })}</tbody></table></div>
+        )}</section>
         <section className="card recent-card"><div className="recent-head"><h3>{t('توزيع الحالات', 'Status distribution')}</h3></div><div className="source-list"><div><span>{t('معتمدة', 'Approved')}</span><b>{stats?.depositCount ?? 0}</b></div><div><span>{t('مرفوضة', 'Declined')}</span><b>{stats?.declined ?? 0}</b></div><div><span>{t('قيد المراجعة', 'Pending review')}</span><b>{pendingReview}</b></div></div></section>
       </div>
     </>}
 
-    {tab === 'transactions' && <section className="card recent-card"><div className="recent-head"><h3>{t('المعاملات الحية', 'Live transactions')}</h3><span className="cell-sub">{loading ? t('جارٍ التحميل…', 'Loading…') : transactions.length}</span></div><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('النوع', 'Type')}</th><th>{t('المرجع', 'Reference')}</th><th>{t('التاجر / الطرف', 'Merchant / party')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('الطريقة', 'Method')}</th><th>{t('الحالة', 'Status')}</th><th>{t('الوقت', 'Time')}</th></tr></thead><tbody>{transactions.map((row) => <tr key={`${row.kind}-${row.tx_id ?? row.maven_id}`}><td>{row.kind === 'deposit' ? t('إيداع', 'Deposit') : t('سحب', 'Payout')}</td><td className="mono">{row.ontarget_ref ?? '—'}</td><td>{row.merchant ? <MerchantLogo merchant={row.merchant} /> : row.sender_name ?? row.sender_number ?? row.account_name ?? row.mobile_no ?? '—'}</td><td className="mono">{money(row.amount, 'EGP')}</td><td><MethodLogo method={row.payment_method ?? row.pay_by} /></td><td><span className={`pay-status-badge ${approved(row.status) ? 'st-paid' : 'st-dim'}`}>{row.status ?? '—'}</span></td><td className="mono">{row.first_seen_at ? new Date(row.first_seen_at).toLocaleString() : '—'}</td></tr>)}</tbody></table></div></section>}
+    {tab === 'transactions' && <section className="card recent-card"><div className="recent-head"><h3>{t('المعاملات الحية', 'Live transactions')}</h3><span className="cell-sub">{loading ? t('جارٍ التحميل…', 'Loading…') : transactions.length}</span></div>
+      {isMobile ? (
+        <div className="risk-card-list">
+          {transactions.map((row) => (
+            <div key={`${row.kind}-${row.tx_id ?? row.maven_id}`} className="risk-row-card">
+              <div className="risk-row-card-head"><span className="mono">{row.ontarget_ref ?? '—'}</span><span className="mono">{money(row.amount, 'EGP')}</span></div>
+              <div className="cell-sub">{row.kind === 'deposit' ? t('إيداع', 'Deposit') : t('سحب', 'Payout')} · {row.merchant ?? row.sender_name ?? row.sender_number ?? row.account_name ?? row.mobile_no ?? '—'} · {row.payment_method ?? row.pay_by ?? '—'}</div>
+              <div className="risk-row-card-foot"><span className={`pay-status-badge ${approved(row.status) ? 'st-paid' : 'st-dim'}`}>{row.status ?? '—'}</span><span className="mono muted">{row.first_seen_at ? new Date(row.first_seen_at).toLocaleString() : '—'}</span></div>
+            </div>
+          ))}
+        </div>
+      ) : (
+      <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('النوع', 'Type')}</th><th>{t('المرجع', 'Reference')}</th><th>{t('التاجر / الطرف', 'Merchant / party')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('الطريقة', 'Method')}</th><th>{t('الحالة', 'Status')}</th><th>{t('الوقت', 'Time')}</th></tr></thead><tbody>{transactions.map((row) => <tr key={`${row.kind}-${row.tx_id ?? row.maven_id}`}><td>{row.kind === 'deposit' ? t('إيداع', 'Deposit') : t('سحب', 'Payout')}</td><td className="mono">{row.ontarget_ref ?? '—'}</td><td>{row.merchant ? <MerchantLogo merchant={row.merchant} /> : row.sender_name ?? row.sender_number ?? row.account_name ?? row.mobile_no ?? '—'}</td><td className="mono">{money(row.amount, 'EGP')}</td><td><MethodLogo method={row.payment_method ?? row.pay_by} /></td><td><span className={`pay-status-badge ${approved(row.status) ? 'st-paid' : 'st-dim'}`}>{row.status ?? '—'}</span></td><td className="mono">{row.first_seen_at ? new Date(row.first_seen_at).toLocaleString() : '—'}</td></tr>)}</tbody></table></div>
+      )}</section>}
 
-    {tab === 'wallets' && <section className="card recent-card"><div className="recent-head"><h3>{t('صحة المحافظ', 'Wallet health')}</h3><Link className="pay-status-link" to="/wallets">{t('إدارة المحافظ', 'Manage wallets')} ←</Link></div><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('المحفظة', 'Wallet')}</th><th>{t('المزود', 'Provider')}</th><th>{t('الجهاز', 'Device')}</th><th>{t('الرصيد', 'Balance')}</th><th>{t('الحد اليومي', 'Daily limit')}</th><th>{t('الحالة', 'Status')}</th></tr></thead><tbody>{(wallets?.wallets ?? []).map((wallet) => { const device = wallets?.devices.find((row) => row.device === wallet.device && row.sim_slot === wallet.sim_slot); return <tr key={wallet.to_account_number}><td className="mono">{wallet.to_account_number}</td><td>{wallet.provider ?? '—'}</td><td>{wallet.device ?? '—'}</td><td className="mono">{device?.balance == null ? '—' : money(device.balance, 'EGP')}</td><td className="mono">{wallet.daily_limit == null ? '—' : money(wallet.daily_limit, 'EGP')}</td><td><span className={`pay-status-badge ${device?.online ? 'st-paid' : 'st-dim'}`}>{device?.online ? t('متصل', 'Online') : t('غير متصل', 'Offline')}</span></td></tr> })}</tbody></table></div></section>}
+    {tab === 'wallets' && <section className="card recent-card"><div className="recent-head"><h3>{t('صحة المحافظ', 'Wallet health')}</h3><Link className="pay-status-link" to="/wallets">{t('إدارة المحافظ', 'Manage wallets')} ←</Link></div>
+      {isMobile ? (
+        <div className="risk-card-list">
+          {(wallets?.wallets ?? []).map((wallet) => { const device = wallets?.devices.find((row) => row.device === wallet.device && row.sim_slot === wallet.sim_slot); return (
+            <div key={wallet.to_account_number} className="risk-row-card">
+              <div className="risk-row-card-head"><span className="mono">{wallet.to_account_number}</span><span className={`pay-status-badge ${device?.online ? 'st-paid' : 'st-dim'}`}>{device?.online ? t('متصل', 'Online') : t('غير متصل', 'Offline')}</span></div>
+              <div className="cell-sub">{wallet.provider ?? '—'} · {wallet.device ?? '—'}</div>
+              <div className="risk-row-card-foot"><span>{t('الرصيد','Balance')} <b className="mono">{device?.balance == null ? '—' : money(device.balance, 'EGP')}</b></span><span>{t('الحد اليومي','Daily limit')} <b className="mono">{wallet.daily_limit == null ? '—' : money(wallet.daily_limit, 'EGP')}</b></span></div>
+            </div>
+          ) })}
+        </div>
+      ) : (
+      <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('المحفظة', 'Wallet')}</th><th>{t('المزود', 'Provider')}</th><th>{t('الجهاز', 'Device')}</th><th>{t('الرصيد', 'Balance')}</th><th>{t('الحد اليومي', 'Daily limit')}</th><th>{t('الحالة', 'Status')}</th></tr></thead><tbody>{(wallets?.wallets ?? []).map((wallet) => { const device = wallets?.devices.find((row) => row.device === wallet.device && row.sim_slot === wallet.sim_slot); return <tr key={wallet.to_account_number}><td className="mono">{wallet.to_account_number}</td><td>{wallet.provider ?? '—'}</td><td>{wallet.device ?? '—'}</td><td className="mono">{device?.balance == null ? '—' : money(device.balance, 'EGP')}</td><td className="mono">{wallet.daily_limit == null ? '—' : money(wallet.daily_limit, 'EGP')}</td><td><span className={`pay-status-badge ${device?.online ? 'st-paid' : 'st-dim'}`}>{device?.online ? t('متصل', 'Online') : t('غير متصل', 'Offline')}</span></td></tr> })}</tbody></table></div>
+      )}</section>}
 
-    {tab === 'merchants' && <section className="card recent-card"><div className="recent-head"><h3>{t('أهم التجار حسب الإيداعات المعتمدة', 'Top merchants by approved deposits')}</h3><Link className="pay-status-link" to="/reports">{t('التقارير', 'Reports')} ←</Link></div><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('التاجر', 'Merchant')}</th><th>{t('الحجم', 'Volume')}</th><th>{t('العمليات', 'Transactions')}</th></tr></thead><tbody>{topMerchants.map((merchant) => <tr key={merchant.merchant}><td><MerchantLogo merchant={merchant.merchant} /></td><td className="mono">{money(merchant.volume, 'EGP')}</td><td className="mono">{merchant.count}</td></tr>)}</tbody></table></div></section>}
+    {tab === 'merchants' && <section className="card recent-card"><div className="recent-head"><h3>{t('أهم التجار حسب الإيداعات المعتمدة', 'Top merchants by approved deposits')}</h3><Link className="pay-status-link" to="/reports">{t('التقارير', 'Reports')} ←</Link></div>
+      {isMobile ? (
+        <div className="risk-card-list">
+          {topMerchants.map((merchant) => (
+            <div key={merchant.merchant} className="risk-row-card">
+              <div className="risk-row-card-head"><span>{merchant.merchant}</span><span className="mono">{money(merchant.volume, 'EGP')}</span></div>
+              <div className="cell-sub">{merchant.count} {t('عملية','transactions')}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+      <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('التاجر', 'Merchant')}</th><th>{t('الحجم', 'Volume')}</th><th>{t('العمليات', 'Transactions')}</th></tr></thead><tbody>{topMerchants.map((merchant) => <tr key={merchant.merchant}><td><MerchantLogo merchant={merchant.merchant} /></td><td className="mono">{money(merchant.volume, 'EGP')}</td><td className="mono">{merchant.count}</td></tr>)}</tbody></table></div>
+      )}</section>}
 
     {tab === 'reports' && <section className="card recent-card"><div className="recent-head"><h3>{t('ملخص التقارير لكل البيانات', 'All-time report summary')}</h3><Link className="pay-status-link" to="/reports">{t('فتح التقارير التفصيلية', 'Open detailed reports')} ←</Link></div><div className="kpi-grid"><div className="kpi-card"><div className="kpi-value">{money(reportTotals.depVolume, 'EGP')}</div><div className="kpi-label">{t('إيداعات معتمدة', 'Approved deposits')}</div></div><div className="kpi-card"><div className="kpi-value">{money(reportTotals.payVolume, 'EGP')}</div><div className="kpi-label">{t('سحوبات معتمدة', 'Approved payouts')}</div></div><div className="kpi-card"><div className="kpi-value">{reportTotals.depCount}</div><div className="kpi-label">{t('عمليات إيداع', 'Deposit transactions')}</div></div><div className="kpi-card"><div className="kpi-value">{reportTotals.declined}</div><div className="kpi-label">{t('إيداعات مرفوضة', 'Declined deposits')}</div></div></div></section>}
   </PanelShell>
