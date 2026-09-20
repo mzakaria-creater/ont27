@@ -4,6 +4,7 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 
 type Tab = 'wallets' | 'treasury' | 'messages' | 'transactions'
 interface Wallet { to_account_number: string | null; provider: string | null; device: string | null; sim_slot: number | null; payment_type: string | null; daily_limit: number | null; merchant: string | null; updated_at: string | null }
@@ -18,6 +19,7 @@ const approved = (status: string | null) => status === 'PAID' || status === 'APP
 
 export default function TreasuryHub() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [tab, setTab] = useState<Tab>('wallets')
   const [data, setData] = useState<HubData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -99,6 +101,23 @@ export default function TreasuryHub() {
 
       {tab === 'wallets' && <section className="card recent-card">
         <div className="recent-head"><h3>{t('خريطة المحافظ والأجهزة', 'Wallet & device map')}</h3><span className="cell-sub">{data ? data.wallets.length : '…'}</span></div>
+        {isMobile ? (
+          <div className="risk-card-list">
+            {(data?.wallets ?? []).map((wallet, index) => {
+              const device = deviceByKey.get(`${wallet.device ?? ''}#${wallet.sim_slot ?? 0}`)
+              const flow = wallet.to_account_number ? walletFlow.get(wallet.to_account_number) : undefined
+              return (
+                <div key={`${wallet.to_account_number ?? index}-${wallet.device ?? ''}`} className="risk-row-card">
+                  <div className="risk-row-card-head"><span className="mono">{wallet.to_account_number ?? '—'}</span><span className={`pay-status-badge ${device?.online ? 'st-paid' : 'st-dim'}`}>{device?.online ? t('متصل', 'Online') : t('غير متصل', 'Offline')}</span></div>
+                  <div className="cell-sub">{wallet.merchant ?? '—'} · {wallet.provider ?? wallet.payment_type ?? '—'}</div>
+                  <div className="cell-sub">{wallet.device ?? '—'}{wallet.sim_slot != null && ` · SIM ${wallet.sim_slot}`}</div>
+                  <div className="risk-row-card-foot"><span className="mono">{t('الرصيد', 'Balance')}: {device?.balance == null ? '—' : money(device.balance, 'EGP')}</span><span className="mono">{t('الحد اليومي', 'Daily limit')}: {wallet.daily_limit == null ? '—' : money(wallet.daily_limit, 'EGP')}</span></div>
+                  <div className="cell-sub">{t('وارد معتمد', 'Approved incoming')}: {money(flow?.incoming ?? 0, 'EGP')} ({flow?.count ?? 0} {t('عملية', 'events')})</div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
         <div className="table-wrap"><table className="data-table">
           <thead><tr><th>{t('المحفظة', 'Wallet')}</th><th>{t('المزود', 'Provider')}</th><th>{t('الجهاز', 'Device')}</th><th>{t('الحالة', 'Status')}</th><th>{t('الرصيد', 'Balance')}</th><th>{t('وارد معتمد', 'Approved incoming')}</th><th>{t('الحد اليومي', 'Daily limit')}</th></tr></thead>
           <tbody>{(data?.wallets ?? []).map((wallet, index) => {
@@ -109,10 +128,19 @@ export default function TreasuryHub() {
             </tr>
           })}</tbody>
         </table></div>
+        )}
       </section>}
 
       {tab === 'treasury' && <section className="card recent-card">
         <div className="recent-head"><h3>{t('ملخص الخزينة', 'Treasury summary')}</h3><span className="cell-sub">{t('من البيانات المعتمدة فقط', 'Approved records only')}</span></div>
+        {isMobile ? (
+          <div className="risk-card-list">
+            <div className="risk-row-card"><div className="risk-row-card-head"><span>{t('الإيداعات المعتمدة', 'Approved deposits')}</span><span className="mono">{money(data?.totals.approvedDeposit ?? 0, 'EGP')}</span></div><div className="cell-sub">{t('تدفق وارد من آخر 30 يوماً', 'Incoming flow over the last 30 days')}</div></div>
+            <div className="risk-row-card"><div className="risk-row-card-head"><span>{t('السحوبات المعتمدة', 'Approved payouts')}</span><span className="mono">{money(data?.totals.approvedPayout ?? 0, 'EGP')}</span></div><div className="cell-sub">{t('تدفق صادر من آخر 30 يوماً', 'Outgoing flow over the last 30 days')}</div></div>
+            <div className="risk-row-card"><div className="risk-row-card-head"><span>{t('صافي التدفق', 'Net flow')}</span><span className="mono">{money(data?.totals.net ?? 0, 'EGP')}</span></div><div className="cell-sub">{t('الوارد ناقص الصادر', 'Incoming less outgoing')}</div></div>
+            <div className="risk-row-card"><div className="risk-row-card-head"><span>{t('المحافظ', 'Wallets')}</span><span className="mono">{data?.wallets.length ?? 0}</span></div><div className="cell-sub">{t('خريطة المحفظة والجهاز المتاحة', 'Available wallet-to-device mappings')}</div></div>
+          </div>
+        ) : (
         <div className="table-wrap"><table className="data-table">
           <thead><tr><th>{t('البند', 'Item')}</th><th>{t('القيمة', 'Value')}</th><th>{t('الوصف', 'Description')}</th></tr></thead>
           <tbody>
@@ -122,26 +150,51 @@ export default function TreasuryHub() {
             <tr><td>{t('المحافظ', 'Wallets')}</td><td className="mono">{data?.wallets.length ?? 0}</td><td>{t('خريطة المحفظة والجهاز المتاحة', 'Available wallet-to-device mappings')}</td></tr>
           </tbody>
         </table></div>
+        )}
       </section>}
 
       {tab === 'messages' && <section className="card recent-card">
         <div className="recent-head"><h3>{t('أحدث رسائل المحافظ', 'Latest wallet messages')}</h3><span className="cell-sub">{data?.sms.length ?? '…'}</span></div>
+        {isMobile ? (
+          <div className="risk-card-list">
+            {(data?.sms ?? []).map((row) => (
+              <div key={row.id} className="risk-row-card">
+                <div className="risk-row-card-head"><span>{row.sms_category ?? '—'}</span><span className={`pay-status-badge ${row.matched ? 'st-paid' : 'st-dim'}`}>{row.matched ? t('مرتبطة', 'Matched') : t('غير مرتبطة', 'Unmatched')}</span></div>
+                <div className="cell-sub">{row.device_name ?? '—'}{row.sim_slot != null && ` · SIM ${row.sim_slot}`} · {row.sender_name ?? row.sender_number ?? '—'}</div>
+                <div className="risk-row-card-foot"><span className="mono">{money(row.amount, 'EGP')}</span><span className="mono muted">{formatTime(row.received_at)}</span></div>
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className="table-wrap"><table className="data-table">
           <thead><tr><th>{t('الجهاز', 'Device')}</th><th>{t('النوع', 'Type')}</th><th>{t('المرسل', 'Sender')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('المطابقة', 'Match')}</th><th>{t('الوقت', 'Time')}</th></tr></thead>
           <tbody>{(data?.sms ?? []).map((row) => <tr key={row.id}>
             <td>{row.device_name ?? '—'}{row.sim_slot != null && <div className="cell-sub">SIM {row.sim_slot}</div>}</td><td>{row.sms_category ?? '—'}</td><td>{row.sender_name ?? row.sender_number ?? '—'}</td><td className="mono">{money(row.amount, 'EGP')}</td><td><span className={`pay-status-badge ${row.matched ? 'st-paid' : 'st-dim'}`}>{row.matched ? t('مرتبطة', 'Matched') : t('غير مرتبطة', 'Unmatched')}</span></td><td className="mono">{formatTime(row.received_at)}</td>
           </tr>)}</tbody>
         </table></div>
+        )}
       </section>}
 
       {tab === 'transactions' && <section className="card recent-card">
         <div className="recent-head"><h3>{t('حركة المعاملات', 'Transaction movement')}</h3><span className="cell-sub">{t('أحدث 200 عملية', 'Latest 200 records')}</span></div>
+        {isMobile ? (
+          <div className="risk-card-list">
+            {transactions.map((row) => (
+              <div key={`${row.type}-${String(row.id ?? row.ref)}`} className="risk-row-card">
+                <div className="risk-row-card-head"><span>{row.type === 'deposit' ? t('إيداع', 'Deposit') : t('سحب', 'Payout')} · <span className="mono">{row.ref ?? row.id ?? '—'}</span></span><span className={`pay-status-badge ${approved(row.status) ? 'st-paid' : 'st-dim'}`}>{row.status ?? '—'}</span></div>
+                <div className="cell-sub">{row.party ?? '—'} · {row.method ?? '—'} · {row.approvedBy ?? '—'}</div>
+                <div className="risk-row-card-foot"><span className="mono">{money(row.amount, 'EGP')}</span><span className="mono muted">{formatTime(row.at)}</span></div>
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className="table-wrap"><table className="data-table">
           <thead><tr><th>{t('النوع', 'Type')}</th><th>{t('المرجع', 'Reference')}</th><th>{t('الطرف', 'Party')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('الطريقة', 'Method')}</th><th>{t('اعتمد بواسطة', 'Approved by')}</th><th>{t('الحالة', 'Status')}</th><th>{t('الوقت', 'Time')}</th></tr></thead>
           <tbody>{transactions.map((row) => <tr key={`${row.type}-${String(row.id ?? row.ref)}`}>
             <td>{row.type === 'deposit' ? t('إيداع', 'Deposit') : t('سحب', 'Payout')}</td><td className="mono">{row.ref ?? row.id ?? '—'}</td><td>{row.party ?? '—'}</td><td className="mono">{money(row.amount, 'EGP')}</td><td>{row.method ?? '—'}</td><td>{row.approvedBy ?? '—'}</td><td><span className={`pay-status-badge ${approved(row.status) ? 'st-paid' : 'st-dim'}`}>{row.status ?? '—'}</span></td><td className="mono">{formatTime(row.at)}</td>
           </tr>)}</tbody>
         </table></div>
+        )}
       </section>}
     </PanelShell>
   )
