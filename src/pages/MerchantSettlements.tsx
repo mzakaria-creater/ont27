@@ -6,6 +6,7 @@ import MultiSelectFilter from '../components/MultiSelectFilter'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 import { useAuth } from '../auth/AuthContext'
 
 type Settlement = { id: string; sub_merchant_id: string; master_merchant: string | null; sub_merchant: string | null; settlement_period: string; total_net_usdt: number; total_net_egp: number; already_settled_usdt: number; already_settled_egp: number; balance_due_usdt: number; balance_due_egp: number; status: string }
@@ -19,6 +20,7 @@ const SETTLEMENT_FEE = 0.06
 
 export default function MerchantSettlements() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const { can } = useAuth()
   const canEditProof = can('reports', 'can_edit') || can('advanced_analysis', 'can_edit')
   const [settlements, setSettlements] = useState<Settlement[]>([])
@@ -103,7 +105,26 @@ export default function MerchantSettlements() {
     </section>
     <section className="card recent-card">
       <div className="recent-head"><div><h3>{t('التفصيل الشهري', 'Monthly breakdown')}</h3><span className="cell-sub">{totals.count.toLocaleString()} {t('معاملة مدفوعة', 'paid transactions')} · fee assumptions: 5.5% + 6%</span></div></div>
+      {isMobile ? (
+        <div className="risk-card-list">
+          {monthlyTotals.map((row) => (
+            <div key={row.id} className="risk-row-card">
+              <div className="risk-row-card-head"><strong>{row.sub_merchant ?? '—'}</strong><span className="mono">{Number(row.net_amount_usdt).toFixed(2)} USDT</span></div>
+              <div className="cell-sub">{row.transaction_month} · {row.master_merchant ?? '—'}</div>
+              <div className="cell-sub">Gross {money(row.gross_amount_egp, 'EGP')} · Deposit fee {money(row.deposit_fee_egp, 'EGP')} · Settlement fee {money(row.settlement_fee_usdt, 'USDT')}</div>
+            </div>
+          ))}
+          {!loading && monthlyTotals.length === 0 && <p className="maven-empty">{t('لا توجد بيانات في النطاق.', 'No settlement data in this range.')}</p>}
+          {monthlyTotals.length > 0 && (
+            <div className="risk-row-card" style={{ background: 'var(--surface-strong, var(--surface))' }}>
+              <div className="risk-row-card-head"><strong>{t('الإجمالي','Total')}</strong><span className="mono">{netUsdt.toFixed(2)} USDT</span></div>
+              <div className="cell-sub">{totals.count.toLocaleString()} · Gross {money(totals.gross, 'EGP')} · Deposit fee {money(totals.fees, 'EGP')} · Settlement fee {money(settlementFee, 'USDT')}</div>
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('الشهر','Month')}</th><th>{t('الشركة','Master')}</th><th>{t('التاجر','Sub-merchant')}</th><th>{t('المعاملات','Transactions')}</th><th>Gross EGP</th><th>Deposit fee</th><th>Settlement fee</th><th>Net USDT</th></tr></thead><tbody>{monthlyTotals.map((row) => <tr key={row.id}><td className="mono">{row.transaction_month}</td><td>{row.master_merchant ?? '—'}</td><td><strong>{row.sub_merchant ?? '—'}</strong></td><td className="mono">1</td><td className="mono">{money(row.gross_amount_egp, 'EGP')}</td><td className="mono">{money(row.deposit_fee_egp, 'EGP')}</td><td className="mono">{money(row.settlement_fee_usdt, 'USDT')}</td><td className="mono">{Number(row.net_amount_usdt).toFixed(2)} USDT</td></tr>)}{!loading && monthlyTotals.length === 0 && <tr><td colSpan={8} className="sidebar-hint">{t('لا توجد بيانات في النطاق.', 'No settlement data in this range.')}</td></tr>}</tbody><tfoot><tr><th colSpan={3}>{t('الإجمالي','Total')}</th><th className="mono">{totals.count.toLocaleString()}</th><th className="mono">{money(totals.gross, 'EGP')}</th><th className="mono">{money(totals.fees, 'EGP')}</th><th className="mono">{money(settlementFee, 'USDT')}</th><th className="mono">{netUsdt.toFixed(2)} USDT</th></tr></tfoot></table></div>
+      )}
     </section>
     <section className="card recent-card settlement-proofs-card">
       <div className="recent-head"><div><h3>📎 {t('إثباتات التسوية', 'Settlement proofs')}</h3><span className="cell-sub">{proofs.length} {t('إثبات محفوظ', 'saved proofs')}</span></div></div>
@@ -118,7 +139,21 @@ export default function MerchantSettlements() {
         <button className="btn-primary btn-sm" disabled={proofBusy}>{proofBusy ? t('جارٍ الحفظ…', 'Saving…') : t('إضافة إثبات', 'Add proof')}</button>
       </form>}
       {proofMessage && <p className="page-sub">{proofMessage}</p>}
+      {isMobile ? (
+        <div className="risk-card-list">
+          {proofs.map((proof) => (
+            <div key={proof.id} className="risk-row-card">
+              <div className="risk-row-card-head"><span>{proof.proof_type}</span><span className="mono muted">{proof.settlement_date ? new Date(proof.settlement_date).toLocaleDateString('en-GB') : '—'}</span></div>
+              <div className="cell-sub">{proof.file_url ? <a className="transaction-cell-link" href={proof.file_url} target="_blank" rel="noreferrer">{proof.file_name}</a> : proof.file_name}</div>
+              <div className="risk-row-card-foot"><span className="mono">{proof.amount_egp == null ? '—' : money(proof.amount_egp, 'EGP')} / {proof.amount_usdt == null ? '—' : `${Number(proof.amount_usdt).toFixed(2)} USDT`}</span><span className="muted">{proof.uploaded_by ?? '—'}</span></div>
+              {proof.notes && <div className="cell-sub">{proof.notes}</div>}
+            </div>
+          ))}
+          {!proofs.length && <p className="maven-empty">{t('لا توجد إثباتات بعد.', 'No proofs yet.')}</p>}
+        </div>
+      ) : (
       <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('النوع','Type')}</th><th>{t('الملف/المرجع','File/reference')}</th><th>EGP</th><th>USDT</th><th>{t('التاريخ','Date')}</th><th>{t('بواسطة','Uploaded by')}</th><th>{t('ملاحظات','Notes')}</th></tr></thead><tbody>{proofs.map((proof) => <tr key={proof.id}><td>{proof.proof_type}</td><td>{proof.file_url ? <a className="transaction-cell-link" href={proof.file_url} target="_blank" rel="noreferrer">{proof.file_name}</a> : proof.file_name}</td><td className="mono">{proof.amount_egp == null ? '—' : money(proof.amount_egp, 'EGP')}</td><td className="mono">{proof.amount_usdt == null ? '—' : `${Number(proof.amount_usdt).toFixed(2)} USDT`}</td><td className="mono">{proof.settlement_date ? new Date(proof.settlement_date).toLocaleDateString('en-GB') : '—'}</td><td>{proof.uploaded_by ?? '—'}</td><td>{proof.notes ?? '—'}</td></tr>)}{!proofs.length && <tr><td colSpan={7} className="sidebar-hint">{t('لا توجد إثباتات بعد.', 'No proofs yet.')}</td></tr>}</tbody></table></div>
+      )}
     </section>
   </PanelShell>
 }
