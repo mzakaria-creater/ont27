@@ -3,6 +3,7 @@ import { AlertTriangle, CheckSquare, Edit3, RefreshCw, Search, ShieldCheck, Smar
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 
 interface WalletRow {
   to_account_number: string
@@ -21,6 +22,7 @@ const NG_PAY_MERCHANT = 'NGPay-MelBet-Prod'
 
 export default function NgpayWalletManagement() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [wallets, setWallets] = useState<WalletRow[]>([])
   const [selected, setSelected] = useState<string[]>([])
   const [target, setTarget] = useState('01213841568')
@@ -94,11 +96,26 @@ export default function NgpayWalletManagement() {
 
     <section className="card">
       <div className="recent-head"><div><h3>{t('محافظ NGPay الحالية', 'Current NGPay wallets')}</h3><p className="cell-sub">{selected.length} {t('محدد', 'selected')} · {NG_PAY_MERCHANT}</p></div><label className="maven-select-all"><input type="checkbox" checked={allVisible} onChange={toggleVisible} /> {t('تحديد الظاهر', 'Select visible')}</label></div>
+      {loading && <p className="maven-empty">{t('جارٍ التحميل…', 'Loading…')}</p>}
+      {!loading && filtered.length === 0 && <p className="maven-empty">{t('لا توجد محافظ NGPay مطابقة.', 'No matching NGPay wallets.')}</p>}
+      {!loading && filtered.length > 0 && (isMobile ? (
+        <div className="risk-card-list">
+          {filtered.map((row) => (
+            <label key={`${row.to_account_number}-${row.device ?? ''}-${row.sim_slot ?? 0}`} className="risk-row-card">
+              <div className="risk-row-card-head">
+                <span><input type="checkbox" checked={selected.includes(row.to_account_number)} onChange={() => toggle(row.to_account_number)} aria-label={t(`تحديد ${row.to_account_number}`, `Select ${row.to_account_number}`)} /> <strong className="mono">{row.to_account_number}</strong></span>
+                <span className="mono">{row.daily_limit == null ? '60,000' : row.daily_limit.toLocaleString()}</span>
+              </div>
+              <div className="cell-sub">{row.device ?? '—'}{row.sim_slot != null && ` · SIM ${row.sim_slot}`} · {row.provider ?? row.payment_type ?? '—'}</div>
+              <div className="risk-row-card-foot"><span className="mono muted">{row.updated_at ? new Date(row.updated_at).toLocaleString('en-GB') : '—'}</span></div>
+            </label>
+          ))}
+        </div>
+      ) : (
       <div className="table-wrap"><table className="data-table"><thead><tr><th></th><th>{t('الرقم الحالي', 'Current number')}</th><th>{t('الجهاز / SIM', 'Device / SIM')}</th><th>{t('المزود', 'Provider')}</th><th>{t('الحد اليومي', 'Daily limit')}</th><th>{t('آخر تحديث', 'Last update')}</th></tr></thead><tbody>
-        {loading && <tr><td colSpan={6} className="maven-empty">{t('جارٍ التحميل…', 'Loading…')}</td></tr>}
-        {!loading && filtered.map((row) => <tr key={`${row.to_account_number}-${row.device ?? ''}-${row.sim_slot ?? 0}`}><td><input type="checkbox" checked={selected.includes(row.to_account_number)} onChange={() => toggle(row.to_account_number)} aria-label={t(`تحديد ${row.to_account_number}`, `Select ${row.to_account_number}`)} /></td><td className="mono"><strong>{row.to_account_number}</strong></td><td><strong>{row.device ?? '—'}</strong><div className="cell-sub">{row.sim_slot == null ? '—' : `SIM ${row.sim_slot}`}</div></td><td>{row.provider ?? row.payment_type ?? '—'}</td><td className="mono">{row.daily_limit == null ? '60,000' : row.daily_limit.toLocaleString()}</td><td className="cell-sub mono">{row.updated_at ? new Date(row.updated_at).toLocaleString('en-GB') : '—'}</td></tr>)}
-        {!loading && filtered.length === 0 && <tr><td colSpan={6} className="maven-empty">{t('لا توجد محافظ NGPay مطابقة.', 'No matching NGPay wallets.')}</td></tr>}
+        {filtered.map((row) => <tr key={`${row.to_account_number}-${row.device ?? ''}-${row.sim_slot ?? 0}`}><td><input type="checkbox" checked={selected.includes(row.to_account_number)} onChange={() => toggle(row.to_account_number)} aria-label={t(`تحديد ${row.to_account_number}`, `Select ${row.to_account_number}`)} /></td><td className="mono"><strong>{row.to_account_number}</strong></td><td><strong>{row.device ?? '—'}</strong><div className="cell-sub">{row.sim_slot == null ? '—' : `SIM ${row.sim_slot}`}</div></td><td>{row.provider ?? row.payment_type ?? '—'}</td><td className="mono">{row.daily_limit == null ? '60,000' : row.daily_limit.toLocaleString()}</td><td className="cell-sub mono">{row.updated_at ? new Date(row.updated_at).toLocaleString('en-GB') : '—'}</td></tr>)}
       </tbody></table></div>
+      ))}
     </section>
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 14 }} className="page-sub"><Smartphone size={15} /> {t('هذه الصفحة تعدّل إعدادات التوجيه المحلية فقط؛ لا تعيد كتابة أرقام المعاملات أو SMS القديمة.', 'This page changes local routing configuration only; it never rewrites historical transactions or SMS.')}</div>
   </PanelShell>
