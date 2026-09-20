@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 
 type Severity = 'freeze' | 'warning'
 interface SmsAlert { id: number; received_at: string | null; device_name: string | null; provider: string | null; sender_name: string | null; receiver_number: string | null; wallet_number: string | null; amount: number | null; balance_after: number | null; sms_category: string | null; message: string | null; raw_sms: string | null; sms_first_line: string | null; severity: Severity; alert_reason: string }
@@ -12,6 +13,7 @@ const textOf = (row: SmsAlert) => row.message || row.raw_sms || row.sms_first_li
 
 export default function SmsNotifications() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [data, setData] = useState<ResponseData | null>(null)
   const [severity, setSeverity] = useState('')
   const [q, setQ] = useState('')
@@ -37,7 +39,20 @@ export default function SmsNotifications() {
     {error && <div className="card warn">{error}</div>}
     <section className="card recent-card">
       <div className="recent-head"><h3>{t('سجل تنبيهات SMS', 'SMS alert log')}</h3><span className="cell-sub">{rows.length} · {t('آخر 7 أيام', 'last 7 days')}</span></div>
-      {rows.length === 0 ? <p className="sidebar-hint">{t('لا توجد رسائل مطابقة.', 'No matching alert messages.')}</p> : <div className="table-wrap"><table className="data-table sms-alert-table"><thead><tr><th>{t('الدرجة', 'Severity')}</th><th>SMS ID</th><th>{t('الوقت', 'Time')}</th><th>{t('المحفظة', 'Wallet')}</th><th>{t('الجهاز / المزود', 'Device / provider')}</th><th>{t('الرسالة', 'Message')}</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className={row.severity === 'freeze' ? 'sms-freeze-row' : 'sms-warning-row'}><td><span className={`pay-status-badge ${row.severity === 'freeze' ? 'st-declined' : 'st-pending'}`}>{row.severity === 'freeze' ? `🧊 ${t('تجميد', 'Freeze')}` : `⚠️ ${t('تحذير', 'Warning')}`}</span></td><td className="mono">{row.id}</td><td className="mono">{formatTime(row.received_at)}</td><td className="mono">{row.wallet_number ?? row.receiver_number ?? '—'}</td><td>{row.device_name ?? '—'}<div className="cell-sub">{row.provider ?? '—'}</div></td><td className="sms-alert-message" title={textOf(row)}>{textOf(row)}</td></tr>)}</tbody></table></div>}
+      {rows.length === 0 ? <p className="sidebar-hint">{t('لا توجد رسائل مطابقة.', 'No matching alert messages.')}</p> : isMobile ? (
+        <div className="risk-card-list">
+          {rows.map((row) => (
+            <div key={row.id} className={`risk-row-card ${row.severity === 'freeze' ? 'sms-freeze-row' : 'sms-warning-row'}`}>
+              <div className="risk-row-card-head"><span className={`pay-status-badge ${row.severity === 'freeze' ? 'st-declined' : 'st-pending'}`}>{row.severity === 'freeze' ? `🧊 ${t('تجميد', 'Freeze')}` : `⚠️ ${t('تحذير', 'Warning')}`}</span><span className="mono muted">{formatTime(row.received_at)}</span></div>
+              <div className="cell-sub mono">SMS {row.id} · {row.wallet_number ?? row.receiver_number ?? '—'}</div>
+              <div className="cell-sub">{row.device_name ?? '—'} · {row.provider ?? '—'}</div>
+              <div className="cell-sub sms-alert-message">{textOf(row)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+      <div className="table-wrap"><table className="data-table sms-alert-table"><thead><tr><th>{t('الدرجة', 'Severity')}</th><th>SMS ID</th><th>{t('الوقت', 'Time')}</th><th>{t('المحفظة', 'Wallet')}</th><th>{t('الجهاز / المزود', 'Device / provider')}</th><th>{t('الرسالة', 'Message')}</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className={row.severity === 'freeze' ? 'sms-freeze-row' : 'sms-warning-row'}><td><span className={`pay-status-badge ${row.severity === 'freeze' ? 'st-declined' : 'st-pending'}`}>{row.severity === 'freeze' ? `🧊 ${t('تجميد', 'Freeze')}` : `⚠️ ${t('تحذير', 'Warning')}`}</span></td><td className="mono">{row.id}</td><td className="mono">{formatTime(row.received_at)}</td><td className="mono">{row.wallet_number ?? row.receiver_number ?? '—'}</td><td>{row.device_name ?? '—'}<div className="cell-sub">{row.provider ?? '—'}</div></td><td className="sms-alert-message" title={textOf(row)}>{textOf(row)}</td></tr>)}</tbody></table></div>
+      )}
     </section>
   </PanelShell>
 }
