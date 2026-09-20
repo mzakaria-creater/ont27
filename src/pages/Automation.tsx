@@ -6,6 +6,7 @@ import { useLocale } from '../lib/locale'
 import { useAuth } from '../auth/AuthContext'
 import { Archive, CircleDollarSign, Filter, GitBranch, Landmark, Power, Search, SlidersHorizontal, X } from 'lucide-react'
 import MultiSelectFilter from '../components/MultiSelectFilter'
+import { useIsMobile } from '../lib/useIsMobile'
 
 interface AutomationTemplate { id: string; settings: Record<string, number | boolean> }
 const HIGH_VALUE_SMS_THRESHOLD_EVENT = 'ontarget:high-value-sms-threshold'
@@ -112,6 +113,7 @@ export default function Automation() {
   const [err, setErr] = useState<string | null>(null)
   const { t, locale } = useLocale()
   const { can } = useAuth()
+  const isMobile = useIsMobile()
   const li = locale === 'en' ? 1 : 0
   const canControl = can('automation', 'can_edit')
   const canRulesChange = can('automation_rules','can_edit') || can('automation','can_edit')
@@ -523,6 +525,20 @@ export default function Automation() {
           </div>
           {(data?.turbo_history?.length ?? 0) > 0 && <div className="automation-turbo-report">
             <div className="automation-turbo-report-head"><strong>📊 {t('تقرير جلسات Turbo', 'Turbo activity report')}</strong><span>{t('آخر 30 تغييرًا', 'Last 30 changes')}</span></div>
+            {isMobile ? (
+              <div className="risk-card-list">
+                {(data?.turbo_history ?? []).map((row) => {
+                  const after = row.after ?? {}
+                  const template = typeof after.template === 'string' ? after.template : null
+                  const turbo = template ? template === 'turbo' : after.turbo_mode === true
+                  return <div key={row.id} className="risk-row-card">
+                    <div className="risk-row-card-head"><span className={`pay-status-badge ${turbo ? 'st-paid' : 'st-dim'}`}>{turbo ? '⚡ Turbo ON' : 'Balanced / Turbo OFF'}</span><span>{row.actor_name ?? 'system'}</span></div>
+                    <div className="cell-sub">{template ? template : `${after.max_auto_amount ?? '—'} EGP · ${after.decline_grace_minutes ?? '—'}m · ${after.wallet_switch_auto_enabled ? 'wallet switch' : 'fixed wallet'}`}</div>
+                    <div className="risk-row-card-foot"><span className="mono muted">{new Date(row.created_at).toLocaleString()}</span></div>
+                  </div>
+                })}
+              </div>
+            ) : (
             <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('الوقت', 'Time')}</th><th>{t('الإجراء', 'Action')}</th><th>{t('المنفّذ', 'Actor')}</th><th>{t('الإعدادات', 'Applied settings')}</th></tr></thead><tbody>
               {(data?.turbo_history ?? []).map((row) => {
                 const after = row.after ?? {}
@@ -531,6 +547,7 @@ export default function Automation() {
                 return <tr key={row.id}><td className="mono">{new Date(row.created_at).toLocaleString()}</td><td><span className={`pay-status-badge ${turbo ? 'st-paid' : 'st-dim'}`}>{turbo ? '⚡ Turbo ON' : 'Balanced / Turbo OFF'}</span></td><td>{row.actor_name ?? 'system'}</td><td className="cell-sub">{template ? template : `${after.max_auto_amount ?? '—'} EGP · ${after.decline_grace_minutes ?? '—'}m · ${after.wallet_switch_auto_enabled ? 'wallet switch' : 'fixed wallet'}`}</td></tr>
               })}
             </tbody></table></div>
+            )}
           </div>}
         </section>
       )}
@@ -631,7 +648,22 @@ export default function Automation() {
         </div>
         {data && data.rules.length === 0 && <p>{t('لا توجد قواعد.', 'No rules.')}</p>}
         {data && data.rules.length > 0 && filteredRules.length === 0 && <div className="automation-filter-empty">{t('لا توجد قواعد تطابق الفلاتر الحالية.', 'No rules match the current filters.')}</div>}
-        {data && filteredRules.length > 0 && (
+        {data && filteredRules.length > 0 && (isMobile ? (
+          <div className="risk-card-list">
+            {filteredRules.map((r) => (
+              <div key={r.id} className="risk-row-card">
+                <div className="risk-row-card-head"><span className="mono">{r.scope_type ?? '—'} · {t('أولوية', 'priority')} {r.priority ?? '—'}</span><span className={`pay-status-badge ${r.enabled ? 'st-paid' : 'st-dim'}`}>{r.enabled ? t('مفعّلة', 'Enabled') : t('موقوفة', 'Disabled')}</span></div>
+                <div className="cell-sub">{r.sub_merchant ?? r.merchant ?? r.master_merchant ?? t('الكل', 'any')} · {r.action_type ?? '—'}</div>
+                <div className="cell-sub">{money(r.min_amount, '')} – {money(r.max_amount, '')} · {r.time_window_minutes ?? '—'}{t('د', 'm')}</div>
+                <div className="risk-row-card-foot"><span>{[r.use_crm_matching && 'CRM', r.use_near_amount && t('تقريبي', 'near'), r.use_unique_amount && t('فريد', 'unique')].filter(Boolean).join(', ') || '—'}</span></div>
+                {canRulesChange && <div className="row-actions">
+                  <button className="btn-ghost btn-sm" onClick={() => void toggleRule(r)}>{r.enabled ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>
+                  <button className="btn-ghost danger btn-sm" onClick={() => void deleteRule(r)}>{t('حذف', 'Delete')}</button>
+                </div>}
+              </div>
+            ))}
+          </div>
+        ) : (
           <div className="table-wrap">
             <table className="data-table">
               <thead><tr><th className="check-col"><input type="checkbox" checked={filteredRules.length > 0 && filteredRules.every((row) => selectedRuleIds.has(row.id))} onChange={toggleVisibleRuleSelection} aria-label={t('تحديد كل القواعد الظاهرة', 'Select all visible rules')} /></th><th>{t('النطاق', 'Scope')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('المدى', 'Range')}</th><th>{t('المهلة', 'Window')}</th><th>{t('الإجراء', 'Action')}</th><th>{t('مطابقة', 'Matching')}</th><th>{t('الحالة', 'Status')}</th><th /></tr></thead>
@@ -654,7 +686,7 @@ export default function Automation() {
               </tbody>
             </table>
           </div>
-        )}
+        ))}
       </section>
       </>}
 
@@ -703,6 +735,16 @@ export default function Automation() {
             <h3>⏱️ صحة مهام الجدولة (النظام القديم)</h3>
             <span className="mono cell-sub">{crons.filter((j) => j.active).length} نشطة من {crons.length}</span>
           </div>
+          {isMobile ? (
+            <div className="risk-card-list">
+              {crons.map((j) => <div key={j.jobid} className="risk-row-card">
+                <div className="risk-row-card-head"><span className="mono">#{j.jobid} {j.jobname ?? '—'}</span><span className={`pay-status-badge ${j.last_status === 'succeeded' ? 'st-paid' : j.last_status ? 'st-declined' : 'st-dim'}`}>{j.last_status ?? '—'}</span></div>
+                <div className="cell-sub">{j.schedule ?? '—'} · {j.active ? '● active' : '○ inactive'}</div>
+                {j.last_message && <div className="cell-sub">{j.last_message}</div>}
+                <div className="risk-row-card-foot"><span className="mono muted">{j.last_start ? depositTime({ first_seen_at: j.last_start }) : '—'}</span></div>
+              </div>)}
+            </div>
+          ) : (
           <div className="table-wrap"><table className="data-table">
             <thead><tr><th>#</th><th>المهمة</th><th>الجدولة</th><th>نشطة</th><th>آخر تشغيل</th><th>النتيجة</th><th>الرسالة</th></tr></thead>
             <tbody>{crons.map((j) => <tr key={j.jobid}>
@@ -715,6 +757,7 @@ export default function Automation() {
               <td className="cell-sub">{j.last_message ?? '—'}</td>
             </tr>)}</tbody>
           </table></div>
+          )}
         </section>
       )}
 
@@ -753,7 +796,22 @@ export default function Automation() {
           <section className="card recent-card">
             <div className="recent-head"><h3>🧑‍💻 مهام المتصفح الأخيرة</h3></div>
             {data.jobs.length === 0 && <p>لا توجد مهام.</p>}
-            {data.jobs.length > 0 && (
+            {data.jobs.length > 0 && (isMobile ? (
+              <div className="risk-card-list">
+                {data.jobs.map((j) => (
+                  <div key={j.id} className="risk-row-card">
+                    <div className="risk-row-card-head"><span className="mono">{j.tx_id ?? '—'}</span><span className="mono">{money(j.amount, 'EGP')}</span></div>
+                    <div className="cell-sub">{j.mission ?? '—'} → {j.target_status ?? '—'}</div>
+                    {j.last_error && <div className="cell-sub">{j.last_error.slice(0, 60)}</div>}
+                    <div className="risk-row-card-foot">
+                      <span className={`pay-status-badge ${j.state === 'completed' ? 'st-paid' : j.state === 'failed' ? 'st-declined' : 'st-pending'}`}>{j.state ?? '—'}</span>
+                      <span>{j.operator_username ?? 'آلي'}</span>
+                      <span className="mono muted">{depositTime({ first_seen_at: j.completed_at ?? j.created_at })}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
               <div className="table-wrap">
                 <table className="data-table">
                   <thead><tr><th>tx</th><th>المبلغ</th><th>المهمة</th><th>الحالة</th><th>المشغّل</th><th>الوقت</th></tr></thead>
@@ -776,7 +834,7 @@ export default function Automation() {
                   </tbody>
                 </table>
               </div>
-            )}
+            ))}
           </section>
 
           {accounts && (
@@ -792,6 +850,19 @@ export default function Automation() {
                 )}
               </div>
               {panelMsg && <p className="cell-sub">{panelMsg}</p>}
+              {isMobile ? (
+                <div className="risk-card-list">
+                  {accounts.map((a) => (
+                    <label key={a.id} className="risk-row-card">
+                      <div className="risk-row-card-head">
+                        <span><input type="checkbox" checked={sel.has(a.id)} onChange={() => setSel((p) => { const n = new Set(p); if (n.has(a.id)) n.delete(a.id); else n.add(a.id); return n })} /> <span className="mono">{a.label ?? '—'}</span></span>
+                        <span className={`pay-status-badge ${a.is_active ? 'st-paid' : 'st-dim'}`}>{a.is_active ? 'نشط' : 'موقوف'}</span>
+                      </div>
+                      <div className="cell-sub">{a.merchant_name ?? '—'} · {a.method_name ?? a.method_type ?? '—'} · {t('أولوية', 'priority')} {a.priority ?? '—'}</div>
+                    </label>
+                  ))}
+                </div>
+              ) : (
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
@@ -826,6 +897,7 @@ export default function Automation() {
                   </tbody>
                 </table>
               </div>
+              )}
             </section>
           )}
 
@@ -848,6 +920,22 @@ export default function Automation() {
           {(data.balances.length > 0 || data.rates.length > 0) && (
             <section className="card recent-card">
               <div className="recent-head"><h3>🏦 الخزينة (Binance) وأسعار الصرف</h3></div>
+              {isMobile ? (
+                <div className="risk-card-list">
+                  {data.balances.map((b, i) => (
+                    <div key={`b${i}`} className="risk-row-card">
+                      <div className="risk-row-card-head"><span className="mono">{b.account_id ?? '—'}</span><span className="mono muted">{depositTime({ first_seen_at: b.measured_at })}</span></div>
+                      <div className="cell-sub mono">{money(b.available_balance, '')} / {money(b.total_balance, '')} (USDT {money(b.usdt_value, '')})</div>
+                    </div>
+                  ))}
+                  {data.rates.map((r, i) => (
+                    <div key={`r${i}`} className="risk-row-card">
+                      <div className="risk-row-card-head"><span className="mono">{r.currency_pair ?? '—'}</span><span className="mono muted">{depositTime({ first_seen_at: r.fetched_at })}</span></div>
+                      <div className="cell-sub mono">{r.rate ?? '—'}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
               <div className="table-wrap">
                 <table className="data-table">
                   <thead><tr><th>الحساب / الزوج</th><th>القيمة</th><th>آخر قياس</th></tr></thead>
@@ -869,6 +957,7 @@ export default function Automation() {
                   </tbody>
                 </table>
               </div>
+              )}
             </section>
           )}
         </>
