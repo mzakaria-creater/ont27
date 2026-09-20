@@ -6,6 +6,7 @@ import MerchantLogo from '../components/MerchantLogo'
 import { api } from '../lib/api'
 import { money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 
 // One customer, everything we hold: profile, every wallet they have paid into,
 // full deposit and payout history, and the SMS their number produced.
@@ -51,6 +52,7 @@ type Tab = 'deposits' | 'payouts' | 'sms' | 'wallets'
 
 export default function ClientProfile() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const { phone: routePhone } = useParams<{ phone: string }>()
   const [params, setParams] = useSearchParams()
   const [query, setQuery] = useState(routePhone ?? params.get('phone') ?? '')
@@ -158,7 +160,16 @@ export default function ClientProfile() {
           </div>
 
           <section className="card recent-card">
-            {tab === 'wallets' && (
+            {tab === 'wallets' && (isMobile ? (
+              <div className="risk-card-list">
+                {data.wallets.map((w) => (
+                  <div key={w.wallet} className="risk-row-card">
+                    <div className="risk-row-card-head"><span className="mono">{w.wallet}</span><span className="mono">{money(w.volume, 'EGP')}</span></div>
+                    <div className="risk-row-card-foot"><span>{w.uses} {t('استخدام', 'uses')} · {w.paid} {t('معتمدة', 'paid')}</span><span className="mono muted">{w.last_used ? new Date(w.last_used).toLocaleString() : '—'}</span></div>
+                  </div>
+                ))}
+              </div>
+            ) : (
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
@@ -183,9 +194,20 @@ export default function ClientProfile() {
                   </tbody>
                 </table>
               </div>
-            )}
+            ))}
 
-            {tab === 'deposits' && (
+            {tab === 'deposits' && (isMobile ? (
+              <div className="risk-card-list">
+                {data.deposits.map((d) => (
+                  <Link key={d.tx_id} to={`/transactions/${d.ontarget_ref ?? d.tx_id}`} className={`risk-row-card${d.status === 'PENDING' ? ' row-pending' : ''}`}>
+                    <div className="risk-row-card-head"><span className="mono">{d.ontarget_ref ?? d.tx_id}</span><span className="mono">{money(d.amount, d.currency ?? 'EGP')}</span></div>
+                    <div className="cell-sub">{d.payment_method ?? '—'} · {d.to_account_number ?? '—'} · {d.sub_merchant ?? d.merchant ?? '—'}</div>
+                    <div className="risk-row-card-foot"><span className={`pay-status-badge ${statusMeta(d.status ?? '').cls}`}>{statusMeta(d.status ?? '').label}</span><span>{d.approved_by ?? '—'}</span><span className="mono muted">{d.first_seen_at ? new Date(d.first_seen_at).toLocaleString() : '—'}</span></div>
+                  </Link>
+                ))}
+                {data.deposits.length === 0 && <p className="cell-sub">{t('لا توجد إيداعات.', 'No deposits.')}</p>}
+              </div>
+            ) : (
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
@@ -220,9 +242,20 @@ export default function ClientProfile() {
                   </tbody>
                 </table>
               </div>
-            )}
+            ))}
 
-            {tab === 'payouts' && (
+            {tab === 'payouts' && (isMobile ? (
+              <div className="risk-card-list">
+                {data.payouts.map((r) => (
+                  <div key={r.maven_id} className="risk-row-card">
+                    <div className="risk-row-card-head"><span className="mono">{r.ontarget_ref ?? r.maven_id}</span><span className="mono">{money(r.amount, 'EGP')}</span></div>
+                    <div className="cell-sub">{r.pay_by ?? '—'} · {r.account_name ?? '—'}</div>
+                    <div className="risk-row-card-foot"><span className={`pay-status-badge ${statusMeta(r.status ?? '').cls}`}>{statusMeta(r.status ?? '').label}</span><span className="mono muted">{r.first_seen_at ? new Date(r.first_seen_at).toLocaleString() : '—'}</span></div>
+                  </div>
+                ))}
+                {data.payouts.length === 0 && <p className="cell-sub">{t('لا توجد سحوبات.', 'No payouts.')}</p>}
+              </div>
+            ) : (
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
@@ -250,9 +283,20 @@ export default function ClientProfile() {
                   </tbody>
                 </table>
               </div>
-            )}
+            ))}
 
-            {tab === 'sms' && (
+            {tab === 'sms' && (isMobile ? (
+              <div className="risk-card-list">
+                {data.sms.map((s) => (
+                  <div key={s.id} className="risk-row-card">
+                    <div className="risk-row-card-head"><span className="mono">#{s.id}</span><span className="mono">{money(s.amount, 'EGP')}</span></div>
+                    <div className="cell-sub">{s.sms_category ?? '—'} · {t('محفظتنا', 'Our wallet')} <span className="mono">{s.wallet_number ?? '—'}</span></div>
+                    <div className="risk-row-card-foot"><span>{s.device_name ?? '—'}</span><span>{t('مُطالَب بها', 'Claimed by')} <span className="mono">{s.consumed_by_tx_id ?? '—'}</span></span><span className="mono muted">{new Date(s.created_at).toLocaleString()}</span></div>
+                  </div>
+                ))}
+                {data.sms.length === 0 && <p className="cell-sub">{t('لا توجد رسائل من هذا الرقم.', 'No SMS from this number.')}</p>}
+              </div>
+            ) : (
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
@@ -282,7 +326,7 @@ export default function ClientProfile() {
                   </tbody>
                 </table>
               </div>
-            )}
+            ))}
 
             <p className="cell-sub">
               {t(
