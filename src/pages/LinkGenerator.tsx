@@ -4,6 +4,7 @@ import { BarChart3, Copy, ExternalLink, Link2, Plus, RefreshCw, Search, ShieldCh
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 
 interface LinkStats { sessions: number; paid: number; paid_amount: number }
 interface LinkAnalytics {
@@ -54,6 +55,7 @@ interface LinkAccount { id: string; payment_method_id: string; account_number: s
 export default function LinkGenerator() {
   const { can } = useAuth()
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [links, setLinks] = useState<PaymentLink[]>([])
   const [merchants, setMerchants] = useState<Merchant[]>([])
   const [methods, setMethods] = useState<LinkMethod[]>([])
@@ -284,6 +286,51 @@ export default function LinkGenerator() {
       </div>
 
       <div className="card table-card payment-links-table-card">
+        {isMobile ? (
+          <div className="risk-card-list">
+            {visibleLinks.map((l) => (
+              <div key={l.id} className={`risk-row-card${l.status === 'active' ? '' : ' row-dim'}`}>
+                <div className="risk-row-card-head"><span className="mono">{l.short_code}</span><span>{l.status === 'active' ? t('نشط', 'Active') : l.status === 'expired' ? t('منتهٍ', 'Expired') : l.status === 'exhausted' ? t('مستنفَد', 'Exhausted') : t('موقوف', 'Disabled')}</span></div>
+                <div><strong>{l.client_name || l.title || '—'}</strong>{l.client_reference && <div className="cell-sub">{l.client_reference}</div>}<div className="cell-sub">{l.allowed_account_ids?.length ? `${l.allowed_account_ids.length} ${t('حساب محدد', 'specific accounts')}` : l.payment_method_codes?.join(', ') || t('كل الطرق', 'All methods')}</div></div>
+                <div className="cell-sub mono" dir="ltr">{l.amount_mode === 'fixed' ? `${l.amount} ${l.currency}` : `${l.min_amount ?? '∗'} – ${l.max_amount ?? '∗'} ${l.currency}`}</div>
+                <div className="risk-row-card-foot">
+                  <span className="mono">{t('الاستخدام', 'Usage')}: {l.use_count}{l.max_uses ? ` / ${l.max_uses}` : ''}</span>
+                  <span className="mono">{t('فتحات', 'Opens')}: {l.analytics?.opens ?? 0}</span>
+                </div>
+                <div className="risk-row-card-foot">
+                  <span className="mono">{t('جلسات', 'Sessions')}: {l.stats.sessions}</span>
+                  <span className="mono">{t('مدفوع', 'Paid')}: {l.stats.paid} ({l.stats.paid_amount.toLocaleString()})</span>
+                </div>
+                <div className="row-actions">
+                  <button className="btn-ghost" onClick={() => void copyUrl(l)}><Copy size={14} />{copied === l.id ? t('تم النسخ', 'Copied') : t('نسخ', 'Copy')}</button>
+                  <a className="btn-ghost" href={`/payment-checkout?code=${encodeURIComponent(l.short_code)}`} target="_blank" rel="noreferrer"><ExternalLink size={14} />{t('فتح', 'Open')}</a>
+                  <button className="btn-ghost" onClick={() => setExpanded(expanded === l.id ? null : l.id)}>{expanded === l.id ? t('إخفاء', 'Hide') : t('تحليلات', 'Analytics')}</button>
+                  {can('checkout-builder', 'can_create') && <button className="btn-ghost" onClick={() => void duplicate(l)}>{t('نسخة', 'Duplicate')}</button>}
+                  {can('checkout-builder', 'can_edit') && <>
+                    <button className="btn-ghost" onClick={() => void toggle(l)}>{l.active ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>
+                    {l.status !== 'expired' && <button className="btn-ghost danger" onClick={() => void expire(l)}>{t('إنهاء', 'Expire')}</button>}
+                  </>}
+                </div>
+                {expanded === l.id && (
+                  !l.analytics ? (
+                    <span className="cell-sub">{t('لا توجد بيانات لهذا الرابط بعد.', 'No data for this link yet.')}</span>
+                  ) : (
+                    <>
+                      <div className="kpi-grid">
+                        <div className="kpi-card"><div className="kpi-value">{l.analytics.opens}</div><div className="kpi-label">{t('فتحات', 'Opens')}</div><div className="cell-sub">{l.analytics.visitors} {t('زائر مميّز/يوم', 'distinct visitors/day')}</div></div>
+                        <div className="kpi-card"><div className="kpi-value">{l.analytics.openToSession == null ? '—' : `${l.analytics.openToSession}%`}</div><div className="kpi-label">{t('فتحة ← جلسة', 'Open → session')}</div><div className="cell-sub">{t('كم من الزوّار بدأ الدفع', 'how many visitors started paying')}</div></div>
+                        <div className="kpi-card"><div className="kpi-value">{l.analytics.sessionToPaid == null ? '—' : `${l.analytics.sessionToPaid}%`}</div><div className="kpi-label">{t('جلسة ← دفع', 'Session → paid')}</div><div className="cell-sub">{t('كم منهم أكمل', 'how many of those finished')}</div></div>
+                        <div className="kpi-card"><div className="kpi-value mono">{l.analytics.methods[0]?.method ?? '—'}</div><div className="kpi-label">{t('الطريقة الأكثر استخداماً', 'Most used method')}</div><div className="cell-sub">{l.analytics.methods[0]?.uses ?? 0} {t('مرة', 'times')}</div></div>
+                      </div>
+                      {l.analytics.methods.length > 0 && <div className="chip-row">{l.analytics.methods.map((m) => <span key={m.method} className="pay-status-badge st-dim">{m.method}: {m.uses} ({m.paid} {t('مدفوعة', 'paid')})</span>)}</div>}
+                    </>
+                  )
+                )}
+              </div>
+            ))}
+            {!visibleLinks.length && <p className="maven-empty">{t('لا توجد روابط مطابقة', 'No matching links')}</p>}
+          </div>
+        ) : (
         <table className="links-table">
           <thead>
             <tr>
@@ -398,6 +445,7 @@ export default function LinkGenerator() {
             {!visibleLinks.length && <tr><td colSpan={9} className="empty">{t('لا توجد روابط مطابقة', 'No matching links')}</td></tr>}
           </tbody>
         </table>
+        )}
       </div>
     </main>
   )
