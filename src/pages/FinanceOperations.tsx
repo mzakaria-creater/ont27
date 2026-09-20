@@ -3,6 +3,7 @@ import { BarChart3, Building2, CalendarDays, Coins, Landmark, RefreshCw, Setting
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 
 type Tab = 'settings'|'daily'|'wallets'|'merchants'|'commissions'|'debts'|'monthly'
 type DailyRow = { merchant:string;payInCount:number;payInAmount:number;payOutCount:number;payOutAmount:number;gross:number;fees:number;commission:number;providerCommission:number;totalCommission:number;commissionRate:number;net:number;usdtEquivalent:number;usdEquivalent:number }
@@ -56,4 +57,15 @@ function MerchantsView({rows}:{rows:MerchantRow[]}){const {t}=useLocale();return
 function CommissionsView({rows}:{rows:CommissionRow[]}){const {t}=useLocale();return <section className="card recent-card"><div className="recent-head"><h3>{t('العمولات الداخلية','Internal commissions')}</h3></div><Table headers={[t('التاجر','Merchant'),t('الإجمالي','Gross'),t('رسوم','Fees'),t('عمولة','Commission'),t('عمولة مزود','Provider commission'),t('الإجمالي المحتسب','Total recorded'),'%','USDT','USD']} rows={rows.map(r=>[r.merchant,money(r.gross,'EGP'),money(r.fees,'EGP'),money(r.commission,'EGP'),money(r.providerCommission,'EGP'),money(r.totalCommission,'EGP'),`${r.commissionRate.toFixed(2)}%`,r.usdt.toFixed(2),r.usd.toFixed(2)])}/></section>}
 function DebtsView({rows}:{rows:DebtRow[]}){const {t}=useLocale();return <section className="card recent-card"><div className="recent-head"><h3>{t('المديونيات ومستحقات التسوية','Settlement dues')}</h3></div><Table headers={[t('الفترة','Period'),t('مستحق EGP','Due EGP'),t('مستحق USDT','Due USDT'),t('صافي EGP','Net EGP'),t('صافي USDT','Net USDT'),t('تم سداده EGP','Settled EGP'),t('الحالة','Status'),t('تاريخ التسوية','Settlement date')]} rows={rows.map(r=>[r.settlementPeriod??'—',money(r.balanceDueEgp,'EGP'),`${r.balanceDueUsdt.toFixed(2)} USDT`,money(r.totalNetEgp,'EGP'),`${r.totalNetUsdt.toFixed(2)} USDT`,money(r.alreadySettledEgp,'EGP'),r.status??'—',r.settlementDate?new Date(r.settlementDate).toLocaleString():'—'])}/></section>}
 function MonthlyView({rows,usd,usdt}:{rows:MonthlyRow[];usd:number;usdt:number}){const {t}=useLocale();return <section className="card recent-card"><div className="recent-head"><h3>{t('التجميع الشهري','Monthly aggregation')}</h3></div><Table headers={[t('الشهر','Month'),t('عدد PayIn','PayIn count'),t('إجمالي PayIn','PayIn volume'),t('الرسوم','Fees'),t('العمولات','Commission'),t('الإيراد المسجل','Recorded revenue'),'USDT','USD']} rows={rows.map(r=>{const rev=r.fees+r.commission;return [r.month,r.payInCount,money(r.payInAmount,'EGP'),money(r.fees,'EGP'),money(r.commission,'EGP'),money(rev,'EGP'),(rev/usdt).toFixed(2),(rev/usd).toFixed(2)]})}/></section>}
-function Table({headers,rows}:{headers:string[];rows:Array<Array<string|number>>}){return <div className="table-wrap"><table className="data-table"><thead><tr>{headers.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{rows.length?rows.map((r,i)=><tr key={i}>{r.map((v,j)=><td key={j} className={j>0?'mono':''}>{v}</td>)}</tr>):<tr><td colSpan={headers.length}>—</td></tr>}</tbody></table></div>}
+function Table({headers,rows}:{headers:string[];rows:Array<Array<string|number>>}){
+  const isMobile=useIsMobile()
+  if(isMobile){
+    return <div className="risk-card-list">
+      {rows.length?rows.map((r,i)=><div key={i} className="risk-row-card">
+        <div className="risk-row-card-head"><strong>{r[0]}</strong></div>
+        {r.slice(1).map((v,j)=><div key={j} className="cell-sub"><span className="muted">{headers[j+1]}: </span><span className="mono">{v}</span></div>)}
+      </div>):<p className="maven-empty">—</p>}
+    </div>
+  }
+  return <div className="table-wrap"><table className="data-table"><thead><tr>{headers.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{rows.length?rows.map((r,i)=><tr key={i}>{r.map((v,j)=><td key={j} className={j>0?'mono':''}>{v}</td>)}</tr>):<tr><td colSpan={headers.length}>—</td></tr>}</tbody></table></div>
+}
