@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import PanelShell from '../components/PanelShell'
 import { api } from '../lib/api'
 import { money } from '../lib/deposits'
+import { useIsMobile } from '../lib/useIsMobile'
 
 type Provider = { count24h: number; pending: number; lastChange: string | null; latestTransaction?: string | null; stale?: boolean }
 type Tx = { tx_id: number; ontarget_ref: string | null; status: string; amount: number | null; currency: string | null; merchant: string | null; gateway: string | null; first_seen_at: string | null }
@@ -24,6 +25,7 @@ const modules = [
 const when = (value: string | null) => value ? new Date(value).toLocaleString() : '—'
 
 export default function ApiDashboard() {
+  const isMobile = useIsMobile()
   const [data, setData] = useState<Data | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -81,7 +83,22 @@ export default function ApiDashboard() {
     </section>
 
     <div className="api-dash-layout">
-      <section className="card recent-card"><div className="recent-head"><div><h3>Recent transactions</h3><span className="cell-sub">Live monitoring sample</span></div><Link className="pay-status-link" to="/transactions">Open ledger →</Link></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Our TRX</th><th>Provider ID</th><th>Merchant</th><th>Gateway</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead><tbody>{(data?.transactions??[]).slice(0,12).map((row)=><tr key={row.tx_id}><td className="mono">{row.ontarget_ref??'—'}</td><td className="mono">{row.tx_id}</td><td>{row.merchant??'—'}</td><td>{row.gateway??'—'}</td><td className="mono">{money(row.amount,row.currency)}</td><td><span className={`pay-status-badge ${['PAID','APPROVED'].includes(row.status)?'st-paid':row.status==='DECLINED'?'st-declined':'st-pending'}`}>{row.status}</span></td><td className="mono">{when(row.first_seen_at)}</td></tr>)}{data&&data.transactions.length===0&&<tr><td colSpan={7}>No recent transactions.</td></tr>}</tbody></table></div></section>
+      <section className="card recent-card"><div className="recent-head"><div><h3>Recent transactions</h3><span className="cell-sub">Live monitoring sample</span></div><Link className="pay-status-link" to="/transactions">Open ledger →</Link></div>
+        {isMobile ? (
+          <div className="risk-card-list">
+            {(data?.transactions ?? []).slice(0, 12).map((row) => (
+              <div key={row.tx_id} className="risk-row-card">
+                <div className="risk-row-card-head"><span className="mono">{row.ontarget_ref ?? '—'}</span><span className={`pay-status-badge ${['PAID', 'APPROVED'].includes(row.status) ? 'st-paid' : row.status === 'DECLINED' ? 'st-declined' : 'st-pending'}`}>{row.status}</span></div>
+                <div className="cell-sub">{row.merchant ?? '—'} · {row.gateway ?? '—'} · <span className="mono">{row.tx_id}</span></div>
+                <div className="risk-row-card-foot"><span className="mono">{money(row.amount, row.currency)}</span><span className="mono muted">{when(row.first_seen_at)}</span></div>
+              </div>
+            ))}
+            {data && data.transactions.length === 0 && <p className="maven-empty">No recent transactions.</p>}
+          </div>
+        ) : (
+      <div className="table-wrap"><table className="data-table"><thead><tr><th>Our TRX</th><th>Provider ID</th><th>Merchant</th><th>Gateway</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead><tbody>{(data?.transactions??[]).slice(0,12).map((row)=><tr key={row.tx_id}><td className="mono">{row.ontarget_ref??'—'}</td><td className="mono">{row.tx_id}</td><td>{row.merchant??'—'}</td><td>{row.gateway??'—'}</td><td className="mono">{money(row.amount,row.currency)}</td><td><span className={`pay-status-badge ${['PAID','APPROVED'].includes(row.status)?'st-paid':row.status==='DECLINED'?'st-declined':'st-pending'}`}>{row.status}</span></td><td className="mono">{when(row.first_seen_at)}</td></tr>)}{data&&data.transactions.length===0&&<tr><td colSpan={7}>No recent transactions.</td></tr>}</tbody></table></div>
+        )}
+      </section>
       <aside className="card api-module-card"><div className="recent-head"><div><h3>Platform modules</h3><span className="cell-sub">Merged from the supplied API console</span></div></div><div className="api-module-list">{modules.map(([to,title,description])=><Link key={to} to={to}><div><strong>{title}</strong><span>{description}</span></div><ExternalLink size={14}/></Link>)}</div></aside>
     </div>
 
