@@ -5,6 +5,7 @@ import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { useAuth } from '../auth/AuthContext'
 import { Activity, BadgeCheck, Calculator, Gauge, HeartPulse, MessageSquareText, Route, WalletCards } from 'lucide-react'
+import { useIsMobile } from '../lib/useIsMobile'
 
 // Wallet pool: wallet_device_map rows (receiving wallets) + live device_status
 // + local_deposit_channels (allocation config).
@@ -93,6 +94,7 @@ interface AllocationResult {
 export default function Wallets() {
   const { t } = useLocale()
   const { can } = useAuth()
+  const isMobile = useIsMobile()
   const [data, setData] = useState<WalletsResponse | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [q, setQ] = useState('')
@@ -286,6 +288,23 @@ export default function Wallets() {
               <div className="allocation-error" role="status">{t('لا توجد محفظة مؤهلة لهذا المبلغ وفق الحدود والحالة الحالية.', 'No wallet is eligible for this amount under the current caps and health checks.')}</div>
             )}
             {result.allocations.length > 1 && <div className="allocation-split">{result.allocations.map((item, index) => <span key={item.wallet_number}>{index + 1}. <b className="mono">{item.wallet_number}</b> · {money(item.amount, 'EGP')}</span>)}</div>}
+            {isMobile ? (
+              <div className="allocation-card-list">
+                {result.candidates.map((candidate) => (
+                  <div key={candidate.wallet_number} className={`allocation-row-card${result.selected?.wallet_number === candidate.wallet_number ? ' is-selected' : ''}`}>
+                    <div className="risk-row-card-head"><strong className="mono">{candidate.wallet_number}</strong><span className={`allocation-health health-${candidate.health}`}><HeartPulse size={14} aria-hidden="true" />{candidate.health}</span></div>
+                    <div className="cell-sub">{candidate.provider ?? '—'} · P{candidate.priority}</div>
+                    <div className="risk-row-card-foot"><span>{t('الرصيد', 'Balance')} <b className="mono">{money(candidate.balance, 'EGP')}</b></span></div>
+                    <div className="risk-row-card-foot">
+                      <span>{t('يومي', 'Daily')} <b className="mono">{money(candidate.daily_usage, 'EGP')} ({Math.min(100, Math.round(candidate.daily_usage / candidate.daily_cap * 100))}%)</b></span>
+                      <span>{t('شهري', 'Monthly')} <b className="mono">{money(candidate.monthly_usage, 'EGP')} ({Math.min(100, Math.round(candidate.monthly_usage / candidate.monthly_cap * 100))}%)</b></span>
+                    </div>
+                    <div className="risk-row-card-foot"><span className="allocation-sms"><MessageSquareText size={14} aria-hidden="true" />{candidate.last_sms_match ? depositTime({ first_seen_at: candidate.last_sms_match }) : '—'}</span></div>
+                    {candidate.eligible ? <span className="pay-status-badge st-paid"><Activity size={13} aria-hidden="true" />{t('مؤهلة', 'Eligible')}</span> : <div className="allocation-reasons">{candidate.rejection_reasons.map((reason) => <span key={reason}>{reasonLabel(reason)}</span>)}</div>}
+                  </div>
+                ))}
+              </div>
+            ) : (
             <div className="table-wrap allocation-table">
               <table className="data-table">
                 <thead><tr><th>{t('المحفظة', 'Wallet')}</th><th>{t('الرصيد', 'Balance')}</th><th>{t('الاستخدام اليومي', 'Daily usage')}</th><th>{t('الاستخدام الشهري', 'Monthly usage')}</th><th>{t('الحالة', 'Health')}</th><th>{t('آخر SMS مطابق', 'Last SMS match')}</th><th>{t('القرار', 'Decision')}</th></tr></thead>
@@ -302,6 +321,7 @@ export default function Wallets() {
                 ))}</tbody>
               </table>
             </div>
+            )}
           </div>
         )}
       </section>
@@ -371,6 +391,17 @@ export default function Wallets() {
             <h3>✅ المحافظ النشطة الآن (بيانات حيّة)</h3>
             <span className="cell-sub">المصدر الرسمي — بيتفحص كل دقايق</span>
           </div>
+          {isMobile ? (
+            <div className="risk-card-list">
+              {data.live.map((w, i) => (
+                <div key={`${w.bank_id}-${i}`} className="risk-row-card">
+                  <div className="risk-row-card-head"><span className="mono">{w.bank_id ?? '—'}</span><span className="mono">{w.phone_number ?? '—'}</span></div>
+                  <div className="cell-sub">{w.account_name ?? '—'} · {w.payment_type ?? '—'}</div>
+                  <div className="risk-row-card-foot"><span className="mono muted">{depositTime({ first_seen_at: w.last_checked })}</span></div>
+                </div>
+              ))}
+            </div>
+          ) : (
           <div className="table-wrap">
             <table className="data-table">
               <thead><tr><th>bank_id</th><th>القناة</th><th>النوع</th><th>رقم المحفظة</th><th>آخر فحص</th></tr></thead>
@@ -387,6 +418,7 @@ export default function Wallets() {
               </tbody>
             </table>
           </div>
+          )}
         </section>
       )}
 
@@ -397,7 +429,29 @@ export default function Wallets() {
         </div>
         {!data && !err && <p className="sidebar-hint">جارٍ التحميل…</p>}
         {filtered && filtered.length === 0 && <p>لا توجد نتائج مطابقة.</p>}
-        {filtered && filtered.length > 0 && (
+        {filtered && filtered.length > 0 && (isMobile ? (
+          <div className="risk-card-list">
+            {filtered.map((w) => {
+              const d = deviceInfo(w)
+              return (
+                <div key={`${w.to_account_number}#${w.sim_slot ?? 0}`} className="risk-row-card">
+                  <div className="risk-row-card-head">
+                    <span className="mono">{w.to_account_number}</span>
+                    {d ? <span className={`pay-status-badge ${d.online ? 'st-paid' : 'st-declined'}`}>{d.online ? 'متصل' : 'غير متصل'}</span> : <span className="pay-status-badge st-dim">لا بيانات</span>}
+                  </div>
+                  {w.auto_inferred && <div className="cell-sub">⚙️ استنتاج آلي — غير مؤكد</div>}
+                  <div className="cell-sub">{w.provider ?? '—'} · {w.payment_type ?? '—'} · {w.merchant ?? '—'}</div>
+                  <div className="cell-sub mono">{w.device ?? '—'}{w.sim_slot != null && <> · SIM {w.sim_slot}</>}{d?.battery != null && <> · 🔋{d.battery}%</>}{d?.balance != null && <> · رصيد {money(d.balance, 'EGP')}</>}</div>
+                  <div className="risk-row-card-foot">
+                    <span>{t('الحد اليومي', 'Daily limit')} <b className="mono">{w.daily_limit != null ? money(w.daily_limit, 'EGP') : '—'}</b></span>
+                    <span className="mono muted">{depositTime({ first_seen_at: w.updated_at })}</span>
+                  </div>
+                  <button className="btn-ghost btn-sm" onClick={() => { setEditor(w); setTargetDevice(w.device ?? ''); setTargetSim(String(w.sim_slot ?? 0)); setTargetMerchant(w.merchant ?? '') }}>{t('تغيير', 'Change')}</button>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -452,7 +506,7 @@ export default function Wallets() {
               </tbody>
             </table>
           </div>
-        )}
+        ))}
       </section>
 
       {data && data.channels.length > 0 && (
@@ -460,6 +514,16 @@ export default function Wallets() {
           <div className="recent-head">
             <h3>قنوات الإيداع المحلية</h3>
           </div>
+          {isMobile ? (
+            <div className="risk-card-list">
+              {data.channels.map((ch) => (
+                <div key={ch.id} className="risk-row-card">
+                  <div className="risk-row-card-head"><span>{ch.display_name ?? '—'}</span><span className={`pay-status-badge ${ch.active ? 'st-paid' : 'st-dim'}`}>{ch.active ? 'نشطة' : 'موقوفة'}</span></div>
+                  <div className="cell-sub mono">{ch.channel_type ?? '—'} · {ch.country_code ?? '—'} · {ch.currency_code ?? '—'}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -486,6 +550,7 @@ export default function Wallets() {
               </tbody>
             </table>
           </div>
+          )}
         </section>
       )}
     </PanelShell>

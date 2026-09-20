@@ -2984,6 +2984,9 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .merchant-row-card-head,.merchant-row-card-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .merchant-row-card-head{font-size:13px}
 .merchant-row-card-foot{font-size:11px;color:var(--text-dim)}
+.allocation-card-list{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.allocation-row-card{display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+.allocation-row-card.is-selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 @media(max-width:560px){.risk-page-head{align-items:flex-start; flex-direction:column}.risk-page-head .btn-ghost{width:100%}.risk-kpis{gap:7px}.risk-kpi{min-height:72px; padding:9px}.risk-kpi strong{font-size:17px}.risk-form-row{grid-template-columns:1fr}.risk-tabs{display:grid; grid-template-columns:1fr 1fr}.risk-tabs button{justify-content:center}.risk-impact-stats strong{font-size:15px}}
 
 /* Mobile app shell polish: keep primary content readable and reachable with one hand. */
