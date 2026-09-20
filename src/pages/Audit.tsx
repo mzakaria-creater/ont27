@@ -4,6 +4,7 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
 
@@ -28,6 +29,7 @@ interface ListResponse { rows: AuditRow[]; total: number }
 export default function Audit() {
   const [pageSize, setPageSize] = usePageSize('audit')
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [params, setParams] = useSearchParams()
   const page = Math.max(Number(params.get('page')) || 1, 1)
   const [q, setQ] = useState(params.get('q') ?? '')
@@ -82,7 +84,27 @@ export default function Audit() {
       <section className="card recent-card">
         {!data && !err && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
         {data && data.rows.length === 0 && <p>{t('لا توجد سجلات.', 'No records.')}</p>}
-        {data && data.rows.length > 0 && (
+        {data && data.rows.length > 0 && (isMobile ? (
+          <div className="risk-card-list">
+            {data.rows.map((r) => (
+              <button key={r.id} type="button" className="risk-row-card" style={{ textAlign: 'start', cursor: 'pointer' }} onClick={() => setOpen(open === r.id ? null : r.id)}>
+                <div className="risk-row-card-head"><span className="mono">{r.action ?? '—'}</span><span className="mono muted">{depositTime({ first_seen_at: r.created_at })}</span></div>
+                <div className="cell-sub">{r.actor_name ?? r.actor_type ?? '—'}{r.ip && <span className="mono"> · {r.ip}</span>}</div>
+                <div className="cell-sub mono">{r.entity ?? '—'}{r.entity_id && ` · ${r.entity_id}`}</div>
+                <div className="cell-sub mono small">
+                  {open === r.id ? (
+                    <>
+                      {r.before && <div>{t('قبل', 'Before')}: {JSON.stringify(r.before)}</div>}
+                      {r.after && <div>{t('بعد', 'After')}: {JSON.stringify(r.after)}</div>}
+                    </>
+                  ) : (
+                    <span className="cell-sub">{r.after ? JSON.stringify(r.after).slice(0, 40) + '…' : '—'}</span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
           <div className="table-wrap">
             <table className="data-table clickable">
               <thead>
@@ -110,7 +132,7 @@ export default function Audit() {
               </tbody>
             </table>
           </div>
-        )}
+        ))}
         {data && totalPages > 1 && (
           <div className="pager">
             <button className="btn-ghost btn-sm" disabled={page <= 1} onClick={() => setFilter({ page: page - 1 })}>→ {t('السابق', 'Prev')}</button>
