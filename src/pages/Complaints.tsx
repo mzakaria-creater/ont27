@@ -5,6 +5,7 @@ import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import TransactionEditDialog from '../components/TransactionEditDialog'
+import { useIsMobile } from '../lib/useIsMobile'
 
 // الشكاوى — tx_complaints on the old prod DB, with the control room's
 // investigate / approve / decline / close actions.
@@ -43,6 +44,7 @@ const STATUS_META: Record<string, { ar: string; en: string; cls: string }> = {
 
 export default function Complaints() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [rows, setRows] = useState<ComplaintRow[] | null>(null)
   const [total, setTotal] = useState(0)
   const [status, setStatus] = useState('')
@@ -205,10 +207,31 @@ export default function Complaints() {
       <section className="card recent-card complaint-ledger" style={{ marginBottom: 16 }}>
         <div className="recent-head"><div><h3>🎫 {t('تذاكر الدعم','Support tickets')}</h3><span className="cell-sub">{tickets.length} {t('تذكرة مرتبطة بالشكاوى والمعاملات','tickets linked to complaints and transactions')}</span></div></div>
         <div className="ticket-filter-row"><span className="cell-sub">{t('عرض القائمة حسب المسؤول','Filter list by assignee')}</span><select className="filter-select" value={ticketFilter} onChange={e=>setTicketFilter(e.target.value)}><option value="all">{t('كل الفريق','All team')}</option><option value="unassigned">{t('غير مسندة','Unassigned')}</option>{assignees.map(a=><option key={a.username} value={a.username}>{a.display_name||a.username}</option>)}</select></div>
-        <div className="table-wrap"><table className="data-table"><thead><tr><th>Ticket</th><th>TRX</th><th>{t('الموضوع','Subject')}</th><th>{t('الأولوية','Priority')}</th><th>{t('الحالة','Status')}</th><th>{t('المسند إليه','Assigned')}</th><th>{t('الإجراء','Action')}</th></tr></thead><tbody>
-          {visibleTickets.map(ticket => <tr key={ticket.id}><td className="mono">{ticket.ticket_no ?? `TKT-${ticket.id}`}</td><td className="mono">{ticket.tx_id ?? '—'}</td><td>{ticket.subject ?? 'Transaction issue'}<div className="cell-sub">{ticket.description ?? ticket.customer_phone ?? ''}</div></td><td><span className={`pay-status-badge ${ticket.priority === 'high' ? 'st-declined' : ticket.priority === 'medium' ? 'st-pending' : 'st-dim'}`}>{ticket.priority ?? 'normal'}</span></td><td><span className="pay-status-badge st-pending">{ticket.ticket_status}</span></td><td>{ticket.assigned_to || '—'}</td><td><button className="btn-ghost btn-sm" onClick={()=>openTicket(ticket)}>{t('عرض / تعديل','View / edit')}</button></td></tr>)}
-          {visibleTickets.length === 0 && <tr><td colSpan={7} className="sidebar-hint">{t('لا توجد تذاكر بعد. تسجيل شكوى جديدة ينشئ تذكرة تلقائياً.','No tickets yet. Filing a complaint creates one automatically.')}</td></tr>}
-        </tbody></table></div>
+        {isMobile ? (
+          <div className="ticket-card-list">
+            {visibleTickets.map(ticket => (
+              <button key={ticket.id} type="button" className="ticket-card" onClick={() => openTicket(ticket)}>
+                <div className="ticket-card-head">
+                  <span className="mono">{ticket.ticket_no ?? `TKT-${ticket.id}`}</span>
+                  <span className={`pay-status-badge ${ticket.priority === 'high' ? 'st-declined' : ticket.priority === 'medium' ? 'st-pending' : 'st-dim'}`}>{ticket.priority ?? 'normal'}</span>
+                </div>
+                <div className="ticket-card-subject">{ticket.subject ?? 'Transaction issue'}</div>
+                <div className="cell-sub">{ticket.description ?? ticket.customer_phone ?? ''}</div>
+                <div className="ticket-card-foot">
+                  {ticket.tx_id != null && <span className="mono">TRX {ticket.tx_id}</span>}
+                  <span className="pay-status-badge st-pending">{ticket.ticket_status}</span>
+                  <span>{ticket.assigned_to || t('غير مسندة', 'Unassigned')}</span>
+                </div>
+              </button>
+            ))}
+            {visibleTickets.length === 0 && <p className="sidebar-hint">{t('لا توجد تذاكر بعد. تسجيل شكوى جديدة ينشئ تذكرة تلقائياً.','No tickets yet. Filing a complaint creates one automatically.')}</p>}
+          </div>
+        ) : (
+          <div className="table-wrap"><table className="data-table"><thead><tr><th>Ticket</th><th>TRX</th><th>{t('الموضوع','Subject')}</th><th>{t('الأولوية','Priority')}</th><th>{t('الحالة','Status')}</th><th>{t('المسند إليه','Assigned')}</th><th>{t('الإجراء','Action')}</th></tr></thead><tbody>
+            {visibleTickets.map(ticket => <tr key={ticket.id}><td className="mono">{ticket.ticket_no ?? `TKT-${ticket.id}`}</td><td className="mono">{ticket.tx_id ?? '—'}</td><td>{ticket.subject ?? 'Transaction issue'}<div className="cell-sub">{ticket.description ?? ticket.customer_phone ?? ''}</div></td><td><span className={`pay-status-badge ${ticket.priority === 'high' ? 'st-declined' : ticket.priority === 'medium' ? 'st-pending' : 'st-dim'}`}>{ticket.priority ?? 'normal'}</span></td><td><span className="pay-status-badge st-pending">{ticket.ticket_status}</span></td><td>{ticket.assigned_to || '—'}</td><td><button className="btn-ghost btn-sm" onClick={()=>openTicket(ticket)}>{t('عرض / تعديل','View / edit')}</button></td></tr>)}
+            {visibleTickets.length === 0 && <tr><td colSpan={7} className="sidebar-hint">{t('لا توجد تذاكر بعد. تسجيل شكوى جديدة ينشئ تذكرة تلقائياً.','No tickets yet. Filing a complaint creates one automatically.')}</td></tr>}
+          </tbody></table></div>
+        )}
       </section>
 
       <section className="card complaint-investigator">
@@ -264,7 +287,27 @@ export default function Complaints() {
         <div className="recent-head"><div><h3>{t('سجل الشكاوى','Complaint ledger')}</h3><span className="cell-sub">{total.toLocaleString('en-US')} {t('سجل','records')}</span></div></div>
         {!rows && !err && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
         {rows && rows.length === 0 && <p>{txId ? t(`لا توجد شكوى للمعاملة ${txId}.`, `No complaint found for transaction ${txId}.`) : t('لا توجد شكاوى.', 'No complaints.')}</p>}
-        {rows && rows.length > 0 && (
+        {rows && rows.length > 0 && (isMobile ? (
+          <div className="complaint-card-list">
+            {rows.map((r) => {
+              const m = meta(r.status)
+              return (
+                <button key={r.id} type="button" className="complaint-card" onClick={() => open(r)}>
+                  <div className="complaint-card-head">
+                    <span className="mono">#{r.id}{r.tx_id != null && <> · TRX {r.tx_id}</>}</span>
+                    <span className="mono">{money(r.amount, 'EGP')}</span>
+                  </div>
+                  <div className="cell-sub">{r.customer_phone ?? '—'}{r.note && <> · {r.note}</>}</div>
+                  {r.finding && <div className="cell-sub">{r.finding}</div>}
+                  <div className="complaint-card-foot">
+                    <span className={`pay-status-badge ${m.cls}`}>{t(m.ar, m.en)}</span>
+                    <span className="mono muted">{depositTime({ first_seen_at: r.created_at })}</span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        ) : (
           <div className="table-wrap">
             <table className="data-table clickable">
               <thead>
@@ -289,7 +332,7 @@ export default function Complaints() {
               </tbody>
             </table>
           </div>
-        )}
+        ))}
       </section>
 
       {selected && (

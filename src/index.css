@@ -3717,6 +3717,13 @@ html[data-pay-theme="etisalat"]      .pay-wrap { --pay-glow: #95c11f; --pay-glow
 .ticket-modal .drawer-head h3{font-size:20px;margin:4px 0 0}.ticket-linked-list{margin:18px 0;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);display:flex;align-items:center;gap:14px;flex-wrap:wrap}.ticket-linked-chip{font:700 13px ui-monospace,monospace;color:var(--accent);padding:7px 10px;border-radius:8px;background:color-mix(in srgb,var(--accent) 12%,transparent)}
 .ticket-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.ticket-form-grid label{display:grid;gap:6px;color:var(--muted);font-size:12px}.ticket-form-wide{grid-column:1/-1}.ticket-description{min-height:110px;resize:vertical}
 @media(max-width:640px){.ticket-modal-backdrop{padding:10px}.ticket-modal{padding:16px}.ticket-form-grid{grid-template-columns:1fr}.ticket-form-wide{grid-column:auto}.ticket-filter-row{justify-content:space-between}}
+.ticket-card-list,.complaint-card-list{display:flex;flex-direction:column;gap:10px}
+.ticket-card,.complaint-card{display:flex;flex-direction:column;gap:6px;width:100%;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);text-align:start;color:inherit;cursor:pointer}
+.ticket-card:hover,.complaint-card:hover{border-color:var(--border-soft)}
+.ticket-card-head,.complaint-card-head,.ticket-card-foot,.complaint-card-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.ticket-card-head,.complaint-card-head{font-size:13px}
+.ticket-card-subject{font-size:13px;font-weight:600}
+.ticket-card-foot,.complaint-card-foot{font-size:11px;color:var(--text-dim)}
 
 /* Keep legacy/imported screens aligned with the Live Operations Monitor in
    dark mode; older panels used light status chips and undefined aliases. */
