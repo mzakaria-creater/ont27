@@ -18,6 +18,7 @@ import ColumnPicker, { useVisibleColumns } from '../components/ColumnPicker'
 import type { ColumnDef } from '../components/ColumnPicker'
 import { supabase } from '../lib/supabase'
 import { syncProviders } from '../lib/providerSync'
+import { useIsMobile } from '../lib/useIsMobile'
 import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectFilter'
 
 // All transactions — deposits + payouts merged, sorted by our ref.
@@ -102,7 +103,11 @@ export default function Transactions() {
   const maxAmount = params.get('max_amount') ?? ''
   const secondaryFilterCount = [from, to, merchant, method, minAmount, maxAmount].filter(Boolean).length + (currencyValues.length > 0 ? 1 : 0)
   const [showMoreFilters, setShowMoreFilters] = useState(() => secondaryFilterCount > 0)
-  const view = params.get('view') === 'cards' ? 'cards' : 'table'
+  const isMobile = useIsMobile()
+  const viewParam = params.get('view')
+  // Absent an explicit choice, a phone opens straight into cards — a data
+  // table is a desktop concept — while desktop keeps its table default.
+  const view = viewParam === 'cards' ? 'cards' : viewParam === 'table' ? 'table' : isMobile ? 'cards' : 'table'
   const page = Math.max(Number(params.get('page')) || 1, 1)
   const openRef = params.get('open') ?? null
   const [q, setQ] = useState(params.get('q') ?? '')

@@ -92,7 +92,13 @@ export default function Approvals() {
   const [err, setErr] = useState<string | null>(null)
   const [rowBusy, setRowBusy] = useState<string | null>(null)
   const [proof, setProof] = useState<{ url: string; ref: string } | null>(null)
-  const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => localStorage.getItem('approval-queue-view') === 'cards' ? 'cards' : 'table')
+  // Absent an explicit prior choice, a phone opens straight into cards —
+  // a data table is a desktop concept — while desktop keeps its table default.
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => {
+    const saved = localStorage.getItem('approval-queue-view')
+    if (saved === 'cards' || saved === 'table') return saved
+    return typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches ? 'cards' : 'table'
+  })
   const [searchQuery, setSearchQuery] = useState('')
   const [retentionSummary, setRetentionSummary] = useState<RetentionSummary>({ paid: 0, declined: 0, pending: 0, total: 0 })
   const [now, setNow] = useState(() => Date.now())

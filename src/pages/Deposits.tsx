@@ -19,6 +19,7 @@ import { syncProviders } from '../lib/providerSync'
 import { AlertTriangle, Search, X } from 'lucide-react'
 import SmsMatchQueues, { type QueueSms } from '../components/SmsMatchQueues'
 import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectFilter'
+import { useIsMobile } from '../lib/useIsMobile'
 
 const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
 const MASTER_PILLS = [
@@ -80,7 +81,13 @@ export default function Deposits() {
   const master = params.get('master') ?? ''
   const statusValues = splitFilterValues(status)
   const masterValues = splitFilterValues(master)
-  const view = params.get('view') === 'cards' ? 'cards' : 'table'
+  const isMobile = useIsMobile()
+  const viewParam = params.get('view')
+  // Same reasoning as the Live SMS page: absent an explicit choice, a phone
+  // opens straight into cards (a data table is a desktop concept), desktop
+  // keeps defaulting to the table it always has. An explicit pick either way
+  // — from the toggle below — always wins over the device default.
+  const view = viewParam === 'cards' ? 'cards' : viewParam === 'table' ? 'table' : isMobile ? 'cards' : 'table'
   const page = Math.max(Number(params.get('page')) || 1, 1)
   const [q, setQ] = useState(params.get('q') ?? '')
   const [data, setData] = useState<ListResponse | null>(null)
@@ -141,7 +148,10 @@ export default function Deposits() {
   const setFilter = (next: { status?: string; master?: string; q?: string; page?: number; view?: string }) => {
     const p = new URLSearchParams(params)
     if (next.view !== undefined) {
-      if (next.view === 'cards') p.set('view', 'cards'); else p.delete('view')
+      // Set both explicitly (never delete) so a deliberate "Table" pick on a
+      // phone is distinguishable from "no preference yet" and survives the
+      // device-default check in `view` above.
+      if (next.view === 'cards' || next.view === 'table') p.set('view', next.view); else p.delete('view')
     }
     if (next.status !== undefined) {
       if (next.status) p.set('status', next.status); else p.delete('status')

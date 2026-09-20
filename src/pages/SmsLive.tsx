@@ -253,7 +253,15 @@ export default function SmsLive() {
   const [manualOpen, setManualOpen] = useState(false)
   const [manualBusy, setManualBusy] = useState(false)
   const [manualForm, setManualForm] = useState({ message: '', sms_category: 'deposit', amount: '', sender_name: '', sender_number: '', receiver_number: '', trx_id: '', received_at: '', note: '' })
-  const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => localStorage.getItem('sms-live-view') === 'cards' ? 'cards' : 'table')
+  // Respect an explicit prior choice either way; absent one, a phone opens
+  // straight into the card view (a data table is a desktop concept — nobody
+  // wants to pan a wide grid sideways on a 6" screen) while desktop keeps
+  // defaulting to the table it always has.
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => {
+    const saved = localStorage.getItem('sms-live-view')
+    if (saved === 'cards' || saved === 'table') return saved
+    return typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches ? 'cards' : 'table'
+  })
 
   const appliedQ = params.get('q') ?? ''
   const amount = params.get('amount') ?? ''
