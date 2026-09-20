@@ -3,6 +3,7 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 
 // Merchants directory (view). The API never returns api_key/secret_key/
 // callback_secret — key management stays a separate super_admin flow.
@@ -67,6 +68,7 @@ function isLive(m: MerchantRow): boolean {
 
 export default function Merchants() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [rows, setRows] = useState<MerchantRow[] | null>(null)
   const [masters, setMasters] = useState<MasterRow[]>([])
   const [err, setErr] = useState<string | null>(null)
@@ -151,7 +153,27 @@ export default function Merchants() {
       <section className="card recent-card">
         {!rows && !err && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
         {filtered && filtered.length === 0 && <p>{t('لا توجد نتائج مطابقة.', 'No matching results.')}</p>}
-        {filtered && filtered.length > 0 && (
+        {filtered && filtered.length > 0 && (isMobile ? (
+          <div className="merchant-card-list">
+            {filtered.map((m) => {
+              const kyc = m.kyc_status ? KYC_META[m.kyc_status.toLowerCase()] : null
+              return (
+                <button key={m.id} type="button" className="merchant-row-card" onClick={() => setSelected(m)}>
+                  <div className="merchant-row-card-head">
+                    <span>{m.name ?? '—'}{m.code && <span className="mono cell-sub"> · {m.code}</span>}</span>
+                    <span className={`pay-status-badge ${isLive(m) ? 'st-paid' : 'st-dim'}`}>{isLive(m) ? t('نشط', 'Active') : t('موقوف', 'Disabled')}</span>
+                  </div>
+                  <div className="cell-sub">MID <span className="mono">{m.MID ?? '—'}</span> · {masterName(m.master_merchant_id) ?? '—'}</div>
+                  <div className="merchant-row-card-foot">
+                    <span className="mono">{m.country_code ?? m.country ?? '—'} · {m.base_currency ?? '—'}</span>
+                    {kyc ? <span className={`pay-status-badge ${kyc.cls}`}>{t(kyc.ar, kyc.en)}</span> : <span className="mono">{m.kyc_status ?? '—'}</span>}
+                    <span className="mono">{money(m.blocked_amount, m.base_currency)}</span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        ) : (
           <div className="table-wrap">
             <table className="data-table clickable">
               <thead>
@@ -194,7 +216,7 @@ export default function Merchants() {
               </tbody>
             </table>
           </div>
-        )}
+        ))}
       </section>
 
       {selected && (

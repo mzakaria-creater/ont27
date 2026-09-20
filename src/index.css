@@ -2978,6 +2978,12 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .risk-row-card-head,.risk-row-card-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .risk-row-card-head{font-size:13px}
 .risk-row-card-foot{font-size:11px;color:var(--text-dim)}
+.merchant-card-list{display:flex;flex-direction:column;gap:10px}
+.merchant-row-card{display:flex;flex-direction:column;gap:6px;width:100%;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);text-align:start;color:inherit;cursor:pointer}
+.merchant-row-card:hover{border-color:var(--border-soft)}
+.merchant-row-card-head,.merchant-row-card-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.merchant-row-card-head{font-size:13px}
+.merchant-row-card-foot{font-size:11px;color:var(--text-dim)}
 @media(max-width:560px){.risk-page-head{align-items:flex-start; flex-direction:column}.risk-page-head .btn-ghost{width:100%}.risk-kpis{gap:7px}.risk-kpi{min-height:72px; padding:9px}.risk-kpi strong{font-size:17px}.risk-form-row{grid-template-columns:1fr}.risk-tabs{display:grid; grid-template-columns:1fr 1fr}.risk-tabs button{justify-content:center}.risk-impact-stats strong{font-size:15px}}
 
 /* Mobile app shell polish: keep primary content readable and reachable with one hand. */
