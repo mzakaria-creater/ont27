@@ -4,6 +4,7 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 
 // Settlements — per-merchant aggregates (approved deposits vs payouts) over a window.
 
@@ -41,6 +42,7 @@ interface Batches {
 
 export default function Settlements() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const { can } = useAuth()
   const [days, setDays] = useState(7)
   const [batches, setBatches] = useState<Batches | null>(null)
@@ -137,7 +139,25 @@ export default function Settlements() {
       <section className="card recent-card">
         {!rows && !err && <p className="sidebar-hint">{t('جارٍ الحساب…', 'Calculating…')}</p>}
         {rows && rows.length === 0 && <p>{t('لا توجد معاملات معتمدة في الفترة.', 'No approved transactions in this window.')}</p>}
-        {rows && rows.length > 0 && (
+        {rows && rows.length > 0 && (isMobile ? (
+          <div className="risk-card-list">
+            {rows.map((r) => {
+              const net = r.depVolume - r.payVolume
+              const ps = payments.filter(p => p.merchant === r.merchant)
+              const paid = ps.reduce((s, p) => s + Number(p.amount), 0)
+              const held = ps.reduce((s, p) => s + Number(p.amount) * Number(p.blocked_percent) / 100, 0)
+              return (
+                <div key={r.merchant} className="risk-row-card">
+                  <div className="risk-row-card-head"><strong>{r.merchant}</strong><span className="mono" style={{ color: net >= 0 ? 'var(--status-paid)' : 'var(--status-declined)' }}>{money(net, 'EGP')}</span></div>
+                  {r.master && <div className="cell-sub">{r.master}</div>}
+                  <div className="cell-sub">{t('إيداعات', 'Deposits')} {r.depCount} · {money(r.depVolume, 'EGP')} — {t('سحوبات', 'Payouts')} {r.payCount} · {money(r.payVolume, 'EGP')}</div>
+                  <div className="cell-sub">{t('عمولة', 'Commission')} {money(r.commission, 'EGP')} · {t('رسوم', 'Fees')} {money(r.fees, 'EGP')}</div>
+                  <div className="risk-row-card-foot"><span className="mono">{t('المدفوع/المحجوز', 'Paid / held')}: {money(paid + held, 'EGP')}</span><span className="mono" style={{ color: net - paid - held >= 0 ? 'var(--status-paid)' : 'var(--status-declined)' }}>{t('المتاح', 'Available')}: {money(net - paid - held, 'EGP')}</span></div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -171,7 +191,7 @@ export default function Settlements() {
               </tbody>
             </table>
           </div>
-        )}
+        ))}
       </section>
 
       {batches && (
@@ -213,6 +233,25 @@ export default function Settlements() {
             </p>
           </div>
 
+          {isMobile ? (
+            <div className="risk-card-list">
+              {batches.batches.map((b) => (
+                <div key={b.subMerchant} className={`risk-row-card${b.rateMissing ? ' row-pending' : ''}`}>
+                  <div className="risk-row-card-head"><strong>{b.subMerchant}</strong><span className="mono">{money(b.grossVolume, 'EGP')}</span></div>
+                  <div className="cell-sub">{b.paidCount} {t('معتمدة', 'paid')} · {t('متوسط العملية', 'Avg ticket')} {b.avgTicket == null ? '—' : money(b.avgTicket, 'EGP')}</div>
+                  <div className="cell-sub">
+                    {t('صف النسبة', 'Rate row')}: {b.rateRow ?? <span className="pay-status-badge st-declined">{t('غير موجود', 'missing')}</span>}
+                    {b.rateCandidates > 1 && ` · ${t(`${b.rateCandidates} صفوف مطابقة`, `${b.rateCandidates} rows match`)}`}
+                  </div>
+                  <div className="risk-row-card-foot">
+                    <span className="mono">commission_rate: {b.commissionRate == null ? '—' : `${b.commissionRate}%`}</span>
+                    <span className="mono">{b.payinPct == null ? '—' : `${b.payinPct}% + ${b.payoutPct ?? 0}%`}</span>
+                  </div>
+                  {b.rateConflict && !b.rateMissing && <div className="cell-sub">{t('يخالف العمود المجاور', 'disagrees with the column beside it')}</div>}
+                </div>
+              ))}
+            </div>
+          ) : (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -251,6 +290,7 @@ export default function Settlements() {
               </tbody>
             </table>
           </div>
+          )}
         </section>
       )}
     </PanelShell>
