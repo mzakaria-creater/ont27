@@ -612,19 +612,20 @@ deltaSyncRoutes.get('/delta-sync-full', async (c) => {
   return c.json({ ok, mode: 'full', results, at: new Date().toISOString() }, ok ? 200 : 502)
 })
 
-// v2 owns the decline sweep after the legacy bridge cutover. The SQL function
-// contains the any-wallet ±10 minute evidence guard; this endpoint only
-// invokes it under the cron secret and a short distributed lease.
+// 2026-09-20: sweep_auto_decline_stale_unmatched() is a leftover from the old
+// project's browser_jobs pipeline -- it references public.review_queue (never
+// existed in v2), a 5-arg evaluate_transaction_for_auto_decision() overload
+// that doesn't exist, and writes to browser_jobs (confirmed zero rows ever,
+// nothing in v2 reads it). Decline decisions are made entirely by
+// evaluate_and_dispatch_ngpay_decision_core(), which pg_cron runs every
+// minute against every PENDING NagupayP2P transaction -- this endpoint was
+// pure redundant noise, 502-ing every 5 minutes with no effect on real
+// declines. Left as a no-op instead of deleting the route outright, in case
+// the Vercel cron schedule still points at it.
 deltaSyncRoutes.get('/auto-decline', async (c) => {
   const secret = process.env.CRON_SECRET
   if (!secret || c.req.header('authorization') !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401)
-  if (!(await claimDistributedLease(50, 'provider_auto_decline_v2'))) return c.json({ ok: true, skipped: 'distributed_lease' })
-  const { data: settings, error: settingsError } = await db.from('automation_settings').select('automation_enabled').eq('id', 1).maybeSingle()
-  if (settingsError) return c.json({ ok: false, error: settingsError.message }, 502)
-  if (settings?.automation_enabled !== true) return c.json({ ok: true, skipped: 'automation_disabled', at: new Date().toISOString() })
-  const { data, error } = await db.rpc('sweep_auto_decline_stale_unmatched', { p_grace_minutes: null, p_score_threshold: null })
-  if (error) return c.json({ ok: false, error: error.message }, 502)
-  return c.json({ ok: true, results: data ?? [] , at: new Date().toISOString() })
+  return c.json({ ok: true, skipped: 'superseded_by_evaluate_and_dispatch_ngpay_decision_core', at: new Date().toISOString() })
 })
 
 // Wallet rotation groups are a display-only priority simulator: enrich_priority
