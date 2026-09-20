@@ -8,6 +8,7 @@ import { depositTime, money, statusMeta } from '../lib/deposits'
 import type { DepositStats } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import DepositKindBadge from '../components/DepositKindBadge'
+import { useIsMobile } from '../lib/useIsMobile'
 
 const CONTROL_ROLES = new Set(['owner', 'admin', 'super_admin'])
 const REFRESH_MS = 30_000
@@ -40,6 +41,7 @@ const age = (iso: string | null, t: (ar: string, en: string) => string) => {
 export default function Dashboard() {
   const { user } = useAuth()
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const canControl = Boolean(user && CONTROL_ROLES.has(user.role))
   const [stats, setStats] = useState<DepositStats | null>(null)
   const [monitor, setMonitor] = useState<MonitorData | null>(null)
@@ -163,7 +165,30 @@ export default function Dashboard() {
 
     <section className="card command-activity">
       <header className="command-section-head"><div><span className="command-kicker">{t('آخر حركة', 'RECENT ACTIVITY')}</span><h3>{t('المعاملات الواردة', 'Incoming transactions')}</h3></div><Link to="/transactions" className="pay-status-link">{t('كل المعاملات', 'All transactions')} →</Link></header>
-      {!stats ? <p className="command-loading">{t('جارٍ تحميل المعاملات…', 'Loading transactions…')}</p> : <div className="table-wrap"><table className="data-table command-table"><thead><tr><th>{t('المرجع', 'Reference')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('المرسل', 'Sender')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('الحالة', 'Status')}</th><th>{t('وصلت', 'Received')}</th></tr></thead><tbody>{stats.recent.slice(0, 8).map((row) => { const status = statusMeta(row.status); return <tr key={row.tx_id}><td><Link to={`/transactions/${row.ontarget_ref ?? row.tx_id}`} className="mono command-ref">{row.ontarget_ref ?? row.tx_id}</Link></td><td className="mono command-money">{money(row.amount, row.currency)}</td><td>{row.sender_name ?? row.sender_number ?? '—'}<DepositKindBadge row={row} /></td><td><MerchantLogo merchant={row.merchant} /></td><td><span className={`pay-status-badge ${status.cls}`}>{status.label}</span>{row.ngpay_status && <div className={`provider-row-status ${status.cls}`}>NagoPay · {row.ngpay_status}</div>}</td><td className="mono muted">{depositTime(row)}</td></tr>})}</tbody></table></div>}
+      {!stats ? <p className="command-loading">{t('جارٍ تحميل المعاملات…', 'Loading transactions…')}</p>
+        : isMobile ? (
+          <div className="command-activity-list">
+            {stats.recent.slice(0, 8).map((row) => {
+              const status = statusMeta(row.status)
+              return <Link to={`/transactions/${row.ontarget_ref ?? row.tx_id}`} key={row.tx_id} className="command-activity-row">
+                <div className="command-activity-row-head">
+                  <span className="mono command-ref">{row.ontarget_ref ?? row.tx_id}</span>
+                  <span className="mono command-money">{money(row.amount, row.currency)}</span>
+                </div>
+                <div className="command-activity-row-mid">
+                  <span>{row.sender_name ?? row.sender_number ?? '—'}<DepositKindBadge row={row} /></span>
+                  <MerchantLogo merchant={row.merchant} />
+                </div>
+                <div className="command-activity-row-foot">
+                  <span className={`pay-status-badge ${status.cls}`}>{status.label}</span>
+                  <span className="mono muted">{depositTime(row)}</span>
+                </div>
+              </Link>
+            })}
+          </div>
+        ) : (
+          <div className="table-wrap"><table className="data-table command-table"><thead><tr><th>{t('المرجع', 'Reference')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('المرسل', 'Sender')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('الحالة', 'Status')}</th><th>{t('وصلت', 'Received')}</th></tr></thead><tbody>{stats.recent.slice(0, 8).map((row) => { const status = statusMeta(row.status); return <tr key={row.tx_id}><td><Link to={`/transactions/${row.ontarget_ref ?? row.tx_id}`} className="mono command-ref">{row.ontarget_ref ?? row.tx_id}</Link></td><td className="mono command-money">{money(row.amount, row.currency)}</td><td>{row.sender_name ?? row.sender_number ?? '—'}<DepositKindBadge row={row} /></td><td><MerchantLogo merchant={row.merchant} /></td><td><span className={`pay-status-badge ${status.cls}`}>{status.label}</span>{row.ngpay_status && <div className={`provider-row-status ${status.cls}`}>NagoPay · {row.ngpay_status}</div>}</td><td className="mono muted">{depositTime(row)}</td></tr>})}</tbody></table></div>
+        )}
     </section>
   </PanelShell>
 }
