@@ -206,6 +206,19 @@ Deno.serve(async (req: Request) => {
     const isWithdrawal = /(withdraw|withdrawal|debit|sent|paid out|سحب|خصم|تحويل إلى|تحويل الي|تم خصم|لرقم|رسوم\s*التحويل)/i.test(messageText);
     const isIncoming = /(received|deposit|credited|credit|incoming|تم استلام|إيداع)/i.test(messageText);
 
+    // A genuine wallet-provider deposit notification always originates from a
+    // regulated sender ID (e.g. "OrangeCash") — Egyptian carriers never let a
+    // real subscriber MSISDN send as one. A leading "+" on the raw envelope
+    // sender means the device-forwarder app captured a genuine peer-to-peer
+    // phone origin: someone typed the message themselves and sent it like a
+    // normal text. Confirmed live via SMS #1000876/#1000868 — hand-crafted
+    // "deposit" messages with the balance line left blank (unforgeable
+    // without knowing the real live balance), sent from +201200793615, used
+    // to get a 5,000 EGP and a 950 EGP transaction auto-approved with no real
+    // payment ever received.
+    const rawSender = senderValue === null ? null : String(senderValue).trim();
+    const isPeerPhoneSender = rawSender !== null && /^\+\d{8,15}$/.test(rawSender);
+
     const textWallet = walletValue !== null ? String(walletValue) : extractWalletFromText(message);
     // Only fall back to a device-mapped wallet when the message already
     // looks financial (an explicit wallet found in the text is fine either
@@ -257,6 +270,8 @@ Deno.serve(async (req: Request) => {
       device_name: device,
       sim_slot: simSlotValue === null ? null : String(simSlotValue),
       received_at: new Date().toISOString(),
+      is_blocked: isPeerPhoneSender,
+      notes: isPeerPhoneSender ? "auto_blocked_peer_phone_sender_not_provider" : null,
     };
 
     if (reference) {
