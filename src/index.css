@@ -2912,6 +2912,10 @@ html[dir="ltr"] .dep-fields .mono { text-align: left; }
 .crm-account-actions { display: flex; gap: 8px; margin-top: auto; }
 .crm-account-actions > * { flex: 1; text-align: center; }
 @media (max-width: 480px) { .crm-account-metrics { grid-template-columns: 1fr; } .crm-account-head { flex-wrap: wrap; } .crm-account-head .crm-detail-badges { max-width: none; } }
+.crm-txn-list { display: flex; flex-direction: column; gap: 8px; }
+.crm-txn-row { display: flex; flex-direction: column; gap: 6px; padding: 11px; border: 1px solid var(--border); border-radius: 11px; background: var(--hover); }
+.crm-txn-row-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.crm-txn-row-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; color: var(--text-dim); }
 
 /* Wallet report detail drawer */
 .wallet-drawer { max-width: min(560px, 96vw); }

@@ -7,6 +7,7 @@ import { useLocale } from '../lib/locale'
 import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
 import { useAuth } from '../auth/AuthContext'
+import { useIsMobile } from '../lib/useIsMobile'
 
 // CRM — crm_clients directory.
 
@@ -45,6 +46,7 @@ export default function Crm() {
   const [pageSize, setPageSize] = usePageSize('crm')
   const { t } = useLocale()
   const { can } = useAuth()
+  const isMobile = useIsMobile()
   const [params, setParams] = useSearchParams()
   const page = Math.max(Number(params.get('page')) || 1, 1)
   const [q, setQ] = useState(params.get('q') ?? '')
@@ -210,12 +212,29 @@ export default function Crm() {
                   </div>
                 )}
                 <h3 style={{ margin: '14px 0 6px', fontSize: 14 }}>{t('آخر معاملات هذا الرقم', 'Recent transactions for this number')}</h3>
-                {detail.transactions.length === 0 ? <p className="sidebar-hint">{t('لا توجد معاملات مطابقة بالرقم.', 'No transactions matched by number.')}</p> : (
-                  <div className="table-wrap"><table className="data-table">
-                    <thead><tr><th>{t('المرجع', 'Ref')}</th><th>{t('الحالة', 'Status')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('اسم المُرسِل', 'Sender name')}</th><th>{t('الوقت', 'Time')}</th></tr></thead>
-                    <tbody>{detail.transactions.map((t) => <tr key={t.ontarget_ref}><td className="mono">{t.ontarget_ref}</td><td><span className={`pay-status-badge ${t.status === 'PAID' || t.status === 'APPROVED' ? 'st-paid' : t.status === 'DECLINED' ? 'st-declined' : t.status === 'PENDING' ? 'st-pending' : 'st-dim'}`}>{t.status ?? '—'}</span></td><td className="mono">{money(t.amount, 'EGP')}</td><td>{t.sender_name ?? '—'}</td><td className="mono">{depositTime({ first_seen_at: t.first_seen_at })}</td></tr>)}</tbody>
-                  </table></div>
-                )}
+                {detail.transactions.length === 0 ? <p className="sidebar-hint">{t('لا توجد معاملات مطابقة بالرقم.', 'No transactions matched by number.')}</p>
+                  : isMobile ? (
+                    <div className="crm-txn-list">
+                      {detail.transactions.map((row) => (
+                        <div key={row.ontarget_ref} className="crm-txn-row">
+                          <div className="crm-txn-row-head">
+                            <span className="mono">{row.ontarget_ref}</span>
+                            <span className="mono">{money(row.amount, 'EGP')}</span>
+                          </div>
+                          <div className="crm-txn-row-foot">
+                            <span className={`pay-status-badge ${row.status === 'PAID' || row.status === 'APPROVED' ? 'st-paid' : row.status === 'DECLINED' ? 'st-declined' : row.status === 'PENDING' ? 'st-pending' : 'st-dim'}`}>{row.status ?? '—'}</span>
+                            <span>{row.sender_name ?? '—'}</span>
+                            <span className="mono muted">{depositTime({ first_seen_at: row.first_seen_at })}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="table-wrap"><table className="data-table">
+                      <thead><tr><th>{t('المرجع', 'Ref')}</th><th>{t('الحالة', 'Status')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('اسم المُرسِل', 'Sender name')}</th><th>{t('الوقت', 'Time')}</th></tr></thead>
+                      <tbody>{detail.transactions.map((row) => <tr key={row.ontarget_ref}><td className="mono">{row.ontarget_ref}</td><td><span className={`pay-status-badge ${row.status === 'PAID' || row.status === 'APPROVED' ? 'st-paid' : row.status === 'DECLINED' ? 'st-declined' : row.status === 'PENDING' ? 'st-pending' : 'st-dim'}`}>{row.status ?? '—'}</span></td><td className="mono">{money(row.amount, 'EGP')}</td><td>{row.sender_name ?? '—'}</td><td className="mono">{depositTime({ first_seen_at: row.first_seen_at })}</td></tr>)}</tbody>
+                    </table></div>
+                  )}
               </div>
             )}
           </div>
