@@ -2711,6 +2711,21 @@ a.command-metric:hover { border-color: var(--accent); transform: translateY(-1px
 @media (min-width: 1500px) { .dep-card-grid { grid-template-columns: repeat(4, 1fr); } }
 @media (max-width: 560px) { .dep-card-grid { grid-template-columns: 1fr; gap: 12px; } }
 
+.payout-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(288px, 1fr)); align-items: start; gap: 14px; margin-block: 4px 16px; }
+@media (min-width: 1500px) { .payout-card-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 560px) { .payout-card-grid { grid-template-columns: 1fr; gap: 12px; } }
+.payout-card { display: flex; flex-direction: column; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px; transition: border-color .15s var(--ease), box-shadow .15s var(--ease); }
+.payout-card:hover { border-color: var(--border-soft); box-shadow: var(--shadow-hover); }
+.payout-card.is-pending { border-color: var(--amber-border); }
+.payout-card-main { display: flex; flex-direction: column; gap: 10px; width: 100%; padding: 0; border: 0; background: transparent; text-align: start; color: inherit; cursor: pointer; }
+.payout-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--text-dim); }
+.payout-card-amount { font: 800 22px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
+.payout-card-grid-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.payout-card-grid-fields span { display: grid; gap: 3px; color: var(--text-dim); font-size: 10px; }
+.payout-card-grid-fields b { overflow: hidden; color: var(--text); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.payout-card-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 20px; }
+.payout-card-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--border); }
+
 .dep-card {
   display: flex;
   flex-direction: column;

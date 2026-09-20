@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Check, Eye, MessageSquare, Pencil, Save, Search, SlidersHorizontal, X } from "lucide-react";
+import { Check, Eye, LayoutGrid, MessageSquare, Pencil, Save, Search, SlidersHorizontal, TableProperties, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import PanelShell from "../components/PanelShell";
 import MultiSelectFilter, { splitFilterValues } from "../components/MultiSelectFilter";
@@ -16,6 +16,7 @@ import ProofIconButton from "../components/ProofIconButton";
 import DetailModal from "../components/DetailModal";
 import ColumnPicker, { useVisibleColumns } from "../components/ColumnPicker";
 import type { ColumnDef } from "../components/ColumnPicker";
+import { useIsMobile } from "../lib/useIsMobile";
 
 const STATUS_FILTERS = ["PENDING", "APPROVED", "DECLINED"];
 const CURRENCY = "EGP";
@@ -110,6 +111,11 @@ export default function Payouts() {
   const [params, setParams] = useSearchParams();
   const status = params.get("status") ?? "";
   const statusValues = splitFilterValues(status);
+  const isMobile = useIsMobile();
+  const viewParam = params.get("view");
+  // Absent an explicit choice, a phone opens straight into cards — a data
+  // table is a desktop concept — while desktop keeps its table default.
+  const view = viewParam === "cards" ? "cards" : viewParam === "table" ? "table" : isMobile ? "cards" : "table";
   const page = Math.max(Number(params.get("page")) || 1, 1);
   const [tab, setTab] = useState<"queue" | "settings">("queue");
   const [q, setQ] = useState(params.get("q") ?? "");
@@ -298,11 +304,17 @@ export default function Payouts() {
     };
   }, [load]);
 
-  const setFilter = (next: { status?: string; q?: string; from?: string; to?: string; merchant?: string; method?: string; page?: number }) => {
+  const setFilter = (next: { status?: string; q?: string; from?: string; to?: string; merchant?: string; method?: string; page?: number; view?: string }) => {
     const p = new URLSearchParams(params);
     if (next.status !== undefined) {
       next.status ? p.set("status", next.status) : p.delete("status");
       p.delete("page");
+    }
+    if (next.view !== undefined) {
+      // Set both explicitly (never delete) so a deliberate "Table" pick on a
+      // phone is distinguishable from "no preference yet" and survives the
+      // device-default check in `view` above.
+      if (next.view === "cards" || next.view === "table") p.set("view", next.view); else p.delete("view");
     }
     if (next.q !== undefined) {
       next.q ? p.set("q", next.q) : p.delete("q");
@@ -777,6 +789,10 @@ export default function Payouts() {
             {secondaryFilterCount > 0 && <span className="trx-filter-count">{secondaryFilterCount}</span>}
           </button>
           <ColumnPicker columns={ALL_COLUMNS} visible={visibleCols} onChange={setVisibleCols} label={t("الأعمدة", "Columns")} />
+          <div className="view-toggle" role="group" aria-label={t("طريقة العرض", "View mode")}>
+            <button className={`pill${view === "table" ? " active" : ""}`} aria-pressed={view === "table"} onClick={() => setFilter({ view: "table" })}><TableProperties size={14} /> {t("جدول", "Table")}</button>
+            <button className={`pill${view === "cards" ? " active" : ""}`} aria-pressed={view === "cards"} onClick={() => setFilter({ view: "cards" })}><LayoutGrid size={14} /> {t("بطاقات", "Cards")}</button>
+          </div>
         </div>
         {showMoreFilters && (
           <div className="transaction-filter-fields">
@@ -806,7 +822,65 @@ export default function Payouts() {
         {data?.rows.length === 0 && (
           <p>{t("لا توجد نتائج مطابقة.", "No matching results.")}</p>
         )}
-        {data && data.rows.length > 0 && (
+        {data && data.rows.length > 0 && view === "cards" && (
+          <div className="payout-card-grid">
+            {data.rows.map((row) => {
+              const st = statusMeta(row.status);
+              const isPending = row.status === "PENDING";
+              const canApprove = can("payouts", "can_approve");
+              return (
+                <article key={row.maven_id} className={`payout-card${isPending ? " is-pending" : ""}`}>
+                  <button type="button" className="payout-card-main" onClick={() => void openDetail(row.maven_id)}>
+                    <div className="payout-card-head">
+                      <span className="mono">{row.maven_id}</span>
+                      <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>
+                    </div>
+                    <div className="payout-card-amount mono">{money(row.amount, row.currency ?? CURRENCY)}</div>
+                    <div className="payout-card-grid-fields">
+                      <span>{t("الاسم", "Name")}<b>{row.account_name ?? "—"}</b></span>
+                      <span>{t("الهاتف", "Phone")}<b className="mono">{row.mobile_no ?? "—"}</b></span>
+                      <span>{t("التاجر", "Merchant")}<b>{row.merchant ?? "—"}</b></span>
+                      <span>{t("الطريقة", "Method")}<b>{row.pay_by ?? "—"}</b></span>
+                    </div>
+                    <div className="payout-card-foot">
+                      {row.linked_sms && <span className="pay-status-badge st-paid"><MessageSquare size={11} aria-hidden="true" /> WD SMS #{row.linked_sms.id}</span>}
+                      {row.image_url && <span className="cell-sub">📎 {t("إثبات", "Proof")}</span>}
+                    </div>
+                  </button>
+                  <div className="payout-card-actions" onClick={(e) => e.stopPropagation()}>
+                    {isPending && canApprove && (
+                      <>
+                        <button className="btn-primary btn-sm icon-text-btn" onClick={() => void openDetail(row.maven_id)}>
+                          <Check size={13} aria-hidden="true" /> {t("مراجعة ودفع", "Review & pay")}
+                        </button>
+                        <button className="btn-ghost btn-sm danger icon-text-btn" disabled={quickBusy === row.maven_id} onClick={() => void quickDecline(row)}>
+                          <X size={13} aria-hidden="true" /> {quickBusy === row.maven_id ? t("جارٍ…", "…") : t("رفض", "Decline")}
+                        </button>
+                      </>
+                    )}
+                    {!isPending && (
+                      <button className="btn-ghost btn-sm icon-text-btn" onClick={() => void openDetail(row.maven_id)}>
+                        <Eye size={15} aria-hidden="true" /> {t("تفاصيل", "Details")}
+                      </button>
+                    )}
+                    {can("payouts", "can_edit") && (
+                      <button type="button" className="btn-ghost btn-sm icon-text-btn" title={t("تعديل السحب", "Edit payout")} onClick={() => void openDetail(row.maven_id, true)}>
+                        <Pencil size={15} aria-hidden="true" />
+                      </button>
+                    )}
+                    {row.status === "DECLINED" && (user?.role === "owner" || user?.role === "super_admin") && (
+                      <button type="button" className="btn-ghost btn-sm icon-text-btn" onClick={() => void reopenDeclined(row.maven_id)}>
+                        {t("إعادة فتح", "Reopen")}
+                      </button>
+                    )}
+                    {row.image_url && <ProofIconButton url={row.image_url} onOpen={setViewedProofUrl} compact />}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+        {data && data.rows.length > 0 && view === "table" && (
           <div className="table-wrap payout-ledger-wrap">
             <table className="data-table clickable payout-ledger-table">
               <thead>
