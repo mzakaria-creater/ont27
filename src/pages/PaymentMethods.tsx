@@ -7,6 +7,7 @@ import { Building2, CreditCard, Globe2, LayoutGrid, Plus, Power, Search, Sparkle
 import MethodLogo from '../components/MethodLogo'
 import { refreshBrandLogos } from '../lib/brandLogos'
 import { depositTime } from '../lib/deposits'
+import { useIsMobile } from '../lib/useIsMobile'
 
 interface Method { id: string; method_code: string; method_name: string; channel_type: string; is_active: boolean; sort_order: number }
 interface Account {
@@ -69,6 +70,7 @@ function masterCls(code: string | undefined): string {
 
 export default function PaymentMethods() {
   const { t } = useLocale(); const { can, user } = useAuth()
+  const isMobile = useIsMobile()
   const [data, setData] = useState<Data | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<'methods' | 'countries' | 'accounts'>('methods')
@@ -81,7 +83,11 @@ export default function PaymentMethods() {
   const [countryMethod, setCountryMethod] = useState({ payment_method_id: '', country_code: 'EG', currency_code: 'EGP' })
   const [search, setSearch] = useState('')
   const [accountStatus, setAccountStatus] = useState('all')
-  const [accountView, setAccountView] = useState<'table' | 'cards'>(() => localStorage.getItem('payment-account-view') === 'cards' ? 'cards' : 'table')
+  const [accountView, setAccountView] = useState<'table' | 'cards'>(() => {
+    const saved = localStorage.getItem('payment-account-view')
+    if (saved === 'cards' || saved === 'table') return saved
+    return typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches ? 'cards' : 'table'
+  })
   const [logoBusy, setLogoBusy] = useState<string | null>(null)
   const [generatorOpen, setGeneratorOpen] = useState(false)
   const [generator, setGenerator] = useState(emptyGenerator)
@@ -251,6 +257,36 @@ export default function PaymentMethods() {
             </form>
           )}
           <section className="payment-method-table-card">
+            {isMobile ? (
+              <div className="risk-card-list">
+                {data.methods.map((method) => {
+                  const rows = data.accounts.filter((r) => r.payment_method_id === method.id)
+                  return (
+                    <div key={method.id} className="risk-row-card">
+                      <div className="risk-row-card-head"><span><MethodLogo method={method.method_name}/> <strong>{method.method_name}</strong></span><span className={`pay-status-badge ${method.is_active ? 'st-paid' : 'st-declined'}`}>{method.is_active ? t('نشط', 'Active') : t('موقوف', 'Inactive')}</span></div>
+                      <div className="cell-sub mono">{method.method_code} · {method.channel_type.replaceAll('_', ' ')}</div>
+                      <div className="cell-sub">{rows.length} {t('حسابات مُسندة', 'assigned accounts')}</div>
+                      <div className="payment-method-actions">
+                        {canUploadLogo && <label title={t('رفع شعار','Upload logo')} className={`icon-action method-logo-upload${logoBusy===method.id?' disabled':''}`}><Upload size={15}/><input type="file" hidden disabled={logoBusy!==null} accept="image/png,image/jpeg,image/webp" onChange={(e)=>{void uploadMethodLogo(method,e.target.files?.[0]??null);e.currentTarget.value='' }}/></label>}
+                        {editable && <button title={method.is_active?t('إيقاف','Disable'):t('تفعيل','Enable')} className={`icon-action ${method.is_active?'danger':'success'}`} onClick={() => void toggle(method)}><Power size={15}/></button>}
+                        {create && <button title={t('إسناد حساب','Assign account')} className="icon-action primary" onClick={() => setOpen(open === method.id ? null : method.id)}><Plus size={16}/></button>}
+                      </div>
+                      {open === method.id && (
+                        <form className="control-row" onSubmit={addAccount}>
+                          <select required className="login-input" value={account.account_number} onChange={(e) => setAccount({ ...account, account_number: e.target.value })}>
+                            <option value="">{t('اختر محفظة من محافظنا', 'Choose one of our wallets')}</option>
+                            {data.wallets.map((wallet) => <option key={wallet.to_account_number} value={wallet.to_account_number}>{wallet.to_account_number} · {wallet.provider ?? 'Mobile Wallet'}{wallet.device ? ` · ${wallet.device}` : ''}</option>)}
+                          </select>
+                          <input className="login-input" placeholder={t('تسمية', 'Label')} value={account.label} onChange={(e) => setAccount({ ...account, label: e.target.value })} />
+                          <input className="login-input" placeholder={t('الجهاز', 'Device')} value={account.device_name} onChange={(e) => setAccount({ ...account, device_name: e.target.value })} />
+                          <button className="btn-primary btn-sm">{t('حفظ', 'Save')}</button>
+                        </form>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
             <div className="table-wrap"><table className="data-table payment-method-table"><thead><tr>
               <th>{t('الشعار', 'Logo')}</th><th>{t('اسم الطريقة', 'Method name')}</th><th>{t('النوع', 'Type')}</th><th>{t('الحسابات', 'Accounts')}</th><th>{t('الحالة', 'Status')}</th><th>{t('الإجراءات', 'Actions')}</th>
             </tr></thead><tbody>
@@ -282,7 +318,9 @@ export default function PaymentMethods() {
                 )}
               </Fragment>)
           })}
-          </tbody></table></div></section>
+          </tbody></table></div>
+            )}
+          </section>
         </>
       )}
 
@@ -294,7 +332,22 @@ export default function PaymentMethods() {
           <input required maxLength={3} className="login-input mono" value={countryMethod.currency_code} onChange={(e)=>setCountryMethod({...countryMethod,currency_code:e.target.value.toUpperCase()})} placeholder="EGP"/>
           <button className="btn-primary btn-sm">{t('إضافة للدولة','Add to country')}</button>
         </form>}
-        <div className="table-wrap"><table className="data-table country-method-table"><thead><tr><th>{t('الدولة','Country')}</th><th>{t('الطريقة','Method')}</th><th>{t('العملة','Currency')}</th><th>{t('التجار المسموحون','Assigned merchants')}</th><th>{t('الحالة','Status')}</th><th>{t('الإجراءات','Actions')}</th></tr></thead><tbody>{data.methodCountries.map((row)=>{const method=data.methods.find((m)=>m.id===row.payment_method_id);const memberships=data.countryMerchants.filter((m)=>m.method_country_id===row.id);const available=data.hierarchy.filter((h)=>!memberships.some((m)=>m.merchant_hierarchy_id===h.id&&m.is_active));return <tr key={row.id}><td><strong>{countryPresets.find((c)=>c.code===row.country_code)?.name??row.country_code}</strong><div className="cell-sub mono">{row.country_code}</div></td><td><MethodLogo method={method?.method_name}/><div className="cell-sub">{method?.method_name??'—'}</div></td><td className="mono">{row.currency_code}</td><td><div className="country-merchant-chips">{memberships.map((member)=>{const merchant=data.hierarchy.find((h)=>h.id===member.merchant_hierarchy_id);return <button type="button" key={member.id} disabled={!editable} className={`merchant-chip-toggle${member.is_active?' active':''}`} onClick={()=>void toggleCountryMerchant(member)}>{merchant?.name??member.merchant_hierarchy_id}{member.is_active?' ✓':' ×'}</button>})}{memberships.length===0&&<span className="cell-sub">{t('لا يوجد','None')}</span>}</div>{editable&&<div className="country-merchant-assign"><select multiple className="login-input merchant-multi-select" value={merchantMultiAssign[row.id]??[]} onChange={(e)=>setMerchantMultiAssign({...merchantMultiAssign,[row.id]:Array.from(e.target.selectedOptions).map((option)=>option.value)})} aria-label={t('التجار المسموحون','Allowed merchants')}>{available.map((h)=><option key={h.id} value={h.id}>{h.name}</option>)}</select><button className="btn-ghost btn-sm" disabled={!(merchantMultiAssign[row.id]??[]).length} onClick={()=>void Promise.all((merchantMultiAssign[row.id]??[]).map((merchant)=>api(`/api/payment-methods/countries/${row.id}/merchants`, { method:'POST', body:JSON.stringify({ merchant_hierarchy_id:Number(merchant) }) }))).then(()=>{setMerchantMultiAssign({...merchantMultiAssign,[row.id]:[]});return load()}).catch(()=>setError(t('تعذر إسناد التجار.','Unable to assign merchants.')))}>{t('إسناد المحدد','Assign selected')}</button></div>}</td><td><span className={`pay-status-badge ${row.is_active?'st-paid':'st-declined'}`}>{row.is_active?t('نشط','Active'):t('موقوف','Inactive')}</span></td><td>{editable&&<button className="btn-ghost btn-sm" onClick={()=>void toggleCountryMethod(row)}>{row.is_active?t('إيقاف','Disable'):t('تفعيل','Enable')}</button>}</td></tr>})}{data.methodCountries.length===0&&<tr><td colSpan={6} className="sidebar-hint">{t('أضف أول طريقة دفع لدولة.','Add the first country payment method.')}</td></tr>}</tbody></table></div>
+        {data.methodCountries.length===0 && <p className="sidebar-hint">{t('أضف أول طريقة دفع لدولة.','Add the first country payment method.')}</p>}
+        {data.methodCountries.length>0 && (isMobile ? (
+          <div className="risk-card-list">
+            {data.methodCountries.map((row)=>{const method=data.methods.find((m)=>m.id===row.payment_method_id);const memberships=data.countryMerchants.filter((m)=>m.method_country_id===row.id);const available=data.hierarchy.filter((h)=>!memberships.some((m)=>m.merchant_hierarchy_id===h.id&&m.is_active));return (
+              <div key={row.id} className="risk-row-card">
+                <div className="risk-row-card-head"><strong>{countryPresets.find((c)=>c.code===row.country_code)?.name??row.country_code}</strong><span className={`pay-status-badge ${row.is_active?'st-paid':'st-declined'}`}>{row.is_active?t('نشط','Active'):t('موقوف','Inactive')}</span></div>
+                <div className="cell-sub"><MethodLogo method={method?.method_name}/> {method?.method_name??'—'} · <span className="mono">{row.currency_code}</span></div>
+                <div className="country-merchant-chips">{memberships.map((member)=>{const merchant=data.hierarchy.find((h)=>h.id===member.merchant_hierarchy_id);return <button type="button" key={member.id} disabled={!editable} className={`merchant-chip-toggle${member.is_active?' active':''}`} onClick={()=>void toggleCountryMerchant(member)}>{merchant?.name??member.merchant_hierarchy_id}{member.is_active?' ✓':' ×'}</button>})}{memberships.length===0&&<span className="cell-sub">{t('لا يوجد','None')}</span>}</div>
+                {editable&&<div className="country-merchant-assign"><select multiple className="login-input merchant-multi-select" value={merchantMultiAssign[row.id]??[]} onChange={(e)=>setMerchantMultiAssign({...merchantMultiAssign,[row.id]:Array.from(e.target.selectedOptions).map((option)=>option.value)})} aria-label={t('التجار المسموحون','Allowed merchants')}>{available.map((h)=><option key={h.id} value={h.id}>{h.name}</option>)}</select><button className="btn-ghost btn-sm" disabled={!(merchantMultiAssign[row.id]??[]).length} onClick={()=>void Promise.all((merchantMultiAssign[row.id]??[]).map((merchant)=>api(`/api/payment-methods/countries/${row.id}/merchants`, { method:'POST', body:JSON.stringify({ merchant_hierarchy_id:Number(merchant) }) }))).then(()=>{setMerchantMultiAssign({...merchantMultiAssign,[row.id]:[]});return load()}).catch(()=>setError(t('تعذر إسناد التجار.','Unable to assign merchants.')))}>{t('إسناد المحدد','Assign selected')}</button></div>}
+                {editable && <button className="btn-ghost btn-sm" onClick={()=>void toggleCountryMethod(row)}>{row.is_active?t('إيقاف','Disable'):t('تفعيل','Enable')}</button>}
+              </div>
+            )})}
+          </div>
+        ) : (
+        <div className="table-wrap"><table className="data-table country-method-table"><thead><tr><th>{t('الدولة','Country')}</th><th>{t('الطريقة','Method')}</th><th>{t('العملة','Currency')}</th><th>{t('التجار المسموحون','Assigned merchants')}</th><th>{t('الحالة','Status')}</th><th>{t('الإجراءات','Actions')}</th></tr></thead><tbody>{data.methodCountries.map((row)=>{const method=data.methods.find((m)=>m.id===row.payment_method_id);const memberships=data.countryMerchants.filter((m)=>m.method_country_id===row.id);const available=data.hierarchy.filter((h)=>!memberships.some((m)=>m.merchant_hierarchy_id===h.id&&m.is_active));return <tr key={row.id}><td><strong>{countryPresets.find((c)=>c.code===row.country_code)?.name??row.country_code}</strong><div className="cell-sub mono">{row.country_code}</div></td><td><MethodLogo method={method?.method_name}/><div className="cell-sub">{method?.method_name??'—'}</div></td><td className="mono">{row.currency_code}</td><td><div className="country-merchant-chips">{memberships.map((member)=>{const merchant=data.hierarchy.find((h)=>h.id===member.merchant_hierarchy_id);return <button type="button" key={member.id} disabled={!editable} className={`merchant-chip-toggle${member.is_active?' active':''}`} onClick={()=>void toggleCountryMerchant(member)}>{merchant?.name??member.merchant_hierarchy_id}{member.is_active?' ✓':' ×'}</button>})}{memberships.length===0&&<span className="cell-sub">{t('لا يوجد','None')}</span>}</div>{editable&&<div className="country-merchant-assign"><select multiple className="login-input merchant-multi-select" value={merchantMultiAssign[row.id]??[]} onChange={(e)=>setMerchantMultiAssign({...merchantMultiAssign,[row.id]:Array.from(e.target.selectedOptions).map((option)=>option.value)})} aria-label={t('التجار المسموحون','Allowed merchants')}>{available.map((h)=><option key={h.id} value={h.id}>{h.name}</option>)}</select><button className="btn-ghost btn-sm" disabled={!(merchantMultiAssign[row.id]??[]).length} onClick={()=>void Promise.all((merchantMultiAssign[row.id]??[]).map((merchant)=>api(`/api/payment-methods/countries/${row.id}/merchants`, { method:'POST', body:JSON.stringify({ merchant_hierarchy_id:Number(merchant) }) }))).then(()=>{setMerchantMultiAssign({...merchantMultiAssign,[row.id]:[]});return load()}).catch(()=>setError(t('تعذر إسناد التجار.','Unable to assign merchants.')))}>{t('إسناد المحدد','Assign selected')}</button></div>}</td><td><span className={`pay-status-badge ${row.is_active?'st-paid':'st-declined'}`}>{row.is_active?t('نشط','Active'):t('موقوف','Inactive')}</span></td><td>{editable&&<button className="btn-ghost btn-sm" onClick={()=>void toggleCountryMethod(row)}>{row.is_active?t('إيقاف','Disable'):t('تفعيل','Enable')}</button>}</td></tr>})}</tbody></table></div>
+        ))}
       </section>}
 
       {data && tab === 'accounts' && (
@@ -419,11 +472,26 @@ export default function PaymentMethods() {
               )}
             </div>
             {editable && <div className="pool-rotation-rule"><span><Sparkles size={14}/><strong>{t('قاعدة طابور المحافظ', 'Wallet queue rule')}</strong><small>{t('بعد كل فترة ينتقل الاختيار للمحفظة التالية.', 'Move to the next wallet after each interval.')}</small></span><label><input type="checkbox" checked={pool.rotation_enabled} onChange={(e) => void saveRotationRule(pool, { rotation_enabled: e.target.checked })}/>{t('تفعيل التدوير', 'Enable rotation')}</label><label>{t('الفترة', 'Interval')}<select className="login-input" value={pool.rotation_interval_minutes} onChange={(e) => void saveRotationRule(pool, { rotation_interval_minutes: Number(e.target.value) })}><option value={15}>15 {t('دقيقة', 'min')}</option><option value={30}>30 {t('دقيقة', 'min')}</option><option value={60}>1 {t('ساعة', 'hour')}</option><option value={120}>2 {t('ساعة', 'hours')}</option><option value={360}>6 {t('ساعات', 'hours')}</option><option value={1440}>24 {t('ساعة', 'hours')}</option></select></label><label>{t('الاختيار', 'Strategy')}<select className="login-input" value={pool.allocation_strategy} onChange={(e) => void saveRotationRule(pool, { allocation_strategy: e.target.value as Pool['allocation_strategy'] })}><option value="next_wallet">{t('المحفظة التالية', 'Next wallet')}</option><option value="least_loaded">{t('الأقل استخداماً', 'Least loaded')}</option><option value="highest_balance">{t('أعلى رصيد', 'Highest balance')}</option></select></label><span className={`pay-status-badge ${pool.rotation_enabled ? 'st-paid' : 'st-dim'}`}>{pool.rotation_enabled ? (pool.next_rotation_at ? `${t('التالي', 'Next')} ${depositTime({ first_seen_at: pool.next_rotation_at })}` : t('مفعل', 'Enabled')) : t('متوقف', 'Off')}</span></div>}
+            {members.length === 0 && <p className="sidebar-hint">{t('لا يوجد تجار مسندون.', 'No merchants assigned.')}</p>}
+            {members.length > 0 && (isMobile ? (
+              <div className="risk-card-list">
+                {members.map((member) => {
+                  const h = data.hierarchy.find((row) => row.id === member.merchant_hierarchy_id)
+                  return (
+                    <div key={member.id} className="risk-row-card">
+                      <div className="risk-row-card-head"><span>{h?.name ?? member.merchant_hierarchy_id}</span><span className={`pay-status-badge ${member.is_active ? 'st-paid' : 'st-dim'}`}>{member.is_active ? t('نشط', 'Active') : t('موقوف', 'Disabled')}</span></div>
+                      <div className="cell-sub">{t('نسبة Payin', 'Payin %')} <span className="mono">{h?.payin_commission_pct ?? '—'}%</span></div>
+                      {editable && <button className="btn-ghost btn-sm" onClick={() => void toggleMember(member)}>{member.is_active ? t('إزالة', 'Remove') : t('تفعيل', 'Enable')}</button>}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
             <div className="table-wrap">
               <table className="data-table">
                 <thead><tr><th>{t('التاجر الفرعي', 'Sub-merchant')}</th><th>{t('نسبة Payin', 'Payin %')}</th><th>{t('الحالة', 'Status')}</th><th /></tr></thead>
                 <tbody>
-                  {members.length ? members.map((member) => {
+                  {members.map((member) => {
                     const h = data.hierarchy.find((row) => row.id === member.merchant_hierarchy_id)
                     return (
                       <tr key={member.id}>
@@ -433,10 +501,11 @@ export default function PaymentMethods() {
                         <td>{editable && <button className="btn-ghost btn-sm" onClick={() => void toggleMember(member)}>{member.is_active ? t('إزالة', 'Remove') : t('تفعيل', 'Enable')}</button>}</td>
                       </tr>
                     )
-                  }) : <tr><td colSpan={4} className="sidebar-hint">{t('لا يوجد تجار مسندون.', 'No merchants assigned.')}</td></tr>}
+                  })}
                 </tbody>
               </table>
             </div>
+            ))}
           </section>
         )
       })}
