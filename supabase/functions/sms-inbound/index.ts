@@ -220,7 +220,11 @@ Deno.serve(async (req: Request) => {
     // a deposit because it contains "تحويل أموال" too. "لرقم" (to number)
     // and "رسوم التحويل" (transfer fee) only ever appear on the outgoing
     // side; "تم استلام"/"إيداع" only ever appear on the incoming side.
-    const isWithdrawal = /(withdraw|withdrawal|debit|sent|paid out|سحب|خصم|تحويل إلى|تحويل الي|تم خصم|لرقم|رسوم\s*التحويل)/i.test(messageText);
+    // "تحويل أموال ناجحة" (successful money transfer) is its own unambiguous
+    // signal too, independent of whether لرقم/رسوم التحويل also survive in a
+    // given template variant — "ناجحة" (successful, confirming the SENDER's
+    // own action) never appears on the incoming "تم استلام" confirmation.
+    const isWithdrawal = /(withdraw|withdrawal|debit|sent|paid out|سحب|خصم|تحويل إلى|تحويل الي|تم خصم|لرقم|رسوم\s*التحويل|تحويل\s*أموال\s*ناجحة)/i.test(messageText);
     const isIncoming = /(received|deposit|credited|credit|incoming|تم استلام|إيداع)/i.test(messageText);
 
     // A genuine wallet-provider deposit notification always originates from a

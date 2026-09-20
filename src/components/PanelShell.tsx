@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { CATEGORIES, categoryFor } from '../nav/pageCatalog'
-import { api } from '../lib/api'
+import { api, ApiError } from '../lib/api'
 import { syncProviders } from '../lib/providerSync'
 import { depositTime, money } from '../lib/deposits'
 import type { PagePermission } from '../lib/api'
@@ -280,6 +280,8 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
   const [candidates, setCandidates] = useState<RailSmsCandidate[]>([])
   const [linkingTxId, setLinkingTxId] = useState<number | null>(null)
   const [linkErr, setLinkErr] = useState<string | null>(null)
+  const [payoutRef, setPayoutRef] = useState('')
+  const [assigningPayout, setAssigningPayout] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -317,11 +319,13 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
     return () => { alive = false; clearInterval(iv); window.clearInterval(pump) }
   }, [])
 
-  // A withdrawal SMS links to a wallet, not a transaction, so candidates only
-  // make sense for an unlinked deposit — same rule the endpoint itself enforces.
+  // A withdrawal SMS links to a wallet/payout, never a deposit transaction —
+  // candidates (and the "link" action) only ever apply to an unlinked
+  // deposit, same rule the /candidates and /link endpoints themselves enforce.
   useEffect(() => {
     setCandidates([])
     setLinkErr(null)
+    setPayoutRef('')
     if (!selected || selected.sms_category === 'withdrawal' || selected.matched_tx_id != null) return
     let alive = true
     api<{ candidates: RailSmsCandidate[] }>(`/api/sms/${selected.id}/candidates`)
@@ -343,6 +347,37 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
       setLinkErr('تعذّر ربط الرسالة بالمعاملة.')
     } finally {
       setLinkingTxId(null)
+    }
+  }
+
+  // Withdrawal SMS (e.g. Orange Cash's "عملية تحويل أموال ناجحة") never get a
+  // deposit-candidate Link button — they only ever match a payout. This is a
+  // deliberately minimal version of the full multi-type assignment form on
+  // /sms: just the one case this widget needs, reusing the same endpoint.
+  const assignToPayout = async () => {
+    if (!selected || !payoutRef.trim()) return
+    setAssigningPayout(true)
+    setLinkErr(null)
+    try {
+      await api(`/api/sms/${selected.id}/withdrawal-assignment`, {
+        method: 'POST',
+        body: JSON.stringify({
+          assignment_type: 'payout',
+          target_reference: payoutRef.trim(),
+          name: selected.sender_name ?? selected.sender_number ?? 'Payout',
+        }),
+      })
+      setRows((prev) => prev.map((r) => r.id === selected.id ? { ...r, matched: true, match_status: 'manual_payout' } : r))
+      setSelected((prev) => prev && prev.id === selected.id ? { ...prev, matched: true, match_status: 'manual_payout' } : prev)
+      setPayoutRef('')
+    } catch (e) {
+      setLinkErr(e instanceof ApiError && e.code === 'payout_not_found'
+        ? 'لم يتم العثور على معاملة السحب.'
+        : e instanceof ApiError && e.code === 'payout_already_linked'
+          ? 'معاملة السحب مرتبطة برسالة أخرى بالفعل.'
+          : 'تعذّر تعيين الرسالة لمعاملة السحب.')
+    } finally {
+      setAssigningPayout(false)
     }
   }
 
@@ -446,6 +481,23 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
                     </li>
                   ))}
                 </ul>
+                {linkErr && <p className="sms-detail-link-err">{linkErr}</p>}
+              </div>
+            )}
+            {!selectedLinked && selected.sms_category === 'withdrawal' && (
+              <div className="sms-match-card sms-suggest-card">
+                <div className="sms-match-head"><span className="sms-match-title">↗ تعيين لمعاملة سحب (Payout)</span></div>
+                <div className="sms-payout-assign-row">
+                  <input
+                    className="login-input"
+                    placeholder="مرجع أو رقم معاملة السحب"
+                    value={payoutRef}
+                    onChange={(event) => setPayoutRef(event.target.value)}
+                  />
+                  <button type="button" className="btn-primary btn-sm" disabled={assigningPayout || !payoutRef.trim()} onClick={() => void assignToPayout()}>
+                    {assigningPayout ? 'جارٍ التعيين…' : 'تعيين'}
+                  </button>
+                </div>
                 {linkErr && <p className="sms-detail-link-err">{linkErr}</p>}
               </div>
             )}
