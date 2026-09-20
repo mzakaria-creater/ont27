@@ -5,6 +5,7 @@ import PageSizeSelect from '../components/PageSizeSelect'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 import { usePageSize } from '../lib/pageSize'
 
 interface Row {
@@ -24,6 +25,7 @@ const dateValue = (date: Date) => `${date.getFullYear()}-${String(date.getMonth(
 
 export default function WithdrawalSmsReport() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [pageSize, setPageSize] = usePageSize('withdrawal-sms-report')
   const [page, setPage] = useState(1)
   const [from, setFrom] = useState('')
@@ -107,7 +109,22 @@ export default function WithdrawalSmsReport() {
     <section className="card recent-card">
       {loading && <p className="sidebar-hint">{t('جارٍ تحميل التقرير…','Loading report…')}</p>}
       {!loading && data?.rows.length === 0 && <p>{t('لا توجد رسائل سحب مطابقة للفلاتر.','No withdrawal SMS match these filters.')}</p>}
-      {!loading && data && data.rows.length > 0 && <div className="table-wrap"><table className="data-table withdrawal-report-table"><thead><tr><th>SMS ID</th><th>{t('الوقت','Time')}</th><th>{t('المحفظة','Wallet')}</th><th>{t('المزوّد','Provider')}</th><th>{t('المبلغ','Amount')}</th><th>{t('الرصيد بعد','Balance after')}</th><th>{t('الربط','Link')}</th><th>TRX</th><th>{t('الجهاز','Device')}</th></tr></thead><tbody>{data.rows.map((row)=><tr key={row.id} className={!row.linked ? 'withdrawal-unlinked-row' : undefined}><td className="mono">#{row.id}</td><td className="mono">{depositTime({ first_seen_at: row.received_at })}</td><td className="mono">{row.wallet ?? '—'}</td><td>{row.provider ?? '—'}</td><td className="mono">{money(row.amount,'EGP')}</td><td className="mono">{money(row.balance_after,'EGP')}</td><td><span className={`pay-status-badge ${row.linked ? 'st-paid' : 'st-pending'}`}>{row.linked ? t('مرتبطة','Linked') : t('غير مرتبطة','Unlinked')}</span>{row.match_status && <div className="cell-sub">{row.match_status}</div>}</td><td className="mono">{row.trx_id ?? row.trx_reference ?? row.consumed_by_tx_id ?? row.matched_transaction_id ?? '—'}</td><td>{row.device_name ?? '—'}{row.sim_slot != null && <div className="cell-sub">SIM {row.sim_slot}</div>}</td></tr>)}</tbody></table></div>}
+      {!loading && data && data.rows.length > 0 && (isMobile ? (
+        <div className="risk-card-list">
+          {data.rows.map((row) => (
+            <div key={row.id} className={`risk-row-card${!row.linked ? ' withdrawal-unlinked-row' : ''}`}>
+              <div className="risk-row-card-head"><span className="mono">#{row.id}</span><span className={`pay-status-badge ${row.linked ? 'st-paid' : 'st-pending'}`}>{row.linked ? t('مرتبطة', 'Linked') : t('غير مرتبطة', 'Unlinked')}</span></div>
+              <div className="cell-sub">{row.wallet ?? '—'} · {row.provider ?? '—'}</div>
+              <div className="cell-sub">{row.device_name ?? '—'}{row.sim_slot != null && ` · SIM ${row.sim_slot}`} · TRX {row.trx_id ?? row.trx_reference ?? row.consumed_by_tx_id ?? row.matched_transaction_id ?? '—'}</div>
+              {row.match_status && <div className="cell-sub">{row.match_status}</div>}
+              <div className="risk-row-card-foot"><span className="mono">{money(row.amount, 'EGP')}</span><span className="mono muted">{depositTime({ first_seen_at: row.received_at })}</span></div>
+              <div className="cell-sub mono">{t('الرصيد بعد', 'Balance after')}: {money(row.balance_after, 'EGP')}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+      <div className="table-wrap"><table className="data-table withdrawal-report-table"><thead><tr><th>SMS ID</th><th>{t('الوقت','Time')}</th><th>{t('المحفظة','Wallet')}</th><th>{t('المزوّد','Provider')}</th><th>{t('المبلغ','Amount')}</th><th>{t('الرصيد بعد','Balance after')}</th><th>{t('الربط','Link')}</th><th>TRX</th><th>{t('الجهاز','Device')}</th></tr></thead><tbody>{data.rows.map((row)=><tr key={row.id} className={!row.linked ? 'withdrawal-unlinked-row' : undefined}><td className="mono">#{row.id}</td><td className="mono">{depositTime({ first_seen_at: row.received_at })}</td><td className="mono">{row.wallet ?? '—'}</td><td>{row.provider ?? '—'}</td><td className="mono">{money(row.amount,'EGP')}</td><td className="mono">{money(row.balance_after,'EGP')}</td><td><span className={`pay-status-badge ${row.linked ? 'st-paid' : 'st-pending'}`}>{row.linked ? t('مرتبطة','Linked') : t('غير مرتبطة','Unlinked')}</span>{row.match_status && <div className="cell-sub">{row.match_status}</div>}</td><td className="mono">{row.trx_id ?? row.trx_reference ?? row.consumed_by_tx_id ?? row.matched_transaction_id ?? '—'}</td><td>{row.device_name ?? '—'}{row.sim_slot != null && <div className="cell-sub">SIM {row.sim_slot}</div>}</td></tr>)}</tbody></table></div>
+      ))}
       {data && totalPages > 1 && <div className="pager"><button className="btn-ghost btn-sm" disabled={page<=1} onClick={()=>setPage(page-1)}>{t('السابق','Prev')}</button><PageSizeSelect value={pageSize} onChange={(size)=>{setPageSize(size);setPage(1)}}/><span className="pager-info mono">{page} / {totalPages}</span><button className="btn-ghost btn-sm" disabled={page>=totalPages} onClick={()=>setPage(page+1)}>{t('التالي','Next')}</button></div>}
     </section>
   </PanelShell>
