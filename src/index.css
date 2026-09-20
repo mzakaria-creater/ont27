@@ -1754,6 +1754,8 @@ a.stat-card:hover { border-color: var(--accent); }
 .sms-detail-sheet-raw { padding: 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--hover-2); }
 .sms-detail-sheet-raw p { margin: 6px 0 0; max-height: 150px; overflow: auto; white-space: pre-wrap; font-size: 12px; line-height: 1.55; }
 .sms-detail-sheet-card footer { margin-top: 14px; }
+.sms-detail-sheet-card .sms-suggest-card { margin: 14px 0 0; }
+.sms-detail-link-err { margin: 8px 0 0; color: var(--status-declined); font-size: 11px; }
 @keyframes sms-sheet-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 540px) { .sms-detail-sheet { padding: 10px; } .sms-detail-sheet-grid { grid-template-columns: 1fr; } }
 .sms-balance-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--status-paid); box-shadow: 0 0 0 3px color-mix(in srgb,var(--status-paid) 18%,transparent), 0 0 10px color-mix(in srgb,var(--status-paid) 60%,transparent); }

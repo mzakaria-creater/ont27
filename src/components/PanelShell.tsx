@@ -220,6 +220,19 @@ interface RailSms {
   message?: string | null
 }
 
+interface RailSmsCandidate {
+  tx_id: number
+  ontarget_ref: string | null
+  status: string | null
+  amount: number | null
+  currency: string | null
+  sender_name: string | null
+  sender_number: string | null
+  merchant: string | null
+  first_seen_at: string | null
+  is_duplicate_group?: boolean
+}
+
 interface RailDevice {
   device: string
   sim_slot: number | null
@@ -264,6 +277,9 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
   const [rows, setRows] = useState<RailSms[]>([])
   const [devices, setDevices] = useState<RailDevice[]>([])
   const [selected, setSelected] = useState<RailSms | null>(null)
+  const [candidates, setCandidates] = useState<RailSmsCandidate[]>([])
+  const [linkingTxId, setLinkingTxId] = useState<number | null>(null)
+  const [linkErr, setLinkErr] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -300,6 +316,35 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
     const iv = setInterval(load, 10_000)
     return () => { alive = false; clearInterval(iv); window.clearInterval(pump) }
   }, [])
+
+  // A withdrawal SMS links to a wallet, not a transaction, so candidates only
+  // make sense for an unlinked deposit — same rule the endpoint itself enforces.
+  useEffect(() => {
+    setCandidates([])
+    setLinkErr(null)
+    if (!selected || selected.sms_category === 'withdrawal' || selected.matched_tx_id != null) return
+    let alive = true
+    api<{ candidates: RailSmsCandidate[] }>(`/api/sms/${selected.id}/candidates`)
+      .then((res) => { if (alive) setCandidates(res.candidates) })
+      .catch(() => { /* candidates are best-effort */ })
+    return () => { alive = false }
+  }, [selected])
+
+  const linkToSuggestedTx = async (txId: number) => {
+    if (!selected) return
+    setLinkingTxId(txId)
+    setLinkErr(null)
+    try {
+      await api(`/api/sms/${selected.id}/link`, { method: 'POST', body: JSON.stringify({ tx_id: txId }) })
+      setRows((prev) => prev.map((r) => r.id === selected.id ? { ...r, matched: true, match_status: 'manual', matched_tx_id: txId } : r))
+      setSelected((prev) => prev && prev.id === selected.id ? { ...prev, matched: true, match_status: 'manual', matched_tx_id: txId } : prev)
+      setCandidates([])
+    } catch {
+      setLinkErr('تعذّر ربط الرسالة بالمعاملة.')
+    } finally {
+      setLinkingTxId(null)
+    }
+  }
 
   return (
     <aside id="live-sms-widget" className="sms-rail" aria-label="Live SMS" onPointerDown={(event) => event.stopPropagation()}>
@@ -375,6 +420,35 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
               <div><span>المعاملة</span><strong className="mono">{selected.matched_ontarget_ref ?? selected.matched_tx_id ?? '—'}</strong></div>
             </div>
             {selectedRaw && <div className="sms-detail-sheet-raw" dir="auto"><span>Raw SMS</span><p>{selectedRaw}</p></div>}
+            {!selectedLinked && candidates.length > 0 && (
+              <div className="sms-match-card sms-suggest-card">
+                <div className="sms-match-head"><span className="sms-match-title">💡 معاملات محتملة لهذه الرسالة</span></div>
+                <ul className="cand-list">
+                  {candidates.map((cand) => (
+                    <li key={cand.tx_id} className="cand-item">
+                      <div className="cand-info">
+                        <span className="mono">#{cand.ontarget_ref ?? cand.tx_id}</span>
+                        <span className="mono">{money(cand.amount, 'EGP')}</span>
+                        <div className="cell-sub">
+                          {cand.sender_name ?? cand.sender_number ?? '—'}
+                          {' · '}{cand.status ?? '—'}
+                          {' · '}{depositTime({ first_seen_at: cand.first_seen_at })}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-primary btn-sm"
+                        disabled={linkingTxId === cand.tx_id}
+                        onClick={() => void linkToSuggestedTx(cand.tx_id)}
+                      >
+                        {linkingTxId === cand.tx_id ? 'جارٍ الربط…' : 'ربط'}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {linkErr && <p className="sms-detail-link-err">{linkErr}</p>}
+              </div>
+            )}
             <footer><span className="cell-sub">{depositTime({ first_seen_at: selected.received_at })}</span><button type="button" className="btn-ghost btn-sm" onClick={() => setSelected(null)}>إغلاق</button></footer>
           </section>
         </div>
