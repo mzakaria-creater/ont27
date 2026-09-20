@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import PanelShell from '../components/PanelShell'
 import { api } from '../lib/api'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 
 // System health.
 //
@@ -129,6 +130,7 @@ const ago = (sec: number | null, t: (a: string, e: string) => string): string =>
 
 export default function SystemHealth() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [data, setData] = useState<HealthData | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
@@ -269,6 +271,16 @@ export default function SystemHealth() {
                   <div className="cell-sub">{data.manualGap.byWallet[0]?.count ?? 0} {t('معاملة', 'transactions')}</div>
                 </div>
               </div>
+              {isMobile ? (
+                <div className="risk-card-list">
+                  {data.manualGap.daily.slice(0, 14).map((d) => (
+                    <div key={d.date} className="risk-row-card">
+                      <div className="risk-row-card-head"><span className="mono">{d.date}</span><span className="mono">{d.manualTotal} {t('إجمالي', 'total')}</span></div>
+                      <div className="cell-sub">{t('بلا دليل SMS', 'No SMS evidence')} {d.noSmsEvidence} · {t('تجاوز مطابقة', 'Overrode a match')} {d.overrodeAMatch}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
@@ -291,10 +303,24 @@ export default function SystemHealth() {
                   </tbody>
                 </table>
               </div>
+              )}
             </>
           )}
 
           <div className="section-label">{t('الأجهزة', 'Devices')}</div>
+          {data.devices.length === 0 && <p className="cell-sub">{t('لا توجد أجهزة مسجّلة.', 'No devices registered.')}</p>}
+          {data.devices.length > 0 && (isMobile ? (
+            <div className="risk-card-list">
+              {data.devices.map((d) => (
+                <div key={d.device} className={`risk-row-card${d.online ? '' : ' row-pending'}`}>
+                  <div className="risk-row-card-head"><span className="mono">{d.device}</span><span className={`pill${d.online ? ' active' : ''}`}>{d.online ? t('متصل', 'Online') : t('غير متصل', 'Offline')}</span></div>
+                  {d.sim_number && <div className="cell-sub mono">{d.sim_number}</div>}
+                  <div className="cell-sub">{d.net_type ?? '—'}{d.operator ? ` · ${d.operator}` : ''} · {d.battery == null ? '—' : `${d.battery}%`}{d.charging ? ' ⚡' : ''} · {t('الرصيد','Balance')} {d.balance == null ? '—' : d.balance}</div>
+                  <div className="risk-row-card-foot"><span className="mono muted">{d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : '—'}</span></div>
+                </div>
+              ))}
+            </div>
+          ) : (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -308,9 +334,6 @@ export default function SystemHealth() {
                 </tr>
               </thead>
               <tbody>
-                {data.devices.length === 0 && (
-                  <tr><td colSpan={6} className="cell-sub">{t('لا توجد أجهزة مسجّلة.', 'No devices registered.')}</td></tr>
-                )}
                 {data.devices.map((d) => (
                   <tr key={d.device} className={d.online ? undefined : 'row-pending'}>
                     <td className="mono">
@@ -334,8 +357,20 @@ export default function SystemHealth() {
               </tbody>
             </table>
           </div>
+          ))}
 
           <div className="section-label">{t('تسليم تنبيهات Telegram (24 ساعة)', 'Telegram alert delivery (24h)')}</div>
+          {data.telegram.length === 0 && <p className="cell-sub">{t('لم تُرسَل أي تنبيهات خلال 24 ساعة.', 'No alerts sent in the last 24h.')}</p>}
+          {data.telegram.length > 0 && (isMobile ? (
+            <div className="risk-card-list">
+              {data.telegram.map((r) => (
+                <div key={r.alert_type} className={`risk-row-card${r.failed > 0 ? ' row-pending' : ''}`}>
+                  <div className="risk-row-card-head"><span className="mono">{r.alert_type}</span><span>✓{r.ok} ✗{r.failed}</span></div>
+                  {r.lastError && <div className="cell-sub">{r.lastError}</div>}
+                </div>
+              ))}
+            </div>
+          ) : (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -347,9 +382,6 @@ export default function SystemHealth() {
                 </tr>
               </thead>
               <tbody>
-                {data.telegram.length === 0 && (
-                  <tr><td colSpan={4} className="cell-sub">{t('لم تُرسَل أي تنبيهات خلال 24 ساعة.', 'No alerts sent in the last 24h.')}</td></tr>
-                )}
                 {data.telegram.map((r) => (
                   <tr key={r.alert_type} className={r.failed > 0 ? 'row-pending' : undefined}>
                     <td className="mono">{r.alert_type}</td>
@@ -361,6 +393,7 @@ export default function SystemHealth() {
               </tbody>
             </table>
           </div>
+          ))}
 
           <p className="drawer-note">
             {t('آخر تحديث: ', 'Last updated: ')}
