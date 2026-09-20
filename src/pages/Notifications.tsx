@@ -4,6 +4,7 @@ import PanelShell from '../components/PanelShell'
 import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 import { getSoundSettings, installNotificationAudioUnlock, isNotificationAudioReady, playNotificationTone, saveSoundSettings, type AlertTone, type SoundSettings } from '../lib/notificationSounds'
 
 // Notifications center — the bell's data, expanded.
@@ -32,6 +33,7 @@ export interface NotifData {
 
 export default function Notifications() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [data, setData] = useState<NotifData | null>(null)
   const [sounds, setSounds] = useState<SoundSettings>(() => getSoundSettings())
   const [audioReady, setAudioReady] = useState(() => isNotificationAudioReady())
@@ -94,7 +96,16 @@ export default function Notifications() {
               <Link to="/approvals" className="pay-status-link">{t('فتح طابور الموافقات ←', 'Open approval queue →')}</Link>
             </div>
             {data.latestPending.length === 0 && <p>{t('لا يوجد شيء معلّق 🎉', 'Nothing pending 🎉')}</p>}
-            {data.latestPending.length > 0 && (
+            {data.latestPending.length > 0 && (isMobile ? (
+              <div className="risk-card-list">
+                {data.latestPending.map((r) => (
+                  <div key={r.tx_id} className="risk-row-card">
+                    <div className="risk-row-card-head"><span className="mono">{r.ontarget_ref ?? r.tx_id}</span><span className="mono">{money(r.amount, r.currency)}</span></div>
+                    <div className="cell-sub">{r.sender_name ?? '—'} · {r.merchant ?? '—'}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
               <div className="table-wrap">
                 <table className="data-table">
                   <thead><tr><th>{t('رقم العملية', 'Ref')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('المُرسِل', 'Sender')}</th><th>{t('التاجر', 'Merchant')}</th></tr></thead>
@@ -110,7 +121,7 @@ export default function Notifications() {
                   </tbody>
                 </table>
               </div>
-            )}
+            ))}
           </section>
         </>
       )}
@@ -138,6 +149,7 @@ interface EmailRulesResponse {
 }
 
 function EmailApprovalSubscriptions({ t }: { t: (ar: string, en: string) => string }) {
+  const isMobile = useIsMobile()
   const [data, setData] = useState<EmailRulesResponse | null>(null)
   const [email, setEmail] = useState('')
   const [label, setLabel] = useState('')
@@ -186,9 +198,23 @@ function EmailApprovalSubscriptions({ t }: { t: (ar: string, en: string) => stri
       {scopeType !== 'all' && <label>{t('القيمة المحددة', 'Assigned value')}<select className="login-input" value={scopeValue} onChange={(e) => setScopeValue(e.target.value)}><option value="">{t('اختر…', 'Select…')}</option>{options.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>}
     </div>
     <div style={{ marginTop: 14, display: 'flex', gap: 10, alignItems: 'center' }}><button type="button" className="btn-primary" disabled={busy || !email.trim() || (scopeType !== 'all' && !scopeValue)} onClick={() => void add()}>{busy ? t('جارٍ الحفظ…', 'Saving…') : t('إضافة بريد وتعيين', 'Add email assignment')}</button>{message && <span className="cell-sub">{message}</span>}</div>
+    {isMobile ? (
+      <div className="risk-card-list" style={{ marginTop: 18 }}>
+        {(data?.rows ?? []).map((row) => (
+          <div key={row.id} className="risk-row-card">
+            <div className="risk-row-card-head"><strong>{row.label ?? '—'}</strong><button type="button" className={`pay-status-badge ${row.active ? 'st-paid' : 'st-declined'}`} onClick={() => void toggle(row)}>{row.active ? t('نشط', 'Active') : t('متوقف', 'Paused')}</button></div>
+            <div className="cell-sub mono">{row.email}</div>
+            <div className="cell-sub">{scopeLabel(row)}</div>
+            <div className="risk-row-card-foot"><button type="button" className="btn-ghost btn-sm" onClick={() => void remove(row)}>{t('حذف', 'Delete')}</button></div>
+          </div>
+        ))}
+        {(data?.rows ?? []).length === 0 && <p className="maven-empty">{t('لا توجد تعيينات بريد بعد', 'No email assignments yet')}</p>}
+      </div>
+    ) : (
     <div className="table-wrap" style={{ marginTop: 18 }}><table className="data-table"><thead><tr><th>{t('الاسم', 'Label')}</th><th>{t('البريد', 'Email')}</th><th>{t('التعيين', 'Assignment')}</th><th>{t('الحالة', 'Status')}</th><th>{t('إجراء', 'Action')}</th></tr></thead><tbody>
       {(data?.rows ?? []).map((row) => <tr key={row.id}><td>{row.label ?? '—'}</td><td className="mono">{row.email}</td><td>{scopeLabel(row)}</td><td><button type="button" className={`pay-status-badge ${row.active ? 'st-paid' : 'st-declined'}`} onClick={() => void toggle(row)}>{row.active ? t('نشط', 'Active') : t('متوقف', 'Paused')}</button></td><td><button type="button" className="btn-ghost btn-sm" onClick={() => void remove(row)}>{t('حذف', 'Delete')}</button></td></tr>)}
       {(data?.rows ?? []).length === 0 && <tr><td colSpan={5}>{t('لا توجد تعيينات بريد بعد', 'No email assignments yet')}</td></tr>}
     </tbody></table></div>
+    )}
   </section>
 }
