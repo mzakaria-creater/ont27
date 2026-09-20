@@ -3,6 +3,7 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 
 // Operations archive — the browser_jobs execution log (old DB, 31k+ rows).
 // Every automated/manual execution attempt: what it tried, the provider
@@ -28,6 +29,7 @@ function stateClass(s: string | null) {
 
 export default function OperationsArchive() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [data, setData] = useState<Resp | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [page, setPage] = useState(0)
@@ -72,7 +74,21 @@ export default function OperationsArchive() {
     <section className="card recent-card">
       {!data && !err && <p className="sidebar-hint">{t('جار التحميل…', 'Loading…')}</p>}
       {data && data.rows.length === 0 && <p>{t('لا توجد سجلات مطابقة.', 'No matching records.')}</p>}
-      {data && data.rows.length > 0 && <div className="table-wrap"><table className="data-table">
+      {data && data.rows.length > 0 && (isMobile ? (
+        <div className="risk-card-list">
+          {data.rows.map((j) => (
+            <div key={j.id} className="risk-row-card">
+              <div className="risk-row-card-head"><span className="mono">{j.tx_id ?? '—'}</span><span className={`pay-status-badge ${stateClass(j.state)}`}>{j.state ?? '—'}</span></div>
+              <div className="cell-sub">{j.target_status ?? '—'} · {j.provider ?? '—'} · {j.source === 'auto_trigger' ? '🤖' : j.operator_username ? j.operator_username : (j.source ?? '—')}</div>
+              <div className="cell-sub mono">{j.maven_before_status ?? '?'} → {j.maven_after_status ?? '?'} · {j.attempts ?? 0}/{j.max_attempts ?? '—'} {t('محاولات', 'attempts')}</div>
+              {j.amount != null && <div className="cell-sub mono">{money(j.amount, 'EGP')}</div>}
+              {j.last_error && <div className="cell-sub" title={j.last_error}>{(j.error_code ?? j.last_error).slice(0, 60)}</div>}
+              <div className="risk-row-card-foot"><span className="mono muted">{depositTime({ first_seen_at: j.completed_at ?? j.failed_at ?? j.created_at })}</span></div>
+            </div>
+          ))}
+        </div>
+      ) : (
+      <div className="table-wrap"><table className="data-table">
         <thead><tr>
           <th>tx_id</th><th>{t('المستهدف', 'Target')}</th><th>{t('المزوّد', 'Provider')}</th><th>{t('المصدر', 'Source')}</th>
           <th>{t('الحالة', 'State')}</th><th>{t('قبل→بعد', 'Before→After')}</th><th>{t('محاولات', 'Attempts')}</th><th>{t('الخطأ', 'Error')}</th><th>{t('الوقت', 'Time')}</th>
@@ -88,7 +104,8 @@ export default function OperationsArchive() {
           <td className="cell-sub">{j.last_error ? <span title={j.last_error}>{(j.error_code ?? j.last_error).slice(0, 40)}</span> : '—'}</td>
           <td className="mono">{depositTime({ first_seen_at: j.completed_at ?? j.failed_at ?? j.created_at })}</td>
         </tr>)}</tbody>
-      </table></div>}
+      </table></div>
+      ))}
       {data && totalPages > 1 && <div className="pager">
         <button className="btn-ghost btn-sm" disabled={page <= 0} onClick={() => setPage((p) => p - 1)}>→ {t('السابق', 'Prev')}</button>
         <span className="pager-info mono">{page + 1} / {totalPages}</span>
