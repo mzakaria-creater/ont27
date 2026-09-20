@@ -3,6 +3,7 @@ import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
+import { useIsMobile } from '../lib/useIsMobile'
 
 interface Recipient {
   key: string
@@ -35,6 +36,7 @@ const isApproved = (status: string | null) => status === 'APPROVED' || status ==
 
 export default function KnownRecipients() {
   const { t } = useLocale()
+  const isMobile = useIsMobile()
   const [recipients, setRecipients] = useState<Recipient[]>([])
   const [selected, setSelected] = useState<Recipient | null>(null)
   const [events, setEvents] = useState<RecipientEvent[]>([])
@@ -119,6 +121,19 @@ export default function KnownRecipients() {
       <div className="responsive-content-grid recipients-content-grid">
         <section className="card recent-card">
           <div className="recent-head"><h3>{t('دليل المستلمين', 'Recipient directory')}</h3><span className="cell-sub">{loading ? t('جارٍ التحميل…', 'Loading…') : recipients.length}</span></div>
+          {isMobile ? (
+            <div className="risk-card-list">
+              {!loading && recipients.length === 0 && <p className="maven-empty">{t('لا توجد نتائج.', 'No recipients found.')}</p>}
+              {recipients.map((row) => (
+                <button key={row.key} type="button" className="risk-row-card" style={{ textAlign: 'start', cursor: 'pointer', background: selected?.key === row.key ? 'var(--bg-muted)' : undefined }} onClick={() => void choose(row)}>
+                  <div className="risk-row-card-head"><strong>{row.recipient}</strong><span className="mono">{money(row.total, 'EGP')}</span></div>
+                  {row.accountName && row.accountName !== row.recipient && <div className="cell-sub">{row.accountName}</div>}
+                  <div className="cell-sub">{row.methods.join(' · ') || '—'}</div>
+                  <div className="risk-row-card-foot"><span className="mono">{row.count} {t('عملية', 'events')}</span><span className="mono muted">{formatTime(row.lastAt)}</span></div>
+                </button>
+              ))}
+            </div>
+          ) : (
           <div className="table-wrap"><table className="data-table">
             <thead><tr><th>{t('المستلم', 'Recipient')}</th><th>{t('الإجمالي', 'Total')}</th><th>{t('العمليات', 'Events')}</th></tr></thead>
             <tbody>
@@ -130,6 +145,7 @@ export default function KnownRecipients() {
               </tr>)}
             </tbody>
           </table></div>
+          )}
         </section>
 
         <section className="card recent-card">
@@ -139,12 +155,24 @@ export default function KnownRecipients() {
           </div>
           {!selected && <p className="sidebar-hint">{t('اختر مستلماً من القائمة لعرض كل التحويلات.', 'Select a recipient to view every transfer.')}</p>}
           {selected && detailLoading && <p className="sidebar-hint">{t('جارٍ تحميل السجل…', 'Loading history…')}</p>}
-          {selected && !detailLoading && <div className="table-wrap"><table className="data-table">
+          {selected && !detailLoading && (isMobile ? (
+            <div className="risk-card-list">
+              {events.length === 0 ? <p className="maven-empty">{t('لا توجد عمليات.', 'No transfers found.')}</p> : events.map((row) => (
+                <div key={String(row.maven_id ?? row.ontarget_ref)} className="risk-row-card">
+                  <div className="risk-row-card-head"><span className="mono">{row.ontarget_ref ?? row.maven_id ?? '—'}</span><span className={`pay-status-badge ${isApproved(row.status) ? 'st-paid' : 'st-dim'}`}>{row.status ?? '—'}</span></div>
+                  <div className="cell-sub">{row.pay_by ?? '—'} · {row.merchant ?? '—'} · {row.approved_by ?? '—'}</div>
+                  <div className="risk-row-card-foot"><span className="mono">{money(row.amount, 'EGP')}</span><span className="mono muted">{formatTime(row.first_seen_at)}</span></div>
+                </div>
+              ))}
+            </div>
+          ) : (
+          <div className="table-wrap"><table className="data-table">
             <thead><tr><th>{t('المرجع', 'Reference')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('الطريقة', 'Method')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('اعتمد بواسطة', 'Approved by')}</th><th>{t('الحالة', 'Status')}</th><th>{t('الوقت', 'Time')}</th></tr></thead>
             <tbody>{events.length === 0 ? <tr><td colSpan={7}>{t('لا توجد عمليات.', 'No transfers found.')}</td></tr> : events.map((row) => <tr key={String(row.maven_id ?? row.ontarget_ref)}>
               <td className="mono">{row.ontarget_ref ?? row.maven_id ?? '—'}</td><td className="mono">{money(row.amount, 'EGP')}</td><td>{row.pay_by ?? '—'}</td><td>{row.merchant ?? '—'}</td><td>{row.approved_by ?? '—'}</td><td><span className={`pay-status-badge ${isApproved(row.status) ? 'st-paid' : 'st-dim'}`}>{row.status ?? '—'}</span></td><td className="mono">{formatTime(row.first_seen_at)}</td>
             </tr>)}</tbody>
-          </table></div>}
+          </table></div>
+          ))}
         </section>
       </div>
     </PanelShell>
