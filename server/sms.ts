@@ -924,7 +924,7 @@ smsRoutes.post('/:id/withdrawal-assignment', requirePerm('sms_live', 'can_edit')
   const targetReference = typeof body?.target_reference === 'string' ? body.target_reference.trim().slice(0, 160) : ''
   const name = typeof body?.name === 'string' ? body.name.trim().slice(0, 160) : ''
   const note = typeof body?.note === 'string' ? body.note.trim().slice(0, 2000) : ''
-  if (!['payout', 'p2p_usdt', 'cash_return'].includes(assignmentType)) return c.json({ error: 'invalid_assignment_type' }, 400)
+  if (!['payout', 'p2p_usdt', 'cash_return', 'mina_cash'].includes(assignmentType)) return c.json({ error: 'invalid_assignment_type' }, 400)
   if (!name) return c.json({ error: 'name_required' }, 400)
   const [{ data: sms, error: smsError }, { data: existingAssignment, error: assignmentLookupError }] = await Promise.all([
     db.from('inbound_sms').select('id, sms_category, amount, receiver_number, trx_id, trx_reference, message, consumed_by_tx_id, matched_transaction_id, maven_transaction_id, matched').eq('id', id).maybeSingle(),

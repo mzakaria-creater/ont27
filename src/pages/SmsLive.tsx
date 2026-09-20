@@ -87,7 +87,7 @@ interface SmsRow {
   matched_gateway?: string | null
   matched_receiving_wallet?: string | null
   wallet_match?: boolean | null
-  withdrawal_assignment_type?: 'payout' | 'p2p_usdt' | 'cash_return' | null
+  withdrawal_assignment_type?: 'payout' | 'p2p_usdt' | 'cash_return' | 'mina_cash' | null
   withdrawal_assignment_reference?: string | null
   withdrawal_assignment_name?: string | null
   withdrawal_assigned_by?: string | null
@@ -244,7 +244,7 @@ export default function SmsLive() {
   const [metaCategory, setMetaCategory] = useState('')
   const [metaWallet, setMetaWallet] = useState('')
   const [metaBusy, setMetaBusy] = useState(false)
-  const [assignmentType, setAssignmentType] = useState<'payout' | 'p2p_usdt' | 'cash_return'>('payout')
+  const [assignmentType, setAssignmentType] = useState<'payout' | 'p2p_usdt' | 'cash_return' | 'mina_cash'>('payout')
   const [assignmentRef, setAssignmentRef] = useState('')
   const [assignmentName, setAssignmentName] = useState('')
   const [assignmentBusy, setAssignmentBusy] = useState(false)
@@ -576,6 +576,9 @@ export default function SmsLive() {
     if (!selected || selected.sms_category !== 'withdrawal' || !assignmentName.trim()) return
     setAssignmentBusy(true); setLinkErr(null)
     try {
+      if (/^\d{8,20}$/.test(metaWallet) && metaWallet !== (selected.confirmed_wallet_number ?? selected.wallet_number ?? '')) {
+        await api(`/api/sms/${selected.id}/withdrawal-meta`, { method: 'PATCH', body: JSON.stringify({ sender_name: metaName, notes: metaNotes, wallet_number: metaWallet }) })
+      }
       await api(`/api/sms/${selected.id}/withdrawal-assignment`, {
         method: 'POST',
         body: JSON.stringify({ assignment_type: assignmentType, target_reference: assignmentRef.trim(), name: assignmentName.trim(), note: metaNotes.trim() }),
@@ -970,7 +973,7 @@ export default function SmsLive() {
                     <dt>{t('التاجر الفرعي', 'Sub-merchant')}</dt><dd>{selected.matched_master_merchant?.toLowerCase() === 'payfuture' ? `PayFuture · ${selected.matched_sub_merchant ?? 'not set'}` : selected.matched_sub_merchant ?? '—'}</dd>
                   </>}
                   {selected.sms_category === 'withdrawal' && <><dt>{t('معيّنة لسحب','Assigned to WD')}</dt><dd>{selected.matched_payout_id ? <Link className="transaction-cell-link mono" to={`/payouts?q=${encodeURIComponent(selected.matched_payout_ref ?? String(selected.matched_payout_id))}`}>WD {selected.matched_payout_ref ?? selected.matched_payout_id}{selected.matched_payout_status ? ` · ${selected.matched_payout_status}` : ''}</Link> : <span className="pay-status-badge st-declined">{t('غير معيّنة','Unassigned')}</span>}</dd></>}
-                  {selected.withdrawal_assignment_type && <><dt>{t('التعيين اليدوي','Manual assignment')}</dt><dd>{selected.withdrawal_assignment_type === 'payout' ? 'Payout' : selected.withdrawal_assignment_type === 'p2p_usdt' ? 'P2P USDT' : 'Money cash return'} · {selected.withdrawal_assignment_name}{selected.withdrawal_assignment_reference ? ` · ${selected.withdrawal_assignment_reference}` : ''}<div className="cell-sub">{selected.withdrawal_assigned_by ?? '—'}</div></dd></>}
+                  {selected.withdrawal_assignment_type && <><dt>{t('التعيين اليدوي','Manual assignment')}</dt><dd>{selected.withdrawal_assignment_type === 'payout' ? 'Payout' : selected.withdrawal_assignment_type === 'p2p_usdt' ? 'P2P USDT' : selected.withdrawal_assignment_type === 'mina_cash' ? 'Mina cash' : 'Cash must return'} · {selected.withdrawal_assignment_name}{selected.withdrawal_assignment_reference ? ` · ${selected.withdrawal_assignment_reference}` : ''}<div className="cell-sub">{selected.withdrawal_assigned_by ?? '—'}</div></dd></>}
                   <dt>{t('حالة الربط', 'Link status')}</dt><dd className="mono">{selected.sms_category === 'withdrawal' ? selected.matched_payout_id ? t('مرتبطة بمعاملة سحب','Linked to payout') : selected.linked_wallet_number ? t('مرتبطة بالمحفظة فقط','Wallet only') : t('غير مرتبطة','Unlinked') : selected.match_status ?? '—'}{selected.review_required && !selected.matched && selected.sms_category !== 'withdrawal' && <> · ⚠ {t('تحتاج مراجعة', 'needs review')}</>}</dd>
                   {selected.is_blocked && <><dt>{t('حظر SMS', 'SMS block')}</dt><dd className="danger-text">🚫 {selected.block_reason ?? t('محظورة يدوياً', 'Blocked manually')} · {selected.blocked_by ?? '—'}</dd></>}
                   <dt>{t('الرصيد بعد العملية', 'Balance after')}</dt><dd className="mono">{money(selected.balance_after, 'EGP')}</dd>
@@ -1020,8 +1023,9 @@ export default function SmsLive() {
                     <label className="filter-field">{t('ملاحظة', 'Note')}<textarea className="login-input" rows={3} maxLength={2000} value={metaNotes} onChange={(e) => setMetaNotes(e.target.value)} placeholder={t('ملاحظة تشغيلية تظهر في تفاصيل SMS', 'Operational note shown in SMS details')}/></label>
                     <button className="btn-primary btn-sm" disabled={metaBusy || !/^\d{8,20}$/.test(metaWallet)} onClick={() => void saveWithdrawalMeta()}>{metaBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ بيانات السحب', 'Save withdrawal details')}</button>
                     <h4>{t('تعيين رسالة السحب', 'Assign withdrawal SMS')}</h4>
-                    <label className="filter-field">{t('نوع التعيين', 'Assignment type')}<select className="login-input" value={assignmentType} onChange={(e) => setAssignmentType(e.target.value as typeof assignmentType)}><option value="payout">Payout</option><option value="p2p_usdt">P2P USDT</option><option value="cash_return">Money cash return</option></select></label>
-                    <label className="filter-field">{t('الاسم', 'Name')}<input className="login-input" maxLength={160} value={assignmentName} onChange={(e) => setAssignmentName(e.target.value)} required /></label>
+                    <label className="filter-field">{t('نوع التعيين', 'Assignment type')}<select className="login-input" value={assignmentType} onChange={(e) => setAssignmentType(e.target.value as typeof assignmentType)}><option value="payout">Payout</option><option value="p2p_usdt">P2P USDT</option><option value="cash_return">Cash must return</option><option value="mina_cash">Mina cash</option></select></label>
+                    <label className="filter-field">{t('المحفظة الدافعة', 'Sending wallet')}<input className="login-input mono" inputMode="numeric" maxLength={20} value={metaWallet} onChange={(e) => setMetaWallet(e.target.value.replace(/\D/g, ''))} placeholder="01XXXXXXXXX" /></label>
+                    <label className="filter-field">{assignmentType === 'cash_return' ? t('اسم المستلم', 'Receiver name') : t('الاسم', 'Name')}<input className="login-input" maxLength={160} value={assignmentName} onChange={(e) => setAssignmentName(e.target.value)} placeholder={assignmentType === 'cash_return' ? t('اسم من استلم النقد المرتجع', 'Name of the person who received the cash back') : undefined} required /></label>
                     <label className="filter-field">{assignmentType === 'payout' ? t('رقم معاملة السحب', 'Payout transaction/ref') : t('المرجع', 'Reference')}<input className="login-input" maxLength={160} value={assignmentRef} onChange={(e) => setAssignmentRef(e.target.value)} placeholder={assignmentType === 'payout' ? 'WD ref or Maven ID' : t('مرجع اختياري', 'Optional reference')} /></label>
                     <button className="btn-primary btn-sm" disabled={assignmentBusy || !assignmentName.trim() || (assignmentType === 'payout' && !assignmentRef.trim())} onClick={() => void assignWithdrawal()}>{assignmentBusy ? t('جارٍ التعيين…', 'Assigning…') : t('تعيين', 'Assign')}</button>
                     <h4>{t('تسجيل SMS السحب كمصروف', 'Record withdrawal SMS as expense')}</h4>
