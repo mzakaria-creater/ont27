@@ -1403,9 +1403,12 @@ a.stat-card:hover { border-color: var(--accent); }
 .tx-sms-raw{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:9px 12px;border:1px solid color-mix(in srgb,var(--border) 75%,transparent);border-radius:9px;background:var(--surface-2);font-size:11px;color:var(--text-dim)}.tx-sms-raw code{display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,monospace;color:var(--text)}.tx-sms-raw.is-missing{color:var(--status-pending);background:var(--amber-bg)}.tx-sms-label{font-weight:800;color:#22c55e}
 .tx-sms-chip{display:inline-flex;align-items:center;gap:4px;margin-inline-start:8px;padding:2px 7px;border:0;border-radius:999px;background:var(--hover-2);color:var(--text-dim);font:700 9.5px/1.2 ui-monospace,monospace;cursor:pointer;vertical-align:middle}.tx-sms-chip:hover{filter:brightness(1.12)}.tx-sms-chip.is-matched{background:var(--green-bg);color:var(--status-paid)}.tx-sms-chip.is-warning{background:var(--red-bg);color:var(--status-declined)}.tx-sms-chip.is-missing{background:var(--amber-bg);color:var(--status-pending)}
 /* Compact table density keeps the expanded column set scannable. */
-.portal-transaction-grid{width:max-content;min-width:100%;max-width:none;font-size:clamp(9.5px,.68vw,11px)}
-.portal-transaction-grid th,.portal-transaction-grid td{max-width:170px;padding:5px 6px;line-height:1.2;overflow:hidden;text-overflow:ellipsis}
-.portal-transaction-grid thead th{font-size:10px}
+.portal-transaction-grid{width:max-content;min-width:100%;max-width:none;font-size:clamp(8.8px,.58vw,10px);letter-spacing:-.01em}
+.portal-transaction-grid th,.portal-transaction-grid td{max-width:132px;padding:3px 4px;line-height:1.12;overflow:hidden;text-overflow:ellipsis}
+.portal-transaction-grid thead th{font-size:8.5px;padding-block:4px}
+.portal-transaction-grid th:nth-child(1){width:24px}.portal-transaction-grid th:nth-child(2){width:78px}.portal-transaction-grid th:nth-child(3){width:92px}
+.portal-transaction-grid .portal-method-cell{gap:4px}.portal-transaction-grid .portal-method-cell .method-logo{width:21px;height:21px}
+.portal-transaction-grid .portal-status-tag{padding:3px 4px;font-size:8px}.portal-transaction-grid .tx-action-primary{min-height:24px;padding-inline:5px;font-size:9px}.portal-transaction-grid .tx-action-primary span{max-width:38px;overflow:hidden;text-overflow:ellipsis}
 .tx-raw-details{grid-column:1/-1;text-align:start}.tx-raw-details summary{cursor:pointer;color:var(--accent);font-size:11px;font-weight:700}.tx-raw-details pre{max-height:220px;overflow:auto;margin:6px 0;padding:8px;border-radius:6px;background:color-mix(in srgb,var(--surface) 70%,#000 30%);font:10px/1.4 ui-monospace,monospace;white-space:pre-wrap;word-break:break-word}.tx-sms-raw-details{margin-inline-start:auto;min-width:80px}.tx-sms-raw-details pre{position:absolute;z-index:4;width:min(600px,80vw);margin-inline-start:-300px}
 @media (max-width: 768px) {
   .transaction-filter-toolbar { padding: 8px; gap: 8px; }
