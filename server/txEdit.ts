@@ -32,7 +32,7 @@ const AMOUNT_EDIT_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_
 // The named operator is explicitly allowed to correct amounts. Keep this
 // allow-list server-side because the browser must never be the authorization
 // boundary for financial edits.
-const AMOUNT_EDIT_USERNAMES = new Set(['ahmedmano.solly'])
+const AMOUNT_EDIT_USERNAMES = new Set(['ahmedmano.solly', 'joe'])
 const EDITABLE_STATUSES = ['PENDING', 'PAID', 'DECLINED', 'EXPIRED', 'EXPIRED_LOCAL', 'UNDERPAID', 'APPROVED']
 const PROVIDER_STATUSES = new Set(['PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID', 'OVERPAID'])
 
