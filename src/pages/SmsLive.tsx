@@ -66,6 +66,8 @@ interface SmsRow {
   block_reason: string | null
   blocked_at: string | null
   blocked_by: string | null
+  assignment_unlocked_at?: string | null
+  assignment_unlocked_by?: string | null
   trx_id: string | null
   matched_transaction_id: number | null
   maven_transaction_id: string | null
@@ -381,6 +383,8 @@ export default function SmsLive() {
     } catch (e) {
       setQuickLinkError(e instanceof ApiError && e.code === 'amount_mismatch'
         ? t('المبلغ غير مطابق — افتح التفاصيل الكاملة للتأكيد.', 'Amount mismatch — open full details to confirm.')
+        : e instanceof ApiError && e.code === 'assignment_window_expired'
+          ? t('مرّت أكثر من 3 ساعات. افتح تفاصيل SMS ثم فك الحظر قبل الربط اليدوي.', 'More than 3 hours have passed. Open SMS details, unblock it, then link manually.')
         : t('فشل الربط.', 'Link failed.'))
     } finally { setQuickLinkBusy(false) }
   }
@@ -474,6 +478,11 @@ export default function SmsLive() {
         setLinkErr(t('الرسالة مرتبطة بالفعل — أعد الفتح.', 'Message already linked — reopen.'))
       } else if (e instanceof ApiError && e.code === 'transaction_already_linked') {
         setLinkErr(t('هذه المعاملة مرتبطة برسالة أخرى بالفعل.', 'This transaction is already linked to another SMS.'))
+      } else if (e instanceof ApiError && e.code === 'sms_transaction_date_mismatch') {
+        setLinkErr(t('لا يمكن ربط SMS بمعاملة من يوم مختلف. اختر معاملة من نفس تاريخ الرسالة.', 'An SMS cannot be linked to a transaction from another day. Choose a transaction from the same SMS date.'))
+      } else if (e instanceof ApiError && e.code === 'assignment_window_expired') {
+        setLinkErr(t('مرّت أكثر من 3 ساعات على SMS. تم حظر التعيين؛ فك الحظر أولاً ثم نفّذ الربط اليدوي.', 'More than 3 hours have passed since this SMS. Assignment is blocked; unblock it first, then link manually.'))
+        await openDetail(selected.id)
       } else if (e instanceof ApiError && e.status === 403) {
         setLinkErr(t('لا تملك صلاحية الربط (can_edit غير ممنوحة لدورك).', 'You lack link permission (can_edit not granted to your role).'))
       } else {

@@ -15,7 +15,7 @@ export const smsRoutes = new Hono<AuthEnv>()
 smsRoutes.use('*', requireAuth)
 
 const LIST_COLUMNS =
-  'id, received_at, device_name, sim_slot, sender_number, sender_name, receiver_number, wallet_number, confirmed_wallet_number, amount, balance_after, sms_category, match_status, matched, review_required, is_blocked, block_reason, blocked_at, blocked_by, trx_id, matched_transaction_id, maven_transaction_id, consumed_by_tx_id, provider, sms_sender, sms_first_line, raw_sms, message, raw_payload, webhook_name, webhook_address, method, ocr_text, score, auto_match_score, processed_at, maven_synced, maven_synced_at, maven_status_sent'
+  'id, received_at, device_name, sim_slot, sender_number, sender_name, receiver_number, wallet_number, confirmed_wallet_number, amount, balance_after, sms_category, match_status, matched, review_required, is_blocked, block_reason, blocked_at, blocked_by, assignment_unlocked_at, assignment_unlocked_by, trx_id, matched_transaction_id, maven_transaction_id, consumed_by_tx_id, provider, sms_sender, sms_first_line, raw_sms, message, raw_payload, webhook_name, webhook_address, method, ocr_text, score, auto_match_score, processed_at, maven_synced, maven_synced_at, maven_status_sent'
 
 // Three separate ingestion paths (the sms-inbound webhook, a direct "live"
 // path, and the legacy_mirror replication job) all write into inbound_sms,
@@ -94,6 +94,14 @@ const nameKey = (value: unknown) => String(value ?? '').toLowerCase().replace(/[
 const phoneKey = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
 const sameName = (left: unknown, right: unknown) => { const a = nameKey(left); const b = nameKey(right); return Boolean(a && b && (a === b || a.includes(b) || b.includes(a))) }
 const queueTime = (value: unknown) => { const parsed = Date.parse(String(value ?? '')); return Number.isFinite(parsed) ? parsed : null }
+function cairoDayKey(value: unknown): string | null {
+  const at = queueTime(value)
+  if (at == null) return null
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: CAIRO_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(at))
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${values.year}-${values.month}-${values.day}`
+}
+const SMS_ASSIGNMENT_GRACE_MS = 3 * 60 * 60_000
 
 function balanceContinuity(sms: QueueSms, history: QueueSms[]) {
   const wallet = phoneKey(sms.receiver_number)
@@ -502,8 +510,8 @@ smsRoutes.get('/devices', requirePerm('sms_live', 'can_view'), async (c) => {
   return c.json({ devices: data ?? [] })
 })
 
-// Candidate maven_transactions for manual linking: same amount within ±3 days
-// of the SMS, or an explicit ?q= ref/tx_id search.
+// Candidate Maven transactions for manual linking: same Cairo calendar day
+// as the SMS, or an explicit ?q= ref/tx_id search still constrained to that day.
 smsRoutes.get('/:id/candidates', requirePerm('sms_live', 'can_view'), async (c) => {
   const id = c.req.param('id')
   if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)
@@ -517,6 +525,8 @@ smsRoutes.get('/:id/candidates', requirePerm('sms_live', 'can_view'), async (c) 
   if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
   if (!sms) return c.json({ error: 'not_found' }, 404)
   if (sms.sms_category === 'withdrawal') return c.json({ candidates: [], link_type: 'wallet' })
+  const smsDay = cairoDayKey(sms.received_at)
+  if (!smsDay) return c.json({ candidates: [], reason: 'sms_date_missing' })
 
   let query = db
     .from('maven_transactions')
@@ -531,13 +541,8 @@ smsRoutes.get('/:id/candidates', requirePerm('sms_live', 'can_view'), async (c) 
   } else {
     if (sms.amount == null) return c.json({ candidates: [] })
     query = query.eq('amount', sms.amount).in('status', ['PENDING', 'PAID', 'APPROVED', 'UNDERPAID'])
-    if (sms.received_at) {
-      const t = new Date(sms.received_at).getTime()
-      query = query
-        .gte('first_seen_at', new Date(t - 3 * 86_400_000).toISOString())
-        .lte('first_seen_at', new Date(t + 3 * 86_400_000).toISOString())
-    }
   }
+  query = query.gte('first_seen_at', cairoBoundary(smsDay)).lte('first_seen_at', cairoBoundary(smsDay, true))
 
   const { data, error } = await query
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
@@ -571,11 +576,12 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
   const id = c.req.param('id')
   if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)
   const body = await c.req.json().catch(() => null)
+  const actor = c.get('actor')
   const txId = Number(body?.tx_id)
   if (!Number.isInteger(txId) || txId <= 0) return c.json({ error: 'bad_tx_id' }, 400)
 
   const [{ data: sms, error: smsErr }, { data: tx, error: txErr }, { data: existingTxLinks, error: linkErr }] = await Promise.all([
-    db.from('inbound_sms').select('id, matched, match_status, sms_category, amount, received_at, receiver_number, wallet_number, confirmed_wallet_number, sender_name, sender_number, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').eq('id', id).maybeSingle(),
+    db.from('inbound_sms').select('id, matched, match_status, sms_category, amount, received_at, receiver_number, wallet_number, confirmed_wallet_number, sender_name, sender_number, consumed_by_tx_id, matched_transaction_id, maven_transaction_id, is_blocked, assignment_unlocked_at, assignment_unlocked_by').eq('id', id).maybeSingle(),
     db.from('maven_transactions').select('tx_id, amount, status, gateway, sender_number, first_seen_at, ontarget_ref').eq('tx_id', txId).maybeSingle(),
     db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').or(`consumed_by_tx_id.eq.${txId},matched_transaction_id.eq.${txId},maven_transaction_id.eq.${txId}`).limit(2),
   ])
@@ -593,6 +599,29 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
   // silently replacing an existing evidence link.
   if ((existingTxLinks ?? []).some((link) => Number(link.id) !== Number(id))) {
     return c.json({ error: 'transaction_already_linked' }, 409)
+  }
+
+  const smsDay = cairoDayKey(sms.received_at)
+  const txDay = cairoDayKey(tx.first_seen_at)
+  if (!smsDay || !txDay || smsDay !== txDay) {
+    return c.json({ error: 'sms_transaction_date_mismatch', sms_date: smsDay, transaction_date: txDay }, 409)
+  }
+
+  const smsAt = queueTime(sms.received_at)
+  const smsAgeMs = smsAt == null ? 0 : Date.now() - smsAt
+  if (smsAgeMs >= SMS_ASSIGNMENT_GRACE_MS && !sms.assignment_unlocked_at) {
+    const blockReason = 'Assignment window expired after 3 hours; unblock SMS before manual linking.'
+    const { error: lockError } = await db.from('inbound_sms').update({
+      is_blocked: true,
+      block_reason: blockReason,
+      blocked_at: new Date().toISOString(),
+      blocked_by: actor.username,
+      review_required: false,
+      assignment_unlocked_at: null,
+      assignment_unlocked_by: null,
+    }).eq('id', id).is('consumed_by_tx_id', null).is('matched_transaction_id', null).is('maven_transaction_id', null)
+    if (lockError) return c.json({ error: 'db_error', detail: lockError.message }, 500)
+    return c.json({ error: 'assignment_window_expired', requires_unblock: true, age_hours: Math.round((smsAgeMs / 3_600_000) * 100) / 100 }, 409)
   }
 
   const smsAmount = Number(sms.amount)
@@ -656,7 +685,6 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
     { onConflict: 'sms_id' },
   )
 
-  const actor = c.get('actor')
   await db.from('audit_log').insert({
     actor_type: 'manual_panel',
     actor_id: actor.sub,
@@ -793,7 +821,7 @@ smsRoutes.post('/:id/block', requirePerm('sms_live', 'can_edit'), async (c) => {
   const body = await c.req.json().catch(() => null)
   const reason = typeof body?.reason === 'string' ? body.reason.trim().slice(0, 500) : ''
   const { data: before, error: readError } = await db.from('inbound_sms')
-    .select('id, sms_category, matched, consumed_by_tx_id, matched_transaction_id, maven_transaction_id, is_blocked, block_reason')
+    .select('id, sms_category, matched, consumed_by_tx_id, matched_transaction_id, maven_transaction_id, is_blocked, block_reason, assignment_unlocked_at, assignment_unlocked_by')
     .eq('id', id).maybeSingle()
   if (readError) return c.json({ error: 'db_error', detail: readError.message }, 500)
   if (!before) return c.json({ error: 'not_found' }, 404)
@@ -808,6 +836,8 @@ smsRoutes.post('/:id/block', requirePerm('sms_live', 'can_edit'), async (c) => {
     blocked_at: new Date().toISOString(),
     blocked_by: actor.username,
     review_required: false,
+    assignment_unlocked_at: null,
+    assignment_unlocked_by: null,
   }).eq('id', id).is('consumed_by_tx_id', null).is('matched_transaction_id', null).is('maven_transaction_id', null)
     .select('id, is_blocked, block_reason, blocked_at, blocked_by').maybeSingle()
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
@@ -819,12 +849,12 @@ smsRoutes.post('/:id/block', requirePerm('sms_live', 'can_edit'), async (c) => {
 smsRoutes.post('/:id/unblock', requirePerm('sms_live', 'can_edit'), async (c) => {
   const id = c.req.param('id')
   if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)
-  const { data: before, error: readError } = await db.from('inbound_sms').select('id, is_blocked, block_reason, blocked_at, blocked_by, matched, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').eq('id', id).maybeSingle()
+  const { data: before, error: readError } = await db.from('inbound_sms').select('id, is_blocked, block_reason, blocked_at, blocked_by, assignment_unlocked_at, assignment_unlocked_by, matched, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').eq('id', id).maybeSingle()
   if (readError) return c.json({ error: 'db_error', detail: readError.message }, 500)
   if (!before) return c.json({ error: 'not_found' }, 404)
   if (!before.is_blocked) return c.json({ error: 'not_blocked' }, 409)
   if (before.matched || before.consumed_by_tx_id != null || before.matched_transaction_id != null || before.maven_transaction_id != null) return c.json({ error: 'sms_must_be_unlinked' }, 409)
-  const { data, error } = await db.from('inbound_sms').update({ is_blocked: false, block_reason: null, blocked_at: null, blocked_by: null, review_required: true, match_status: 'unmatched' }).eq('id', id).select('id, is_blocked, block_reason, blocked_at, blocked_by, review_required, match_status').single()
+  const { data, error } = await db.from('inbound_sms').update({ is_blocked: false, block_reason: null, blocked_at: null, blocked_by: null, assignment_unlocked_at: new Date().toISOString(), assignment_unlocked_by: c.get('actor').username, review_required: true, match_status: 'unmatched' }).eq('id', id).select('id, is_blocked, block_reason, blocked_at, blocked_by, assignment_unlocked_at, assignment_unlocked_by, review_required, match_status').single()
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   const actor = c.get('actor')
   await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'sms.unblocked', entity_type: 'inbound_sms', entity_id: id, before, after: data })
