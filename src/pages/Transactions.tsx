@@ -30,7 +30,7 @@ const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'U
 // Keep the operational columns visible on first load. Operators can still
 // hide any of them from the column picker; bumping the key makes the denser
 // layout apply to existing browsers that saved the previous short set.
-const DEFAULT_VISIBLE_COLUMNS = ['status', 'type', 'amount', 'party', 'email', 'sender_account_name', 'sender_account_number', 'time', 'merchant', 'gateway', 'duplicates', 'approved_by']
+const DEFAULT_VISIBLE_COLUMNS = ['status', 'type', 'amount', 'client_name', 'client_phone', 'sender_phone_name', 'sender_phone_number', 'email', 'sender_account_name', 'sender_account_number', 'time', 'merchant', 'gateway', 'duplicates', 'approved_by']
 const COLUMNS_STORAGE_KEY = 'trx-visible-columns-v2'
 
 interface TxRow {
@@ -52,6 +52,8 @@ interface TxRow {
   sender_number?: string | null
   sender_account_number?: string | null
   sender_account_name?: string | null
+  sender_phone_number?: string | null
+  sender_phone_name?: string | null
   user_email?: string | null
   account_name?: string | null
   to_account_name?: string | null
@@ -126,6 +128,10 @@ export default function Transactions() {
     { id: 'type', label: t('نوع الدفع', 'Payment Type') },
     { id: 'amount', label: t('المبلغ', 'Amount') },
     { id: 'party', label: t('الطرف', 'Party') },
+    { id: 'client_name', label: t('اسم العميل', 'Client Name') },
+    { id: 'client_phone', label: t('هاتف العميل', 'Client Phone') },
+    { id: 'sender_phone_name', label: t('اسم هاتف المرسل', 'Sender Phone Name') },
+    { id: 'sender_phone_number', label: t('رقم هاتف المرسل', 'Sender Phone Number') },
     { id: 'email', label: t('بريد المستخدم', 'User Email') },
     { id: 'sender_account_name', label: t('اسم حساب المرسل', 'Sender Account Name') },
     { id: 'sender_account_number', label: t('رقم حساب المرسل', 'Sender Account Number') },
@@ -354,6 +360,10 @@ export default function Transactions() {
                         </td>
                       )
                       case 'party': return <td key={colId}><SenderIdentity name={party} phone={clientPhone} nameHref={party ? `/transactions?q=${encodeURIComponent(party)}` : undefined} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined}/></td>
+                      case 'client_name': return <td key={colId}>{party ?? '—'}</td>
+                      case 'client_phone': return <td key={colId} className="mono">{clientPhone ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone)}`}>{clientPhone}</Link> : '—'}</td>
+                      case 'sender_phone_name': return <td key={colId}>{r.sender_phone_name ?? r.sender_name ?? '—'}</td>
+                      case 'sender_phone_number': return <td key={colId} className="mono">{r.sender_phone_number ?? r.sender_number ?? '—'}</td>
                       case 'email': return <td key={colId}>{r.user_email ? <a href={`mailto:${r.user_email}`} className="transaction-cell-link">{r.user_email}</a> : '—'}</td>
                       case 'sender_account_name': return <td key={colId}>{senderAccountName ?? '—'}</td>
                       case 'sender_account_number': return <td key={colId} className="mono"><Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(r.sender_account_number ?? clientPhone ?? '')}`}>{r.sender_account_number ?? clientPhone ?? '—'}</Link></td>

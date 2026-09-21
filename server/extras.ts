@@ -138,6 +138,8 @@ function withSenderAccount<T extends Record<string, unknown>>(row: T): Omit<T, '
     : null
   const account = rawValue(['accountnumber', 'senderaccountnumber', 'bankaccountnumber'])
   const accountName = rawValue(['accountname', 'senderaccountname', 'bankaccountname'])
+  const senderPhone = rawValue(['phoneno', 'senderphonenumber', 'senderphone', 'mobileno'])
+  const senderPhoneName = rawValue(['username', 'sendername', 'customername'])
   const email = rawValue(['emailaddress', 'useremail', 'email'])
   const { maven_raw_row: _raw, ...safe } = row
   const rawPreview = raw ? Object.fromEntries(['TransactionId','Status','Amount','Currency','PhoneNo','BankName','AccountNumber','Reference1','CreatedDateUTC','ModifiedDateUTC','SiteName','MerchantName','Gateway','iPayinfo'].filter((key) => raw[key] !== undefined).map((key) => [key, raw[key]])) : null
@@ -148,6 +150,8 @@ function withSenderAccount<T extends Record<string, unknown>>(row: T): Omit<T, '
     merchant_reference: providerRef == null ? null : String(providerRef).trim() || null,
     sender_account_number: account == null ? fallback : String(account).trim() || fallback,
     sender_account_name: accountName == null ? null : String(accountName).trim() || null,
+    sender_phone_number: senderPhone == null ? fallback : String(senderPhone).trim() || fallback,
+    sender_phone_name: senderPhoneName == null ? null : String(senderPhoneName).trim() || null,
     user_email: email == null ? null : String(email).trim() || null,
     raw_preview: rawPreview,
   }
