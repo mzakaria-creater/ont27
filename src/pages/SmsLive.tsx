@@ -385,8 +385,19 @@ export default function SmsLive() {
         ? t('المبلغ غير مطابق — افتح التفاصيل الكاملة للتأكيد.', 'Amount mismatch — open full details to confirm.')
         : e instanceof ApiError && e.code === 'assignment_window_expired'
           ? t('مرّت أكثر من 3 ساعات. افتح تفاصيل SMS ثم فك الحظر قبل الربط اليدوي.', 'More than 3 hours have passed. Open SMS details, unblock it, then link manually.')
-        : t('فشل الربط.', 'Link failed.'))
+        : e instanceof ApiError
+          ? t(`فشل الربط: ${apiErrorDetail(e)}`, `Link failed: ${apiErrorDetail(e)}`)
+          : t('فشل الربط: خطأ غير متوقع.', 'Link failed: unexpected error.'))
     } finally { setQuickLinkBusy(false) }
+  }
+
+  // Keep the operator-facing error actionable. The API may return a specific
+  // reason (for example a blocked SMS, duplicate link, or database detail)
+  // even when the error code is not yet mapped to a dedicated translation.
+  const apiErrorDetail = (error: ApiError) => {
+    const body = error.body ?? {}
+    const detail = [body.detail, body.reason, body.message].find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    return detail ? `${detail} (${error.code})` : error.code
   }
 
   const openDetail = async (id: number) => {
@@ -486,7 +497,10 @@ export default function SmsLive() {
       } else if (e instanceof ApiError && e.status === 403) {
         setLinkErr(t('لا تملك صلاحية الربط (can_edit غير ممنوحة لدورك).', 'You lack link permission (can_edit not granted to your role).'))
       } else {
-        setLinkErr(t('فشل الربط — حاول مرة أخرى.', 'Link failed — try again.'))
+        const detail = e instanceof ApiError ? apiErrorDetail(e) : null
+        setLinkErr(detail
+          ? t(`فشل الربط: ${detail}`, `Link failed: ${detail}`)
+          : t('فشل الربط: خطأ غير متوقع.', 'Link failed: unexpected error.'))
       }
     } finally {
       setLinkBusy(false)
