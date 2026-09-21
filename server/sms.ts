@@ -540,7 +540,10 @@ smsRoutes.get('/:id/candidates', requirePerm('sms_live', 'can_view'), async (c) 
     query = query.or(ors.join(','))
   } else {
     if (sms.amount == null) return c.json({ candidates: [] })
-    query = query.eq('amount', sms.amount).in('status', ['PENDING', 'PAID', 'APPROVED', 'UNDERPAID'])
+    // Manual evidence linking is also useful for declined/expired decisions:
+    // it preserves the audit trail and allows the recovery workflow to review
+    // a late SMS. The link route never auto-approves a non-PENDING transaction.
+    query = query.eq('amount', sms.amount).in('status', ['PENDING', 'PAID', 'APPROVED', 'UNDERPAID', 'DECLINED', 'EXPIRED'])
   }
   query = query.gte('first_seen_at', cairoBoundary(smsDay)).lte('first_seen_at', cairoBoundary(smsDay, true))
 
