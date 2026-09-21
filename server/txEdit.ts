@@ -354,6 +354,9 @@ txEditRoutes.post('/:txId/edit', async (c) => {
   if (parsed.amount != null && !canEditAmount(actor)) {
     return c.json({ error: 'amount_edit_requires_admin' }, 403)
   }
+  if (parsed.sender_number != null && !canEditAmount(actor)) {
+    return c.json({ error: 'sender_number_edit_requires_admin' }, 403)
+  }
 
   const tx = await loadTx(txId)
   if (!tx) return c.json({ error: 'not_found' }, 404)

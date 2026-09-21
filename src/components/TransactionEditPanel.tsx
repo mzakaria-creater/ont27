@@ -24,22 +24,24 @@ interface Props {
   ontargetRef: string | null
   status: string
   amount: number | null
+  senderNumber?: string | null
   currency: string | null
   gateway: string | null
   onDone: () => void
 }
 
 export default function TransactionEditPanel({
-  txId, ontargetRef, status, amount, currency, gateway, onDone,
+  txId, ontargetRef, status, amount, senderNumber, currency, gateway, onDone,
 }: Props) {
   const { t } = useLocale()
   const { user } = useAuth()
   const isSteward = STEWARD_ROLES.has(user?.role ?? '')
-  const canEditAmount = new Set(['super_admin', 'owner', 'admin']).has(user?.role ?? '') || user?.username?.toLowerCase() === 'ahmedmano.solly'
+  const canEditAmount = new Set(['super_admin', 'owner', 'admin']).has(user?.role ?? '') || ['ahmedmano.solly', 'joe'].includes(user?.username?.toLowerCase() ?? '')
 
   const [open, setOpen] = useState(false)
   const [nextStatus, setNextStatus] = useState('')
   const [nextAmount, setNextAmount] = useState('')
+  const [nextSenderNumber, setNextSenderNumber] = useState('')
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -47,7 +49,8 @@ export default function TransactionEditPanel({
 
   const changingStatus = nextStatus !== '' && nextStatus !== status
   const changingAmount = nextAmount.trim() !== '' && Number(nextAmount) !== Number(amount)
-  const canSubmit = (changingStatus || changingAmount) && reason.trim().length > 0 && !busy
+  const changingSenderNumber = nextSenderNumber.trim() !== '' && nextSenderNumber.trim() !== String(senderNumber ?? '').replace(/\D/g, '')
+  const canSubmit = (changingStatus || changingAmount || changingSenderNumber) && reason.trim().length > 0 && !busy
 
   // Mirrors the server's rule exactly — this is the one thing the operator
   // must not be misled about.
@@ -62,6 +65,7 @@ export default function TransactionEditPanel({
     const payload = {
       status: changingStatus ? nextStatus : null,
       amount: changingAmount && canEditAmount ? Number(nextAmount) : null,
+      sender_number: changingSenderNumber && canEditAmount ? nextSenderNumber.trim() : null,
       reason: reason.trim(),
     }
     try {
@@ -84,6 +88,7 @@ export default function TransactionEditPanel({
       }
       setNextStatus('')
       setNextAmount('')
+      setNextSenderNumber('')
       setReason('')
     } catch (e) {
       if (e instanceof ApiError && e.code === 'steward_role_required') {
@@ -136,6 +141,12 @@ export default function TransactionEditPanel({
           <input
             className="login-input" dir="ltr" inputMode="decimal" placeholder={String(amount ?? '')}
             value={nextAmount} onChange={(e) => setNextAmount(e.target.value)} disabled={busy}
+          /></>}
+
+          {canEditAmount && <><label className="field-label">{t('رقم العميل / المرسل الجديد', 'New client / sender number')}</label>
+          <input
+            className="login-input" dir="ltr" inputMode="numeric" placeholder={t('01XXXXXXXXX', '01XXXXXXXXX')}
+            value={nextSenderNumber} onChange={(e) => setNextSenderNumber(e.target.value.replace(/\D/g, ''))} disabled={busy}
           /></>}
 
           <label className="field-label">{t('السبب (إلزامي)', 'Reason (required)')}</label>

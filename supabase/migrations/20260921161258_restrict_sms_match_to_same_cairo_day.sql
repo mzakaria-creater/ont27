@@ -38,9 +38,19 @@ begin
     and s.balance_after is not null
     and s.consumed_by_tx_id is null
     and not exists (select 1 from public.sms_maven_matches mm where mm.sms_id=s.id)
-    and nullif(s.sender_number,'') is not null
-    and nullif(v_tx.sender_number,'') is not null
-    and regexp_replace(s.sender_number,'\D','','g') = regexp_replace(v_tx.sender_number,'\D','','g')
+    and (
+      (nullif(s.sender_number,'') is not null
+       and nullif(v_tx.sender_number,'') is not null
+       and regexp_replace(s.sender_number,'\D','','g') = regexp_replace(v_tx.sender_number,'\D','','g'))
+      or (nullif(s.sender_number,'') is null
+          and nullif(v_tx.sender_number,'') is not null
+          and exists (
+            select 1 from public.crm_clients c
+            where regexp_replace(coalesce(c.normalized_phone,c.phone_no,''),'\D','','g') = regexp_replace(v_tx.sender_number,'\D','','g')
+              and (lower(trim(s.sender_name)) = lower(trim(c.client_name))
+                   or exists (select 1 from unnest(coalesce(c.sms_names,'{}'::text[])) n where lower(trim(n)) = lower(trim(s.sender_name))))
+          ))
+    )
     and (s.received_at at time zone 'Africa/Cairo')::date = (v_tx_time at time zone 'Africa/Cairo')::date
     and abs(extract(epoch from (s.received_at - v_tx_time))) <= greatest(p_max_seconds,30)
     and not exists (
@@ -51,7 +61,11 @@ begin
         and other.gateway='NagupayP2P'
         and other.amount=v_tx.amount
         and nullif(other.sender_number,'') is not null
-        and regexp_replace(other.sender_number,'\D','','g') = regexp_replace(s.sender_number,'\D','','g')
+        and (
+          (nullif(s.sender_number,'') is not null and regexp_replace(other.sender_number,'\D','','g') = regexp_replace(s.sender_number,'\D','','g'))
+          or (nullif(s.sender_number,'') is null and nullif(v_tx.sender_number,'') is not null
+              and regexp_replace(other.sender_number,'\D','','g') = regexp_replace(v_tx.sender_number,'\D','','g'))
+        )
         and abs(extract(epoch from (s.received_at - coalesce(other.first_seen_at, public.parse_maven_utc(other.created_utc))))) < abs(extract(epoch from (s.received_at - v_tx_time)))
     )
   order by
@@ -73,9 +87,19 @@ begin
     and s.balance_after is not null
     and s.consumed_by_tx_id is null
     and not exists (select 1 from public.sms_maven_matches mm where mm.sms_id=s.id)
-    and nullif(s.sender_number,'') is not null
-    and nullif(v_tx.sender_number,'') is not null
-    and regexp_replace(s.sender_number,'\D','','g') = regexp_replace(v_tx.sender_number,'\D','','g')
+    and (
+      (nullif(s.sender_number,'') is not null
+       and nullif(v_tx.sender_number,'') is not null
+       and regexp_replace(s.sender_number,'\D','','g') = regexp_replace(v_tx.sender_number,'\D','','g'))
+      or (nullif(s.sender_number,'') is null
+          and nullif(v_tx.sender_number,'') is not null
+          and exists (
+            select 1 from public.crm_clients c
+            where regexp_replace(coalesce(c.normalized_phone,c.phone_no,''),'\D','','g') = regexp_replace(v_tx.sender_number,'\D','','g')
+              and (lower(trim(s.sender_name)) = lower(trim(c.client_name))
+                   or exists (select 1 from unnest(coalesce(c.sms_names,'{}'::text[])) n where lower(trim(n)) = lower(trim(s.sender_name))))
+          ))
+    )
     and (s.received_at at time zone 'Africa/Cairo')::date = (v_tx_time at time zone 'Africa/Cairo')::date
     and abs(extract(epoch from (s.received_at - v_tx_time))) <= greatest(p_max_seconds,30)
     and abs(extract(epoch from (s.received_at - v_tx_time))) <= (
