@@ -532,7 +532,10 @@ smsRoutes.get('/:id/candidates', requirePerm('sms_live', 'can_view'), async (c) 
     .from('maven_transactions')
     .select('tx_id, ontarget_ref, status, amount, currency, sender_name, sender_number, merchant, sub_merchant, master_merchant, gateway, receiving_wallet, to_account_number, first_seen_at')
     .order('first_seen_at', { ascending: false, nullsFirst: false })
-    .limit(10)
+    // Fetch a wider same-day pool before sorting by proximity to the SMS.
+    // Limiting at the database's newest rows could hide the transaction that
+    // actually arrived beside this SMS when the queue is busy.
+    .limit(100)
 
   if (q) {
     const ors = [`ontarget_ref.ilike.%${q}%`, `merchant_tx_reference.ilike.%${q}%`]
@@ -565,7 +568,17 @@ smsRoutes.get('/:id/candidates', requirePerm('sms_live', 'can_view'), async (c) 
       }
     }
   }
-  const unlinkedCandidates = (data ?? []).filter((row) => !linkedIds.has(Number(row.tx_id)))
+  const smsTime = sms.received_at ? new Date(sms.received_at).getTime() : NaN
+  const unlinkedCandidates = (data ?? [])
+    .filter((row) => !linkedIds.has(Number(row.tx_id)))
+    .map((row) => ({
+      ...row,
+      seconds_diff: Number.isFinite(smsTime) && row.first_seen_at
+        ? Math.round(Math.abs(new Date(row.first_seen_at).getTime() - smsTime) / 1000)
+        : null,
+    }))
+    .sort((a, b) => (a.seconds_diff ?? Number.MAX_SAFE_INTEGER) - (b.seconds_diff ?? Number.MAX_SAFE_INTEGER) || Number(b.tx_id) - Number(a.tx_id))
+    .slice(0, 20)
   // Same client + same amount within 5 minutes, both still unlinked — the
   // classic accidental-duplicate-submission case. Flag it instead of
   // silently letting an operator pick either one.

@@ -164,6 +164,7 @@ interface CandidateTx {
   receiving_wallet?: string | null
   to_account_number?: string | null
   first_seen_at: string | null
+  seconds_diff?: number | null
   is_duplicate_group?: boolean
 }
 
@@ -1100,7 +1101,7 @@ export default function SmsLive() {
                                 {' · '}{cand.merchant ?? '—'}
                                 {cand.master_merchant?.toLowerCase() === 'payfuture' && <><br /><span>PayFuture · {cand.sub_merchant ?? 'sub-merchant not set'}</span></>}
                                 {cand.receiving_wallet ?? cand.to_account_number ? <><br /><span className="mono">Wallet {cand.receiving_wallet ?? cand.to_account_number} · {cand.currency ?? '—'}</span></> : null}
-                                {' · '}<span className="mono">{depositTime({ first_seen_at: cand.first_seen_at })}</span>
+                                {' · '}<span className="mono">{depositTime({ first_seen_at: cand.first_seen_at })}{cand.seconds_diff != null && <>{' · '}<strong className={cand.seconds_diff <= 180 ? 'sms-near-time' : undefined}>{cand.seconds_diff}s {t('فرق الوقت', 'time gap')}</strong></>}</span>
                               </div>
                             </div>
                             <button
