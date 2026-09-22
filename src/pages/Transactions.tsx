@@ -30,10 +30,10 @@ const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'U
 // Keep the operational columns visible on first load. Operators can still
 // hide any of them from the column picker; bumping the key makes the denser
 // layout apply to existing browsers that saved the previous short set.
-const DEFAULT_VISIBLE_COLUMNS = ['status', 'type', 'amount', 'sms_link', 'client_name', 'client_phone', 'sender_phone_name', 'sender_phone_number', 'email', 'sender_account_name', 'sender_account_number', 'time', 'merchant', 'gateway', 'approved_by']
+const DEFAULT_VISIBLE_COLUMNS = ['status', 'type', 'amount', 'sms_link', 'proof', 'client_name', 'client_phone', 'sender_phone_name', 'sender_phone_number', 'email', 'sender_account_name', 'sender_account_number', 'time', 'merchant', 'gateway', 'approved_by']
 // v4 resets older browser preferences so the complete 14-column operational
 // view is visible after the table-density redesign.
-const COLUMNS_STORAGE_KEY = 'trx-visible-columns-v5'
+const COLUMNS_STORAGE_KEY = 'trx-visible-columns-v6'
 
 interface TxRow {
   kind: 'deposit' | 'payout'
@@ -133,6 +133,7 @@ export default function Transactions() {
     { id: 'type', label: t('نوع الدفع', 'Payment Type') },
     { id: 'amount', label: t('المبلغ', 'Amount') },
     { id: 'sms_link', label: t('ربط SMS', 'SMS Link') },
+    { id: 'proof', label: t('الإثبات', 'Proof') },
     { id: 'party', label: t('الطرف', 'Party') },
     { id: 'client_name', label: t('اسم العميل', 'Client Name') },
     { id: 'client_phone', label: t('هاتف العميل', 'Client Phone') },
@@ -365,6 +366,9 @@ export default function Transactions() {
                       case 'sms_link': return <td key={colId}>{r.kind === 'deposit' && r.matched_sms
                         ? <button type="button" className={`tx-sms-chip ${r.status === 'DECLINED' ? 'is-warning' : 'is-matched'}`} onClick={() => toggleExpanded(rowKey)} title={`${r.matched_sms.sender_name ?? r.matched_sms.sender_number ?? '—'} · ${money(r.matched_sms.amount, r.currency ?? 'EGP')}`}>{r.status === 'DECLINED' ? <AlertTriangle size={11} aria-hidden="true" /> : '📨'} #{r.matched_sms.id}</button>
                         : <button type="button" className="tx-sms-chip is-missing" onClick={() => toggleExpanded(rowKey)}>{t('غير مرتبط', 'Not linked')}</button>}</td>
+                      case 'proof': return <td key={colId}>{proofUrl
+                        ? <button type="button" className="tx-proof-icon" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id), onApprove: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'approve'); setProof(null) } : undefined, onDecline: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'decline'); setProof(null) } : undefined })} aria-label={t('عرض الإثبات', 'View proof')} title={t('عرض الإثبات', 'View proof')}><Image size={14}/></button>
+                        : <span className="tx-proof-empty" title={t('لا يوجد إثبات', 'No proof')}>—</span>}</td>
                       case 'party': return <td key={colId}><SenderIdentity name={party} phone={clientPhone} nameHref={party ? `/transactions?q=${encodeURIComponent(party)}` : undefined} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined}/></td>
                       case 'client_name': return <td key={colId}>{party ?? '—'}</td>
                       case 'client_phone': return <td key={colId} className="mono">{clientPhone ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone)}`}>{clientPhone}</Link> : '—'}</td>
