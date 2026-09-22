@@ -446,7 +446,7 @@ export default function SmsLive() {
     setParams(next, { replace: true })
   }
 
-  const link = async (txId: number, confirmAmountMismatch = false) => {
+  const link = async (txId: number, confirmAmountMismatch = false, changeDeclinedToPaid = false) => {
     if (!selected) return
     setLinkBusy(true)
     setLinkErr(null)
@@ -474,6 +474,31 @@ export default function SmsLive() {
         void load(true)
         return
       }
+      if (changeDeclinedToPaid) {
+        // Keep the linked evidence visible while the audited status change is
+        // applied. The server decides whether this is a direct provider edit
+        // or an approval request based on the operator's role.
+        setSelected((current) => current ? {
+          ...current,
+          matched: true,
+          match_status: 'manual',
+          matched_transaction_id: txId,
+          maven_transaction_id: String(txId),
+          consumed_by_tx_id: txId,
+          matched_tx_id: txId,
+        } : current)
+        try {
+          await api(`/api/tx/${txId}/edit`, {
+            method: 'POST',
+            body: JSON.stringify({ status: 'PAID', reason: `SMS linked from SMS Live; declined transaction recovery for SMS #${selected.id}` }),
+          })
+        } catch (e) {
+          const detail = e instanceof ApiError ? apiErrorDetail(e) : 'status_change_failed'
+          setLinkErr(t(`تم ربط SMS، لكن تغيير الحالة إلى PAID فشل: ${detail}`, `SMS linked, but changing status to PAID failed: ${detail}`))
+          void load(true)
+          return
+        }
+      }
       window.dispatchEvent(new CustomEvent('ontarget:sms-assignment-success', { detail: { direction: selected.sms_category === 'withdrawal' ? 'out' : 'in', amount: selected.amount, wallet: displayWalletForRow(selected), transactionRef: String(txId) } }))
       setSelected(null)
       void load(true)
@@ -485,7 +510,7 @@ export default function SmsLive() {
           `مبلغ SMS هو ${money(smsAmount, 'EGP')} بينما مبلغ المعاملة هو ${money(txAmount, 'EGP')}. المتابعة ستربط الرسالة كدليل فقط ولن تعتمد المعاملة تلقائياً. يجب تصحيح مبلغ المعاملة واعتمادها يدوياً. هل تريد المتابعة؟`,
           `The SMS amount is ${money(smsAmount, 'EGP')} while the transaction amount is ${money(txAmount, 'EGP')}. Continuing will link the SMS as evidence only and will not auto-approve the transaction. Correct the transaction amount and approve it manually. Continue?`,
         ))
-        if (confirmed) await link(txId, true)
+        if (confirmed) await link(txId, true, changeDeclinedToPaid)
       } else if (e instanceof ApiError && e.code === 'already_linked') {
         setLinkErr(t('الرسالة مرتبطة بالفعل — أعد الفتح.', 'Message already linked — reopen.'))
       } else if (e instanceof ApiError && e.code === 'transaction_already_linked') {
@@ -1104,13 +1129,23 @@ export default function SmsLive() {
                                 {' · '}<span className="mono">{depositTime({ first_seen_at: cand.first_seen_at })}{cand.seconds_diff != null && <>{' · '}<strong className={cand.seconds_diff <= 180 ? 'sms-near-time' : undefined}>{cand.seconds_diff}s {t('فرق الوقت', 'time gap')}</strong></>}</span>
                               </div>
                             </div>
-                            <button
-                              className="btn-primary btn-sm"
-                              disabled={linkBusy}
-                              onClick={() => void link(cand.tx_id)}
-                            >
-                              {t('ربط', 'Link')}
-                            </button>
+                            <div className="cand-actions">
+                              <button
+                                className="btn-primary btn-sm"
+                                disabled={linkBusy}
+                                onClick={() => void link(cand.tx_id)}
+                              >
+                                {t('ربط', 'Link')}
+                              </button>
+                              {cand.status === 'DECLINED' && can('transactions', 'can_edit') && <button
+                                className="btn-ghost btn-sm danger"
+                                disabled={linkBusy}
+                                title={t('يربط SMS ثم يطلب تغيير الحالة إلى مدفوعة', 'Link SMS, then apply audited PAID status')}
+                                onClick={() => void link(cand.tx_id, false, true)}
+                              >
+                                ✅ {t('ربط + PAID', 'Link + PAID')}
+                              </button>}
+                            </div>
                           </li>
                         ))}
                       </ul>
