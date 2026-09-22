@@ -98,7 +98,10 @@ export default function Transactions() {
   const status = params.get('status') ?? ''
   const statusValues = splitFilterValues(status)
   const typeValues = splitFilterValues(type)
-  const from = params.get('from') ?? ''
+  // The unified v2 ledger is retained from 2025 onward. Start the home/all-
+  // transactions view at that boundary while still allowing operators to
+  // change or clear the date filter from the toolbar.
+  const from = params.get('from') ?? '2025-01-01'
   const to = params.get('to') ?? ''
   const merchant = params.get('merchant') ?? ''
   const method = params.get('method') ?? ''
