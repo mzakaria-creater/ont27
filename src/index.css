@@ -327,7 +327,7 @@ body {
   transition: border-color 0.15s, background 0.15s;
 }
 
-.logout-btn:hover { border-color: var(--accent); background: rgba(255, 255, 255, 0.04); }
+.logout-btn:hover { border-color: var(--accent); background: var(--hover); }
 
 /* ---- Login screen (frosted glass, matches admin/depositor reference panels) ---- */
 .login-screen {
@@ -351,6 +351,15 @@ body {
   padding: 36px;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+}
+
+/* Same fix as .login-input: a near-transparent white card is a glass
+   effect on a dark gradient, but on the light theme's pale background it
+   has almost no visible edge — the very first screen a user sees. */
+:root[data-theme='light'] .login-box {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-panel);
 }
 
 .login-logo {
@@ -398,6 +407,18 @@ body {
   font-size: 13px;
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+}
+
+/* The rgba(255,255,255,..) above was tuned for the dark glass surface —
+   on a light/white surface that same overlay reads as almost invisible,
+   so every text field in light mode lost its boundary. Give light mode
+   its own visible surface + border instead of a translucent white wash. */
+:root[data-theme='light'] .login-input {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+:root[data-theme='light'] .login-input:hover:not(:disabled):not(:focus-visible) {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
 }
 
 .login-input:focus-visible {
@@ -926,7 +947,8 @@ button.transaction-cell-link { border: 0; background: transparent; padding: 0; f
 .sidebar-count {
   margin-inline-start: auto;
   font-size: 11px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--hover-2);
+  color: var(--text-dim);
   border-radius: 999px;
   padding: 1px 7px;
 }
@@ -1073,8 +1095,12 @@ button.transaction-cell-link { border: 0; background: transparent; padding: 0; f
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+  transition: transform .1s var(--ease), box-shadow .15s var(--ease), opacity .15s var(--ease);
 }
 
+.btn-primary:hover:not(:disabled) { box-shadow: 0 6px 18px color-mix(in srgb, var(--brand-purple) 35%, transparent); }
+.btn-primary:active:not(:disabled) { transform: scale(.97); }
+.btn-primary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .btn-primary:disabled { opacity: 0.6; cursor: default; }
 
 .btn-ghost {
@@ -1085,9 +1111,13 @@ button.transaction-cell-link { border: 0; background: transparent; padding: 0; f
   padding: 6px 12px;
   font-size: 12px;
   cursor: pointer;
+  transition: transform .1s var(--ease), color .15s var(--ease), border-color .15s var(--ease), background-color .15s var(--ease);
 }
 
-.btn-ghost:hover { color: var(--text); border-color: var(--accent); }
+.btn-ghost:hover { color: var(--text); border-color: var(--accent); background: var(--hover); }
+.btn-ghost:active:not(:disabled) { transform: scale(.97); }
+.btn-ghost:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.btn-ghost:disabled { opacity: 0.6; cursor: default; }
 
 .login-error {
   background: color-mix(in srgb, var(--status-declined) 12%, transparent);
@@ -1795,6 +1825,7 @@ a.stat-card:hover { border-color: var(--accent); }
   color: var(--text-dim); display: inline-flex; align-items: center; gap: 6px;
   transition: all 0.2s var(--ease); font-family: inherit; border: none; background: none;
 }
+.pill:hover:not(.active) { color: var(--text); background: var(--hover-2); }
 .pill.active { background: var(--border-soft); color: var(--text); font-weight: 600; }
 :root[data-theme='light'] .pill.active { background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
 .pill-dot { width: 5px; height: 5px; border-radius: 50%; }
