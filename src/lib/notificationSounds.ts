@@ -1,9 +1,12 @@
 export type AlertKind = 'transaction' | 'sms'
-export type AlertTone = 'glass' | 'chime' | 'pulse' | 'bell' | 'sonar' | 'pop' | 'double' | 'urgent'
+export type AlertTone = 'glass' | 'chime' | 'pulse' | 'bell' | 'sonar' | 'pop' | 'double' | 'urgent' | 'tritone' | 'cash'
 export interface SoundSettings { enabled: boolean; transaction: AlertTone; sms: AlertTone }
 
 const KEY = 'ontarget-notification-sounds-v2'
-const defaults: SoundSettings = { enabled: true, transaction: 'chime', sms: 'glass' }
+// 'cash' for money in/out and 'tritone' for SMS are distinct from each other
+// on purpose — an operator hearing either needs to tell, without looking,
+// whether it's a transaction event or a raw SMS arriving.
+const defaults: SoundSettings = { enabled: true, transaction: 'cash', sms: 'tritone' }
 let sharedContext: AudioContext | null = null
 let unlockInstalled = false
 let pendingTone: AlertKind | null = null
@@ -74,10 +77,17 @@ export function playNotificationTone(kind: AlertKind, force = false) {
     pop: [{ at: 0, hz: 988, duration: .055, gain: .12 }, { at: .065, hz: 1318.5, duration: .085, gain: .08 }],
     double: [{ at: 0, hz: 784, duration: .11, gain: .1 }, { at: .16, hz: 784, duration: .11, gain: .1 }],
     urgent: [{ at: 0, hz: 587.3, duration: .1, gain: .11 }, { at: .12, hz: 880, duration: .1, gain: .11 }, { at: .24, hz: 587.3, duration: .1, gain: .1 }, { at: .36, hz: 1174.7, duration: .16, gain: .09 }],
+    // Three quick ascending bell notes — the classic iPhone text-message
+    // shape (short, bright, unmistakably "a message just arrived").
+    tritone: [{ at: 0, hz: 1046.5, duration: .1, gain: .11 }, { at: .1, hz: 1318.5, duration: .1, gain: .11 }, { at: .2, hz: 1568.0, duration: .22, gain: .1 }],
+    // A bright two-note "cha-ching" — deliberately different in shape and
+    // timbre from tritone so a transaction event never gets mistaken for a
+    // raw SMS arriving.
+    cash: [{ at: 0, hz: 1567.98, duration: .07, gain: .13 }, { at: .07, hz: 2093.0, duration: .1, gain: .11 }, { at: .2, hz: 1567.98, duration: .16, gain: .08 }],
   }
   for (const note of patterns[tone]) {
     const osc = ctx.createOscillator(); const gain = ctx.createGain(); const start = ctx.currentTime + note.at
-    osc.type = tone === 'glass' || tone === 'bell' || tone === 'sonar' ? 'sine' : 'triangle'; osc.frequency.setValueAtTime(note.hz, start)
+    osc.type = tone === 'glass' || tone === 'bell' || tone === 'sonar' || tone === 'tritone' ? 'sine' : 'triangle'; osc.frequency.setValueAtTime(note.hz, start)
     gain.gain.setValueAtTime(0.0001, start); gain.gain.exponentialRampToValueAtTime(note.gain, start + .015); gain.gain.exponentialRampToValueAtTime(0.0001, start + note.duration)
     osc.connect(gain); gain.connect(master); osc.start(start); osc.stop(start + note.duration + .02)
   }
