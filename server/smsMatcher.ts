@@ -104,7 +104,8 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
   const diagnostics = { noAmountCandidate: 0, noUsableTime: 0, outsideTenMinutes: 0, missingSenderName: 0, senderNameMismatch: 0, ambiguousFallback: 0, ownWalletSender: 0 }
   for (const sms of smsRows) {
     if (ourWallets.has(phone(sms.sender_number))) { diagnostics.ownWalletSender++; continue }
-    const smsPhone = phone(sms.sender_number || embeddedPhone(sms.sender_name))
+    const smsRawPhone = String(sms.sender_number || embeddedPhone(sms.sender_name)).replace(/\D/g, '')
+    const smsPhone = phone(smsRawPhone)
     const smsWallet = phone(receivingWallet(sms))
     if (!smsWallet) { diagnostics.noUsableTime++; continue }
     const byAmount = txRows.filter((tx) => cents(tx.amount) === cents(sms.amount))
@@ -123,7 +124,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
       // exact on both sides; amount+time alone must never bridge wallets.
       if (!walletMatch && (!smsPhone || !phone(tx.sender_number) || phone(tx.sender_number) !== smsPhone)) return false
       // Orange Cash sender identities are 012-based when a number is present.
-      if (method.includes('orange') && smsPhone && !/^012/.test(String(sms.sender_number ?? '').replace(/\D/g, '').slice(-11))) return false
+      if (method.includes('orange') && smsPhone && !/^012/.test(smsRawPhone)) return false
       if (!tx.first_seen_at || !sms.received_at) return false
       const delta = Math.abs(Date.parse(tx.first_seen_at) - Date.parse(sms.received_at))
       const maxDelta = txByRef.has(ref(sms.trx_id)) ? MAX_TIME_DIFF_MS : FALLBACK_TIME_DIFF_MS
