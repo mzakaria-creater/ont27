@@ -11,6 +11,13 @@ const FALLBACK_TIME_DIFF_MS = 10 * 60_000
 const ref = (value: unknown) => String(value ?? '').trim().toUpperCase()
 const cents = (value: unknown) => Math.round(Number(value) * 100)
 const phone = (value: unknown) => { const digits = String(value ?? '').replace(/\D/g, ''); return digits.length > 10 ? digits.slice(-10) : digits }
+// Several Orange SMS providers omit sender_number but append the sender phone
+// to sender_name (for example "Name-01202909766"). Treat that embedded phone
+// as identity evidence; otherwise every such message is silently unmatchable.
+const embeddedPhone = (value: unknown) => {
+  const match = String(value ?? '').match(/01\d{9}/)
+  return match?.[0] ?? ''
+}
 const receivingWallet = (sms: SmsRow) => sms.confirmed_wallet_number ?? sms.wallet_number ?? sms.receiver_number
 const nameKey = (value: unknown) => String(value ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter((part) => part.length > 1).join(' ')
 const sameName = (left: unknown, right: unknown) => { const a = nameKey(left); const b = nameKey(right); return Boolean(a && b && (a === b || a.includes(b) || b.includes(a))) }
@@ -97,25 +104,30 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
   const diagnostics = { noAmountCandidate: 0, noUsableTime: 0, outsideTenMinutes: 0, missingSenderName: 0, senderNameMismatch: 0, ambiguousFallback: 0, ownWalletSender: 0 }
   for (const sms of smsRows) {
     if (ourWallets.has(phone(sms.sender_number))) { diagnostics.ownWalletSender++; continue }
-    const smsPhone = phone(sms.sender_number)
-    const smsWallet = phone(sms.receiver_number)
+    const smsPhone = phone(sms.sender_number || embeddedPhone(sms.sender_name))
+    const smsWallet = phone(receivingWallet(sms))
     if (!smsWallet) { diagnostics.noUsableTime++; continue }
     const byAmount = txRows.filter((tx) => cents(tx.amount) === cents(sms.amount))
     if (!byAmount.length) { diagnostics.noAmountCandidate++; continue }
     const byEvidence = byAmount.filter((tx) => {
       const txWallet = phone(tx.receiving_wallet ?? tx.to_account_number)
-      if (!txWallet || txWallet !== smsWallet) return false
+      const walletMatch = Boolean(txWallet && smsWallet && txWallet === smsWallet)
       if (smsPhone && phone(tx.sender_number) && phone(tx.sender_number) !== smsPhone) return false
       const method = String(tx.payment_method ?? '').toLowerCase()
       const orange = /orange/i.test(`${sms.provider ?? ''} ${sms.message ?? ''} ${sms.raw_sms ?? ''} ${method}`)
       // Orange Cash commonly omits the sender phone. In that case the safe
       // identity path is name + amount + wallet + time + balance continuity.
       if (!smsPhone && (!orange || !sameName(sms.sender_name, tx.sender_name) || !hasBalanceContinuity(sms, (balanceHistory ?? []) as SmsRow[]))) return false
+      // A rotated/legacy wallet may differ between the SMS and Maven row. It
+      // is only safe to bridge that history when the sender phone is known and
+      // exact on both sides; amount+time alone must never bridge wallets.
+      if (!walletMatch && (!smsPhone || !phone(tx.sender_number) || phone(tx.sender_number) !== smsPhone)) return false
       // Orange Cash sender identities are 012-based when a number is present.
       if (method.includes('orange') && smsPhone && !/^012/.test(String(sms.sender_number ?? '').replace(/\D/g, '').slice(-11))) return false
       if (!tx.first_seen_at || !sms.received_at) return false
       const delta = Math.abs(Date.parse(tx.first_seen_at) - Date.parse(sms.received_at))
-      return Number.isFinite(delta) && delta <= (txByRef.has(ref(sms.trx_id)) ? MAX_TIME_DIFF_MS : FALLBACK_TIME_DIFF_MS)
+      const maxDelta = txByRef.has(ref(sms.trx_id)) ? MAX_TIME_DIFF_MS : FALLBACK_TIME_DIFF_MS
+      return Number.isFinite(delta) && delta <= maxDelta
     })
     // Prefer an explicit bank reference only when the wallet/phone evidence
     // still agrees. Otherwise the same strict wallet+amount+time rule applies.
