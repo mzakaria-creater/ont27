@@ -3980,3 +3980,8 @@ html, body { overflow-x: hidden; overflow-y: auto; }
 .sms-popup-test-actions{display:inline-flex;gap:6px;margin-inline-start:auto}.sms-test-in{border-color:color-mix(in srgb,#22c55e 55%,var(--line));color:#86efac}.sms-test-out{border-color:color-mix(in srgb,#ef4444 55%,var(--line));color:#fca5a5}.wallet-limit-popup-list small{display:block;margin-top:3px;color:var(--text-dim);font-size:10px}
 .blacklist-marker{display:inline-flex;align-items:center;justify-content:center;margin-inline-start:5px;font-size:13px;line-height:1;filter:saturate(1.15);vertical-align:middle;cursor:help}
 .tx-proof-empty{display:inline-grid;place-items:center;min-width:27px;min-height:27px;color:var(--text-muted);opacity:.7}
+/* Neon hold state for ambiguous same-amount SMS that require a 3-minute review. */
+.sms-live-card.is-review-hold{border-color:#e879f9!important;box-shadow:0 0 0 1px rgba(232,121,249,.55),0 0 18px rgba(217,70,239,.45),0 0 38px rgba(34,211,238,.2);animation:sms-review-neon 1.8s ease-in-out infinite}
+.sms-row.is-review-hold>td{background:linear-gradient(90deg,rgba(217,70,239,.08),rgba(34,211,238,.05));border-top-color:rgba(232,121,249,.55);border-bottom-color:rgba(232,121,249,.35)}
+.sms-review-hold-label{color:#f0abfc!important;font-weight:800;text-shadow:0 0 8px rgba(232,121,249,.8)}
+@keyframes sms-review-neon{0%,100%{box-shadow:0 0 0 1px rgba(232,121,249,.45),0 0 14px rgba(217,70,239,.32),0 0 28px rgba(34,211,238,.12)}50%{box-shadow:0 0 0 2px rgba(232,121,249,.8),0 0 24px rgba(217,70,239,.6),0 0 46px rgba(34,211,238,.26)}}

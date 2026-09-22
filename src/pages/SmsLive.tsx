@@ -798,7 +798,7 @@ export default function SmsLive() {
                   const mt = linked ? MATCH_META.auto : r.match_status ? MATCH_META[r.match_status] : null
                   const linkedAt = r.withdrawal_assigned_at
                   return (
-                    <tr key={r.id} className={`sms-row sms-row-${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}`} onClick={() => void openDetail(r.id)}>
+                    <tr key={r.id} className={`sms-row sms-row-${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}${r.review_required && !linked ? ' is-review-hold' : ''}`} onClick={() => void openDetail(r.id)}>
                       <td className="mono">
                         {money(r.amount, 'EGP')}
                         {r.balance_after != null && <div className="cell-sub mono">{t('رصيد', 'bal')} {money(r.balance_after, 'EGP')}</div>}
@@ -816,7 +816,7 @@ export default function SmsLive() {
                       </td>
                       <td>
                         {mt ? <span className={`pay-status-badge ${mt.cls}`}>{t(mt.ar, mt.en)}</span> : <span className="pay-status-badge st-unlinked">{t('غير مرتبطة','Unlinked')}</span>}
-                        {r.review_required && !linked && <div className="cell-sub">⚠ {t('مراجعة', 'review')}</div>}
+                        {r.review_required && !linked && <div className="cell-sub sms-review-hold-label">⚠ {t('موقوف للمراجعة — تحقق خلال 3 دقائق', 'HOLD — verify within 3 minutes')}</div>}
                         {r.is_blocked && <div className="cell-sub danger-text">🚫 {t('محظورة', 'Blocked')}</div>}
                       </td>
                       <td className="sms-cell"><div className="mono">{linkedAt ? depositTime({ first_seen_at: linkedAt }) : '—'}</div><div className="cell-sub sms-raw-preview" dir="auto">{firstLine(r)}</div></td>
@@ -835,7 +835,7 @@ export default function SmsLive() {
               const displayWallet = displayWalletForRow(r)
               const matchMeta = linked ? MATCH_META.auto : r.match_status ? MATCH_META[r.match_status] : null
               return <article className="sms-live-card-shell" key={r.id}>
-                <button type="button" className={`sms-live-card sms-live-card-${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}${!linked && !r.is_blocked ? ' is-unlinked' : ''}`} onClick={() => void openDetail(r.id)}>
+                <button type="button" className={`sms-live-card sms-live-card-${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}${!linked && !r.is_blocked ? ' is-unlinked' : ''}${r.review_required && !linked ? ' is-review-hold' : ''}`} onClick={() => void openDetail(r.id)}>
                   <div className="sms-live-card-head"><span className="sms-card-brand"><span className={`sms-type-mark ${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}`}>{r.sms_category === 'withdrawal' ? '↗' : '↙'}</span><MethodLogo method={r.provider ?? 'Orange Money'} /></span><strong className="mono">SMS #{r.id}</strong><span className="mono">{depositTime({ first_seen_at: r.received_at })}</span></div>
                   <div className="sms-live-card-amount">{money(r.amount, 'EGP')}</div>
                   <div className="sms-live-card-grid">
@@ -844,7 +844,7 @@ export default function SmsLive() {
                     <span>{t('المحفظة', 'Wallet')}<b className="mono">{displayWallet ?? '—'}</b></span>
                     <span>{t('الجهاز', 'Device')}<b className="mono">{r.device_name ?? '—'}</b></span>
                   </div>
-                  <div className="sms-live-card-foot">{matchMeta ? <span className={`pay-status-badge ${matchMeta.cls}`}>{t(matchMeta.ar, matchMeta.en)}</span> : <span className="pay-status-badge st-dim">{t('غير مرتبطة', 'Unlinked')}</span>}{r.sms_category === 'withdrawal' && <span className="cell-sub">{r.matched_payout_id ? `WD ${r.matched_payout_ref ?? r.matched_payout_id}` : t('سحب غير معيّن', 'Unassigned withdrawal')}</span>}</div>
+                  <div className="sms-live-card-foot">{matchMeta ? <span className={`pay-status-badge ${matchMeta.cls}`}>{t(matchMeta.ar, matchMeta.en)}</span> : <span className="pay-status-badge st-dim">{t('غير مرتبطة', 'Unlinked')}</span>}{r.review_required && !linked && <span className="sms-review-hold-label">⚠ HOLD · {t('مراجعة 3 دقائق', '3-minute review')}</span>}{r.sms_category === 'withdrawal' && <span className="cell-sub">{r.matched_payout_id ? `WD ${r.matched_payout_ref ?? r.matched_payout_id}` : t('سحب غير معيّن', 'Unassigned withdrawal')}</span>}</div>
                   <div className="cell-sub sms-card-preview">{firstLine(r)}</div>
                 </button>
                 {!linked && !r.is_blocked && (
