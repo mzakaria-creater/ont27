@@ -30,10 +30,10 @@ const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'U
 // Keep the operational columns visible on first load. Operators can still
 // hide any of them from the column picker; bumping the key makes the denser
 // layout apply to existing browsers that saved the previous short set.
-const DEFAULT_VISIBLE_COLUMNS = ['status', 'type', 'amount', 'client_name', 'client_phone', 'sender_phone_name', 'sender_phone_number', 'email', 'sender_account_name', 'sender_account_number', 'time', 'merchant', 'gateway', 'approved_by']
+const DEFAULT_VISIBLE_COLUMNS = ['status', 'type', 'amount', 'sms_link', 'client_name', 'client_phone', 'sender_phone_name', 'sender_phone_number', 'email', 'sender_account_name', 'sender_account_number', 'time', 'merchant', 'gateway', 'approved_by']
 // v4 resets older browser preferences so the complete 14-column operational
 // view is visible after the table-density redesign.
-const COLUMNS_STORAGE_KEY = 'trx-visible-columns-v4'
+const COLUMNS_STORAGE_KEY = 'trx-visible-columns-v5'
 
 interface TxRow {
   kind: 'deposit' | 'payout'
@@ -129,6 +129,7 @@ export default function Transactions() {
     { id: 'status', label: t('الحالة', 'Status') },
     { id: 'type', label: t('نوع الدفع', 'Payment Type') },
     { id: 'amount', label: t('المبلغ', 'Amount') },
+    { id: 'sms_link', label: t('ربط SMS', 'SMS Link') },
     { id: 'party', label: t('الطرف', 'Party') },
     { id: 'client_name', label: t('اسم العميل', 'Client Name') },
     { id: 'client_phone', label: t('هاتف العميل', 'Client Phone') },
@@ -356,11 +357,11 @@ export default function Transactions() {
                         <td key={colId} className="mono portal-amount-cell">
                           {money(r.amount, r.currency ?? 'EGP')}
                           {r.amount_sync_status === 'mismatch' && <div className="amount-critical-warning" title={r.amount_mismatch_reason ?? 'Maven amount confirmation required'}>⚠ CRITICAL</div>}
-                          {r.kind === 'deposit' && (r.matched_sms
-                            ? <button type="button" className={`tx-sms-chip ${r.status === 'DECLINED' ? 'is-warning' : 'is-matched'}`} onClick={() => toggleExpanded(rowKey)} title={`${r.matched_sms.sender_name ?? r.matched_sms.sender_number ?? '—'} · ${money(r.matched_sms.amount, r.currency ?? 'EGP')}`}>{r.status === 'DECLINED' ? <AlertTriangle size={11} aria-hidden="true" /> : '📨'} SMS</button>
-                            : <button type="button" className="tx-sms-chip is-missing" onClick={() => toggleExpanded(rowKey)}>{t('بدون SMS', 'No SMS')}</button>)}
                         </td>
                       )
+                      case 'sms_link': return <td key={colId}>{r.kind === 'deposit' && r.matched_sms
+                        ? <button type="button" className={`tx-sms-chip ${r.status === 'DECLINED' ? 'is-warning' : 'is-matched'}`} onClick={() => toggleExpanded(rowKey)} title={`${r.matched_sms.sender_name ?? r.matched_sms.sender_number ?? '—'} · ${money(r.matched_sms.amount, r.currency ?? 'EGP')}`}>{r.status === 'DECLINED' ? <AlertTriangle size={11} aria-hidden="true" /> : '📨'} #{r.matched_sms.id}</button>
+                        : <button type="button" className="tx-sms-chip is-missing" onClick={() => toggleExpanded(rowKey)}>{t('غير مرتبط', 'Not linked')}</button>}</td>
                       case 'party': return <td key={colId}><SenderIdentity name={party} phone={clientPhone} nameHref={party ? `/transactions?q=${encodeURIComponent(party)}` : undefined} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined}/></td>
                       case 'client_name': return <td key={colId}>{party ?? '—'}</td>
                       case 'client_phone': return <td key={colId} className="mono">{clientPhone ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone)}`}>{clientPhone}</Link> : '—'}</td>
