@@ -31,7 +31,9 @@ const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'U
 // hide any of them from the column picker; bumping the key makes the denser
 // layout apply to existing browsers that saved the previous short set.
 const DEFAULT_VISIBLE_COLUMNS = ['status', 'type', 'amount', 'client_name', 'client_phone', 'sender_phone_name', 'sender_phone_number', 'email', 'sender_account_name', 'sender_account_number', 'time', 'merchant', 'gateway', 'approved_by']
-const COLUMNS_STORAGE_KEY = 'trx-visible-columns-v3'
+// v4 resets older browser preferences so the complete 14-column operational
+// view is visible after the table-density redesign.
+const COLUMNS_STORAGE_KEY = 'trx-visible-columns-v4'
 
 interface TxRow {
   kind: 'deposit' | 'payout'
