@@ -107,7 +107,7 @@ adminRoutes.get('/', requirePerm('settings', 'can_view'), async (c) => {
     db.from('role_page_permissions').select(permColumns).order('page_key').order('role_key'),
     db.from('merchant_api_keys').select(keyColumns).order('created_at', { ascending: false }).limit(200),
     db.from('merchants').select('id, name, code, master_merchant_id, status, is_active').order('name'),
-    db.from('master_merchants').select('id, name, code, provider, status').order('name'),
+    db.from('master_merchants').select('id, name, code:mid').order('name'),
     db.from('master_merchant_fee_defaults').select('id, master_merchant_id, payin_commission_pct, payout_commission_pct, flat_fee_egp, min_monthly_commitment_usd, notes, updated_at').order('updated_at', { ascending: false }),
     db.from('merchants_hierarchy').select('id, master_merchant_id, name, payin_commission_pct, payout_commission_pct, commission_rate, active, created_at').order('name'),
     db.from('wallet_capacity_limits').select('payment_account_id, daily_limit, current_daily_used, updated_at'),

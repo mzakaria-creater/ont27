@@ -136,7 +136,7 @@ linkRoutes.get('/merchants', requirePerm('checkout-builder', 'can_view'), async 
     db.from('merchants').select('id, name, code, "MID", master_merchant_id').eq('active', true).order('name'),
     db.from('payment_methods').select('id, method_code, method_name, channel_type').eq('is_active', true).order('sort_order').order('method_name'),
     db.from('payment_pools').select('id, pool_name, pool_code, allocation_strategy, rotation_enabled').eq('is_active', true).order('pool_name'),
-    db.from('master_merchants').select('id, name, code, mid').order('name'),
+    db.from('master_merchants').select('id, name, code:mid').order('name'),
     // Individual receiving accounts, for links that pin to specific wallets
     // (not just a method type or a whole pool) — e.g. "these exact 5 mobile
     // wallets, plus this InstaPay account".

@@ -23,7 +23,7 @@ paymentMethodRoutes.get('/', requirePerm('payment_methods', 'can_view'), async (
     db.from('payment_pools').select(poolColumns).order('pool_name'),
     db.from('payment_pool_merchants').select('id, payment_pool_id, merchant_hierarchy_id, is_active'),
     db.from('merchants_hierarchy').select('id, name, payin_commission_pct'),
-    db.from('master_merchants').select('id, name, code'),
+    db.from('master_merchants').select('id, name, code:mid'),
     db.from('payment_method_countries').select(countryColumns).order('country_code'),
     db.from('payment_method_country_merchants').select(countryMerchantColumns).order('created_at'),
     db.from('wallet_device_map').select('to_account_number, provider, device, merchant').order('to_account_number'),

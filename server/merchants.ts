@@ -17,7 +17,7 @@ const SAFE_COLUMNS =
 merchantRoutes.get('/', requirePerm('merchants', 'can_view'), async (c) => {
   const [merchants, masters, hierarchy] = await Promise.all([
     db.from('merchants').select(SAFE_COLUMNS).order('name'),
-    db.from('master_merchants').select('id, name, code, provider, status, country_code, base_currency'),
+    db.from('master_merchants').select('id, name, code:mid'),
     db.from('merchants_hierarchy').select('id, master_merchant_id, name, mid, active, created_at').order('name'),
   ])
   if (merchants.error) return c.json({ error: 'db_error', detail: merchants.error.message }, 500)
