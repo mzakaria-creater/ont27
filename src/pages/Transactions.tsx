@@ -20,6 +20,8 @@ import { supabase } from '../lib/supabase'
 import { syncProviders } from '../lib/providerSync'
 import { useIsMobile } from '../lib/useIsMobile'
 import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectFilter'
+import { exportCsv, exportXlsx, type ExportColumn } from '../lib/exportTable'
+import { Download } from 'lucide-react'
 
 // All transactions — deposits + payouts merged, sorted by our ref.
 
@@ -141,6 +143,7 @@ export default function Transactions() {
   const [err, setErr] = useState<string | null>(null)
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [actionBusy, setActionBusy] = useState<string | null>(null)
+  const [exportBusy, setExportBusy] = useState(false)
   const [proof, setProof] = useState<{ url: string; ref: string; onApprove?: () => void | Promise<void>; onDecline?: () => void | Promise<void> } | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
 
@@ -269,6 +272,59 @@ export default function Transactions() {
   }
 
   const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1
+
+  const EXPORT_COLUMNS: ExportColumn<TxRow>[] = [
+    { header: 'Ref', key: 'ref', value: (r) => r.ontarget_ref ?? (r.kind === 'deposit' ? r.tx_id : r.maven_id) ?? '' },
+    { header: 'Type', key: 'type', value: (r) => r.kind === 'deposit' ? 'Deposit' : 'Payout' },
+    { header: 'Status', key: 'status', value: (r) => r.status },
+    { header: 'Amount', key: 'amount', value: (r) => r.amount ?? '', numFmt: '#,##0.00' },
+    { header: 'Currency', key: 'currency', value: (r) => r.currency ?? 'EGP' },
+    { header: 'Party', key: 'party', value: (r) => (r.kind === 'deposit' ? (r.sender_name ?? r.sender_number) : (r.account_name ?? r.mobile_no)) ?? '' },
+    { header: 'Party phone', key: 'phone', value: (r) => (r.kind === 'deposit' ? r.sender_number : r.mobile_no) ?? '' },
+    { header: 'Sender account name', key: 'sender_account_name', value: (r) => r.sender_account_name ?? '' },
+    { header: 'Sender account number', key: 'sender_account_number', value: (r) => r.sender_account_number ?? '' },
+    { header: 'Wallet', key: 'wallet', value: (r) => (r.kind === 'deposit' ? (r.to_account_number ?? r.receiving_wallet) : null) ?? '' },
+    { header: 'Merchant', key: 'merchant', value: (r) => r.merchant ?? r.master_merchant ?? '' },
+    { header: 'Gateway', key: 'gateway', value: (r) => r.gateway ?? '' },
+    { header: 'Approved by', key: 'approved_by', value: (r) => r.status === 'PENDING' ? '' : (isAutomaticApprovalActor(r.approved_by) ? 'Auto' : r.approved_by ?? '') },
+    { header: 'Created (UTC)', key: 'created', value: (r) => r.created_utc ?? r.first_seen_at ?? '' },
+  ]
+
+  // Export respects the active filters, not just the current page — fetch
+  // in MAX_PAGE-sized batches up to a sane cap so a huge unfiltered export
+  // doesn't hang the browser or the API.
+  const EXPORT_CAP = 5000
+  const fetchAllForExport = async (): Promise<TxRow[]> => {
+    const batchSize = 500
+    const collected: TxRow[] = []
+    let offset = 0
+    for (;;) {
+      const search = new URLSearchParams({ limit: String(batchSize), offset: String(offset) })
+      if (type) search.set('type', type)
+      if (status) search.set('status', status)
+      if (appliedQ) search.set('q', appliedQ)
+      for (const [key, value] of Object.entries({ from, to, merchant, method, currency, min_amount: minAmount, max_amount: maxAmount })) if (value) search.set(key, value)
+      const page = await api<ListResponse>(`/api/transactions?${search}`)
+      collected.push(...page.rows)
+      offset += batchSize
+      if (page.rows.length < batchSize || collected.length >= EXPORT_CAP || offset >= page.total) break
+    }
+    return collected
+  }
+
+  const runExport = async (format: 'csv' | 'xlsx') => {
+    setExportBusy(true)
+    try {
+      const rows = await fetchAllForExport()
+      if (format === 'csv') exportCsv(rows, EXPORT_COLUMNS, 'transactions')
+      else await exportXlsx(rows, EXPORT_COLUMNS, 'transactions', 'Transactions')
+    } catch {
+      setErr(t('تعذّر تصدير المعاملات.', 'Failed to export transactions.'))
+    } finally {
+      setExportBusy(false)
+    }
+  }
+
   const toggleExpanded = (key: string) => setExpanded((current) => {
     const next = new Set(current)
     if (next.has(key)) next.delete(key); else next.add(key)
@@ -309,9 +365,15 @@ export default function Transactions() {
       <section className="page-head all-transactions-head">
         <div><h2>📋 {t('كل المعاملات', 'All transactions')}</h2>
         <p className="page-sub">{t('إيداعات وسحوبات موحّدة', 'Deposits and payouts unified')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p></div>
-        <div className="view-switch" role="group" aria-label={t('طريقة العرض', 'View mode')}>
-          <button className={view === 'table' ? 'active' : ''} aria-pressed={view === 'table'} onClick={() => setFilter({ view: 'table' })}><TableProperties size={16} />{t('جدول', 'Table')}</button>
-          <button className={view === 'cards' ? 'active' : ''} aria-pressed={view === 'cards'} onClick={() => setFilter({ view: 'cards' })}><LayoutGrid size={16} />{t('بطاقات', 'Cards')}</button>
+        <div className="all-transactions-head-actions">
+          <div className="view-switch" role="group" aria-label={t('طريقة العرض', 'View mode')}>
+            <button className={view === 'table' ? 'active' : ''} aria-pressed={view === 'table'} onClick={() => setFilter({ view: 'table' })}><TableProperties size={16} />{t('جدول', 'Table')}</button>
+            <button className={view === 'cards' ? 'active' : ''} aria-pressed={view === 'cards'} onClick={() => setFilter({ view: 'cards' })}><LayoutGrid size={16} />{t('بطاقات', 'Cards')}</button>
+          </div>
+          <div className="export-actions">
+            <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport('csv')}><Download size={14}/> CSV</button>
+            <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport('xlsx')}><Download size={14}/> {exportBusy ? t('جارٍ التصدير…', 'Exporting…') : 'XLSX'}</button>
+          </div>
         </div>
       </section>
 

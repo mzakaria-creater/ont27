@@ -1378,6 +1378,8 @@ a.stat-card:hover { border-color: var(--accent); }
 .transaction-filter-fields .login-input { width: 100%; min-width: 0; min-height: 36px; }
 .transaction-filter-toolbar .filter-pills, .transaction-filter-toolbar .chip-row, .transaction-filter-toolbar .search-row { flex: 0 0 auto; }
 .all-transactions-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.all-transactions-head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.export-actions { display: flex; align-items: center; gap: 6px; }
 @media (max-width: 760px) {
   .filter-bar { position: static; align-items: stretch; }
   .filter-bar .chip-row, .filter-bar .search-row { width: 100%; justify-content: stretch; }
