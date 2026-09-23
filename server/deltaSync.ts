@@ -471,7 +471,10 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
   // pass scans farther back as a repair net.
   {
     try {
-      const repair = await repairPaidSmsMatches(true, mode === 'full' ? 1000 : 150)
+      // The fast pass must cover enough of the live Maven feed to see a
+      // transaction that arrived just before a burst of SMS rows. 150 rows
+      // routinely left fresh SMS unmatched until the slower full sweep.
+      const repair = await repairPaidSmsMatches(true, mode === 'full' ? 1000 : 500)
       results['sms_exact_matches'] = repair.linked
       results['sms_auto_approved'] = repair.autoApproved
       console.info('exact SMS matcher completed', {
