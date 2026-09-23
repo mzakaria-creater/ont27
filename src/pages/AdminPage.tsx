@@ -9,7 +9,7 @@ import { refreshBrandLogos } from "../lib/brandLogos";
 import UserLogo from "../components/UserLogo";
 import MerchantLogo from "../components/MerchantLogo";
 import MethodLogo from "../components/MethodLogo";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Image, KeyRound, Percent, Shield, ShieldCheck, UserPlus, Users, WalletCards } from "lucide-react";
 import { useIsMobile } from "../lib/useIsMobile";
 
 type Tab =
@@ -307,38 +307,44 @@ export default function AdminPage() {
   );
   return (
     <PanelShell>
-      <section className="page-head">
-        <h2>{t("الإدارة التشغيلية", "Operations administration")}</h2>
-        <p className="page-sub">
-          {t(
-            "إدارة المستخدمين، رسوم التجار، الصلاحيات، السعة ومفاتيح API.",
-            "Manage users, merchant fees, permissions, capacity, and API keys.",
-          )}
-        </p>
-      </section>
-      <div className="filter-bar">
-        <div className="filter-pills">
-          {(
-            [
-              ["users", t("المستخدمون", "Users")],
-              ["merchants", t("تاجر جديد", "New merchant")],
-              ["branding", t("الشعارات", "Logos")],
-              ["permissions", t("الصلاحيات", "Permissions")],
-              ["fees", t("الرسوم", "Fees")],
-              ["capacity", t("سعة المحافظ", "Wallet capacity")],
-              ["keys", t("مفاتيح API", "API keys")],
-            ] as [Tab, string][]
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              className={`pill${tab === id ? " active" : ""}`}
-              onClick={() => navigate(tabPaths[id])}
-            >
-              {label}
-            </button>
-          ))}
+      <section className="admin-head">
+        <span className="admin-head-icon"><ShieldCheck size={26} /></span>
+        <div className="admin-head-text">
+          <span className="admin-head-eyebrow">ONTARGET · OPERATIONS</span>
+          <h2>{t("الإدارة التشغيلية", "Operations administration")}</h2>
+          <p className="page-sub">
+            {t(
+              "إدارة المستخدمين، رسوم التجار، الصلاحيات، السعة ومفاتيح API.",
+              "Manage users, merchant fees, permissions, capacity, and API keys.",
+            )}
+            {data && <> · {data.users.length.toLocaleString('en-US')} {t('مستخدم', 'users')} · {data.merchants.length.toLocaleString('en-US')} {t('تاجر', 'merchants')}</>}
+          </p>
         </div>
-      </div>
+      </section>
+      <nav className="admin-tabs" role="tablist" aria-label={t("أقسام الإدارة", "Administration sections")}>
+        {(
+          [
+            ["users", t("المستخدمون", "Users"), Users],
+            ["merchants", t("تاجر جديد", "New merchant"), UserPlus],
+            ["branding", t("الشعارات", "Logos"), Image],
+            ["permissions", t("الصلاحيات", "Permissions"), Shield],
+            ["fees", t("الرسوم", "Fees"), Percent],
+            ["capacity", t("سعة المحافظ", "Wallet capacity"), WalletCards],
+            ["keys", t("مفاتيح API", "API keys"), KeyRound],
+          ] as [Tab, string, typeof Users][]
+        ).map(([id, label, Icon]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            className={tab === id ? "active" : ""}
+            onClick={() => navigate(tabPaths[id])}
+          >
+            <Icon size={14} /> {label}
+          </button>
+        ))}
+      </nav>
       {err && <div className="card warn">{err}</div>}
       {!data && !err && (
         <p className="sidebar-hint">{t("جار التحميل…", "Loading…")}</p>

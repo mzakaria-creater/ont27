@@ -1357,6 +1357,21 @@ a.stat-card:hover { border-color: var(--accent); }
    title+subtitle on one side, buttons on the other, wrapping on mobile. */
 .page-head.with-actions { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .page-head.with-actions .export-actions { flex: 0 0 auto; }
+
+/* ---- Admin page redesign (2026-09-23) ---- */
+.admin-head { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; padding: 20px 22px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border)); border-radius: 18px; background: radial-gradient(circle at 8% 0, color-mix(in srgb, var(--accent) 12%, transparent), transparent 45%), var(--surface); }
+.admin-head-icon { display: grid; place-items: center; flex: 0 0 auto; width: 52px; height: 52px; border-radius: 16px; background: linear-gradient(135deg, var(--brand-purple), var(--brand-blue)); color: #fff; box-shadow: 0 8px 20px color-mix(in srgb, var(--brand-purple) 35%, transparent); }
+.admin-head-text { min-width: 0; }
+.admin-head-eyebrow { display: block; color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .14em; margin-bottom: 3px; }
+.admin-head h2 { margin: 0 0 4px; font-size: clamp(20px, 2.4vw, 26px); }
+.admin-head .page-sub { margin: 0; }
+.admin-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 16px; padding: 5px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); width: fit-content; max-width: 100%; }
+.admin-tabs button { display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 999px; padding: 9px 16px; color: var(--text-dim); background: transparent; font: 700 12px inherit; cursor: pointer; transition: transform .1s var(--ease), color .15s var(--ease), background-color .15s var(--ease); white-space: nowrap; }
+.admin-tabs button:hover:not(.active) { color: var(--text); background: var(--hover-2); }
+.admin-tabs button.active { color: #fff; background: linear-gradient(135deg, var(--brand-purple), var(--brand-blue)); box-shadow: 0 4px 14px color-mix(in srgb, var(--brand-purple) 35%, transparent); }
+.admin-tabs button:active:not(.active) { transform: scale(.96); }
+.admin-tabs button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+@media (max-width: 720px) { .admin-tabs { width: 100%; border-radius: 16px; } .admin-tabs button { flex: 1 1 auto; justify-content: center; } .admin-head { flex-wrap: wrap; } }
 .page-sub { margin: 0; color: var(--text-dim); font-size: 13px; }
 
 .filter-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-block-end: 12px; }
