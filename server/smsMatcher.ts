@@ -19,7 +19,11 @@ const embeddedPhone = (value: unknown) => {
   return match?.[0] ?? ''
 }
 const NETWORK_SOURCE_RE = /orange\s*cash|orange\s*money|اورنچ\s*كاش|اورنج\s*كاش|vodafone\s*cash|vf[- ]?cash|فودافون\s*كاش|alex\s*bank|alexbank|بنك\s*الاسكندرية|insta\s*pay|instapay|انستا\s*باي|انستاباي/i
-const isNetworkProviderSms = (sms: SmsRow) => NETWORK_SOURCE_RE.test(`${sms.sms_sender ?? ''} ${sms.provider ?? ''} ${sms.raw_sms ?? ''} ${sms.message ?? ''}`)
+const PHONE_SENDER_HEADER_RE = /^\s*from\s*:\s*\+?\d[\d\s-]{7,}/im
+const isNetworkProviderSms = (sms: SmsRow) => {
+  const text = `${sms.sms_sender ?? ''} ${sms.provider ?? ''} ${sms.raw_sms ?? ''} ${sms.message ?? ''}`
+  return !PHONE_SENDER_HEADER_RE.test(text) && NETWORK_SOURCE_RE.test(text)
+}
 const receivingWallet = (sms: SmsRow) => sms.confirmed_wallet_number ?? sms.wallet_number ?? sms.receiver_number
 const nameKey = (value: unknown) => String(value ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter((part) => part.length > 1).join(' ')
 const sameName = (left: unknown, right: unknown) => { const a = nameKey(left); const b = nameKey(right); return Boolean(a && b && (a === b || a.includes(b) || b.includes(a))) }

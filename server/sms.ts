@@ -94,7 +94,11 @@ const nameKey = (value: unknown) => String(value ?? '').toLowerCase().replace(/[
 const phoneKey = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
 const sameName = (left: unknown, right: unknown) => { const a = nameKey(left); const b = nameKey(right); return Boolean(a && b && (a === b || a.includes(b) || b.includes(a))) }
 const NETWORK_SOURCE_RE = /orange\s*cash|orange\s*money|اورنچ\s*كاش|اورنج\s*كاش|vodafone\s*cash|vf[- ]?cash|فودافون\s*كاش|alex\s*bank|alexbank|بنك\s*الاسكندرية|insta\s*pay|instapay|انستا\s*باي|انستاباي/i
-const isNetworkProviderSms = (sms: QueueSms) => NETWORK_SOURCE_RE.test(`${sms.provider ?? ''} ${sms.message ?? ''} ${sms.raw_sms ?? ''}`)
+const PHONE_SENDER_HEADER_RE = /^\s*from\s*:\s*\+?\d[\d\s-]{7,}/im
+const isNetworkProviderSms = (sms: QueueSms) => {
+  const text = `${sms.provider ?? ''} ${sms.message ?? ''} ${sms.raw_sms ?? ''}`
+  return !PHONE_SENDER_HEADER_RE.test(text) && NETWORK_SOURCE_RE.test(text)
+}
 const queueTime = (value: unknown) => { const parsed = Date.parse(String(value ?? '')); return Number.isFinite(parsed) ? parsed : null }
 function cairoDayKey(value: unknown): string | null {
   const at = queueTime(value)
