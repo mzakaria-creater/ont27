@@ -4037,7 +4037,14 @@ html, body { overflow-x: hidden; overflow-y: auto; }
 @media (max-width:1050px){.mindmap-flow-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.mindmap-step{display:block}.mindmap-connector{display:grid;place-items:center;height:25px}.redteam-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:1050px){.mindmap-live-kpis,.mindmap-status-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:680px){.mindmap-head,.redteam-head,.redteam-toolbar{display:grid}.mindmap-head-actions{justify-content:space-between}.mindmap-flow{padding:13px}.mindmap-flow-grid,.mindmap-principles{grid-template-columns:1fr}.mindmap-node{min-height:0}.mindmap-live-kpis,.mindmap-status-grid{grid-template-columns:1fr 1fr}.mindmap-summary-head{display:grid}.redteam-kpis{grid-template-columns:1fr 1fr}.redteam-toolbar .risk-search{min-width:0}.redteam-table{min-width:760px}}
-.link-routing-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border, #e5e7eb); }
+.link-routing-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+/* Payment-link creation form (round 1, 2026-09-24): grouped into
+   numbered sections instead of one flat 11-field grid, so the create
+   flow reads as a clear step-by-step process instead of a wall of
+   inputs. */
+.link-form-section + .link-form-section { margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--border); }
+.link-form-section-head { display: flex; align-items: center; gap: 7px; margin: 0 0 10px; color: var(--accent); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.link-form-section-head-routing { margin: 18px 0 10px; padding-top: 18px; border-top: 1px dashed var(--border); }
 .settlement-proof-form { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 9px; padding: 12px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); }
 .settlement-proof-form .proof-notes-input { grid-column: span 2; }
 @media (max-width: 900px) { .settlement-proof-form { grid-template-columns: repeat(2, minmax(0, 1fr)); } .settlement-proof-form .proof-notes-input { grid-column: auto; } }

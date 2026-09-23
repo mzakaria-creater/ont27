@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { BarChart3, Copy, ExternalLink, Link2, Plus, RefreshCw, Search, ShieldCheck, Route, WalletCards } from 'lucide-react'
+import { BarChart3, Coins, Copy, ExternalLink, Info, Link2, Plus, RefreshCw, Search, ShieldCheck, Route, Timer, WalletCards } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
 import { useLocale } from '../lib/locale'
@@ -206,44 +206,58 @@ export default function LinkGenerator() {
         <section className="payment-link-builder">
         <form className="card link-form payment-link-form" onSubmit={create}>
           <div className="recent-head"><div><h3><Plus size={18}/>{t('إنشاء رابط جديد','Create a new link')}</h3><span className="cell-sub">{t('حدد قواعد التحصيل قبل النشر','Set collection rules before publishing')}</span></div></div>
-          <div className="grid-3">
-            <label className="field"><span>{t('العنوان', 'Title')}</span>
-              <input value={form.title} onChange={set('title')} placeholder={t('مثال: إيداع عميل VIP', 'e.g. VIP client deposit')} /></label>
-            <label className="field"><span>{t('التاجر', 'Merchant')}</span>
-              <select value={form.merchant_id} onChange={set('merchant_id')}>
-                <option value="">{t('— بدون تاجر —', '— no merchant —')}</option>
-                {merchants.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select></label>
-            <label className="field"><span>{t('اسم العميل/البراند', 'Client / brand name')}</span><input value={form.client_name} onChange={set('client_name')} placeholder="Hf Markets / HFM" /></label>
-            <label className="field"><span>{t('مرجع العميل', 'Client reference')}</span><input value={form.client_reference} onChange={set('client_reference')} placeholder="HFM-CLIENT-001" /></label>
-            <label className="field"><span>{t('نوع المبلغ', 'Amount type')}</span>
-              <select value={form.amount_mode} onChange={set('amount_mode')}>
-                <option value="open">{t('مفتوح', 'Open')}</option>
-                <option value="fixed">{t('ثابت', 'Fixed')}</option>
-              </select></label>
-            <label className="field"><span>{t('العملة', 'Currency')}</span>
-              <select value={form.currency} onChange={set('currency')}>
-                <option value="EGP">EGP</option>
-                <option value="USD">{t('USD — يُحوَّل للعميل إلى EGP بسعر اليوم', 'USD — converted to EGP for the customer at today’s rate')}</option>
-              </select></label>
-            {form.amount_mode === 'fixed' ? (
-              <label className="field"><span>{t('المبلغ', 'Amount')} ({form.currency})</span>
-                <input dir="ltr" inputMode="decimal" value={form.amount} onChange={set('amount')} required /></label>
-            ) : (
-              <>
-                <label className="field"><span>{t('حد أدنى', 'Min')} ({form.currency})</span>
-                  <input dir="ltr" inputMode="decimal" value={form.min_amount} onChange={set('min_amount')} /></label>
-                <label className="field"><span>{t('حد أقصى', 'Max')} ({form.currency})</span>
-                  <input dir="ltr" inputMode="decimal" value={form.max_amount} onChange={set('max_amount')} /></label>
-              </>
-            )}
-            <label className="field"><span>{t('تاريخ الانتهاء', 'Expiry')}</span>
-              <input type="datetime-local" dir="ltr" value={form.expires_at} onChange={set('expires_at')} /></label>
-            <label className="field"><span>{t('حد الاستخدامات', 'Usage limit')}</span>
-              <input dir="ltr" inputMode="numeric" value={form.max_uses} onChange={set('max_uses')} /></label>
-            <label className="field"><span>{t('رابط الرجوع للتاجر', 'Merchant return URL')}</span><input dir="ltr" type="url" value={form.return_url} onChange={set('return_url')} placeholder="https://merchant.example/success" /></label>
-            <label className="login-remember"><input type="checkbox" checked={form.require_name} onChange={(e) => setForm((f) => ({ ...f, require_name: e.target.checked }))} />{t('إلزام العميل بإدخال الاسم عند الدفع', "Require the customer's name at checkout")}</label>
+          <div className="link-form-section">
+            <h4 className="link-form-section-head"><Info size={14}/> {t('١ · بيانات الرابط', '1 · Link details')}</h4>
+            <div className="grid-3">
+              <label className="field"><span>{t('العنوان', 'Title')}</span>
+                <input value={form.title} onChange={set('title')} placeholder={t('مثال: إيداع عميل VIP', 'e.g. VIP client deposit')} /></label>
+              <label className="field"><span>{t('التاجر', 'Merchant')}</span>
+                <select value={form.merchant_id} onChange={set('merchant_id')}>
+                  <option value="">{t('— بدون تاجر —', '— no merchant —')}</option>
+                  {merchants.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select></label>
+              <label className="field"><span>{t('اسم العميل/البراند', 'Client / brand name')}</span><input value={form.client_name} onChange={set('client_name')} placeholder="Hf Markets / HFM" /></label>
+              <label className="field"><span>{t('مرجع العميل', 'Client reference')}</span><input value={form.client_reference} onChange={set('client_reference')} placeholder="HFM-CLIENT-001" /></label>
+            </div>
           </div>
+          <div className="link-form-section">
+            <h4 className="link-form-section-head"><Coins size={14}/> {t('٢ · المبلغ والعملة', '2 · Amount & currency')}</h4>
+            <div className="grid-3">
+              <label className="field"><span>{t('نوع المبلغ', 'Amount type')}</span>
+                <select value={form.amount_mode} onChange={set('amount_mode')}>
+                  <option value="open">{t('مفتوح', 'Open')}</option>
+                  <option value="fixed">{t('ثابت', 'Fixed')}</option>
+                </select></label>
+              <label className="field"><span>{t('العملة', 'Currency')}</span>
+                <select value={form.currency} onChange={set('currency')}>
+                  <option value="EGP">EGP</option>
+                  <option value="USD">{t('USD — يُحوَّل للعميل إلى EGP بسعر اليوم', 'USD — converted to EGP for the customer at today’s rate')}</option>
+                </select></label>
+              {form.amount_mode === 'fixed' ? (
+                <label className="field"><span>{t('المبلغ', 'Amount')} ({form.currency})</span>
+                  <input dir="ltr" inputMode="decimal" value={form.amount} onChange={set('amount')} required /></label>
+              ) : (
+                <>
+                  <label className="field"><span>{t('حد أدنى', 'Min')} ({form.currency})</span>
+                    <input dir="ltr" inputMode="decimal" value={form.min_amount} onChange={set('min_amount')} /></label>
+                  <label className="field"><span>{t('حد أقصى', 'Max')} ({form.currency})</span>
+                    <input dir="ltr" inputMode="decimal" value={form.max_amount} onChange={set('max_amount')} /></label>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="link-form-section">
+            <h4 className="link-form-section-head"><Timer size={14}/> {t('٣ · الحدود والصلاحية', '3 · Limits & expiry')}</h4>
+            <div className="grid-3">
+              <label className="field"><span>{t('تاريخ الانتهاء', 'Expiry')}</span>
+                <input type="datetime-local" dir="ltr" value={form.expires_at} onChange={set('expires_at')} /></label>
+              <label className="field"><span>{t('حد الاستخدامات', 'Usage limit')}</span>
+                <input dir="ltr" inputMode="numeric" value={form.max_uses} onChange={set('max_uses')} /></label>
+              <label className="field"><span>{t('رابط الرجوع للتاجر', 'Merchant return URL')}</span><input dir="ltr" type="url" value={form.return_url} onChange={set('return_url')} placeholder="https://merchant.example/success" /></label>
+              <label className="login-remember"><input type="checkbox" checked={form.require_name} onChange={(e) => setForm((f) => ({ ...f, require_name: e.target.checked }))} />{t('إلزام العميل بإدخال الاسم عند الدفع', "Require the customer's name at checkout")}</label>
+            </div>
+          </div>
+          <h4 className="link-form-section-head link-form-section-head-routing"><Route size={14}/> {t('٤ · التوجيه', '4 · Routing')}</h4>
           <div className="link-routing-grid">
             <label className="field"><span><Route size={14}/> {t('طرق الدفع المسموحة', 'Allowed payment methods')}</span>
               <select multiple value={form.payment_method_codes} onChange={(e) => setForm((f) => ({ ...f, payment_method_codes: Array.from(e.target.selectedOptions, (option) => option.value) }))}>
@@ -257,7 +271,7 @@ export default function LinkGenerator() {
             {form.allocation_mode === 'multi_wallet' && <label className="field"><span>{t('يبدأ multi-wallet من', 'Multi-wallet threshold')}</span><input dir="ltr" inputMode="decimal" value={form.multi_wallet_threshold} onChange={set('multi_wallet_threshold')} /><small>EGP</small></label>}
           </div>
           <div className="field link-account-picker">
-            <span><WalletCards size={14}/> {t('حسابات استقبال محددة (اختياري)', 'Specific receiving accounts (optional)')}</span>
+            <span><WalletCards size={14}/> {t('٥ · حسابات استقبال محددة (اختياري)', '5 · Specific receiving accounts (optional)')}</span>
             <small>{t('اترك فارغاً للتوزيع حسب الطرق أعلاه. حدد حسابات معينة لتقييد هذا الرابط عليها فقط — مثال: 5 محافظ موبايل محددة + حساب InstaPay.', 'Leave empty to route by the methods above. Pick specific accounts to pin this link to exactly those — e.g. 5 chosen mobile wallets + one InstaPay account.')}</small>
             {accounts.length === 0 && <p className="sidebar-hint">{t('لا توجد حسابات دفع نشطة بعد.', 'No active payment accounts yet.')}</p>}
             <div className="link-account-list">
