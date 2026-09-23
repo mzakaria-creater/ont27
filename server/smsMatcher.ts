@@ -105,7 +105,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
     for (const row of consumed.data ?? []) assignedTx.add(Number(row.consumed_by_tx_id))
   }
 
-  const proposals: { sms: SmsRow; tx: TxRow; secDiff: number | null }[] = []
+  const proposals: { sms: SmsRow; tx: TxRow; secDiff: number | null; requiresReview: boolean }[] = []
   let skippedAmbiguous = 0
   let skippedAlreadyAssigned = 0
   const diagnostics = { noAmountCandidate: 0, noUsableTime: 0, outsideTenMinutes: 0, missingSenderName: 0, senderNameMismatch: 0, ambiguousFallback: 0, ownWalletSender: 0 }
@@ -117,7 +117,6 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
     const smsRawPhone = String(sms.sender_number || embeddedPhone(sms.sender_name)).replace(/\D/g, '')
     const smsPhone = phone(smsRawPhone)
     const smsWallet = phone(receivingWallet(sms))
-    if (!smsWallet) { diagnostics.noUsableTime++; continue }
     const byAmount = txRows.filter((tx) => cents(tx.amount) === cents(sms.amount))
     if (!byAmount.length) { diagnostics.noAmountCandidate++; continue }
     const byEvidence = byAmount.filter((tx) => {
@@ -129,10 +128,10 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
       // Orange Cash commonly omits the sender phone. In that case the safe
       // identity path is name + amount + wallet + time + balance continuity.
       if (!smsPhone && (!orange || !sameName(sms.sender_name, tx.sender_name) || !hasBalanceContinuity(sms, (balanceHistory ?? []) as SmsRow[]))) return false
-      // A rotated/legacy wallet may differ between the SMS and Maven row. It
-      // is only safe to bridge that history when the sender phone is known and
-      // exact on both sides; amount+time alone must never bridge wallets.
-      if (!walletMatch && (!smsPhone || !phone(tx.sender_number) || phone(tx.sender_number) !== smsPhone)) return false
+      // Instant approval requires the wallet to match as well as the sender.
+      // A rotated/legacy wallet is handled by the review-only fallback below;
+      // it must never reach the provider trigger as an instant decision.
+      if (!walletMatch) return false
       // Orange Cash sender identities are 012-based when a number is present.
       if (method.includes('orange') && smsPhone && !/^012/.test(smsRawPhone)) return false
       if (!tx.first_seen_at || !sms.received_at) return false
@@ -140,11 +139,37 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
       const maxDelta = txByRef.has(ref(sms.trx_id)) ? MAX_TIME_DIFF_MS : FALLBACK_TIME_DIFF_MS
       return Number.isFinite(delta) && delta <= maxDelta
     })
+    // Wallet rotations and provider rows that lag one assignment behind are
+    // common. When the strict wallet/name path cannot prove a strong match,
+    // retain a unique amount+time+balance candidate for human review. This
+    // prevents the SMS from disappearing while deliberately avoiding any
+    // instant provider decision. A known sender mismatch is still a hard stop.
+    const byReviewEvidence = byAmount.filter((tx) => {
+      const txPhone = phone(tx.sender_number)
+      if (smsPhone && txPhone && smsPhone !== txPhone) return false
+      if (smsPhone && txPhone && !smsWallet) return false
+      if (!tx.first_seen_at || !sms.received_at) return false
+      const delta = Math.abs(Date.parse(tx.first_seen_at) - Date.parse(sms.received_at))
+      const maxDelta = txByRef.has(ref(sms.trx_id)) ? MAX_TIME_DIFF_MS : FALLBACK_TIME_DIFF_MS
+      if (!Number.isFinite(delta) || delta > maxDelta) return false
+      const txWallet = phone(tx.receiving_wallet ?? tx.to_account_number)
+      const walletMatch = Boolean(txWallet && smsWallet && txWallet === smsWallet)
+      if (walletMatch) return true
+      // Without a wallet match, balance continuity is the minimum evidence
+      // needed to distinguish a real deposit from a same-amount coincidence.
+      return hasBalanceContinuity(sms, (balanceHistory ?? []) as SmsRow[])
+    })
     // Prefer an explicit bank reference only when the wallet/phone evidence
     // still agrees. Otherwise the same strict wallet+amount+time rule applies.
     const referenced = new Set((txByRef.get(ref(sms.trx_id)) ?? []).map((tx) => tx.tx_id))
+    let requiresReview = false
     let candidates = byEvidence.filter((tx) => referenced.size === 0 || referenced.has(tx.tx_id))
     if (referenced.size > 0 && candidates.length === 0) candidates = byEvidence
+    if (candidates.length === 0) {
+      candidates = byReviewEvidence.filter((tx) => referenced.size === 0 || referenced.has(tx.tx_id))
+      if (referenced.size > 0 && candidates.length === 0) candidates = byReviewEvidence
+      requiresReview = candidates.length > 0
+    }
     if (!candidates.length) {
       if (!sms.received_at || !Number.isFinite(Date.parse(sms.received_at))) diagnostics.noUsableTime++
       else diagnostics.outsideTenMinutes++
@@ -153,7 +178,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
     if (assignedTx.has(candidates[0].tx_id)) { skippedAlreadyAssigned++; continue }
     const tx = candidates[0]
     const secDiff = sms.received_at && tx.first_seen_at ? Math.round(Math.abs(Date.parse(sms.received_at) - Date.parse(tx.first_seen_at)) / 1000) : null
-    proposals.push({ sms, tx, secDiff })
+    proposals.push({ sms, tx, secDiff, requiresReview })
   }
 
   // A transaction may still be proposed by duplicate SMS rows. Keep none of
@@ -174,15 +199,15 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
   }
   if (apply) {
     for (let i = 0; i < unique.length; i += 10) {
-      await Promise.all(unique.slice(i, i + 10).map(async ({ sms, tx, secDiff }) => {
+      await Promise.all(unique.slice(i, i + 10).map(async ({ sms, tx, secDiff, requiresReview }) => {
         const now = new Date().toISOString()
         const { data: claimed, error: claimError } = await db.from('inbound_sms').update({
           matched: true,
-          match_status: 'auto',
+          match_status: requiresReview ? 'auto_review' : 'auto',
           matched_transaction_id: tx.tx_id,
           maven_transaction_id: String(tx.tx_id),
           consumed_by_tx_id: tx.tx_id,
-          review_required: false,
+          review_required: requiresReview,
           processed_at: now,
         }).eq('id', sms.id).is('consumed_by_tx_id', null).select('id')
         if (claimError || !claimed?.length) { errors.push(`sms ${sms.id}: ${claimError?.message ?? 'already claimed'}`); return }
@@ -191,9 +216,9 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
           db.from('sms_maven_matches').upsert({
             sms_id: sms.id, tx_id: tx.tx_id, receiving_wallet: receivingWallet(sms),
             sms_amount: sms.amount, mv_amount: tx.amount, received_at: sms.received_at,
-            mv_time: tx.first_seen_at, sec_diff: secDiff, webhook_name: 'trx_exact_auto_match', matched_at: now,
+            mv_time: tx.first_seen_at, sec_diff: secDiff, webhook_name: requiresReview ? 'trx_unique_review_match' : 'trx_exact_auto_match', matched_at: now,
           }, { onConflict: 'sms_id' }),
-          receivingWallet(sms) ? db.from('maven_transactions').update({ receiving_wallet: receivingWallet(sms) }).eq('tx_id', tx.tx_id) : Promise.resolve({ error: null }),
+          !requiresReview && receivingWallet(sms) ? db.from('maven_transactions').update({ receiving_wallet: receivingWallet(sms) }).eq('tx_id', tx.tx_id) : Promise.resolve({ error: null }),
         ])
         if (match.error) errors.push(`match ${sms.id}/${tx.tx_id}: ${match.error.message}`)
         if (wallet.error) errors.push(`wallet tx ${tx.tx_id}: ${wallet.error.message}`)
@@ -206,7 +231,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
           // gateways remain linked for manual handling because this worker
           // must never mark a provider transaction paid without confirmation.
           const gateway = String(tx.gateway ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase()
-          if (automationEnabled && !isWalidCompanyMethod(tx.payment_method) && tx.status === 'PENDING' && (gateway === 'nagupayp2p' || gateway === 'nagopay')) {
+          if (!requiresReview && automationEnabled && !isWalidCompanyMethod(tx.payment_method) && tx.status === 'PENDING' && (gateway === 'nagupayp2p' || gateway === 'nagopay')) {
             const baseUrl = process.env.SUPABASE_URL
             const serviceKey = process.env.SUPABASE_SECRET_KEY
             if (!baseUrl || !serviceKey) { errors.push(`auto approve ${tx.tx_id}: worker_not_configured`); return }
