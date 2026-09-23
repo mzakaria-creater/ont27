@@ -26,6 +26,12 @@ const isNetworkProviderSms = (sms: SmsRow) => {
   return !PHONE_SENDER_HEADER_RE.test(text) && NETWORK_SOURCE_RE.test(text)
 }
 const receivingWallet = (sms: SmsRow) => sms.confirmed_wallet_number ?? sms.wallet_number ?? sms.receiver_number
+// Maven keeps the originally allocated/observed wallet in receiving_wallet,
+// while to_account_number is the current wallet on the transaction. A missing
+// current wallet is unknown, not permission to treat the historical value as
+// strong evidence; that path is review-only below.
+const transactionWallet = (tx: TxRow) => tx.to_account_number
+const historicalTransactionWallet = (tx: TxRow) => tx.receiving_wallet
 const nameKey = (value: unknown) => String(value ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter((part) => part.length > 1).join(' ')
 const sameName = (left: unknown, right: unknown) => { const a = nameKey(left); const b = nameKey(right); return Boolean(a && b && (a === b || a.includes(b) || b.includes(a))) }
 function hasBalanceContinuity(sms: SmsRow, history: SmsRow[]) {
@@ -122,7 +128,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
     const byAmount = txRows.filter((tx) => cents(tx.amount) === cents(sms.amount))
     if (!byAmount.length) { diagnostics.noAmountCandidate++; continue }
     const byEvidence = byAmount.filter((tx) => {
-      const txWallet = phone(tx.receiving_wallet ?? tx.to_account_number)
+      const txWallet = phone(transactionWallet(tx))
       const walletMatch = Boolean(txWallet && smsWallet && txWallet === smsWallet)
       if (smsPhone && phone(tx.sender_number) && phone(tx.sender_number) !== smsPhone) return false
       const method = String(tx.payment_method ?? '').toLowerCase()
@@ -149,17 +155,19 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
     const byReviewEvidence = byAmount.filter((tx) => {
       const txPhone = phone(tx.sender_number)
       if (smsPhone && txPhone && smsPhone !== txPhone) return false
-      const txWallet = phone(tx.receiving_wallet ?? tx.to_account_number)
+      const txWallet = phone(transactionWallet(tx))
+      const historicalWallet = phone(historicalTransactionWallet(tx))
       const walletMatch = Boolean(txWallet && smsWallet && txWallet === smsWallet)
+      const historicalWalletMatch = Boolean(historicalWallet && smsWallet && historicalWallet === smsWallet)
       // The database SMS-link trigger can approve when both sender numbers
       // match. Do not let a wallet-rotation fallback reach that trigger.
-      if (smsPhone && txPhone && !walletMatch && tx.status !== 'DECLINED') return false
+      if (smsPhone && txPhone && !walletMatch && !historicalWalletMatch && tx.status !== 'DECLINED') return false
       if (smsPhone && txPhone && !smsWallet) return false
       if (!tx.first_seen_at || !sms.received_at) return false
       const delta = Math.abs(Date.parse(tx.first_seen_at) - Date.parse(sms.received_at))
       const maxDelta = txByRef.has(ref(sms.trx_id)) ? MAX_TIME_DIFF_MS : FALLBACK_TIME_DIFF_MS
       if (!Number.isFinite(delta) || delta > maxDelta) return false
-      if (walletMatch) return true
+      if (walletMatch || historicalWalletMatch) return true
       // Without a wallet match, balance continuity is the minimum evidence
       // needed to distinguish a real deposit from a same-amount coincidence.
       return hasBalanceContinuity(sms, (balanceHistory ?? []) as SmsRow[])
@@ -217,16 +225,12 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
         }).eq('id', sms.id).is('consumed_by_tx_id', null).select('id')
         if (claimError || !claimed?.length) { errors.push(`sms ${sms.id}: ${claimError?.message ?? 'already claimed'}`); return }
 
-        const [match, wallet] = await Promise.all([
-          db.from('sms_maven_matches').upsert({
-            sms_id: sms.id, tx_id: tx.tx_id, receiving_wallet: receivingWallet(sms),
-            sms_amount: sms.amount, mv_amount: tx.amount, received_at: sms.received_at,
-            mv_time: tx.first_seen_at, sec_diff: secDiff, webhook_name: requiresReview ? 'trx_unique_review_match' : 'trx_exact_auto_match', matched_at: now,
-          }, { onConflict: 'sms_id' }),
-          !requiresReview && receivingWallet(sms) ? db.from('maven_transactions').update({ receiving_wallet: receivingWallet(sms) }).eq('tx_id', tx.tx_id) : Promise.resolve({ error: null }),
-        ])
+        const match = await db.from('sms_maven_matches').upsert({
+          sms_id: sms.id, tx_id: tx.tx_id, receiving_wallet: receivingWallet(sms),
+          sms_amount: sms.amount, mv_amount: tx.amount, received_at: sms.received_at,
+          mv_time: tx.first_seen_at, sec_diff: secDiff, webhook_name: requiresReview ? 'trx_unique_review_match' : 'trx_exact_auto_match', matched_at: now,
+        }, { onConflict: 'sms_id' })
         if (match.error) errors.push(`match ${sms.id}/${tx.tx_id}: ${match.error.message}`)
-        if (wallet.error) errors.push(`wallet tx ${tx.tx_id}: ${wallet.error.message}`)
         if (!match.error) {
           linked++
 

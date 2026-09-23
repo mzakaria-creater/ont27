@@ -130,7 +130,9 @@ function queueCandidates(sms: QueueSms, transactions: QueueTx[], balanceHistory:
   const smsPhone = phoneKey(sms.sender_number)
   const orange = /orange/i.test(`${sms.provider ?? ''} ${sms.message ?? ''} ${sms.raw_sms ?? ''}`)
   return transactions.filter((tx) => {
-    if (cents(tx.amount) !== cents(sms.amount) || !smsWallet || phoneKey(tx.receiving_wallet ?? tx.to_account_number) !== smsWallet) return false
+    // Match against Maven's current wallet first. A historical receiving_wallet
+    // match is review-only and must not be presented as an auto-link candidate.
+    if (cents(tx.amount) !== cents(sms.amount) || !smsWallet || phoneKey(tx.to_account_number ?? tx.receiving_wallet) !== smsWallet) return false
     const txAt = queueTime(tx.first_seen_at)
     if (smsAt == null || txAt == null || Math.abs(smsAt - txAt) > 10 * 60_000) return false
     if (smsPhone) return !phoneKey(tx.sender_number) || phoneKey(tx.sender_number) === smsPhone
@@ -298,7 +300,7 @@ async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> 
     r.matched_sub_merchant = tx?.sub_merchant ?? null
     r.matched_master_merchant = tx?.master_merchant ?? null
     r.matched_gateway = tx?.gateway ?? null
-    r.matched_receiving_wallet = tx?.receiving_wallet ?? tx?.to_account_number ?? null
+    r.matched_receiving_wallet = tx?.to_account_number ?? tx?.receiving_wallet ?? null
     const smsWallet = String(r.confirmed_wallet_number ?? r.wallet_number ?? r.receiver_number ?? '').replace(/\D/g, '').slice(-11)
     const txWallet = String(r.matched_receiving_wallet ?? '').replace(/\D/g, '').slice(-11)
     r.wallet_match = Boolean(smsWallet && txWallet && smsWallet === txWallet)
@@ -607,7 +609,7 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
 
   const [{ data: sms, error: smsErr }, { data: tx, error: txErr }, { data: existingTxLinks, error: linkErr }] = await Promise.all([
     db.from('inbound_sms').select('id, matched, match_status, sms_category, amount, received_at, receiver_number, wallet_number, confirmed_wallet_number, sender_name, sender_number, consumed_by_tx_id, matched_transaction_id, maven_transaction_id, is_blocked, assignment_unlocked_at, assignment_unlocked_by').eq('id', id).maybeSingle(),
-    db.from('maven_transactions').select('tx_id, amount, status, gateway, sender_number, payment_method, first_seen_at, ontarget_ref').eq('tx_id', txId).maybeSingle(),
+    db.from('maven_transactions').select('tx_id, amount, status, gateway, sender_number, to_account_number, payment_method, first_seen_at, ontarget_ref').eq('tx_id', txId).maybeSingle(),
     db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').or(`consumed_by_tx_id.eq.${txId},matched_transaction_id.eq.${txId},maven_transaction_id.eq.${txId}`).limit(2),
   ])
   if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
@@ -676,17 +678,14 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
   if (updErr) return c.json({ error: 'db_error', detail: updErr.message }, 500)
   if (!claimedSms) return c.json({ error: 'already_linked' }, 409)
 
-  // A matched SMS is the authoritative evidence of the wallet that received
-  // the funds.  Do not overwrite to_account_number: it records the original
-  // checkout allocation and is useful for diagnosing a mismatch.
+  // Keep the SMS wallet in sms_maven_matches as evidence. Never overwrite
+  // Maven's receiving_wallet/to_account_number with a parsed SMS number: the
+  // latter can belong to a rotated device/SIM and is not the transaction's
+  // current wallet.
   const receivingWallet = sms.confirmed_wallet_number ?? sms.wallet_number ?? sms.receiver_number
-  if (receivingWallet) {
-    const { error: walletError } = await db
-      .from('maven_transactions')
-      .update({ receiving_wallet: receivingWallet })
-      .eq('tx_id', txId)
-    if (walletError) return c.json({ error: 'db_error', detail: walletError.message }, 500)
-  }
+  const normalizePhone = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
+  const senderConfirmed = Boolean(normalizePhone(sms.sender_number) && normalizePhone(tx.sender_number) && normalizePhone(sms.sender_number) === normalizePhone(tx.sender_number))
+  const walletConfirmed = Boolean(normalizePhone(receivingWallet) && normalizePhone(tx.to_account_number) && normalizePhone(receivingWallet) === normalizePhone(tx.to_account_number))
 
   const secDiff =
     sms.received_at && tx.first_seen_at
@@ -742,7 +741,7 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
     ? { attempted: false, skipped: 'amount_mismatch' }
     : { attempted: false }
   const gateway = String(tx.gateway ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase()
-  if (!amountMismatch && !isWalidCompanyMethod(tx.payment_method) && tx.status === 'PENDING' && (gateway === 'nagupayp2p' || gateway === 'nagopay')) {
+  if (!amountMismatch && senderConfirmed && walletConfirmed && !isWalidCompanyMethod(tx.payment_method) && tx.status === 'PENDING' && (gateway === 'nagupayp2p' || gateway === 'nagopay')) {
     // Do not hold the SMS assignment request open while Maven performs its
     // browser action. The link is already committed; the provider action runs
     // in the platform background and updates the mirror when confirmed.
@@ -780,6 +779,9 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
   } else if (!amountMismatch && isWalidCompanyMethod(tx.payment_method)) {
     providerApproval = { attempted: false, skipped: 'walid_company_ltd_manual_only' }
     await db.from('audit_log').insert({ actor_type: 'system', actor_name: 'sms-link-worker', action: 'sms.link_auto_approval_skipped_method', entity: 'maven_transactions', entity_id: String(txId), after: { sms_id: Number(id), payment_method: tx.payment_method } })
+  } else if (!amountMismatch && tx.status === 'PENDING') {
+    providerApproval = { attempted: false, skipped: 'wallet_or_sender_not_confirmed' }
+    await db.from('audit_log').insert({ actor_type: 'system', actor_name: 'sms-link-worker', action: 'sms.link_auto_approval_skipped_identity', entity: 'maven_transactions', entity_id: String(txId), after: { sms_id: Number(id), sender_confirmed: senderConfirmed, wallet_confirmed: walletConfirmed, sms_wallet: receivingWallet, tx_wallet: tx.to_account_number ?? null } })
   }
 
   return c.json({

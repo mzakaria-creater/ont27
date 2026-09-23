@@ -105,11 +105,11 @@ async function attachSms(rows: Record<string, unknown>[]): Promise<void> {
     const sms = byTx.get(r.tx_id as number)
     if (sms) {
       r.sms = sms
-      // The SMS receiver is the proof of where the money actually landed.
-      // Keep to_account_number as the allocated target, but show the actual
-      // receiving wallet whenever the two differ.
+      // Keep the SMS receiver as separate evidence. The transaction table must
+      // continue showing Maven's current to_account_number when it exists.
       const actualWallet = walletByTx.get(r.tx_id as number) ?? sms.receiver_number
-      if (actualWallet) r.receiving_wallet = actualWallet
+      if (actualWallet) r.sms_receiving_wallet = actualWallet
+      r.receiving_wallet = r.to_account_number ?? r.receiving_wallet ?? null
     }
   }
 }

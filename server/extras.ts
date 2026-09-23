@@ -338,7 +338,22 @@ extraRoutes.get(
         const approved = row.kind === 'deposit' ? (approvedHistory.get(clientKey) ?? []).filter((item) => !Number.isFinite(rowAt) || !Number.isFinite(item.at) || item.at < rowAt).length : 0
         const phone = normalizePhone(row.kind === 'deposit' ? row.sender_number : row.mobile_no)
         const decision = row.kind === 'deposit' ? decisionByTx.get(Number(row.tx_id)) : decisionByPayout.get(Number(row.maven_id))
-        return { ...row, is_blacklisted: Boolean(phone && blockedPhoneSet.has(phone)), client_transaction_count: clientKey ? clientCounts.get(clientKey) ?? 1 : 1, deposit_kind: row.kind === 'deposit' ? (approved > 0 ? 'retention_deposit' : 'first_deposit') : null, previous_approved_deposits: approved, matched_sms: row.kind === 'deposit' ? smsByTx.get(Number(row.tx_id)) ?? null : null, decision_reason: decision ? (row.kind === 'deposit' ? decision.reason : decision.remark) : null, decision_actor: decision?.actor_name ?? null }
+        const matchedSms = row.kind === 'deposit' ? smsByTx.get(Number(row.tx_id)) ?? null : null
+        return {
+          ...row,
+          // `to_account_number` is Maven's current wallet. Keep the SMS
+          // receiver in matched_sms/sms_receiving_wallet instead of letting
+          // an old rotated wallet overwrite the transaction display.
+          receiving_wallet: row.kind === 'deposit' ? row.to_account_number ?? row.receiving_wallet ?? null : row.receiving_wallet,
+          sms_receiving_wallet: matchedSms?.receiver_number ?? null,
+          is_blacklisted: Boolean(phone && blockedPhoneSet.has(phone)),
+          client_transaction_count: clientKey ? clientCounts.get(clientKey) ?? 1 : 1,
+          deposit_kind: row.kind === 'deposit' ? (approved > 0 ? 'retention_deposit' : 'first_deposit') : null,
+          previous_approved_deposits: approved,
+          matched_sms: matchedSms,
+          decision_reason: decision ? (row.kind === 'deposit' ? decision.reason : decision.remark) : null,
+          decision_actor: decision?.actor_name ?? null,
+        }
       }),
       total: (dep.count ?? 0) + (pay.count ?? 0) + checkoutCount,
       limit,
