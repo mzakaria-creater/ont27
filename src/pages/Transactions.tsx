@@ -48,7 +48,7 @@ function TransactionStatusIcon({ status, label }: { status: string; label: strin
 // Keep the operational columns visible on first load. Operators can still
 // hide any of them from the column picker; bumping the key makes the denser
 // layout apply to existing browsers that saved the previous short set.
-const DEFAULT_VISIBLE_COLUMNS = ['status', 'type', 'amount', 'sms_link', 'proof', 'client_name', 'client_phone', 'sender_phone_name', 'sender_phone_number', 'email', 'sender_account_name', 'sender_account_number', 'time', 'merchant', 'gateway', 'approved_by']
+const DEFAULT_VISIBLE_COLUMNS = ['status', 'type', 'amount', 'sms_link', 'proof', 'decision_reason', 'client_name', 'client_phone', 'sender_phone_name', 'sender_phone_number', 'email', 'sender_account_name', 'sender_account_number', 'time', 'merchant', 'gateway', 'approved_by']
 // v4 resets older browser preferences so the complete 14-column operational
 // view is visible after the table-density redesign.
 const COLUMNS_STORAGE_KEY = 'trx-visible-columns-v6'
@@ -88,6 +88,8 @@ interface TxRow {
   proof_image_url?: string | null
   image_url?: string | null
   approved_by: string | null
+  decision_reason?: string | null
+  decision_actor?: string | null
   first_seen_at: string | null
   created_utc: string | null
   modified_utc?: string | null
@@ -168,6 +170,7 @@ export default function Transactions() {
     { id: 'gateway', label: t('البوابة', 'Gateway') },
     { id: 'duplicates', label: t('التكرار', 'Duplicates') },
     { id: 'approved_by', label: t('اعتمد بواسطة', 'Approved by') },
+    { id: 'decision_reason', label: t('سبب القرار', 'Decision reason') },
   ]
   const [visibleCols, setVisibleCols] = useVisibleColumns(COLUMNS_STORAGE_KEY, ALL_COLUMNS.map((c) => c.id), DEFAULT_VISIBLE_COLUMNS)
   const shownColumns = ALL_COLUMNS.filter((c) => visibleCols.has(c.id))
@@ -470,12 +473,13 @@ export default function Transactions() {
                       case 'gateway': return <td key={colId} className="mono">{r.gateway ?? '—'}</td>
                       case 'duplicates': return <td key={colId}>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First transaction')}</td>
                       case 'approved_by': return <td key={colId}>{r.status === 'PENDING' ? '—' : (isAutomaticApprovalActor(r.approved_by) ? t('آلي (Auto)', 'Auto') : r.approved_by)}</td>
+                      case 'decision_reason': return <td key={colId} className={`decision-reason-cell ${r.status === 'DECLINED' ? 'is-declined' : r.status === 'PAID' || r.status === 'APPROVED' ? 'is-approved' : ''}`} title={r.decision_reason ?? undefined}>{r.decision_reason ?? (r.status === 'DECLINED' ? t('مرفوض — السبب غير مسجل', 'Declined — reason not recorded') : r.status === 'PAID' || r.status === 'APPROVED' ? t('تمت الموافقة', 'Approved') : '—')}</td>
                       default: return null
                     }
                   }
                   return (
                     <Fragment key={rowKey}>
-                      <tr key={rowKey} className={r.status === 'PENDING' ? 'row-pending' : ''}>
+                        <tr key={rowKey} className={`${r.status === 'PENDING' ? 'row-pending ' : ''}${r.matched_sms?.match_status === 'auto_review' ? (r.kind === 'payout' ? 'sms-review-neon-out' : 'sms-review-neon-in') : ''}`}>
                         <td><button type="button" className="tx-expand-btn" onClick={() => toggleExpanded(rowKey)} aria-expanded={isExpanded} aria-label={isExpanded ? t('إغلاق التفاصيل', 'Collapse details') : t('فتح التفاصيل', 'Expand details')}>{isExpanded ? <ChevronDown size={15}/> : <ChevronRight size={15}/>}</button></td>
                         <td><div className="portal-row-actions">{canOpenModal ? <button type="button" className="tx-action-primary tx-action-icon" onClick={() => openDetail(r.ontarget_ref!)} title={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')} aria-label={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')}>{r.status === 'PENDING' ? <Pencil size={17}/> : <Eye size={17}/>}</button> : <Link className="tx-action-primary tx-action-icon" to={details} title={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')} aria-label={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')}>{r.status === 'PENDING' ? <Pencil size={17}/> : <Eye size={17}/>}</Link>}{id && (r.kind === 'deposit' ? <TransactionEditDialog iconOnly txId={Number(id)} ontargetRef={r.ontarget_ref} status={r.status} amount={r.amount} currency={r.currency} gateway={r.gateway} onDone={() => void load()} /> : <Link className="btn-ghost btn-sm tx-action-icon" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}&edit=1`} title={t('تعديل المعاملة', 'Edit transaction')} aria-label={t('تعديل المعاملة', 'Edit transaction')}><Pencil size={17}/></Link>)}{proofUrl && <button type="button" className="tx-proof-icon tx-action-icon" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id), onApprove: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'approve'); setProof(null) } : undefined, onDecline: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'decline'); setProof(null) } : undefined })} aria-label={t('عرض الإثبات', 'View proof')} title={t('عرض الإثبات', 'View proof')}><Image size={17}/></button>}</div></td>
                         <td className="mono">{canOpenModal ? <button type="button" className="transaction-cell-link tx-id-link" onClick={() => openDetail(r.ontarget_ref!)}>{id}</button> : <Link className="transaction-cell-link" to={details}>{r.is_checkout_session ? r.ontarget_ref : id}</Link>}{r.is_blacklisted && <span className="blacklist-marker" title={t('رقم الهاتف محظور — رفض تلقائي', 'Phone blacklisted — auto-decline')} aria-label={t('رقم الهاتف محظور', 'Phone blacklisted')}>🚫</span>}{r.is_checkout_session && <span className="deposit-kind is-first">🔗 Payment link</span>}{!r.is_checkout_session && r.ontarget_ref && String(r.ontarget_ref) !== String(id) && <div className="cell-sub mono">{r.ontarget_ref}</div>}{(r.merchant_reference ?? r.merchant_tx_reference) && <div className="cell-sub mono" title="NGPay merchant reference">{r.merchant_reference ?? r.merchant_tx_reference}</div>}{r.kind === 'deposit' && !r.is_checkout_session && <span className={`deposit-kind ${r.deposit_kind === 'retention_deposit' ? 'is-retention' : 'is-first'}`}>{r.deposit_kind === 'retention_deposit' ? `↻ ${t('Retention','Retention')}` : `★ ${t('First','First')}`}</span>}</td>

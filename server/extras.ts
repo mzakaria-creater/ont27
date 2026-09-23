@@ -306,7 +306,7 @@ extraRoutes.get(
     const [depositHistory, payoutHistory, linkedSms, blockedPhones] = await Promise.all([
       depositPhones.length ? db.from('maven_transactions').select('sender_number, status, first_seen_at').in('sender_number', depositPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
       payoutPhones.length ? db.from('maven_payout_transactions').select('mobile_no').in('mobile_no', payoutPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
-      depositIds.length ? db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, received_at, amount, balance_after, sender_name, sender_number, receiver_number, sms_first_line, raw_sms, raw_payload, message, device_name, sms_category, match_status, matched').or(`consumed_by_tx_id.in.(${depositIds.join(',')}),matched_transaction_id.in.(${depositIds.join(',')})`).order('received_at', { ascending: false, nullsFirst: false }).limit(2000) : Promise.resolve({ data: [], error: null }),
+      depositIds.length ? db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, received_at, amount, balance_after, sender_name, sender_number, receiver_number, sms_first_line, raw_sms, raw_payload, message, device_name, provider, sms_category, match_status, matched').or(`consumed_by_tx_id.in.(${depositIds.join(',')}),matched_transaction_id.in.(${depositIds.join(',')})`).order('received_at', { ascending: false, nullsFirst: false }).limit(2000) : Promise.resolve({ data: [], error: null }),
       identityPhones.length ? db.from('api_risk_blacklist').select('value').eq('type', 'phone').limit(10_000) : Promise.resolve({ data: [], error: null }),
     ])
     const blockedPhoneSet = new Set((blockedPhones.data ?? []).map((row) => normalizePhone(row.value)).filter(Boolean))
@@ -320,13 +320,25 @@ extraRoutes.get(
       const txId = Number(sms.consumed_by_tx_id ?? sms.matched_transaction_id)
       if (Number.isFinite(txId) && !smsByTx.has(txId)) smsByTx.set(txId, sms)
     }
+    const decisionByTx = new Map<number, Record<string, unknown>>()
+    if (depositIds.length) {
+      const { data: decisions } = await db.from('deposit_decision_log').select('tx_id, decision, reason, actor_name, created_at').in('tx_id', depositIds).order('created_at', { ascending: false })
+      for (const decision of decisions ?? []) if (!decisionByTx.has(Number(decision.tx_id))) decisionByTx.set(Number(decision.tx_id), decision)
+    }
+    const decisionByPayout = new Map<number, Record<string, unknown>>()
+    const payoutIds = pageRows.filter((row) => row.kind === 'payout').map((row) => Number(row.maven_id)).filter(Number.isFinite)
+    if (payoutIds.length) {
+      const { data: decisions } = await db.from('payout_decision_log').select('maven_id, decision, remark, actor_name, created_at').in('maven_id', payoutIds).order('created_at', { ascending: false })
+      for (const decision of decisions ?? []) if (!decisionByPayout.has(Number(decision.maven_id))) decisionByPayout.set(Number(decision.maven_id), decision)
+    }
     return c.json({
       rows: pageRows.map((row) => {
         const clientKey = String(row.kind === 'deposit' ? row.sender_number ?? '' : row.mobile_no ?? '').trim()
         const rowAt = Date.parse(String(row.first_seen_at ?? row.created_utc ?? ''))
         const approved = row.kind === 'deposit' ? (approvedHistory.get(clientKey) ?? []).filter((item) => !Number.isFinite(rowAt) || !Number.isFinite(item.at) || item.at < rowAt).length : 0
         const phone = normalizePhone(row.kind === 'deposit' ? row.sender_number : row.mobile_no)
-        return { ...row, is_blacklisted: Boolean(phone && blockedPhoneSet.has(phone)), client_transaction_count: clientKey ? clientCounts.get(clientKey) ?? 1 : 1, deposit_kind: row.kind === 'deposit' ? (approved > 0 ? 'retention_deposit' : 'first_deposit') : null, previous_approved_deposits: approved, matched_sms: row.kind === 'deposit' ? smsByTx.get(Number(row.tx_id)) ?? null : null }
+        const decision = row.kind === 'deposit' ? decisionByTx.get(Number(row.tx_id)) : decisionByPayout.get(Number(row.maven_id))
+        return { ...row, is_blacklisted: Boolean(phone && blockedPhoneSet.has(phone)), client_transaction_count: clientKey ? clientCounts.get(clientKey) ?? 1 : 1, deposit_kind: row.kind === 'deposit' ? (approved > 0 ? 'retention_deposit' : 'first_deposit') : null, previous_approved_deposits: approved, matched_sms: row.kind === 'deposit' ? smsByTx.get(Number(row.tx_id)) ?? null : null, decision_reason: decision ? (row.kind === 'deposit' ? decision.reason : decision.remark) : null, decision_actor: decision?.actor_name ?? null }
       }),
       total: (dep.count ?? 0) + (pay.count ?? 0) + checkoutCount,
       limit,

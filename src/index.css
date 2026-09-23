@@ -4057,3 +4057,8 @@ html, body { overflow-x: hidden; overflow-y: auto; }
 @keyframes sms-review-neon{0%,100%{box-shadow:0 0 0 1px rgba(232,121,249,.45),0 0 14px rgba(217,70,239,.32),0 0 28px rgba(34,211,238,.12)}50%{box-shadow:0 0 0 2px rgba(232,121,249,.8),0 0 24px rgba(217,70,239,.6),0 0 46px rgba(34,211,238,.26)}}
 .sms-near-time{color:#67e8f9;text-shadow:0 0 8px rgba(34,211,238,.8)}
 .cand-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;align-items:center}
+.all-transactions-table tr.sms-review-neon-in td:first-child{box-shadow:inset 4px 0 0 #22c55e,0 0 14px rgba(34,197,94,.28);background:color-mix(in srgb,#22c55e 9%,var(--surface))}
+.all-transactions-table tr.sms-review-neon-out td:first-child{box-shadow:inset 4px 0 0 #ef4444,0 0 14px rgba(239,68,68,.28);background:color-mix(in srgb,#ef4444 9%,var(--surface))}
+.decision-reason-cell{max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px}
+.decision-reason-cell.is-declined{color:#fca5a5;font-weight:800}
+.decision-reason-cell.is-approved{color:#86efac;font-weight:800}
