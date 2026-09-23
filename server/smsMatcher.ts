@@ -1,5 +1,6 @@
 import { db } from './db.js'
 import { notifyApprovedTransaction } from './approvalEmail.js'
+import { isWalidCompanyMethod } from './autoApprovalPolicy.js'
 
 type SmsRow = { id: number; trx_id: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; received_at: string | null; receiver_number: string | null; wallet_number?: string | null; confirmed_wallet_number?: string | null; balance_after?: number | null; provider?: string | null; sms_sender?: string | null; raw_sms?: string | null; message?: string | null; is_blocked?: boolean | null }
 type TxRow = { tx_id: number; guid: string | null; ontarget_ref: string | null; merchant_tx_reference: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; receiving_wallet: string | null; to_account_number: string | null; payment_method: string | null; gateway: string | null; status: string | null; first_seen_at: string | null }
@@ -205,7 +206,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
           // gateways remain linked for manual handling because this worker
           // must never mark a provider transaction paid without confirmation.
           const gateway = String(tx.gateway ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase()
-          if (automationEnabled && tx.status === 'PENDING' && (gateway === 'nagupayp2p' || gateway === 'nagopay')) {
+          if (automationEnabled && !isWalidCompanyMethod(tx.payment_method) && tx.status === 'PENDING' && (gateway === 'nagupayp2p' || gateway === 'nagopay')) {
             const baseUrl = process.env.SUPABASE_URL
             const serviceKey = process.env.SUPABASE_SECRET_KEY
             if (!baseUrl || !serviceKey) { errors.push(`auto approve ${tx.tx_id}: worker_not_configured`); return }

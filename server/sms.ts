@@ -4,6 +4,7 @@ import { requireAuth, requirePerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 import { learnTrustedSmsName } from './clientIdentity.js'
 import { autoApproveMatchedPayout } from './payoutSmsMatcher.js'
+import { isWalidCompanyMethod } from './autoApprovalPolicy.js'
 import { flagAmbiguousCandidates } from './duplicateDetection.js'
 
 // SMS Live = inbound_sms (device-forwarded wallet SMS). The panel surfaces the
@@ -606,7 +607,7 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
 
   const [{ data: sms, error: smsErr }, { data: tx, error: txErr }, { data: existingTxLinks, error: linkErr }] = await Promise.all([
     db.from('inbound_sms').select('id, matched, match_status, sms_category, amount, received_at, receiver_number, wallet_number, confirmed_wallet_number, sender_name, sender_number, consumed_by_tx_id, matched_transaction_id, maven_transaction_id, is_blocked, assignment_unlocked_at, assignment_unlocked_by').eq('id', id).maybeSingle(),
-    db.from('maven_transactions').select('tx_id, amount, status, gateway, sender_number, first_seen_at, ontarget_ref').eq('tx_id', txId).maybeSingle(),
+    db.from('maven_transactions').select('tx_id, amount, status, gateway, sender_number, payment_method, first_seen_at, ontarget_ref').eq('tx_id', txId).maybeSingle(),
     db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').or(`consumed_by_tx_id.eq.${txId},matched_transaction_id.eq.${txId},maven_transaction_id.eq.${txId}`).limit(2),
   ])
   if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
@@ -741,7 +742,7 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
     ? { attempted: false, skipped: 'amount_mismatch' }
     : { attempted: false }
   const gateway = String(tx.gateway ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase()
-  if (!amountMismatch && tx.status === 'PENDING' && (gateway === 'nagupayp2p' || gateway === 'nagopay')) {
+  if (!amountMismatch && !isWalidCompanyMethod(tx.payment_method) && tx.status === 'PENDING' && (gateway === 'nagupayp2p' || gateway === 'nagopay')) {
     // Do not hold the SMS assignment request open while Maven performs its
     // browser action. The link is already committed; the provider action runs
     // in the platform background and updates the mirror when confirmed.
@@ -776,6 +777,9 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
       }
     })()
     try { c.executionCtx.waitUntil(approvalTask) } catch { approvalTask.catch(() => {}) }
+  } else if (!amountMismatch && isWalidCompanyMethod(tx.payment_method)) {
+    providerApproval = { attempted: false, skipped: 'walid_company_ltd_manual_only' }
+    await db.from('audit_log').insert({ actor_type: 'system', actor_name: 'sms-link-worker', action: 'sms.link_auto_approval_skipped_method', entity: 'maven_transactions', entity_id: String(txId), after: { sms_id: Number(id), payment_method: tx.payment_method } })
   }
 
   return c.json({
