@@ -17,6 +17,8 @@ import DetailModal from "../components/DetailModal";
 import ColumnPicker, { useVisibleColumns } from "../components/ColumnPicker";
 import type { ColumnDef } from "../components/ColumnPicker";
 import { useIsMobile } from "../lib/useIsMobile";
+import { supabase } from "../lib/supabase";
+import { syncProviders } from "../lib/providerSync";
 
 const STATUS_FILTERS = ["PENDING", "APPROVED", "DECLINED"];
 const CURRENCY = "EGP";
@@ -297,10 +299,18 @@ export default function Payouts() {
   useEffect(() => {
     const refresh = () => void load(true);
     window.addEventListener("ontarget:provider-sync", refresh);
-    const interval = window.setInterval(refresh, 30_000);
+    const channel = supabase
+      .channel("payouts-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "maven_payout_transactions" }, refresh)
+      .subscribe();
+    const interval = window.setInterval(() => {
+      void syncProviders().then((changed) => { if (changed) refresh(); });
+    }, 10_000);
+    void syncProviders().then((changed) => { if (changed) refresh(); });
     return () => {
       window.removeEventListener("ontarget:provider-sync", refresh);
       window.clearInterval(interval);
+      void supabase.removeChannel(channel);
     };
   }, [load]);
 
