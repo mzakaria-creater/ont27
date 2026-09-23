@@ -131,6 +131,20 @@ linkRoutes.post('/:id/duplicate', requirePerm('checkout-builder', 'can_create'),
   return c.json({ link, checkout_url: `/payment-checkout?token=${checkoutToken.raw}`, copiedFrom: src.short_code }, 201)
 })
 
+// Issue a fresh share token whenever an operator presses Copy. Only the
+// SHA-256 digest is persisted; the raw 256-bit token is returned once and the
+// previous short code/token is invalidated by replacing both values.
+linkRoutes.post('/:id/token', requirePerm('checkout-builder', 'can_edit'), async (c) => {
+  const checkoutToken = newCheckoutToken()
+  const { data: link, error } = await db.from('payment_links').update({
+    short_code: newShortCode(),
+    checkout_token_hash: checkoutToken.hash,
+    updated_at: new Date().toISOString(),
+  }).eq('id', c.req.param('id')).select('*').maybeSingle()
+  if (error || !link) return c.json({ error: 'link_not_found' }, 404)
+  return c.json({ link, checkout_url: `/payment-checkout?token=${checkoutToken.raw}` })
+})
+
 linkRoutes.get('/merchants', requirePerm('checkout-builder', 'can_view'), async (c) => {
   const [{ data: merchants }, { data: methods }, { data: pools }, { data: masters }, { data: accounts }] = await Promise.all([
     db.from('merchants').select('id, name, code, "MID", master_merchant_id').eq('active', true).order('name'),

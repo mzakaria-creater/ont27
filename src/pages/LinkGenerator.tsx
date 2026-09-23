@@ -156,9 +156,29 @@ export default function LinkGenerator() {
   }
 
   const copyUrl = async (link: PaymentLink) => {
-    await navigator.clipboard.writeText(`${location.origin}/payment-checkout?code=${link.short_code}`).catch(() => {})
-    setCopied(link.id)
-    setTimeout(() => setCopied(null), 1500)
+    try {
+      const issued = await api<{ checkout_url: string }>(`/api/links/${link.id}/token`, { method: 'POST' })
+      const url = `${location.origin}${issued.checkout_url}`
+      await navigator.clipboard.writeText(url)
+      setCopied(link.id)
+      setTimeout(() => setCopied(null), 1500)
+      await load()
+    } catch {
+      setError(t('تعذّر إصدار رابط آمن جديد.', 'Could not issue a fresh secure link.'))
+    }
+  }
+
+  const openSecure = async (link: PaymentLink) => {
+    const popup = window.open('about:blank', '_blank', 'noopener,noreferrer')
+    try {
+      const issued = await api<{ checkout_url: string }>(`/api/links/${link.id}/token`, { method: 'POST' })
+      if (popup) popup.location.href = `${location.origin}${issued.checkout_url}`
+      else window.location.href = `${location.origin}${issued.checkout_url}`
+      await load()
+    } catch {
+      popup?.close()
+      setError(t('تعذّر إصدار رابط آمن جديد.', 'Could not issue a fresh secure link.'))
+    }
   }
 
   const totals = links.reduce(
@@ -303,7 +323,7 @@ export default function LinkGenerator() {
                 </div>
                 <div className="row-actions">
                   <button className="btn-ghost" onClick={() => void copyUrl(l)}><Copy size={14} />{copied === l.id ? t('تم النسخ', 'Copied') : t('نسخ', 'Copy')}</button>
-                  <a className="btn-ghost" href={`/payment-checkout?code=${encodeURIComponent(l.short_code)}`} target="_blank" rel="noreferrer"><ExternalLink size={14} />{t('فتح', 'Open')}</a>
+                  <button className="btn-ghost" type="button" onClick={() => void openSecure(l)}><ExternalLink size={14} />{t('فتح', 'Open')}</button>
                   <button className="btn-ghost" onClick={() => setExpanded(expanded === l.id ? null : l.id)}>{expanded === l.id ? t('إخفاء', 'Hide') : t('تحليلات', 'Analytics')}</button>
                   {can('checkout-builder', 'can_create') && <button className="btn-ghost" onClick={() => void duplicate(l)}>{t('نسخة', 'Duplicate')}</button>}
                   {can('checkout-builder', 'can_edit') && <>
@@ -382,7 +402,7 @@ export default function LinkGenerator() {
                 </td>
                 <td className="row-actions">
                   <button className="btn-ghost" onClick={() => void copyUrl(l)}><Copy size={14}/>{copied === l.id ? t('تم النسخ','Copied') : t('نسخ', 'Copy')}</button>
-                  <a className="btn-ghost" href={`/payment-checkout?code=${encodeURIComponent(l.short_code)}`} target="_blank" rel="noreferrer"><ExternalLink size={14}/>{t('فتح','Open')}</a>
+                  <button className="btn-ghost" type="button" onClick={() => void openSecure(l)}><ExternalLink size={14}/>{t('فتح','Open')}</button>
                   <button className="btn-ghost" onClick={() => setExpanded(expanded === l.id ? null : l.id)}>
                     {expanded === l.id ? t('إخفاء', 'Hide') : t('تحليلات', 'Analytics')}
                   </button>
