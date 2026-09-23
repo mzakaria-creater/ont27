@@ -20,6 +20,8 @@ import { AlertTriangle, Search, X } from 'lucide-react'
 import SmsMatchQueues, { type QueueSms } from '../components/SmsMatchQueues'
 import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectFilter'
 import { useIsMobile } from '../lib/useIsMobile'
+import { exportCsv, exportXlsx, type ExportColumn } from '../lib/exportTable'
+import { Download } from 'lucide-react'
 
 const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
 const MASTER_PILLS = [
@@ -93,6 +95,7 @@ export default function Deposits() {
   const [data, setData] = useState<ListResponse | null>(null)
   const [stats, setStats] = useState<DepositStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [exportBusy, setExportBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [selected, setSelected] = useState<DepositDetail | null>(null)
   const [selectedSms, setSelectedSms] = useState<MatchedSms | null>(null)
@@ -324,14 +327,64 @@ export default function Deposits() {
 
   const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1
 
+  const EXPORT_COLUMNS: ExportColumn<DepositRow>[] = [
+    { header: 'Ref', key: 'ref', value: (r) => r.ontarget_ref ?? r.tx_id },
+    { header: 'Status', key: 'status', value: (r) => r.status },
+    { header: 'Amount', key: 'amount', value: (r) => r.amount ?? '', numFmt: '#,##0.00' },
+    { header: 'Currency', key: 'currency', value: (r) => r.currency ?? 'EGP' },
+    { header: 'Sender', key: 'sender', value: (r) => r.sender_name ?? '' },
+    { header: 'Sender number', key: 'sender_number', value: (r) => r.sender_number ?? '' },
+    { header: 'Payment method', key: 'method', value: (r) => r.payment_method ?? '' },
+    { header: 'Merchant', key: 'merchant', value: (r) => r.merchant ?? r.master_merchant ?? '' },
+    { header: 'Gateway', key: 'gateway', value: (r) => r.gateway ?? '' },
+    { header: 'Wallet', key: 'wallet', value: (r) => r.to_account_number ?? r.receiving_wallet ?? '' },
+    { header: 'Approved by', key: 'approved_by', value: (r) => r.status === 'PENDING' ? '' : (isAutomaticApprovalActor(r.approved_by) ? 'Auto' : r.approved_by ?? '') },
+    { header: 'Created (UTC)', key: 'created', value: (r) => r.created_utc ?? r.first_seen_at ?? '' },
+  ]
+
+  const fetchAllForExport = async (): Promise<DepositRow[]> => {
+    const batchSize = 500
+    const cap = 5000
+    const collected: DepositRow[] = []
+    let offset = 0
+    for (;;) {
+      const search = new URLSearchParams({ limit: String(batchSize), offset: String(offset) })
+      if (status) search.set('status', status)
+      if (master) search.set('master', master)
+      if (appliedQ) search.set('q', appliedQ)
+      const next = await api<ListResponse>(`/api/deposits?${search}`)
+      collected.push(...next.rows)
+      offset += batchSize
+      if (next.rows.length < batchSize || collected.length >= cap || offset >= next.total) break
+    }
+    return collected
+  }
+
+  const runExport = async (format: 'csv' | 'xlsx') => {
+    setExportBusy(true)
+    try {
+      const rows = await fetchAllForExport()
+      if (format === 'csv') exportCsv(rows, EXPORT_COLUMNS, 'deposits')
+      else await exportXlsx(rows, EXPORT_COLUMNS, 'deposits', 'Deposits')
+    } catch {
+      setErr('تعذّر تصدير الإيداعات.')
+    } finally {
+      setExportBusy(false)
+    }
+  }
+
   return (
     <PanelShell>
-      <section className="page-head">
-        <h2>💰 الإيداعات</h2>
+      <section className="page-head with-actions">
+        <div><h2>💰 الإيداعات</h2>
         <p className="page-sub">
           مصدر الحقيقة: <span className="mono">maven_transactions</span>
           {data && <> · {data.total.toLocaleString('en-US')} نتيجة</>}
-        </p>
+        </p></div>
+        <div className="export-actions">
+          <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport('csv')}><Download size={14}/> CSV</button>
+          <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport('xlsx')}><Download size={14}/> {exportBusy ? 'جارٍ التصدير…' : 'XLSX'}</button>
+        </div>
       </section>
 
       <div className="kpi-grid">

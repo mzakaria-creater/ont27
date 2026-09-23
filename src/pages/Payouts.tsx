@@ -19,6 +19,8 @@ import type { ColumnDef } from "../components/ColumnPicker";
 import { useIsMobile } from "../lib/useIsMobile";
 import { supabase } from "../lib/supabase";
 import { syncProviders } from "../lib/providerSync";
+import { exportCsv, exportXlsx, type ExportColumn } from "../lib/exportTable";
+import { Download } from "lucide-react";
 
 const STATUS_FILTERS = ["PENDING", "APPROVED", "DECLINED"];
 const CURRENCY = "EGP";
@@ -123,6 +125,7 @@ export default function Payouts() {
   const [q, setQ] = useState(params.get("q") ?? "");
   const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exportBusy, setExportBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [selected, setSelected] = useState<PayoutDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -589,6 +592,54 @@ export default function Payouts() {
     }
   };
   const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1;
+
+  const EXPORT_COLUMNS: ExportColumn<PayoutRow>[] = [
+    { header: "Ref", key: "ref", value: (r) => r.ontarget_ref ?? r.maven_id },
+    { header: "Status", key: "status", value: (r) => r.status },
+    { header: "Amount", key: "amount", value: (r) => r.amount ?? "", numFmt: "#,##0.00" },
+    { header: "Currency", key: "currency", value: () => CURRENCY },
+    { header: "Account name", key: "account_name", value: (r) => r.account_name ?? "" },
+    { header: "Mobile", key: "mobile", value: (r) => r.mobile_no ?? "" },
+    { header: "Pay by", key: "pay_by", value: (r) => r.pay_by ?? "" },
+    { header: "Merchant", key: "merchant", value: (r) => r.merchant ?? r.master_merchant ?? "" },
+    { header: "Approved by", key: "approved_by", value: (r) => r.approved_by ?? "" },
+    { header: "UTR", key: "utr", value: (r) => r.utr_number ?? "" },
+    { header: "Created (UTC)", key: "created", value: (r) => r.created_utc ?? r.first_seen_at ?? "" },
+  ];
+
+  const fetchAllForExport = async (): Promise<PayoutRow[]> => {
+    const batchSize = 500;
+    const cap = 5000;
+    const collected: PayoutRow[] = [];
+    let offset = 0;
+    for (;;) {
+      const search = new URLSearchParams({ limit: String(batchSize), offset: String(offset) });
+      if (status) search.set("status", status);
+      if (appliedQ) search.set("q", appliedQ);
+      if (appliedFrom) search.set("from", appliedFrom);
+      if (appliedTo) search.set("to", appliedTo);
+      if (appliedMerchant) search.set("merchant", appliedMerchant);
+      if (appliedMethod) search.set("method", appliedMethod);
+      const next = await api<ListResponse>(`/api/payouts?${search}`);
+      collected.push(...next.rows);
+      offset += batchSize;
+      if (next.rows.length < batchSize || collected.length >= cap || offset >= next.total) break;
+    }
+    return collected;
+  };
+
+  const runExport = async (format: "csv" | "xlsx") => {
+    setExportBusy(true);
+    try {
+      const rows = await fetchAllForExport();
+      if (format === "csv") exportCsv(rows, EXPORT_COLUMNS, "payouts");
+      else await exportXlsx(rows, EXPORT_COLUMNS, "payouts", "Payouts");
+    } catch {
+      setErr(t("تعذّر تصدير السحوبات.", "Failed to export payouts."));
+    } finally {
+      setExportBusy(false);
+    }
+  };
   const selectedRows = (data?.rows ?? []).filter((row) => selectedIds.has(row.maven_id));
   const toggleSelected = (mavenId: number) => {
     setSelectedIds((current) => {
@@ -692,15 +743,19 @@ export default function Payouts() {
 
   return (
     <PanelShell>
-      <section className="page-head">
-        <h2>📤 {t("السحوبات", "Payouts")}</h2>
+      <section className="page-head with-actions">
+        <div><h2>📤 {t("السحوبات", "Payouts")}</h2>
         <p className="page-sub">
           {t(
             "قرارات السحب تُسجّل عبر عامل القرارات مع سجل تدقيق وإثبات للمقبول.",
             "Payout decisions are recorded via the decision worker with an audit trail and proof for approvals.",
           )}
           {data && <> · {data.total.toLocaleString("en-US")}</>}
-        </p>
+        </p></div>
+        <div className="export-actions">
+          <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport("csv")}><Download size={14}/> CSV</button>
+          <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport("xlsx")}><Download size={14}/> {exportBusy ? t("جارٍ التصدير…", "Exporting…") : "XLSX"}</button>
+        </div>
       </section>
 
       <div className="automation-tabs" role="tablist" aria-label={t("أقسام السحوبات", "Payout sections")}>

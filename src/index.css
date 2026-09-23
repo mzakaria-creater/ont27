@@ -1353,6 +1353,10 @@ a.stat-card:hover { border-color: var(--accent); }
 
 .page-head { margin-block-end: 12px; }
 .page-head h2 { margin: 0 0 4px; font-size: 18px; }
+/* Shared row for a page-head that also carries export/action buttons —
+   title+subtitle on one side, buttons on the other, wrapping on mobile. */
+.page-head.with-actions { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.page-head.with-actions .export-actions { flex: 0 0 auto; }
 .page-sub { margin: 0; color: var(--text-dim); font-size: 13px; }
 
 .filter-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-block-end: 12px; }

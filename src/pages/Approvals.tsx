@@ -14,6 +14,8 @@ import MerchantLogo from '../components/MerchantLogo'
 import MethodLogo from '../components/MethodLogo'
 import SenderIdentity from '../components/SenderIdentity'
 import { supabase } from '../lib/supabase'
+import { exportCsv, exportXlsx, type ExportColumn } from '../lib/exportTable'
+import { Download } from 'lucide-react'
 
 // Approvals queue — every PENDING deposit and payout in one screen with
 // quick + bulk actions.
@@ -201,6 +203,26 @@ export default function Approvals() {
   const visibleDeposits = deposits?.filter((row) => !normalizedSearch || [row.tx_id, row.ontarget_ref, row.merchant_tx_reference, row.amount, row.sender_name, row.sender_number, row.sender_account_number, row.receiving_wallet, row.to_account_number, row.merchant, row.master_merchant].some((value) => String(value ?? '').toLocaleLowerCase().includes(normalizedSearch))) ?? []
   const visiblePayouts = payouts?.filter((row) => !normalizedSearch || [row.maven_id, row.ontarget_ref, row.amount, row.account_name, row.mobile_no, row.pay_by, row.merchant].some((value) => String(value ?? '').toLocaleLowerCase().includes(normalizedSearch))) ?? []
 
+  type QueueExportRow = { kind: 'deposit' | 'payout'; ref: string | number; amount: number | null; currency: string | null; party: string | null; method: string | null; merchant: string | null; at: string | null }
+  const EXPORT_COLUMNS: ExportColumn<QueueExportRow>[] = [
+    { header: 'Kind', key: 'kind', value: (r) => r.kind },
+    { header: 'Ref', key: 'ref', value: (r) => r.ref },
+    { header: 'Amount', key: 'amount', value: (r) => r.amount ?? '', numFmt: '#,##0.00' },
+    { header: 'Currency', key: 'currency', value: (r) => r.currency ?? 'EGP' },
+    { header: 'Party', key: 'party', value: (r) => r.party ?? '' },
+    { header: 'Method', key: 'method', value: (r) => r.method ?? '' },
+    { header: 'Merchant', key: 'merchant', value: (r) => r.merchant ?? '' },
+    { header: 'Created (UTC)', key: 'at', value: (r) => r.at ?? '' },
+  ]
+  const runExport = (format: 'csv' | 'xlsx') => {
+    const rows: QueueExportRow[] = [
+      ...visibleDeposits.map((r): QueueExportRow => ({ kind: 'deposit', ref: r.ontarget_ref ?? r.tx_id, amount: r.amount, currency: r.currency, party: r.sender_name ?? r.sender_number, method: r.payment_method, merchant: r.merchant ?? r.master_merchant, at: r.created_utc ?? r.first_seen_at })),
+      ...visiblePayouts.map((r): QueueExportRow => ({ kind: 'payout', ref: r.ontarget_ref ?? r.maven_id, amount: r.amount, currency: null, party: r.account_name ?? r.mobile_no, method: r.pay_by, merchant: r.merchant, at: r.created_utc ?? r.first_seen_at })),
+    ]
+    if (format === 'csv') exportCsv(rows, EXPORT_COLUMNS, 'approvals-queue')
+    else void exportXlsx(rows, EXPORT_COLUMNS, 'approvals-queue', 'Approvals')
+  }
+
   return (
     <PanelShell>
       <section className="page-head">
@@ -214,6 +236,10 @@ export default function Approvals() {
         <div className="view-switch" role="group" aria-label={t('طريقة العرض', 'View mode')}>
           <button className={viewMode === 'table' ? 'active' : ''} aria-pressed={viewMode === 'table'} onClick={() => changeView('table')}><TableProperties size={16} /> {t('جدول', 'Table')}</button>
           <button className={viewMode === 'cards' ? 'active' : ''} aria-pressed={viewMode === 'cards'} onClick={() => changeView('cards')}><LayoutGrid size={16} /> {t('بطاقات', 'Cards')}</button>
+        </div>
+        <div className="export-actions">
+          <button type="button" className="btn-ghost btn-sm" onClick={() => runExport('csv')}><Download size={14}/> CSV</button>
+          <button type="button" className="btn-ghost btn-sm" onClick={() => runExport('xlsx')}><Download size={14}/> XLSX</button>
         </div>
       </section>
 
