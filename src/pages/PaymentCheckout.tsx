@@ -110,6 +110,10 @@ function BrandBar({ merchant, t }: { merchant: string | null; t: (a: string, e: 
   )
 }
 
+function checkoutBrandLogo(link: PayLink | null): string {
+  return link?.client_name?.toLowerCase().includes('hfm') ? '/hfm-logo.svg' : '/logo.svg'
+}
+
 function LockIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -309,7 +313,7 @@ export default function PaymentCheckout() {
         <div className="card pay-card checkout-card">
           <div className="checkout-split">
             <div className="checkout-left">
-              <img src="/logo.svg" alt="OnTarget" className="login-logo" />
+              <img src={checkoutBrandLogo(link)} alt={link?.client_name ?? 'OnTarget'} className="login-logo" />
               <div className="checkout-amount-label">{t('المبلغ المطلوب', 'Amount due')}</div>
               <div className="checkout-amount"><span className="checkout-amount-cur">{session.currency}</span><span className="checkout-amount-num">{groupDigits(String(session.amount))}</span></div>
               <div className="checkout-gold-line" />
@@ -388,7 +392,7 @@ export default function PaymentCheckout() {
       <div className="card pay-card checkout-card">
         <div className="checkout-split">
           <div className="checkout-left">
-            <img src="/logo.svg" alt="OnTarget" className="login-logo" />
+            <img src={checkoutBrandLogo(link)} alt={link?.client_name ?? 'OnTarget'} className="login-logo" />
             <div className="checkout-amount-label">{t('المبلغ', 'Amount')}</div>
             <div className="checkout-amount">
               <span className="checkout-amount-cur">{link?.currency ?? 'EGP'}</span>
