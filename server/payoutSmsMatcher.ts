@@ -1,10 +1,28 @@
 import { db } from './db.js'
 
-type Candidate = { id: number; amount: number | null; receiver_number: string | null; received_at?: string | null; consumed_by_tx_id?: number | null; matched?: boolean | null; message?: string | null; sender_name?: string | null; notes?: string | null; manual_entry_note?: string | null; trx_id?: string | null; trx_reference?: string | null }
-type Payout = { maven_id: number; amount: number | null; mobile_no: string | null; first_seen_at: string | null }
+type Candidate = { id: number; amount: number | null; receiver_number: string | null; wallet_number?: string | null; confirmed_wallet_number?: string | null; received_at?: string | null; consumed_by_tx_id?: number | null; matched?: boolean | null; message?: string | null; sender_name?: string | null; notes?: string | null; manual_entry_note?: string | null; trx_id?: string | null; trx_reference?: string | null }
+type Payout = { maven_id: number; amount: number | null; mobile_no: string | null; first_seen_at: string | null; maven_raw_row?: Record<string, unknown> | null }
 type AutoApprovalResult = { attempted: boolean; executed_on_provider?: boolean; reason?: string; error?: string; [key: string]: unknown }
 
 const phone = (value: string | null) => (value ?? '').replace(/\D/g, '').replace(/^20(?=1\d{9}$)/, '0')
+const smsWallet = (sms: Candidate) => phone(sms.confirmed_wallet_number ?? sms.wallet_number ?? sms.receiver_number)
+const payoutWallet = (payout: Payout) => {
+  const raw = payout.maven_raw_row ?? {}
+  return phone(String(raw.ToBankAccountNumber ?? raw.ToBankWalletNumber ?? raw.BankWalletNumber ?? raw.BankAccountNumber ?? raw.AccountNumber ?? ''))
+}
+// Orange withdrawal notifications put the customer's destination after
+// "لرقم" ("to number"). receiver_number is our own wallet, not the client.
+const payoutDestination = (sms: Candidate) => {
+  const text = String(sms.message ?? '')
+  const embedded = text.match(/(?:لرقم|to\s+(?:number|phone)|recipient)\s*[:：-]?\s*(?:\+?20)?(01\d{9})/i)?.[1]
+  return phone(embedded ?? '')
+}
+const payoutSmsMatches = (payout: Payout, sms: Candidate) => {
+  if (Number(payout.amount) !== Number(sms.amount)) return false
+  if (!payoutDestination(sms) || payoutDestination(sms) !== phone(payout.mobile_no)) return false
+  const expectedWallet = payoutWallet(payout)
+  return !expectedWallet || !smsWallet(sms) || expectedWallet === smsWallet(sms)
+}
 
 // The SMS is proof only after the matcher has verified the exact amount and
 // destination. The worker still checks Maven and reads the provider status
@@ -30,9 +48,9 @@ export async function autoApproveMatchedPayout(payoutId: number, sms: Candidate,
 export async function autoLinkWithdrawalSms(limit = 300) {
   const since = new Date(Date.now() - 3 * 86_400_000).toISOString()
   const [{ data: payouts, error: payoutErr }, { data: messages, error: smsErr }] = await Promise.all([
-    db.from('maven_payout_transactions').select('maven_id, amount, mobile_no, first_seen_at')
+    db.from('maven_payout_transactions').select('maven_id, amount, mobile_no, first_seen_at, maven_raw_row')
       .is('matched_sms_id', null).gte('first_seen_at', since).order('first_seen_at', { ascending: false }).limit(limit),
-    db.from('inbound_sms').select('id, amount, receiver_number, received_at, consumed_by_tx_id, matched, message, sender_name, notes, manual_entry_note')
+    db.from('inbound_sms').select('id, amount, receiver_number, wallet_number, confirmed_wallet_number, received_at, consumed_by_tx_id, matched, message, sender_name, notes, manual_entry_note')
       .eq('sms_category', 'withdrawal').gte('received_at', since)
       .or('is_blocked.eq.false,is_blocked.is.null')
       .order('received_at', { ascending: false }).limit(limit * 2),
@@ -46,8 +64,7 @@ export async function autoLinkWithdrawalSms(limit = 300) {
   const repairedPayouts = new Set<number>()
   for (const sms of ss) {
     if (sms.consumed_by_tx_id == null) continue
-    const payout = ps.find((row) => row.maven_id === Number(sms.consumed_by_tx_id)
-      && Number(row.amount) === Number(sms.amount) && phone(row.mobile_no) === phone(sms.receiver_number))
+    const payout = ps.find((row) => row.maven_id === Number(sms.consumed_by_tx_id) && payoutSmsMatches(row, sms))
     if (!payout) continue
     const { data: repaired, error } = await db.from('maven_payout_transactions').update({ matched_sms_id: sms.id })
       .eq('maven_id', payout.maven_id).is('matched_sms_id', null).select('maven_id').maybeSingle()
@@ -62,8 +79,7 @@ export async function autoLinkWithdrawalSms(limit = 300) {
   const availableSms = ss.filter((sms) => sms.consumed_by_tx_id == null)
   const pairCandidates = ps.filter((payout) => !repairedPayouts.has(payout.maven_id)).map((payout) => {
     const at = payout.first_seen_at ? Date.parse(payout.first_seen_at) : NaN
-    return { payout, matches: availableSms.filter((sms) => Number(sms.amount) === Number(payout.amount)
-      && phone(sms.receiver_number) !== '' && phone(sms.receiver_number) === phone(payout.mobile_no)
+    return { payout, matches: availableSms.filter((sms) => payoutSmsMatches(payout, sms)
       && Number.isFinite(at) && sms.received_at != null && Math.abs(Date.parse(sms.received_at) - at) <= 86_400_000) }
   })
   const smsUseCount = new Map<number, number>()
