@@ -147,13 +147,16 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
     const byReviewEvidence = byAmount.filter((tx) => {
       const txPhone = phone(tx.sender_number)
       if (smsPhone && txPhone && smsPhone !== txPhone) return false
+      const txWallet = phone(tx.receiving_wallet ?? tx.to_account_number)
+      const walletMatch = Boolean(txWallet && smsWallet && txWallet === smsWallet)
+      // The database SMS-link trigger can approve when both sender numbers
+      // match. Do not let a wallet-rotation fallback reach that trigger.
+      if (smsPhone && txPhone && !walletMatch) return false
       if (smsPhone && txPhone && !smsWallet) return false
       if (!tx.first_seen_at || !sms.received_at) return false
       const delta = Math.abs(Date.parse(tx.first_seen_at) - Date.parse(sms.received_at))
       const maxDelta = txByRef.has(ref(sms.trx_id)) ? MAX_TIME_DIFF_MS : FALLBACK_TIME_DIFF_MS
       if (!Number.isFinite(delta) || delta > maxDelta) return false
-      const txWallet = phone(tx.receiving_wallet ?? tx.to_account_number)
-      const walletMatch = Boolean(txWallet && smsWallet && txWallet === smsWallet)
       if (walletMatch) return true
       // Without a wallet match, balance continuity is the minimum evidence
       // needed to distinguish a real deposit from a same-amount coincidence.
