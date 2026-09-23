@@ -142,6 +142,7 @@ export default function AdminPage() {
   }, [pathname]);
   const call = async (path: string, method: string, body?: unknown) => {
     setSaving(true);
+    setErr(null);
     try {
       const result = await api<any>(path, {
         method,
@@ -365,6 +366,7 @@ export default function AdminPage() {
             <button
               className="btn-primary"
               onClick={() => {
+                setErr(null);
                 setCreateUsername('');
                 setCreateActive(true);
                 setUser({
@@ -393,6 +395,7 @@ export default function AdminPage() {
                     ✕
                   </button>
                 </div>
+                {err && <div className="card warn modal-inline-error">{err}</div>}
                 <form
                   className="user-create-grid"
                   onSubmit={async (e) => {
@@ -487,7 +490,7 @@ export default function AdminPage() {
                       type="email"
                       dir="ltr"
                       className="login-input"
-                      value={user.email.includes("@") ? user.email : ""}
+                      value={user.email}
                       onChange={(e) =>
                         setUser({ ...user, email: e.target.value })
                       }
