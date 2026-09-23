@@ -11,7 +11,7 @@ import PageSizeSelect from '../components/PageSizeSelect'
 import ProofModal from '../components/ProofModal'
 import SenderIdentity from '../components/SenderIdentity'
 import { useAuth } from '../auth/AuthContext'
-import { AlertTriangle, ChevronDown, ChevronRight, Eye, Image, LayoutGrid, Pencil, Search, SlidersHorizontal, TableProperties, X } from 'lucide-react'
+import { AlertTriangle, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, CircleHelp, Clock3, Eye, Image, LayoutGrid, Pencil, Search, SlidersHorizontal, TableProperties, X, XCircle } from 'lucide-react'
 import TransactionEditDialog from '../components/TransactionEditDialog'
 import TransactionDetailModal from '../components/TransactionDetailModal'
 import ColumnPicker, { useVisibleColumns } from '../components/ColumnPicker'
@@ -24,6 +24,22 @@ import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectF
 // All transactions — deposits + payouts merged, sorted by our ref.
 
 const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
+
+function TransactionStatusIcon({ status, label }: { status: string; label: string }) {
+  const Icon = status === 'PENDING'
+    ? Clock3
+    : status === 'PAID' || status === 'APPROVED'
+      ? CheckCircle2
+      : status === 'DECLINED'
+        ? XCircle
+        : status === 'EXPIRED'
+          ? CalendarX2
+          : status === 'UNDERPAID'
+            ? AlertTriangle
+            : CircleHelp
+  const tone = status === 'PENDING' ? 'st-pending' : status === 'PAID' || status === 'APPROVED' ? 'st-paid' : status === 'DECLINED' ? 'st-declined' : status === 'EXPIRED' ? 'st-expired' : status === 'UNDERPAID' ? 'st-under' : 'st-dim'
+  return <span className={`portal-status-icon ${tone}`} title={label} aria-label={label} role="img"><Icon size={17} strokeWidth={2.4} aria-hidden="true" /></span>
+}
 
 // Fixed columns (expand / action / transaction id) always show; everything
 // else is opt-in/out via the column picker and persists per browser.
@@ -363,7 +379,7 @@ export default function Transactions() {
                   const senderAccountName = r.kind === 'deposit' ? (r.sender_account_name ?? r.payment_method ?? party) : (r.account_name ?? party)
                   const cell = (colId: string) => {
                     switch (colId) {
-                      case 'status': return <td key={colId}><span className={`portal-status-tag ${st.cls}`}>{st.label}</span></td>
+                      case 'status': return <td key={colId}><TransactionStatusIcon status={r.status} label={st.label} /></td>
                       case 'type': return <td key={colId}><div className="portal-method-cell"><MethodLogo method={r.kind === 'deposit' ? r.payment_method : r.pay_by}/><span>{r.kind === 'deposit' ? (r.payment_method ?? t('إيداع', 'Deposit')) : (r.pay_by ?? t('سحب', 'Payout'))}</span></div></td>
                       case 'amount': return (
                         <td key={colId} className="mono portal-amount-cell">
