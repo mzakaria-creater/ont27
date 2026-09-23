@@ -70,7 +70,9 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
       .limit(limit),
     db.from('maven_transactions')
       .select('tx_id, guid, ontarget_ref, merchant_tx_reference, amount, sender_name, sender_number, receiving_wallet, to_account_number, payment_method, gateway, status, first_seen_at')
-      .in('status', ['PENDING', 'PAID', 'APPROVED'])
+      // Declined rows are included for late-evidence recovery. They are
+      // always review-only below and can never be auto-approved.
+      .in('status', ['PENDING', 'PAID', 'APPROVED', 'DECLINED'])
       .order('first_seen_at', { ascending: false, nullsFirst: false })
       .limit(limit),
   ])
@@ -151,7 +153,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
       const walletMatch = Boolean(txWallet && smsWallet && txWallet === smsWallet)
       // The database SMS-link trigger can approve when both sender numbers
       // match. Do not let a wallet-rotation fallback reach that trigger.
-      if (smsPhone && txPhone && !walletMatch) return false
+      if (smsPhone && txPhone && !walletMatch && tx.status !== 'DECLINED') return false
       if (smsPhone && txPhone && !smsWallet) return false
       if (!tx.first_seen_at || !sms.received_at) return false
       const delta = Math.abs(Date.parse(tx.first_seen_at) - Date.parse(sms.received_at))
@@ -181,7 +183,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
     if (assignedTx.has(candidates[0].tx_id)) { skippedAlreadyAssigned++; continue }
     const tx = candidates[0]
     const secDiff = sms.received_at && tx.first_seen_at ? Math.round(Math.abs(Date.parse(sms.received_at) - Date.parse(tx.first_seen_at)) / 1000) : null
-    proposals.push({ sms, tx, secDiff, requiresReview })
+    proposals.push({ sms, tx, secDiff, requiresReview: requiresReview || tx.status === 'DECLINED' })
   }
 
   // A transaction may still be proposed by duplicate SMS rows. Keep none of
