@@ -1,7 +1,7 @@
 import { db } from './db.js'
 import { notifyApprovedTransaction } from './approvalEmail.js'
 
-type SmsRow = { id: number; trx_id: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; received_at: string | null; receiver_number: string | null; wallet_number?: string | null; confirmed_wallet_number?: string | null; balance_after?: number | null; provider?: string | null; raw_sms?: string | null; message?: string | null; is_blocked?: boolean | null }
+type SmsRow = { id: number; trx_id: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; received_at: string | null; receiver_number: string | null; wallet_number?: string | null; confirmed_wallet_number?: string | null; balance_after?: number | null; provider?: string | null; sms_sender?: string | null; raw_sms?: string | null; message?: string | null; is_blocked?: boolean | null }
 type TxRow = { tx_id: number; guid: string | null; ontarget_ref: string | null; merchant_tx_reference: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; receiving_wallet: string | null; to_account_number: string | null; payment_method: string | null; gateway: string | null; status: string | null; first_seen_at: string | null }
 
 const PAGE = 1000
@@ -18,6 +18,8 @@ const embeddedPhone = (value: unknown) => {
   const match = String(value ?? '').match(/01\d{9}/)
   return match?.[0] ?? ''
 }
+const NETWORK_SOURCE_RE = /orange\s*cash|orange\s*money|اورنچ\s*كاش|اورنج\s*كاش|vodafone\s*cash|vf[- ]?cash|فودافون\s*كاش|alex\s*bank|alexbank|بنك\s*الاسكندرية|insta\s*pay|instapay|انستا\s*باي|انستاباي/i
+const isNetworkProviderSms = (sms: SmsRow) => NETWORK_SOURCE_RE.test(`${sms.sms_sender ?? ''} ${sms.provider ?? ''} ${sms.raw_sms ?? ''} ${sms.message ?? ''}`)
 const receivingWallet = (sms: SmsRow) => sms.confirmed_wallet_number ?? sms.wallet_number ?? sms.receiver_number
 const nameKey = (value: unknown) => String(value ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter((part) => part.length > 1).join(' ')
 const sameName = (left: unknown, right: unknown) => { const a = nameKey(left); const b = nameKey(right); return Boolean(a && b && (a === b || a.includes(b) || b.includes(a))) }
@@ -55,7 +57,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
   const limit = Math.min(Math.max(scanLimit, 1), PAGE)
   const [{ data: smsData, error: smsError }, { data: txData, error: txError }] = await Promise.all([
     db.from('inbound_sms')
-      .select('id, trx_id, amount, sender_name, sender_number, received_at, receiver_number, wallet_number, confirmed_wallet_number, balance_after, provider, raw_sms, message')
+      .select('id, trx_id, amount, sender_name, sender_number, received_at, receiver_number, wallet_number, confirmed_wallet_number, balance_after, provider, sms_sender, raw_sms, message')
       .eq('sms_category', 'deposit')
       .is('consumed_by_tx_id', null)
       .or('is_blocked.eq.false,is_blocked.is.null')
@@ -103,6 +105,9 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
   let skippedAlreadyAssigned = 0
   const diagnostics = { noAmountCandidate: 0, noUsableTime: 0, outsideTenMinutes: 0, missingSenderName: 0, senderNameMismatch: 0, ambiguousFallback: 0, ownWalletSender: 0 }
   for (const sms of smsRows) {
+    // Only bank/wallet-network notifications are automation evidence. A
+    // customer-phone SMS remains visible for review but cannot auto-match.
+    if (!isNetworkProviderSms(sms)) continue
     if (ourWallets.has(phone(sms.sender_number))) { diagnostics.ownWalletSender++; continue }
     const smsRawPhone = String(sms.sender_number || embeddedPhone(sms.sender_name)).replace(/\D/g, '')
     const smsPhone = phone(smsRawPhone)

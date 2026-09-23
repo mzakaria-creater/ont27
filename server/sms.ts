@@ -93,6 +93,8 @@ const cents = (value: unknown) => Math.round(Number(value ?? 0) * 100)
 const nameKey = (value: unknown) => String(value ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter((part) => part.length > 1).join(' ')
 const phoneKey = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
 const sameName = (left: unknown, right: unknown) => { const a = nameKey(left); const b = nameKey(right); return Boolean(a && b && (a === b || a.includes(b) || b.includes(a))) }
+const NETWORK_SOURCE_RE = /orange\s*cash|orange\s*money|اورنچ\s*كاش|اورنج\s*كاش|vodafone\s*cash|vf[- ]?cash|فودافون\s*كاش|alex\s*bank|alexbank|بنك\s*الاسكندرية|insta\s*pay|instapay|انستا\s*باي|انستاباي/i
+const isNetworkProviderSms = (sms: QueueSms) => NETWORK_SOURCE_RE.test(`${sms.provider ?? ''} ${sms.message ?? ''} ${sms.raw_sms ?? ''}`)
 const queueTime = (value: unknown) => { const parsed = Date.parse(String(value ?? '')); return Number.isFinite(parsed) ? parsed : null }
 function cairoDayKey(value: unknown): string | null {
   const at = queueTime(value)
@@ -117,6 +119,7 @@ function balanceContinuity(sms: QueueSms, history: QueueSms[]) {
 }
 
 function queueCandidates(sms: QueueSms, transactions: QueueTx[], balanceHistory: QueueSms[]) {
+  if (!isNetworkProviderSms(sms)) return []
   const smsAt = queueTime(sms.received_at)
   const smsWallet = phoneKey(sms.receiver_number)
   const smsPhone = phoneKey(sms.sender_number)
@@ -131,6 +134,7 @@ function queueCandidates(sms: QueueSms, transactions: QueueTx[], balanceHistory:
 }
 
 function isPotentialDeposit(sms: QueueSms) {
+  if (!isNetworkProviderSms(sms)) return false
   const hasAmount = Number.isFinite(Number(sms.amount))
   const hasWallet = Boolean(phoneKey(sms.receiver_number))
   const hasPhone = Boolean(phoneKey(sms.sender_number))
