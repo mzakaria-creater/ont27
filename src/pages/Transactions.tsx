@@ -38,7 +38,7 @@ function TransactionStatusIcon({ status, label }: { status: string; label: strin
             ? AlertTriangle
             : CircleHelp
   const tone = status === 'PENDING' ? 'st-pending' : status === 'PAID' || status === 'APPROVED' ? 'st-paid' : status === 'DECLINED' ? 'st-declined' : status === 'EXPIRED' ? 'st-expired' : status === 'UNDERPAID' ? 'st-under' : 'st-dim'
-  return <span className={`portal-status-icon ${tone}`} title={label} aria-label={label} role="img"><Icon size={17} strokeWidth={2.4} aria-hidden="true" /></span>
+  return <span className={`portal-status-icon ${tone}`} title={label} aria-label={label} role="img"><Icon size={21} strokeWidth={2.5} aria-hidden="true" /><span className="portal-status-icon-label">{label}</span></span>
 }
 
 // Fixed columns (expand / action / transaction id) always show; everything
