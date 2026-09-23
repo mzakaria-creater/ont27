@@ -1372,6 +1372,27 @@ a.stat-card:hover { border-color: var(--accent); }
 .admin-tabs button:active:not(.active) { transform: scale(.96); }
 .admin-tabs button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 @media (max-width: 720px) { .admin-tabs { width: 100%; border-radius: 16px; } .admin-tabs button { flex: 1 1 auto; justify-content: center; } .admin-head { flex-wrap: wrap; } }
+
+/* Admin section cards (round 2): .card.control-row never got the same
+   max-inline-size:none override .recent-card has, so every form/header
+   section using it (create merchant, create fee override, issue API key,
+   and every section's title+action row) was capped at 560px wide instead
+   of spanning the page like its recent-card siblings. Also gives every
+   section a consistent top-accent, generous spacing, and a proper icon +
+   title header instead of a bare <strong>. */
+.admin-page .card { max-inline-size: none; border-radius: 14px; margin-block-end: 16px; border-top: 2px solid color-mix(in srgb, var(--accent) 35%, var(--border)); }
+.admin-page .card.control-row, .admin-page form.card { align-items: center; }
+.admin-page .card > div:first-child > strong,
+.admin-page .card.control-row > strong:first-child,
+.admin-page form.card > strong:first-child,
+.admin-page .recent-head h3 { font-size: 15px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; }
+.admin-page .card > div:first-child > strong::before,
+.admin-page .card.control-row > strong:first-child::before,
+.admin-page form.card > strong:first-child::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.admin-page .card p.page-sub { margin-top: 3px; }
+.admin-page .recent-head { margin-block-end: 12px; }
+.admin-page .data-table thead th { background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+.admin-page form.card.control-row > input, .admin-page form.card.control-row > select { flex: 1 1 180px; min-width: 0; }
 .page-sub { margin: 0; color: var(--text-dim); font-size: 13px; }
 
 .filter-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-block-end: 12px; }

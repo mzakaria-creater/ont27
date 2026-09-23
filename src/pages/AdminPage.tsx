@@ -307,6 +307,7 @@ export default function AdminPage() {
   );
   return (
     <PanelShell>
+      <div className="admin-page">
       <section className="admin-head">
         <span className="admin-head-icon"><ShieldCheck size={26} /></span>
         <div className="admin-head-text">
@@ -1553,6 +1554,7 @@ export default function AdminPage() {
           </section>
         </>
       )}
+      </div>
     </PanelShell>
   );
 }
