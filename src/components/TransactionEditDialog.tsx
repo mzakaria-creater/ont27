@@ -17,8 +17,8 @@ const CHANGE_REASONS = [
   ['custom', 'Other (enter reason)'],
 ] as const
 
-export default function TransactionEditDialog({ txId, ontargetRef, status, amount, currency, gateway, onDone }: {
-  txId: number; ontargetRef?: string | null; status: string; amount?: number | null; currency?: string | null; gateway?: string | null; onDone?: () => void
+export default function TransactionEditDialog({ txId, ontargetRef, status, amount, currency, gateway, onDone, iconOnly = false }: {
+  txId: number; ontargetRef?: string | null; status: string; amount?: number | null; currency?: string | null; gateway?: string | null; onDone?: () => void; iconOnly?: boolean
 }) {
   const { user } = useAuth(); const steward = DIRECT_STATUS_ROLES.has(user?.role ?? ''); const canEditAmount = new Set(['super_admin', 'owner', 'admin']).has(user?.role ?? '') || ['ahmedmano.solly', 'joe'].includes(user?.username?.toLowerCase() ?? '')
   const [open, setOpen] = useState(false); const [nextStatus, setNextStatus] = useState(''); const [nextAmount, setNextAmount] = useState(''); const [nextSenderNumber, setNextSenderNumber] = useState(''); const [reason, setReason] = useState(''); const [reasonChoice, setReasonChoice] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [done, setDone] = useState<string | null>(null)
@@ -43,7 +43,7 @@ export default function TransactionEditDialog({ txId, ontargetRef, status, amoun
     finally { setBusy(false) }
   }
   return <>
-    <button type="button" className="btn-ghost btn-sm" onClick={() => { setOpen(true); setDone(null); setError(null); setNextAmount(''); setNextSenderNumber(''); setReason(''); setReasonChoice('') }} title="Edit transaction"><Pencil size={13}/> Edit</button>
+    <button type="button" className={`btn-ghost btn-sm${iconOnly ? ' tx-action-icon' : ''}`} onClick={() => { setOpen(true); setDone(null); setError(null); setNextAmount(''); setNextSenderNumber(''); setReason(''); setReasonChoice('') }} title="Edit transaction" aria-label="Edit transaction"><Pencil size={13}/>{!iconOnly && ' Edit'}</button>
     {open && <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={() => !busy && setOpen(false)}><div className="modal-card transaction-edit-dialog" onClick={e => e.stopPropagation()}>
       <div className="modal-head"><h3><Pencil size={16}/> Edit transaction status</h3><button className="btn-ghost btn-sm" onClick={() => setOpen(false)}><X size={15}/></button></div>
       <div className="cell-sub mono">#{ontargetRef ?? txId} · Current: {statusMeta(status).label} · {money(amount ?? 0, currency ?? 'EGP')}</div>
