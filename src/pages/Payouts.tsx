@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Check, Eye, LayoutGrid, MessageSquare, Pencil, Save, Search, SlidersHorizontal, TableProperties, X } from "lucide-react";
+import { Check, Eye, LayoutGrid, ListChecks, MessageSquare, Pencil, Save, Search, Send, Settings2, SlidersHorizontal, TableProperties, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import PanelShell from "../components/PanelShell";
 import MultiSelectFilter, { splitFilterValues } from "../components/MultiSelectFilter";
@@ -743,27 +743,31 @@ export default function Payouts() {
 
   return (
     <PanelShell>
-      <section className="page-head with-actions">
-        <div><h2>📤 {t("السحوبات", "Payouts")}</h2>
-        <p className="page-sub">
-          {t(
-            "قرارات السحب تُسجّل عبر عامل القرارات مع سجل تدقيق وإثبات للمقبول.",
-            "Payout decisions are recorded via the decision worker with an audit trail and proof for approvals.",
-          )}
-          {data && <> · {data.total.toLocaleString("en-US")}</>}
-        </p></div>
-        <div className="export-actions">
+      <section className="admin-head">
+        <span className="admin-head-icon"><Send size={24} /></span>
+        <div className="admin-head-text">
+          <span className="admin-head-eyebrow">ONTARGET · OPERATIONS</span>
+          <h2>{t("السحوبات", "Payouts")}</h2>
+          <p className="page-sub">
+            {t(
+              "قرارات السحب تُسجّل عبر عامل القرارات مع سجل تدقيق وإثبات للمقبول.",
+              "Payout decisions are recorded via the decision worker with an audit trail and proof for approvals.",
+            )}
+            {data && <> · {data.total.toLocaleString("en-US")}</>}
+          </p>
+        </div>
+        <div className="admin-head-actions export-actions">
           <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport("csv")}><Download size={14}/> CSV</button>
           <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport("xlsx")}><Download size={14}/> {exportBusy ? t("جارٍ التصدير…", "Exporting…") : "XLSX"}</button>
         </div>
       </section>
 
-      <div className="automation-tabs" role="tablist" aria-label={t("أقسام السحوبات", "Payout sections")}>
-        <button type="button" role="tab" aria-selected={tab === "queue"} className={tab === "queue" ? "active" : ""} onClick={() => setTab("queue")}>{t("قائمة الانتظار", "Queue")}</button>
+      <nav className="admin-tabs" role="tablist" aria-label={t("أقسام السحوبات", "Payout sections")}>
+        <button type="button" role="tab" aria-selected={tab === "queue"} className={tab === "queue" ? "active" : ""} onClick={() => setTab("queue")}><ListChecks size={14}/> {t("قائمة الانتظار", "Queue")}</button>
         {user?.role === "super_admin" && (
-          <button type="button" role="tab" aria-selected={tab === "settings"} className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>{t("إعدادات التنفيذ", "Execution settings")}</button>
+          <button type="button" role="tab" aria-selected={tab === "settings"} className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}><Settings2 size={14}/> {t("إعدادات التنفيذ", "Execution settings")}</button>
         )}
-      </div>
+      </nav>
 
       {tab === "settings" && user?.role === "super_admin" && (
         <section className="card payout-execution-settings">

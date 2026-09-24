@@ -789,7 +789,7 @@ button.transaction-cell-link { border: 0; background: transparent; padding: 0; f
 .payout-filter-grid .login-input { width: 100%; min-width: 0; }
 .payout-status-action-select { min-height: 32px; max-width: 150px; padding: 5px 28px 5px 9px; border: 1px solid var(--line); border-radius: 9px; color: var(--text); background: var(--panel-soft); font-size: 12px; }
 .transaction-action-buttons { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-.payout-bulk-bar { position: sticky; top: 8px; z-index: 8; display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-bottom: 12px; box-shadow: 0 10px 28px rgba(0,0,0,.18); }
+.payout-bulk-bar { max-inline-size: none; position: sticky; top: 8px; z-index: 8; display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-bottom: 12px; box-shadow: 0 10px 28px rgba(0,0,0,.18); }
 @media (max-width: 1100px) { .payout-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 700px) { .payout-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .payout-filter-search { grid-column: 1 / -1; } }
 @media (max-width: 440px) { .payout-filter-grid { grid-template-columns: 1fr; } .payout-filter-search { grid-column: auto; } }
@@ -1365,6 +1365,8 @@ a.stat-card:hover { border-color: var(--accent); }
 .admin-head-eyebrow { display: block; color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .14em; margin-bottom: 3px; }
 .admin-head h2 { margin: 0 0 4px; font-size: clamp(20px, 2.4vw, 26px); }
 .admin-head .page-sub { margin: 0; }
+.admin-head-actions { margin-inline-start: auto; flex: 0 0 auto; }
+@media (max-width: 720px) { .admin-head-actions { margin-inline-start: 0; width: 100%; } }
 .admin-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 16px; padding: 5px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); width: fit-content; max-width: 100%; }
 .admin-tabs button { display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 999px; padding: 9px 16px; color: var(--text-dim); background: transparent; font: 700 12px inherit; cursor: pointer; transition: transform .1s var(--ease), color .15s var(--ease), background-color .15s var(--ease); white-space: nowrap; }
 .admin-tabs button:hover:not(.active) { color: var(--text); background: var(--hover-2); }
@@ -1406,7 +1408,7 @@ a.stat-card:hover { border-color: var(--accent); }
 .wallet-create-form .login-input { min-width: 0; width: 100%; }
 @media (max-width: 850px) { .wallet-create-form { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 520px) { .wallet-create-form { grid-template-columns: 1fr; } }
-.transaction-filter-toolbar { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); align-items: center; }
+.transaction-filter-toolbar { max-inline-size: none; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); align-items: center; }
 .trx-filter-primary { display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: center; gap: 8px; }
 .trx-more-filters-toggle { display: inline-flex; align-items: center; gap: 6px; }
 .trx-more-filters-toggle.active { border-color: var(--accent); color: var(--accent); }
@@ -1552,7 +1554,7 @@ a.stat-card:hover { border-color: var(--accent); }
 .proof-icon-button:hover { background: var(--surface-2); color: var(--text); }
 .proof-icon-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .proof-icon-button.is-compact { width: 34px; min-height: 34px; padding: 0; }
-.payout-execution-settings { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(220px, 300px) auto; align-items: end; gap: 14px; margin-block-end: 12px; }
+.payout-execution-settings { max-inline-size: none; display: grid; grid-template-columns: minmax(240px, 1fr) minmax(220px, 300px) auto; align-items: end; gap: 14px; margin-block-end: 12px; }
 .payout-execution-settings label { display: grid; gap: 6px; font-size: .82rem; color: var(--muted); }
 .payout-execution-settings .control-row { margin: 0; }
 .payout-linked-sms-card { margin-block: 12px; padding: 12px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
