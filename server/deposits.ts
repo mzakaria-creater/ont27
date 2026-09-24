@@ -457,7 +457,7 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
   // dashboard_manual_action here to avoid double execution.
   if (isNgPayGateway(before as Record<string, unknown>)) {
     const baseUrl = process.env.SUPABASE_URL
-    const serviceKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY
     if (!baseUrl || !serviceKey) return c.json({ error: 'worker_not_configured' }, 500)
     const workerStartedAt = performance.now()
     let workerResponse: Response
