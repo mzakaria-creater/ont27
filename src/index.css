@@ -3630,7 +3630,8 @@ html[data-pay-theme="etisalat"]      .pay-wrap { --pay-glow: #95c11f; --pay-glow
   border: 1px solid var(--pay-border);
   color: var(--pay-ink);
 }
-.pay-card .field input:focus, .pay-card .field select:focus { border-color: var(--pay-glow); }
+.pay-card .field input, .pay-card .field select { transition: border-color .15s ease, box-shadow .15s ease; }
+.pay-card .field input:focus, .pay-card .field select:focus { border-color: var(--pay-glow); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--pay-glow) 22%, transparent); }
 .pay-card .field > span { color: var(--pay-dim); }
 .pay-channel { color: var(--pay-glow); }
 .pay-wallet { border-color: color-mix(in srgb, var(--pay-glow) 45%, var(--pay-border)); background: var(--pay-bg); color: var(--pay-ink); }

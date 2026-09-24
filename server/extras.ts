@@ -282,6 +282,7 @@ extraRoutes.get(
           ontarget_ref: row.reference, merchant: metadata.merchant_name ?? null,
           amount: row.amount, currency: row.currency, status: String(row.status ?? 'pending').toUpperCase(),
           sender_name: row.customer_name, sender_number: row.customer_phone,
+          sender_account_number: metadata.myhfm_account ?? null,
           payment_method: metadata.payment_method_code ?? metadata.provider ?? 'Payment link',
           receiving_wallet: metadata.wallet_number ?? null, first_seen_at: row.created_at, created_utc: row.created_at,
           checkout_return_url: row.success_url ?? metadata.return_url ?? null,

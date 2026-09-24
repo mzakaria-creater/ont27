@@ -110,8 +110,12 @@ function BrandBar({ merchant, t }: { merchant: string | null; t: (a: string, e: 
   )
 }
 
+function isHfmLink(link: PayLink | null): boolean {
+  return link?.client_name?.toLowerCase().includes('hfm') === true
+}
+
 function checkoutBrandLogo(link: PayLink | null): string {
-  return link?.client_name?.toLowerCase().includes('hfm') ? '/hfm-logo.svg' : '/logo.svg'
+  return isHfmLink(link) ? '/hfm-logo.svg' : '/logo.svg'
 }
 
 function LockIcon() {
@@ -165,6 +169,7 @@ const payErrors: Record<string, [string, string]> = {
   link_expired: ['انتهت صلاحية رابط الدفع', 'Payment link expired'],
   link_exhausted: ['اكتمل عدد استخدامات هذا الرابط', "This link's usage limit is reached"],
   name_required: ['هذا الرابط يتطلب إدخال الاسم', 'This link requires your name'],
+  myhfm_account_required: ['رقم حساب MYHFM مطلوب', 'MYHFM account number is required'],
   no_channel_available: ['لا توجد قناة دفع متاحة حالياً — حاول لاحقاً', 'No payment channel available now — try later'],
   amount_below_min: ['المبلغ أقل من الحد الأدنى', 'Amount is below the minimum'],
   amount_above_max: ['المبلغ أكبر من الحد الأقصى', 'Amount is above the maximum'],
@@ -183,6 +188,7 @@ export default function PaymentCheckout() {
   const [linkError, setLinkError] = useState<string | null>(null)
   const [phone, setPhone] = useState('')
   const [name, setName] = useState('')
+  const [myhfmAccount, setMyhfmAccount] = useState('')
   const [amount, setAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('')
   const [busy, setBusy] = useState(false)
@@ -239,7 +245,7 @@ export default function PaymentCheckout() {
       const { session } = await api<{ session: PaySession }>('/api/pay/session', {
         method: 'POST',
         headers: { 'Idempotency-Key': idempotencyKey },
-        body: JSON.stringify({ code: linkKey, phone, amount: Number(amount), name: name || undefined, payment_method_code: paymentMethod || undefined, idempotency_key: idempotencyKey }),
+        body: JSON.stringify({ code: linkKey, phone, amount: Number(amount), name: name || undefined, myhfm_account: myhfmAccount || undefined, payment_method_code: paymentMethod || undefined, idempotency_key: idempotencyKey }),
       })
       setSession(session)
     } catch (err) {
@@ -469,6 +475,12 @@ export default function PaymentCheckout() {
                 <span>{link?.require_name ? t('الاسم', 'Name') : t('الاسم (اختياري)', 'Name (optional)')}</span>
                 <input value={name} onChange={(e) => setName(e.target.value)} required={link?.require_name === true} />
               </label>
+              {isHfmLink(link) && (
+                <label className="field">
+                  <span>{t('رقم حساب MYHFM', 'MYHFM account number')}</span>
+                  <input dir="ltr" value={myhfmAccount} onChange={(e) => setMyhfmAccount(e.target.value)} placeholder="e.g. 123456" required />
+                </label>
+              )}
               <label className="field">
                 <span>
                   {t('المبلغ', 'Amount')} ({link?.currency ?? 'EGP'})

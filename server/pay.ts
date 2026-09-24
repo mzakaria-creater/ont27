@@ -211,6 +211,7 @@ payRoutes.post('/session', async (c) => {
   const phone = typeof body?.phone === 'string' ? body.phone.trim() : ''
   const name = typeof body?.name === 'string' ? body.name.trim() : null
   const requestedMethod = typeof body?.payment_method_code === 'string' ? body.payment_method_code.trim().toUpperCase() : null
+  const myhfmAccount = typeof body?.myhfm_account === 'string' ? body.myhfm_account.trim().slice(0, 60) : ''
   const rawAmount = Number(body?.amount)
 
   if (!/^01[0-9]{9}$/.test(phone)) return c.json({ error: 'invalid_phone' }, 400)
@@ -230,6 +231,11 @@ payRoutes.post('/session', async (c) => {
   }
 
   if (link?.require_name && !name) return c.json({ error: 'name_required' }, 400)
+  // HFM checkouts collect the customer's MYHFM trading account number so the
+  // deposit can be matched to the right account — required for this brand
+  // only, the same way the checkout page shows the HFM logo for it.
+  const isHfmLink = (link?.client_name ?? '').toLowerCase().includes('hfm')
+  if (isHfmLink && !myhfmAccount) return c.json({ error: 'myhfm_account_required' }, 400)
 
   let currency = link?.currency ?? 'EGP'
   let amount = link?.amount_mode === 'fixed' ? Number(link.amount) : rawAmount
@@ -328,6 +334,7 @@ payRoutes.post('/session', async (c) => {
         payment_method_code: wallet.paymentMethodCode ?? requestedMethod ?? null,
         usd_amount: usdAmount,
         fx_rate_used: fxRate,
+        myhfm_account: myhfmAccount || null,
       },
       checkout_token_hash: checkoutTokenHash,
     })
