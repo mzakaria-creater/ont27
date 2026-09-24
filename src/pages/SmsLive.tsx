@@ -231,6 +231,8 @@ export default function SmsLive() {
   const [walletPaidTotals, setWalletPaidTotals] = useState<WalletPaidTotal[]>([])
   const [walletAlertDismissed, setWalletAlertDismissed] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [syncBusy, setSyncBusy] = useState(false)
+  const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [selected, setSelected] = useState<SmsDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -317,6 +319,19 @@ export default function SmsLive() {
       if (!silent) setLoading(false)
     }
   }, [category, provider, match, appliedQ, amount, from, to, page, pageSize])
+
+  const runSmsRepair = async () => {
+    setSyncBusy(true)
+    setSyncMessage(null)
+    try {
+      const result = await api<{ results?: { sms_exact_matches?: number | string } }>('/api/delta-sync', { method: 'POST' })
+      const linked = result.results?.sms_exact_matches
+      setSyncMessage(t(`اكتملت المطابقة الفورية${typeof linked === 'number' ? ` — تم ربط ${linked} رسالة` : ''}.`, `Live matching completed${typeof linked === 'number' ? ` — ${linked} SMS linked` : ''}.`))
+      await load(true)
+    } catch (error) {
+      setSyncMessage(error instanceof ApiError ? t(`فشلت المطابقة: ${apiErrorDetail(error)}`, `Matching failed: ${apiErrorDetail(error)}`) : t('فشلت المطابقة الفورية.', 'Live matching failed.'))
+    } finally { setSyncBusy(false) }
+  }
 
   useEffect(() => { void load() }, [load])
 
@@ -669,6 +684,7 @@ export default function SmsLive() {
         <div className="recent-head">
           <h2 style={{ margin: 0 }}>📨 {t('SMS مباشر', 'Live SMS')}</h2>
           <Link to="/wallet-report" className="btn-ghost btn-sm">📊 {t('تقرير المحافظ ←', 'Wallet report →')}</Link>
+          <button type="button" className="btn-primary btn-sm" disabled={syncBusy} onClick={() => void runSmsRepair()}>{syncBusy ? t('جارٍ إصلاح الربط…', 'Repairing links…') : t('تشغيل مطابقة SMS الآن', 'Run SMS matching now')}</button>
           {can('sms_live', 'can_edit') && <span className="sms-popup-test-actions"><button type="button" className="btn-ghost btn-sm sms-test-in" onClick={() => window.dispatchEvent(new CustomEvent('ontarget:test-sms-popup', { detail: { direction: 'in', amount: 7500, wallet: '01200000000', test: true } }))}>{t('اختبار SMS داخل', 'Test SMS in')}</button><button type="button" className="btn-ghost btn-sm sms-test-out" onClick={() => window.dispatchEvent(new CustomEvent('ontarget:test-sms-popup', { detail: { direction: 'out', amount: 7500, wallet: '01200000000', test: true } }))}>{t('اختبار SMS خارج', 'Test SMS out')}</button></span>}
         </div>
         <div className="view-switch" role="group" aria-label={t('طريقة العرض', 'View mode')}>
@@ -680,6 +696,7 @@ export default function SmsLive() {
           {data && <> · {data.total.toLocaleString('en-US')}</>}
         </p>
       </section>
+      {syncMessage && <div className="card notice" role="status">{syncMessage}</div>}
 
       <div className="stat-grid">
         <div className="stat-card">
