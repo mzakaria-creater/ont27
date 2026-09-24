@@ -32,6 +32,26 @@ const receivingWallet = (sms: SmsRow) => sms.confirmed_wallet_number ?? sms.wall
 // strong evidence; that path is review-only below.
 const transactionWallet = (tx: TxRow) => tx.to_account_number
 const historicalTransactionWallet = (tx: TxRow) => tx.receiving_wallet
+// The inbound webhook and mirror can deliver the same bank SMS more than once
+// under one trx_id. Matching every copy creates two proposals for one Maven
+// transaction and the uniqueness guard then drops both. Keep the copy with the
+// strongest wallet/sender evidence; all copies remain in the database audit.
+function dedupeSmsRows(rows: SmsRow[]): SmsRow[] {
+  const byTrx = new Map<string, SmsRow>()
+  const passthrough: SmsRow[] = []
+  const score = (row: SmsRow) => {
+    const wallet = receivingWallet(row)
+    const sender = phone(row.sender_number) || embeddedPhone(row.sender_name)
+    return (wallet ? 4 : 0) + (sender ? 2 : 0) + (row.amount != null ? 1 : 0) + (row.provider ? 1 : 0)
+  }
+  for (const row of rows) {
+    const key = ref(row.trx_id)
+    if (!key) { passthrough.push(row); continue }
+    const current = byTrx.get(key)
+    if (!current || score(row) > score(current) || (score(row) === score(current) && row.id < current.id)) byTrx.set(key, row)
+  }
+  return [...passthrough, ...byTrx.values()]
+}
 const nameKey = (value: unknown) => String(value ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter((part) => part.length > 1).join(' ')
 const sameName = (left: unknown, right: unknown) => { const a = nameKey(left); const b = nameKey(right); return Boolean(a && b && (a === b || a.includes(b) || b.includes(a))) }
 function hasBalanceContinuity(sms: SmsRow, history: SmsRow[]) {
@@ -90,7 +110,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
   const { data: balanceHistory, error: balanceHistoryError } = await db.from('inbound_sms').select('id, amount, receiver_number, wallet_number, confirmed_wallet_number, balance_after, received_at').not('balance_after', 'is', null).or('is_blocked.eq.false,is_blocked.is.null').gte('received_at', new Date(Date.now() - 7 * 86_400_000).toISOString()).limit(10_000)
   if (balanceHistoryError) throw new Error(`balance continuity lookup: ${balanceHistoryError.message}`)
   const ourWallets = new Set((walletRows ?? []).map((row) => phone(row.to_account_number)).filter(Boolean))
-  const smsRows = (smsData ?? []) as SmsRow[]
+  const smsRows = dedupeSmsRows((smsData ?? []) as SmsRow[])
   const txRows = (txData ?? []) as TxRow[]
   const txByRef = new Map<string, TxRow[]>()
   for (const tx of txRows) {
