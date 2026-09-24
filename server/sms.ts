@@ -334,8 +334,10 @@ async function markAmbiguousWallets(rows: Record<string, unknown>[]): Promise<vo
       ? (mappings.length === 1 ? mappings[0] : null)
       : mappings.find((item) => item.sim_slot === slot)
     if (match) {
-      row.wallet_number = match.wallet
-      row.receiver_number = row.receiver_number ?? match.wallet
+      // Never overwrite a wallet explicitly present in the SMS payload. The
+      // device map is only a fallback for forwarders that omitted the wallet.
+      if (!row.receiver_number && !row.wallet_number) row.wallet_number = match.wallet
+      if (!row.receiver_number) row.receiver_number = match.wallet
       continue
     }
     if (slot == null && mappings.length > 1) row.wallet_identity_ambiguous = true
