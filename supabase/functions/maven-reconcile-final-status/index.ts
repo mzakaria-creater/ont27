@@ -54,21 +54,6 @@ function providerPatch(row: Record<string, unknown>, now: string) {
   return patch;
 }
 
-function amountSyncPatch(old: Record<string, any>, providerAmount: unknown) {
-  if (old.provider_amount == null || providerAmount == null || providerAmount === "") return {};
-  const provider = Number(old.provider_amount);
-  const maven = Number(providerAmount);
-  if (!Number.isFinite(provider) || !Number.isFinite(maven)) return {};
-  if (provider !== maven) {
-    return {
-      amount_sync_status: "mismatch",
-      amount_mismatch_reason: `Maven amount ${maven} differs from provider amount ${provider}`,
-      settlement_blocked: true,
-    };
-  }
-  return { amount_sync_status: "matched", amount_mismatch_reason: null, settlement_blocked: false };
-}
-
 async function fetchMapped(cookie: string, from: Date, to: Date, merchantFilter = "") {
   const providerRows: any[] = [];
   const windows = chunkWindows(from, to);
@@ -144,7 +129,7 @@ Deno.serve(async (req) => {
         const ids = mapped.map((row) => row.tx_id);
         const local = new Map<number, any>();
         for (let i = 0; i < ids.length; i += 500) {
-          const { data, error } = await sb.from("maven_transactions").select("tx_id,status,row_hash,amount,provider_amount,amount_sync_status,amount_mismatch_reason,first_seen_at,approved_by,paid_source").in("tx_id", ids.slice(i, i + 500));
+          const { data, error } = await sb.from("maven_transactions").select("tx_id,status,row_hash,amount,created_at_utc,first_seen_at,approved_by,paid_source").in("tx_id", ids.slice(i, i + 500));
           if (error) throw new Error(`local lookup: ${error.message}`);
           for (const row of data ?? []) local.set(Number(row.tx_id), row);
         }
@@ -161,13 +146,12 @@ Deno.serve(async (req) => {
             continue;
           }
           const amountDiff = old.amount != null && Number(old.amount) !== Number(row.amount);
-          const syncPatch = amountSyncPatch(old, row.amount);
           const statusDiff = old.status !== row.status;
           if (amountDiff) amountChanges++;
           if (statusDiff) statusChanges++;
           if (statusDiff && old.status === "PAID" && row.status !== "PAID") alerts++;
-          if (!dryRun && (old.row_hash !== row.row_hash || Object.keys(syncPatch).length > 0)) {
-            const patch: Record<string, any> = { ...providerPatch(row, nowIso), row_hash: row.row_hash, ...syncPatch };
+          if (!dryRun && old.row_hash !== row.row_hash) {
+            const patch: Record<string, any> = { ...providerPatch(row, nowIso), row_hash: row.row_hash };
             if (statusDiff) {
               patch.last_status_change = nowIso;
               patch.paid_source = row.status === "PAID" ? "reconciliation" : null;
@@ -180,7 +164,7 @@ Deno.serve(async (req) => {
             updated++;
           }
         }
-        const summary = { window: { from: chunkFrom.toISOString(), to: chunkTo.toISOString() }, rows_provider: mapped.length, rows_local: local.size, would_insert: inserted, status_changes: statusChanges, amount_changes: amountChanges, inserted: dryRun ? 0 : inserted, updated: dryRun ? 0 : updated, alerts, duration_ms: Date.now() - chunkStarted };
+        const summary = { window: { from: chunkFrom.toISOString(), to: chunkTo.toISOString() }, rows_provider: mapped.length, rows_local: local.size, would_insert: inserted, status_changes: statusChanges, amount_changes: amountChanges, created_at_changes: mapped.filter((row) => { const old = local.get(Number(row.tx_id)); return old && String(old.created_at_utc ?? "") !== String(row.created_at_utc ?? row.created_utc ?? ""); }).length, inserted: dryRun ? 0 : inserted, updated: dryRun ? 0 : updated, alerts, duration_ms: Date.now() - chunkStarted };
         summaries.push(summary);
         totalProvider += mapped.length;
         totalLocal += local.size;
@@ -218,7 +202,7 @@ Deno.serve(async (req) => {
     const ids = mapped.map((row) => row.tx_id);
     const local = new Map<number, any>();
     for (let i = 0; i < ids.length; i += 500) {
-      const { data, error } = await sb.from("maven_transactions").select("tx_id,status,row_hash,amount,provider_amount,amount_sync_status,amount_mismatch_reason,first_seen_at,approved_by,paid_source").in("tx_id", ids.slice(i, i + 500));
+      const { data, error } = await sb.from("maven_transactions").select("tx_id,status,row_hash,amount,created_at_utc,first_seen_at,approved_by,paid_source").in("tx_id", ids.slice(i, i + 500));
       if (error) throw new Error(`local lookup: ${error.message}`);
       for (const row of data ?? []) local.set(Number(row.tx_id), row);
     }
@@ -237,10 +221,9 @@ Deno.serve(async (req) => {
         inserted++;
         continue;
       }
-      const syncPatch = amountSyncPatch(old, row.amount);
-      if (old.row_hash === row.row_hash && Object.keys(syncPatch).length === 0) { unchanged++; continue; }
+      if (old.row_hash === row.row_hash) { unchanged++; continue; }
 
-      const patch: Record<string, any> = { ...providerPatch(row, nowIso), row_hash: row.row_hash, ...syncPatch };
+      const patch: Record<string, any> = { ...providerPatch(row, nowIso), row_hash: row.row_hash };
       if (old.status !== row.status) {
         patch.last_status_change = nowIso;
         patch.paid_source = row.status === "PAID" ? "reconciliation" : null;
