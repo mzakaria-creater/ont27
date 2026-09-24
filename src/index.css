@@ -3632,6 +3632,8 @@ html[data-pay-theme="etisalat"]      .pay-wrap { --pay-glow: #95c11f; --pay-glow
 }
 .pay-card .field input, .pay-card .field select { transition: border-color .15s ease, box-shadow .15s ease; }
 .pay-card .field input:focus, .pay-card .field select:focus { border-color: var(--pay-glow); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--pay-glow) 22%, transparent); }
+.pay-card .field small { margin-top: 4px; color: var(--pay-dim); font-size: 10.5px; line-height: 1.4; }
+.pay-card .field-hfm-account { position: relative; padding-inline-start: 12px; border-inline-start: 2px solid var(--pay-glow); }
 .pay-card .field > span { color: var(--pay-dim); }
 .pay-channel { color: var(--pay-glow); }
 .pay-wallet { border-color: color-mix(in srgb, var(--pay-glow) 45%, var(--pay-border)); background: var(--pay-bg); color: var(--pay-ink); }
@@ -3666,7 +3668,7 @@ html[data-pay-theme="etisalat"]      .pay-wrap { --pay-glow: #95c11f; --pay-glow
    step (form or wallet-to-pay) on the other. Used only by PaymentCheckout —
    PaymentStatus and the error/loading states keep the plain single-column
    .pay-card. */
-.checkout-split { display: grid; grid-template-columns: 1fr 1fr; align-items: stretch; }
+.checkout-split { display: grid; grid-template-columns: .92fr 1.08fr; align-items: stretch; }
 .checkout-left, .checkout-right { display: flex; flex-direction: column; padding: 32px 30px; min-width: 0; }
 .checkout-left { border-inline-end: 1px solid var(--pay-border); gap: 4px; }
 .checkout-left .login-logo { margin-inline: 0; }

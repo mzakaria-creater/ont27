@@ -476,9 +476,10 @@ export default function PaymentCheckout() {
                 <input value={name} onChange={(e) => setName(e.target.value)} required={link?.require_name === true} />
               </label>
               {isHfmLink(link) && (
-                <label className="field">
+                <label className="field field-hfm-account">
                   <span>{t('رقم حساب MYHFM', 'MYHFM account number')}</span>
                   <input dir="ltr" value={myhfmAccount} onChange={(e) => setMyhfmAccount(e.target.value)} placeholder="e.g. 123456" required />
+                  <small>{t('يُستخدم لمطابقة الإيداع بحسابك على MYHFM', 'Used to match this deposit to your MYHFM account')}</small>
                 </label>
               )}
               <label className="field">
