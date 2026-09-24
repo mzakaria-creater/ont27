@@ -128,8 +128,10 @@ interface SmsDetail extends SmsRow {
 }
 
 function displayWalletForRow(row: SmsRow): string | null {
-  // This is the SMS card's wallet. The matched transaction's current wallet
-  // is shown separately; never replace SMS evidence with a Maven field.
+  // After linking, the transaction's current allocation is the operational
+  // wallet. The raw SMS wallet remains available as evidence, but may be an
+  // older number after Maven wallet rotation.
+  if (row.matched_tx_id != null && row.matched_receiving_wallet) return row.matched_receiving_wallet
   return row.wallet_identity_ambiguous ? null : row.confirmed_wallet_number ?? row.wallet_number ?? row.receiver_number
 }
 
