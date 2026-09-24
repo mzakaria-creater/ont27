@@ -415,7 +415,7 @@ export default function SmsLive() {
       setMetaName(res.sms.sender_name ?? '')
       setMetaNotes(res.sms.notes ?? '')
       setMetaCategory(res.sms.manual_entry_note ?? '')
-      setMetaWallet(res.sms.confirmed_wallet_number ?? res.sms.wallet_number ?? '')
+      setMetaWallet(res.sms.matched_receiving_wallet ?? res.sms.confirmed_wallet_number ?? res.sms.wallet_number ?? '')
       setAssignmentName(res.sms.sender_name ?? '')
       setExpenseComment('')
       if (res.sms.sms_category !== 'withdrawal' && !res.sms.matched_tx_id && can('sms_live', 'can_edit')) void loadCandidates(id)
