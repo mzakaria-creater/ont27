@@ -28,7 +28,7 @@ interface DeviceRow {
   last_seen_at: string | null
 }
 
-interface LiveWallet { bank_id: string | null; account_name: string | null; payment_type: string | null; phone_number: string | null; last_checked: string | null }
+interface LiveWallet { bank_id?: string | null; id?: string | null; BankId?: string | null; account_name?: string | null; AccountName?: string | null; payment_type?: string | null; PaymentType?: string | null; phone_number?: string | null; PhoneNumber?: string | null; last_checked?: string | null; updated_at?: string | null }
 interface WalletsResponse { wallets: WalletRow[]; devices: DeviceRow[]; live: LiveWallet[] }
 interface RotationGroup {
   id: string
@@ -152,17 +152,21 @@ export default function MavenWallets() {
   }, [data])
 
   const liveRows = data?.live ?? []
+  const liveBankId = (row: LiveWallet) => String(row.bank_id ?? row.id ?? row.BankId ?? '').trim()
+  const livePhone = (row: LiveWallet) => row.phone_number ?? row.PhoneNumber ?? null
+  const liveAccountName = (row: LiveWallet) => row.account_name ?? row.AccountName ?? null
+  const livePaymentType = (row: LiveWallet) => row.payment_type ?? row.PaymentType ?? null
   const livePageSize = 10
   const livePageCount = Math.max(1, Math.ceil(liveRows.length / livePageSize))
   const visibleLiveRows = liveRows.slice((livePage - 1) * livePageSize, livePage * livePageSize)
   // "Select all" covers every live wallet across all pages, not just the
   // page currently on screen — an operator picking a bulk action expects
   // "all" to mean all 106, not the 10 they can see.
-  const allLiveSelected = liveRows.length > 0 && liveRows.every((row) => selectedLive.includes(row.bank_id ?? ''))
+  const allLiveSelected = liveRows.length > 0 && liveRows.every((row) => selectedLive.includes(liveBankId(row)))
   const toggleLive = (bankId: string) => setSelectedLive((current) => current.includes(bankId) ? current.filter((item) => item !== bankId) : [...current, bankId])
-  const toggleAllLive = () => setSelectedLive(allLiveSelected ? [] : [...new Set(liveRows.map((row) => row.bank_id ?? '').filter(Boolean))])
+  const toggleAllLive = () => setSelectedLive(allLiveSelected ? [] : [...new Set(liveRows.map(liveBankId).filter(Boolean))])
   const changeAllLive = () => {
-    const bankIds = [...new Set(liveRows.map((row) => row.bank_id ?? '').filter(Boolean))]
+    const bankIds = [...new Set(liveRows.map(liveBankId).filter(Boolean))]
     if (bankIds.length) openReplace(bankIds)
   }
 
@@ -178,7 +182,7 @@ export default function MavenWallets() {
         .catch(() => setReplacePreview((prev) => ({ ...prev, [bankId]: { loading: false, current: null, error: t('تعذّر جلب الرقم الحالي', 'Could not fetch the current number') } })))
     }
   }
-  const previewReady = replaceTarget?.every((id) => !replacePreview[id]?.loading) ?? false
+  const previewReady = replaceTarget?.length ? replaceTarget.every((id) => replacePreview[id] && !replacePreview[id].loading && !replacePreview[id].error) : false
   const submitReplace = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!replaceTarget || !/^\d{8,20}$/.test(replaceNewNumber)) return
@@ -189,8 +193,9 @@ export default function MavenWallets() {
           method: 'POST', body: JSON.stringify({ bank_id: bankId, new_wallet_number: replaceNewNumber }),
         })
         setReplaceResults((prev) => ({ ...prev, [bankId]: { ok: true, message: t(`تم التغيير: ${res.changed_from} → ${res.changed_to}`, `Changed: ${res.changed_from} → ${res.changed_to}`) } }))
-      } catch {
-        setReplaceResults((prev) => ({ ...prev, [bankId]: { ok: false, message: t('فشل التغيير على Maven', 'Change failed on Maven') } }))
+      } catch (error) {
+        const message = error instanceof ApiError ? error.message : ''
+        setReplaceResults((prev) => ({ ...prev, [bankId]: { ok: false, message: message || t('فشل التغيير على Maven', 'Change failed on Maven') } }))
       }
     }
     setReplaceBusy(false)
@@ -309,7 +314,7 @@ export default function MavenWallets() {
         <div className="recent-head"><div><h3>{t('أرقام الاستقبال الحية', 'Live receiving numbers')}</h3><p className="cell-sub">{t('البيانات القادمة من Maven — اختر عدة أرقام لإدارة الاستبدال.', 'Maven source data — select multiple numbers for replacement management.')}</p></div><button className="btn-ghost btn-sm" type="button" onClick={() => void refresh()}><RefreshCw size={15} /> {t('تحديث', 'Refresh')}</button></div>
         <div className="maven-live-toolbar"><label className="maven-select-all"><input type="checkbox" checked={allLiveSelected} onChange={toggleAllLive} /> {t('تحديد الكل', 'Select all')} <span className="cell-sub">({liveRows.length})</span></label><span>{selectedLive.length} {t('محدد', 'selected')}</span><button className="btn-ghost btn-sm" type="button" disabled={!selectedLive.length} onClick={() => openReplace(selectedLive)}><Pencil size={14} /> {t('غيّر المحدد لرقم واحد', 'Change selected to one number')}</button><button className="btn-ghost btn-sm" type="button" disabled={!liveRows.length} onClick={changeAllLive}><Pencil size={14} /> {t('غيّر كل المحافظ', 'Change all wallets')}</button><label className="maven-threshold"><Target size={14} /> {t('الاستبدال التلقائي عند', 'Auto replacement at')} <select value={replacementThreshold} onChange={(event) => setReplacementThreshold(event.target.value)}><option value="80">80%</option><option value="85">85%</option><option value="90">90%</option></select></label></div>
         <div className="table-wrap maven-table-wrap"><table className="data-table maven-live-table"><thead><tr><th></th><th>{t('البنك', 'Bank')}</th><th>{t('النوع / التاجر', 'Type / merchant')}</th><th>{t('الرقم الحالي', 'Current number')}</th><th>{t('آخر فحص', 'Last checked')}</th><th>{t('إجراء', 'Action')}</th></tr></thead><tbody>
-          {visibleLiveRows.map((row) => { const id = row.bank_id ?? ''; return <tr key={`${id}-${row.phone_number ?? ''}`}><td><input type="checkbox" checked={selectedLive.includes(id)} onChange={() => toggleLive(id)} aria-label={`${t('تحديد', 'Select')} ${id}`} /></td><td className="mono">{id || '—'}</td><td><strong>{row.payment_type ?? '—'}</strong><div className="cell-sub">{row.account_name ?? t('غير محدد', 'Not specified')}</div></td><td className="mono">{row.phone_number ?? '—'}</td><td className="cell-sub">{depositTime({ first_seen_at: row.last_checked })}</td><td className="maven-live-row-actions"><button className="btn-ghost btn-sm maven-change-btn" type="button" onClick={() => openReplace([id])}><Pencil size={14} /> {t('غيّر', 'Change')}</button><button className="btn-ghost btn-sm" type="button" onClick={() => openAddNew(id)}><Plus size={14} /> {t('استبدال بجديد', 'Replace w/ new')}</button></td></tr> })}
+          {visibleLiveRows.map((row) => { const id = liveBankId(row); const phone = livePhone(row); return <tr key={`${id}-${phone ?? ''}`}><td><input type="checkbox" checked={selectedLive.includes(id)} onChange={() => toggleLive(id)} aria-label={`${t('تحديد', 'Select')} ${id}`} disabled={!id} /></td><td className="mono">{id || '—'}</td><td><strong>{livePaymentType(row) ?? '—'}</strong><div className="cell-sub">{liveAccountName(row) ?? t('غير محدد', 'Not specified')}</div></td><td className="mono">{phone ?? '—'}</td><td className="cell-sub">{depositTime({ first_seen_at: row.last_checked ?? row.updated_at })}</td><td className="maven-live-row-actions"><button className="btn-ghost btn-sm maven-change-btn" type="button" disabled={!id} onClick={() => openReplace([id])}><Pencil size={14} /> {t('غيّر', 'Change')}</button><button className="btn-ghost btn-sm" type="button" disabled={!id} onClick={() => openAddNew(id)}><Plus size={14} /> {t('استبدال بجديد', 'Replace w/ new')}</button></td></tr> })}
           {!visibleLiveRows.length && <tr><td colSpan={6} className="maven-empty">{t('لا توجد أرقام حية من Maven حالياً.', 'No live Maven receiving numbers currently available.')}</td></tr>}
         </tbody></table></div>
         <div className="maven-pagination"><span>{liveRows.length ? `${(livePage - 1) * livePageSize + 1}-${Math.min(livePage * livePageSize, liveRows.length)} / ${liveRows.length}` : '0 / 0'}</span><button className="btn-ghost btn-sm" type="button" disabled={livePage <= 1} onClick={() => setLivePage((page) => page - 1)}>{t('السابق', 'Previous')}</button><strong>{livePage} / {livePageCount}</strong><button className="btn-ghost btn-sm" type="button" disabled={livePage >= livePageCount} onClick={() => setLivePage((page) => page + 1)}>{t('التالي', 'Next')}</button></div>
@@ -321,13 +326,14 @@ export default function MavenWallets() {
           {canCreateWallet && <button className="btn-ghost btn-sm" type="button" onClick={() => setAddWalletOpen(true)}><Plus size={14} /> {t('إضافة محفظة جديدة', 'Add new wallet')}</button>}
           <button className="btn-ghost btn-sm" type="button" onClick={() => window.print()}><Download size={15} /> {t('تصدير / طباعة', 'Export / print')}</button>
         </div></div>
-        <div className="table-wrap maven-table-wrap"><table className="data-table maven-table"><thead><tr>{canManageRotation && <th><input type="checkbox" checked={allVisibleWalletsSelected} onChange={toggleAllWallets} aria-label={t('تحديد كل المحافظ الظاهرة', 'Select all visible wallets')} /></th>}<th>#</th><th>{t('رقم المحفظة / الحساب', 'Wallet / account')}</th><th>{t('المزوّد', 'Provider')}</th><th>{t('الجهاز و SIM', 'Device & SIM')}</th><th>{t('الرصيد الحالي', 'Current balance')}</th><th>{t('الحالة', 'Status')}</th><th>{t('الحد اليومي', 'Daily limit')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('آخر تحديث', 'Last update')}</th></tr></thead><tbody>
+        <div className="table-wrap maven-table-wrap"><table className="data-table maven-table"><thead><tr>{canManageRotation && <th><input type="checkbox" checked={allVisibleWalletsSelected} onChange={toggleAllWallets} aria-label={t('تحديد كل المحافظ الظاهرة', 'Select all visible wallets')} /></th>}<th>#</th><th>{t('رقم المحفظة / الحساب', 'Wallet / account')}</th><th>{t('المزوّد', 'Provider')}</th><th>{t('الجهاز و SIM', 'Device & SIM')}</th><th>{t('الرصيد الحالي', 'Current balance')}</th><th>{t('الحالة', 'Status')}</th><th>{t('الحد اليومي', 'Daily limit')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('آخر تحديث', 'Last update')}</th>{can('wallets', 'can_edit') && <th>{t('إجراء', 'Action')}</th>}</tr></thead><tbody>
           {rows.map((wallet, index) => {
             const device = wallet.device ? deviceMap.get(`${wallet.device}#${wallet.sim_slot ?? 0}`) ?? deviceMap.get(`${wallet.device}#0`) : undefined
             const online = device?.online === true
-            return <tr key={`${wallet.to_account_number}-${wallet.sim_slot ?? 0}`}>{canManageRotation && <td><input type="checkbox" checked={selectedWallets.includes(wallet.to_account_number)} onChange={() => toggleWallet(wallet.to_account_number)} aria-label={`${t('تحديد', 'Select')} ${wallet.to_account_number}`} /></td>}<td><span className="maven-row-number">{index + 1}</span></td><td><strong className="mono">{wallet.to_account_number}</strong><div className="cell-sub">{wallet.payment_type ?? t('استقبال', 'Receiving')}</div></td><td><span className="maven-provider">{wallet.provider ?? '—'}</span></td><td>{device ? <><strong className="mono">{device.device}</strong><div className="cell-sub">SIM {device.sim_slot ?? 0}{device.sim_number ? ` · ${device.sim_number}` : ''}</div></> : <span className="cell-sub"><Smartphone size={14} /> {t('غير مربوط', 'Unassigned')}</span>}</td><td><strong className="maven-balance">{device?.balance != null ? money(device.balance, 'EGP') : '—'}</strong>{device?.balance_at && <div className="cell-sub">{depositTime({ first_seen_at: device.balance_at })}</div>}</td><td><span className={`maven-status ${online ? 'online' : device ? 'offline' : 'unknown'}`}>{online ? <CheckCircle2 size={14} /> : device ? <WifiOff size={14} /> : <ShieldAlert size={14} />}{online ? t('متصل', 'Online') : device ? t('غير متصل', 'Offline') : t('غير معروف', 'Unknown')}</span>{device?.battery != null && <div className="cell-sub">🔋 {device.battery}%</div>}</td><td className="mono">{money(wallet.daily_limit ?? 60_000, 'EGP')}</td><td>{wallet.merchant ?? <span className="cell-sub">{t('عام', 'General')}</span>}</td><td className="cell-sub mono">{depositTime({ first_seen_at: device?.last_seen_at ?? wallet.updated_at })}</td></tr>
+            const matchingLive = liveRows.find((live) => livePhone(live)?.replace(/\D/g, '') === wallet.to_account_number.replace(/\D/g, '') && liveBankId(live))
+            return <tr key={`${wallet.to_account_number}-${wallet.sim_slot ?? 0}`}>{canManageRotation && <td><input type="checkbox" checked={selectedWallets.includes(wallet.to_account_number)} onChange={() => toggleWallet(wallet.to_account_number)} aria-label={`${t('تحديد', 'Select')} ${wallet.to_account_number}`} /></td>}<td><span className="maven-row-number">{index + 1}</span></td><td><strong className="mono">{wallet.to_account_number}</strong><div className="cell-sub">{wallet.payment_type ?? t('استقبال', 'Receiving')}</div></td><td><span className="maven-provider">{wallet.provider ?? '—'}</span></td><td>{device ? <><strong className="mono">{device.device}</strong><div className="cell-sub">SIM {device.sim_slot ?? 0}{device.sim_number ? ` · ${device.sim_number}` : ''}</div></> : <span className="cell-sub"><Smartphone size={14} /> {t('غير مربوط', 'Unassigned')}</span>}</td><td><strong className="maven-balance">{device?.balance != null ? money(device.balance, 'EGP') : '—'}</strong>{device?.balance_at && <div className="cell-sub">{depositTime({ first_seen_at: device.balance_at })}</div>}</td><td><span className={`maven-status ${online ? 'online' : device ? 'offline' : 'unknown'}`}>{online ? <CheckCircle2 size={14} /> : device ? <WifiOff size={14} /> : <ShieldAlert size={14} />}{online ? t('متصل', 'Online') : device ? t('غير متصل', 'Offline') : t('غير معروف', 'Unknown')}</span>{device?.battery != null && <div className="cell-sub">🔋 {device.battery}%</div>}</td><td className="mono">{money(wallet.daily_limit ?? 60_000, 'EGP')}</td><td>{wallet.merchant ?? <span className="cell-sub">{t('عام', 'General')}</span>}</td><td className="cell-sub mono">{depositTime({ first_seen_at: device?.last_seen_at ?? wallet.updated_at })}</td>{can('wallets', 'can_edit') && <td className="row-actions">{matchingLive ? <button className="btn-ghost btn-sm" type="button" onClick={() => openReplace([liveBankId(matchingLive)])}><Pencil size={14} /> {t('غيّر الرقم', 'Change number')}</button> : <span className="cell-sub">{t('غير ظاهر في Maven', 'Not in Maven live list')}</span>}</td>}</tr>
           })}
-          {rows.length === 0 && <tr><td colSpan={canManageRotation ? 10 : 9} className="maven-empty">{t('لا توجد محافظ مطابقة للفلاتر.', 'No wallets match the current filters.')}</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={(canManageRotation ? 10 : 9) + (can('wallets', 'can_edit') ? 1 : 0)} className="maven-empty">{t('لا توجد محافظ مطابقة للفلاتر.', 'No wallets match the current filters.')}</td></tr>}
         </tbody></table></div>
       </section>
 
