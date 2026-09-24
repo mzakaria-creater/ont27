@@ -4,6 +4,10 @@ import { fmtDay, listTransactions, login, sha256, toDbRow } from "../_shared/mav
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const LIVE_OVERLAP_MS = 15 * 60_000;
 const REPAIR_WINDOW_MS = 48 * 3600_000;
+const BACKFILL_CHUNK_MS = 15 * 60_000;
+const MAVEN_REQUEST_DELAY_MS = 250;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function mavenStamp(value: Date) {
   const p = (n: number) => String(n).padStart(2, "0");
@@ -19,6 +23,16 @@ function dateWindows(from: Date, to: Date): Array<[string, string]> {
     const start = cursor < from ? from : cursor;
     const end = dayEnd > to ? to : dayEnd;
     out.push([mavenStamp(start), mavenStamp(end)]);
+  }
+  return out;
+}
+
+function chunkWindows(from: Date, to: Date): Array<[Date, Date]> {
+  const out: Array<[Date, Date]> = [];
+  for (let cursor = new Date(from); cursor < to;) {
+    const end = new Date(Math.min(cursor.getTime() + BACKFILL_CHUNK_MS, to.getTime()));
+    out.push([new Date(cursor), end]);
+    cursor = end;
   }
   return out;
 }
@@ -40,6 +54,52 @@ function providerPatch(row: Record<string, unknown>, now: string) {
   return patch;
 }
 
+function amountSyncPatch(old: Record<string, any>, providerAmount: unknown) {
+  if (old.provider_amount == null || providerAmount == null || providerAmount === "") return {};
+  const provider = Number(old.provider_amount);
+  const maven = Number(providerAmount);
+  if (!Number.isFinite(provider) || !Number.isFinite(maven)) return {};
+  if (provider !== maven) {
+    return {
+      amount_sync_status: "mismatch",
+      amount_mismatch_reason: `Maven amount ${maven} differs from provider amount ${provider}`,
+      settlement_blocked: true,
+    };
+  }
+  return { amount_sync_status: "matched", amount_mismatch_reason: null, settlement_blocked: false };
+}
+
+async function fetchMapped(cookie: string, from: Date, to: Date, merchantFilter = "") {
+  const providerRows: any[] = [];
+  const windows = chunkWindows(from, to);
+  for (const [chunkFrom, chunkTo] of windows) {
+    let offset = 0;
+    let fetched = 0;
+    let expected = 0;
+    const windowFrom = mavenStamp(chunkFrom);
+    const windowTo = mavenStamp(chunkTo);
+    while (true) {
+      if (offset > 0) await sleep(MAVEN_REQUEST_DELAY_MS);
+      const page = await listTransactions(cookie, offset, windowFrom, windowTo);
+      expected = Math.max(expected, page.total);
+      fetched += page.rows.length;
+      providerRows.push(...page.rows);
+      if (page.rows.length < 100) break;
+      offset += page.rows.length;
+    }
+    if (expected > 0 && fetched !== expected) throw new Error(`Maven completeness gap for ${windowFrom}: fetched ${fetched}, expected ${expected}`);
+    await sleep(MAVEN_REQUEST_DELAY_MS);
+  }
+  const mapped = (await Promise.all(providerRows.map(async (raw) => {
+    const row = toDbRow(raw);
+    return row ? { ...row, row_hash: await sha256(raw) } : null;
+  }))).filter(Boolean) as Record<string, any>[];
+  const filtered = merchantFilter
+    ? mapped.filter((row) => String(row.merchant ?? "").toLowerCase() === merchantFilter.toLowerCase())
+    : mapped;
+  return [...new Map(filtered.map((row) => [Number(row.tx_id), row])).values()];
+}
+
 function createdAt(row: Record<string, unknown>, fallback: string) {
   const value = String(row.created_utc ?? "").trim();
   if (!value) return fallback;
@@ -55,7 +115,11 @@ Deno.serve(async (req) => {
   const windowEnd = new Date();
   try {
     const body = await req.json().catch(() => ({}));
-    const mode = body?.mode === "repair" ? "repair" : "live";
+    const isBackfill = body?.mode === "backfill";
+    const dryRun = isBackfill && body?.dry_run === true;
+    const merchantFilter = isBackfill ? String(body?.merchant ?? "").trim() : "";
+    if (isBackfill && !merchantFilter) return json({ ok: false, error: "merchant_required" }, 400);
+    const mode = body?.mode === "repair" ? "repair" : isBackfill ? "backfill" : "live";
     const from = body?.from ? new Date(body.from) : new Date(Date.now() - (mode === "repair" ? REPAIR_WINDOW_MS : LIVE_OVERLAP_MS));
     const to = body?.to ? new Date(body.to) : new Date();
     if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from >= to) return json({ ok: false, error: "invalid_window" }, 400);
@@ -66,6 +130,71 @@ Deno.serve(async (req) => {
     if (!user || !pass) return json({ ok: false, error: "Missing Maven credentials in maven_runtime_config" }, 500);
 
     const cookie = await login(user, pass, "Supplier");
+
+    if (isBackfill) {
+      const summaries: any[] = [];
+      let totalProvider = 0;
+      let totalLocal = 0;
+      let totalInserted = 0;
+      let totalStatusChanges = 0;
+      let totalAmountChanges = 0;
+      for (const [chunkFrom, chunkTo] of chunkWindows(from, to)) {
+        const chunkStarted = Date.now();
+        const mapped = await fetchMapped(cookie, chunkFrom, chunkTo, merchantFilter);
+        const ids = mapped.map((row) => row.tx_id);
+        const local = new Map<number, any>();
+        for (let i = 0; i < ids.length; i += 500) {
+          const { data, error } = await sb.from("maven_transactions").select("tx_id,status,row_hash,amount,provider_amount,amount_sync_status,amount_mismatch_reason,first_seen_at,approved_by,paid_source").in("tx_id", ids.slice(i, i + 500));
+          if (error) throw new Error(`local lookup: ${error.message}`);
+          for (const row of data ?? []) local.set(Number(row.tx_id), row);
+        }
+        const nowIso = new Date().toISOString();
+        let inserted = 0;
+        let updated = 0;
+        let statusChanges = 0;
+        let amountChanges = 0;
+        let alerts = 0;
+        for (const row of mapped) {
+          const old = local.get(Number(row.tx_id));
+          if (!old) {
+            inserted++;
+            continue;
+          }
+          const amountDiff = old.amount != null && Number(old.amount) !== Number(row.amount);
+          const syncPatch = amountSyncPatch(old, row.amount);
+          const statusDiff = old.status !== row.status;
+          if (amountDiff) amountChanges++;
+          if (statusDiff) statusChanges++;
+          if (statusDiff && old.status === "PAID" && row.status !== "PAID") alerts++;
+          if (!dryRun && (old.row_hash !== row.row_hash || Object.keys(syncPatch).length > 0)) {
+            const patch: Record<string, any> = { ...providerPatch(row, nowIso), row_hash: row.row_hash, ...syncPatch };
+            if (statusDiff) {
+              patch.last_status_change = nowIso;
+              patch.paid_source = row.status === "PAID" ? "reconciliation" : null;
+              await sb.from("maven_transaction_history").insert({ tx_id: row.tx_id, old_status: old.status, new_status: row.status, source: "reconciliation", actor: "maven-reconcile-final-status", provider_modified_at: row.modified_utc ?? null });
+              await sb.from("audit_log").insert({ entity: "maven_transactions", entity_id: String(row.tx_id), action: "deposit.status_reconciled_from_provider", actor_name: "maven-reconcile-final-status", before: { status: old.status }, after: { status: row.status } });
+              if (old.status === "PAID" && row.status !== "PAID") { patch.needs_review = true; }
+            }
+            const { error } = await sb.from("maven_transactions").update(patch).eq("tx_id", row.tx_id);
+            if (error) throw new Error(`update ${row.tx_id}: ${error.message}`);
+            updated++;
+          }
+        }
+        const summary = { window: { from: chunkFrom.toISOString(), to: chunkTo.toISOString() }, rows_provider: mapped.length, rows_local: local.size, would_insert: inserted, status_changes: statusChanges, amount_changes: amountChanges, inserted: dryRun ? 0 : inserted, updated: dryRun ? 0 : updated, alerts, duration_ms: Date.now() - chunkStarted };
+        summaries.push(summary);
+        totalProvider += mapped.length;
+        totalLocal += local.size;
+        totalInserted += inserted;
+        totalStatusChanges += statusChanges;
+        totalAmountChanges += amountChanges;
+        if (!dryRun) {
+          const { error } = await sb.from("maven_reconcile_runs").insert({ merchant: merchantFilter, window_start: chunkFrom.toISOString(), window_end: chunkTo.toISOString(), rows_provider: mapped.length, rows_local: local.size, inserted, updated, alerts, duration_ms: summary.duration_ms });
+          if (error) throw new Error(`run log: ${error.message}`);
+        }
+      }
+      return json({ ok: true, mode, dry_run: dryRun, merchant: merchantFilter, windows: summaries, totals: { rows_provider: totalProvider, rows_local: totalLocal, would_insert: totalInserted, status_changes: totalStatusChanges, amount_changes: totalAmountChanges }, duration_ms: Date.now() - started });
+    }
+
     const providerRows: any[] = [];
     for (const [windowFrom, windowTo] of dateWindows(from, to)) {
       let offset = 0;
@@ -89,7 +218,7 @@ Deno.serve(async (req) => {
     const ids = mapped.map((row) => row.tx_id);
     const local = new Map<number, any>();
     for (let i = 0; i < ids.length; i += 500) {
-      const { data, error } = await sb.from("maven_transactions").select("tx_id,status,row_hash,amount,first_seen_at,approved_by,paid_source").in("tx_id", ids.slice(i, i + 500));
+      const { data, error } = await sb.from("maven_transactions").select("tx_id,status,row_hash,amount,provider_amount,amount_sync_status,amount_mismatch_reason,first_seen_at,approved_by,paid_source").in("tx_id", ids.slice(i, i + 500));
       if (error) throw new Error(`local lookup: ${error.message}`);
       for (const row of data ?? []) local.set(Number(row.tx_id), row);
     }
@@ -108,9 +237,10 @@ Deno.serve(async (req) => {
         inserted++;
         continue;
       }
-      if (old.row_hash === row.row_hash) { unchanged++; continue; }
+      const syncPatch = amountSyncPatch(old, row.amount);
+      if (old.row_hash === row.row_hash && Object.keys(syncPatch).length === 0) { unchanged++; continue; }
 
-      const patch = { ...providerPatch(row, nowIso), row_hash: row.row_hash };
+      const patch: Record<string, any> = { ...providerPatch(row, nowIso), row_hash: row.row_hash, ...syncPatch };
       if (old.status !== row.status) {
         patch.last_status_change = nowIso;
         patch.paid_source = row.status === "PAID" ? "reconciliation" : null;
