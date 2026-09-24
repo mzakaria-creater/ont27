@@ -97,7 +97,7 @@ extraRoutes.get(
 )
 
 const DEPOSIT_COLS =
-  'tx_id, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, receiving_wallet, to_account_number, to_account_name, payment_method, gateway, merchant, master_merchant, approved_by, proof_image_url, first_seen_at, created_utc, modified_utc, maven_raw_row, provider_amount, local_amount, amount_sync_status, amount_mismatch_reason, amount_confirmed_at, amount_confirmed_by, settlement_blocked'
+  'tx_id, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, receiving_wallet, to_account_number, to_account_name, payment_method, gateway, merchant, master_merchant, approved_by, paid_source, proof_image_url, first_seen_at, created_utc, modified_utc, maven_raw_row, provider_amount, local_amount, amount_sync_status, amount_mismatch_reason, amount_confirmed_at, amount_confirmed_by, settlement_blocked'
 const PAYOUT_COLS =
   'maven_id, ontarget_ref, status, amount, pay_by, merchant, account_name, mobile_no, agent_name, approved_by, image_url, first_seen_at, created_utc, updated_utc'
 
@@ -304,11 +304,12 @@ extraRoutes.get(
     const payoutPhones = [...new Set(pageRows.filter((row) => row.kind === 'payout').map((row) => String(row.mobile_no ?? '').trim()).filter(Boolean))]
     const identityPhones = [...new Set([...depositPhones, ...payoutPhones].map(normalizePhone).filter(Boolean))]
     const depositIds = pageRows.filter((row) => row.kind === 'deposit').map((row) => Number(row.tx_id)).filter(Number.isFinite)
-    const [depositHistory, payoutHistory, linkedSms, blockedPhones] = await Promise.all([
+    const [depositHistory, payoutHistory, linkedSms, blockedPhones, providerHistory] = await Promise.all([
       depositPhones.length ? db.from('maven_transactions').select('sender_number, status, first_seen_at').in('sender_number', depositPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
       payoutPhones.length ? db.from('maven_payout_transactions').select('mobile_no').in('mobile_no', payoutPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
       depositIds.length ? db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, received_at, amount, balance_after, sender_name, sender_number, receiver_number, sms_first_line, raw_sms, raw_payload, message, device_name, provider, sms_category, match_status, matched').or(`consumed_by_tx_id.in.(${depositIds.join(',')}),matched_transaction_id.in.(${depositIds.join(',')})`).order('received_at', { ascending: false, nullsFirst: false }).limit(2000) : Promise.resolve({ data: [], error: null }),
       identityPhones.length ? db.from('api_risk_blacklist').select('value').eq('type', 'phone').limit(10_000) : Promise.resolve({ data: [], error: null }),
+      depositIds.length ? db.from('maven_transaction_history').select('tx_id, old_status, new_status, source, actor, provider_modified_at, created_at').in('tx_id', depositIds).eq('source', 'reconciliation').order('created_at', { ascending: false }).limit(10_000) : Promise.resolve({ data: [], error: null }),
     ])
     const blockedPhoneSet = new Set((blockedPhones.data ?? []).map((row) => normalizePhone(row.value)).filter(Boolean))
     const clientCounts = new Map<string, number>()
@@ -326,6 +327,8 @@ extraRoutes.get(
       const { data: decisions } = await db.from('deposit_decision_log').select('tx_id, decision, reason, actor_name, created_at').in('tx_id', depositIds).order('created_at', { ascending: false })
       for (const decision of decisions ?? []) if (!decisionByTx.has(Number(decision.tx_id))) decisionByTx.set(Number(decision.tx_id), decision)
     }
+    const providerDecisionByTx = new Map<number, Record<string, unknown>>()
+    for (const history of providerHistory.data ?? []) if (!providerDecisionByTx.has(Number(history.tx_id))) providerDecisionByTx.set(Number(history.tx_id), history)
     const decisionByPayout = new Map<number, Record<string, unknown>>()
     const payoutIds = pageRows.filter((row) => row.kind === 'payout').map((row) => Number(row.maven_id)).filter(Number.isFinite)
     if (payoutIds.length) {
@@ -338,7 +341,17 @@ extraRoutes.get(
         const rowAt = Date.parse(String(row.first_seen_at ?? row.created_utc ?? ''))
         const approved = row.kind === 'deposit' ? (approvedHistory.get(clientKey) ?? []).filter((item) => !Number.isFinite(rowAt) || !Number.isFinite(item.at) || item.at < rowAt).length : 0
         const phone = normalizePhone(row.kind === 'deposit' ? row.sender_number : row.mobile_no)
-        const decision = row.kind === 'deposit' ? decisionByTx.get(Number(row.tx_id)) : decisionByPayout.get(Number(row.maven_id))
+        const manualDecision = row.kind === 'deposit' ? decisionByTx.get(Number(row.tx_id)) : decisionByPayout.get(Number(row.maven_id))
+        const providerHistoryRow = row.kind === 'deposit' ? providerDecisionByTx.get(Number(row.tx_id)) : null
+        const providerDecision = providerHistoryRow ?? (row.kind === 'deposit' && row.paid_source === 'reconciliation'
+          ? { actor_name: 'Maven team', reason: 'Maven provider status update', created_at: row.modified_utc ?? row.first_seen_at }
+          : null)
+        const manualAt = manualDecision?.created_at ? Date.parse(String(manualDecision.created_at)) : 0
+        const providerAt = providerDecision?.created_at ? Date.parse(String(providerDecision.created_at)) : 0
+        const decision = providerDecision && providerAt > manualAt ? {
+          reason: `Maven team status update: ${providerDecision.old_status ?? '—'} → ${providerDecision.new_status ?? row.status}`,
+          actor_name: 'Maven team',
+        } : manualDecision
         const matchedSms = row.kind === 'deposit' ? smsByTx.get(Number(row.tx_id)) ?? null : null
         return {
           ...row,
