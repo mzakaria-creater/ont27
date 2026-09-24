@@ -91,6 +91,8 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
       .select('id, trx_id, amount, sender_name, sender_number, received_at, receiver_number, wallet_number, confirmed_wallet_number, balance_after, provider, sms_sender, raw_sms, message')
       .eq('sms_category', 'deposit')
       .is('consumed_by_tx_id', null)
+      .is('matched_transaction_id', null)
+      .is('maven_transaction_id', null)
       .or('is_blocked.eq.false,is_blocked.is.null')
       .order('received_at', { ascending: false, nullsFirst: false })
       .limit(limit),
@@ -125,12 +127,16 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
     const chunk = txIds.slice(i, i + 200)
     const [matches, consumed] = await Promise.all([
       db.from('sms_maven_matches').select('tx_id').in('tx_id', chunk),
-      db.from('inbound_sms').select('consumed_by_tx_id').in('consumed_by_tx_id', chunk),
+      db.from('inbound_sms').select('consumed_by_tx_id, matched_transaction_id, maven_transaction_id').or(`consumed_by_tx_id.in.(${chunk.join(',')}),matched_transaction_id.in.(${chunk.join(',')}),maven_transaction_id.in.(${chunk.join(',')})`),
     ])
     if (matches.error) throw new Error(`existing matches: ${matches.error.message}`)
     if (consumed.error) throw new Error(`existing consumed links: ${consumed.error.message}`)
     for (const row of matches.data ?? []) assignedTx.add(Number(row.tx_id))
-    for (const row of consumed.data ?? []) assignedTx.add(Number(row.consumed_by_tx_id))
+    for (const row of consumed.data ?? []) {
+      assignedTx.add(Number(row.consumed_by_tx_id))
+      assignedTx.add(Number(row.matched_transaction_id))
+      assignedTx.add(Number(row.maven_transaction_id))
+    }
   }
 
   const proposals: { sms: SmsRow; tx: TxRow; secDiff: number | null; requiresReview: boolean }[] = []
@@ -242,7 +248,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
           consumed_by_tx_id: tx.tx_id,
           review_required: requiresReview,
           processed_at: now,
-        }).eq('id', sms.id).is('consumed_by_tx_id', null).select('id')
+        }).eq('id', sms.id).is('consumed_by_tx_id', null).is('matched_transaction_id', null).is('maven_transaction_id', null).select('id')
         if (claimError || !claimed?.length) { errors.push(`sms ${sms.id}: ${claimError?.message ?? 'already claimed'}`); return }
 
         const match = await db.from('sms_maven_matches').upsert({
