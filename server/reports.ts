@@ -554,3 +554,29 @@ reportsRoutes.post('/attendance/check-out', requireAuth, async (c) => {
   ].join('\n'))
   return c.json({ ok: true, session: data, telegram: { sent: telegram.sent, error: telegram.error } })
 })
+
+// Merchant Monthly Volume report. The heavy lifting (monthly aggregation,
+// per-merchant fee-rate lookup, partial-month/gap detection) happens inside
+// the get_merchant_monthly RPC so this endpoint never touches raw daily
+// rows beyond the small distinct-merchant lookup below.
+reportsRoutes.get('/merchant-monthly/merchants', requireAnyPerm(['reports', 'advanced_analysis'], 'can_view'), async (c) => {
+  const { data, error } = await db.from('v_merchant_daily_cairo').select('merchant').not('merchant', 'is', null).limit(2000)
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  const merchants = [...new Set((data ?? []).map((row) => row.merchant as string))].sort()
+  return c.json({ merchants })
+})
+
+reportsRoutes.get('/merchant-monthly', requireAnyPerm(['reports', 'advanced_analysis'], 'can_view'), async (c) => {
+  const merchantsParam = c.req.query('merchants')
+  const merchants = merchantsParam ? merchantsParam.split(',').map((m) => m.trim()).filter(Boolean) : null
+  const from = c.req.query('from')
+  const to = c.req.query('to')
+  const validDate = (v: string | undefined) => v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null
+  const { data, error } = await db.rpc('get_merchant_monthly', {
+    p_merchants: merchants && merchants.length ? merchants : null,
+    p_from: validDate(from),
+    p_to: validDate(to),
+  })
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  return c.json({ rows: data ?? [] })
+})

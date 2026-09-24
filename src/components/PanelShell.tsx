@@ -115,6 +115,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/client', icon: '🗂️', labelAr: 'ملف عميل كامل', labelEn: 'Client profile', keys: ['client_crm'], group: 'customers' },
   { to: '/settlements', icon: '🧾', labelAr: 'التسويات', labelEn: 'Settlements', keys: ['settlements', 'settlements_list', 'settlement_recon', 'fees'], group: 'payments' },
   { to: '/reports/merchant-settlements', icon: '📈', labelAr: 'تسويات التجار', labelEn: 'Merchant settlements', keys: ['reports', 'advanced_analysis'], group: 'insights' },
+  { to: '/reports/merchant-monthly', icon: '📆', labelAr: 'الحجم الشهري للتجار', labelEn: 'Merchant monthly volume', keys: ['reports', 'advanced_analysis'], group: 'insights' },
   // Risk & automation
   { to: '/risk', icon: '🛡️', labelAr: 'المخاطر', labelEn: 'Risk & compliance', keys: ['risk', 'risk_audit', 'flagged', 'exceptions', 'manual_review', 'velocity', 'compliance'], group: 'automation' },
   { to: '/red-team', icon: '🧪', labelAr: 'اختبار Red Team', labelEn: 'Red Team review', keys: ['risk', 'risk_audit', 'compliance'], group: 'automation' },

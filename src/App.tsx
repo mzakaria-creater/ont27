@@ -39,6 +39,7 @@ function TransactionDetailRedirect() {
 const Approvals = lazy(() => import('./pages/Approvals'))
 const Settlements = lazy(() => import('./pages/Settlements'))
 const MerchantSettlements = lazy(() => import('./pages/MerchantSettlements'))
+const MerchantMonthly = lazy(() => import('./pages/MerchantMonthly'))
 const Crm = lazy(() => import('./pages/Crm'))
 const Risk = lazy(() => import('./pages/Risk'))
 const Automation = lazy(() => import('./pages/Automation'))
@@ -530,6 +531,7 @@ export default function App() {
             <Route path="/sms" element={<PageGate keys={['sms_live']}><SmsLive /></PageGate>} />
             <Route path="/settlements" element={<PageGate keys={['settlements','settlements_list','settlement_recon','fees']}><Settlements /></PageGate>} />
             <Route path="/reports/merchant-settlements" element={<PageGate keys={['reports','advanced_analysis']}><MerchantSettlements /></PageGate>} />
+            <Route path="/reports/merchant-monthly" element={<PageGate keys={['reports','advanced_analysis']}><MerchantMonthly /></PageGate>} />
             <Route path="/crm" element={<PageGate keys={['client_crm']}><Crm /></PageGate>} />
             <Route path="/risk" element={<PageGate keys={['risk','risk_audit','flagged','exceptions','manual_review','velocity','compliance']}><Risk /></PageGate>} />
             <Route path="/mind-map" element={<PageGate keys={['reports','advanced_analysis']}><MindMap /></PageGate>} />

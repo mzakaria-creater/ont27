@@ -4099,3 +4099,14 @@ html, body { overflow-x: hidden; overflow-y: auto; }
 .decision-reason-cell{max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px}
 .decision-reason-cell.is-declined{color:#fca5a5;font-weight:800}
 .decision-reason-cell.is-approved{color:#86efac;font-weight:800}
+
+/* Merchant Monthly Volume report */
+.merchant-monthly-fee-line{margin:0 0 12px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}
+.merchant-monthly-flag{margin-inline-end:5px}
+.merchant-monthly-subtotal td{background:color-mix(in srgb,var(--surface) 88%,var(--text) 12%);font-weight:700}
+.merchant-monthly-undated{margin-top:10px}
+@media print{
+  .sidebar,.nav-toggle,.mobile-bottom-nav,.telegram-widget-launcher,.sms-widget-launcher,.no-print{display:none!important}
+  .dash-main{padding:0}
+  .card{box-shadow:none;border:1px solid #ccc}
+}
