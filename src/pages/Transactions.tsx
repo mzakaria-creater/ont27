@@ -11,7 +11,7 @@ import PageSizeSelect from '../components/PageSizeSelect'
 import ProofModal from '../components/ProofModal'
 import SenderIdentity from '../components/SenderIdentity'
 import { useAuth } from '../auth/AuthContext'
-import { AlertTriangle, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, CircleHelp, Clock3, Eye, Image, LayoutGrid, Pencil, Search, SlidersHorizontal, TableProperties, X, XCircle } from 'lucide-react'
+import { AlertTriangle, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, CircleHelp, Clock3, Eye, Image, LayoutGrid, Pencil, RefreshCw, Search, SlidersHorizontal, TableProperties, X, XCircle } from 'lucide-react'
 import TransactionEditDialog from '../components/TransactionEditDialog'
 import TransactionDetailModal from '../components/TransactionDetailModal'
 import ColumnPicker, { useVisibleColumns } from '../components/ColumnPicker'
@@ -363,6 +363,17 @@ export default function Transactions() {
     }
   }
 
+  const refreshNow = async () => {
+    setErr(null)
+    setLoading(true)
+    try {
+      await syncProviders()
+      await load(true)
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.code : t('تعذّر تحديث المعاملات.', 'Unable to refresh transactions.'))
+    } finally { setLoading(false) }
+  }
+
   return (
     <PanelShell>
       <section className="page-head all-transactions-head">
@@ -374,6 +385,7 @@ export default function Transactions() {
             <button className={view === 'cards' ? 'active' : ''} aria-pressed={view === 'cards'} onClick={() => setFilter({ view: 'cards' })}><LayoutGrid size={16} />{t('بطاقات', 'Cards')}</button>
           </div>
           <div className="export-actions">
+            <button type="button" className="btn-primary btn-sm" disabled={loading} onClick={() => void refreshNow()}><RefreshCw size={14} className={loading ? 'spin' : ''} /> {loading ? t('جارٍ التحديث…', 'Refreshing…') : t('تحديث الآن', 'Refresh now')}</button>
             <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport('csv')}><Download size={14}/> CSV</button>
             <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport('xlsx')}><Download size={14}/> {exportBusy ? t('جارٍ التصدير…', 'Exporting…') : 'XLSX'}</button>
           </div>
@@ -497,7 +509,7 @@ export default function Transactions() {
                         <div><span>{t('التكرار', 'Duplicates')}</span>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First transaction')}</div>
                         <div><span>{t('اعتمد بواسطة', 'Approved by')}</span><strong>{r.status === 'PENDING' ? '—' : (isAutomaticApprovalActor(r.approved_by) ? t('آلي (Auto)', 'Auto') : r.approved_by)}</strong></div>
                       </div>
-                      <div className="tx-expanded-actions">{r.status === 'PENDING' && !r.is_checkout_session && r.kind === 'deposit' && can('deposits','can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r,'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.status === 'PENDING' && r.kind === 'payout' && can('payouts','can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.kind === 'deposit' && r.status === 'DECLINED' && !r.matched_sms && can('sms_live','can_edit') && <Link className="btn-ghost btn-sm" to={smsAssignHref(r)}>🔗 {t('تعيين SMS', 'Assign SMS')}</Link>}{r.is_checkout_session && <span className="cell-sub">{t('جلسة رابط دفع — بانتظار ظهور المعاملة المزوّدة', 'Payment-link session — waiting for provider transaction')}</span>}</div>
+                      <div className="tx-expanded-actions">{r.status === 'PENDING' && !r.is_checkout_session && r.kind === 'deposit' && can('deposits','can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r,'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.status === 'PENDING' && r.kind === 'payout' && can('payouts','can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.kind === 'deposit' && r.status === 'DECLINED' && !r.matched_sms && can('sms_live','can_edit') && <Link className="btn-ghost btn-sm danger" to={smsAssignHref(r)}>🔗✅ {t('ربط واعتماد SMS', 'Link & approve SMS')}</Link>}{r.is_checkout_session && <span className="cell-sub">{t('جلسة رابط دفع — بانتظار ظهور المعاملة المزوّدة', 'Payment-link session — waiting for provider transaction')}</span>}</div>
                       <details className="tx-raw-details"><summary>{t('عرض تفاصيل Raw', 'View raw details')}</summary>{r.raw_preview ? <pre>{JSON.stringify(r.raw_preview, null, 2)}</pre> : <p className="cell-sub">{t('لا تتوفر بيانات Raw لهذا الصف.', 'Raw data is not available for this row.')}</p>}</details>
                       </div>
                       <div className="tx-expanded-sms-side">
