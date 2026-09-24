@@ -468,3 +468,122 @@ payRoutes.post('/session/:id/proof', async (c) => {
 
   return c.json({ session: publicSession(updated) })
 })
+
+// ---- Payout links: the outbound counterpart of the payment/checkout
+// links above. A client opens a shared payout link, submits a request
+// (their MYHFM account, receiving wallet, amount) — that creates a
+// 'pending' payout_link_requests row and NOTHING ELSE. It does not touch
+// payout_requests (the table that triggers real device automation) or
+// move any money. An authenticated operator with 'payouts' permission
+// reviews the queue and, if legitimate, converts it into a real payout
+// request through the existing, unchanged POST /api/payout-requests
+// flow — the same human-approval step that already gates every payout.
+interface PayoutLinkRow {
+  id: string
+  short_code: string
+  checkout_token_hash: string | null
+  title: string | null
+  client_name: string | null
+  currency: string
+  amount_mode: 'open' | 'fixed'
+  amount: number | null
+  min_amount: number | null
+  max_amount: number | null
+  active: boolean
+  expires_at: string | null
+  max_uses: number | null
+  use_count: number
+}
+
+function payoutLinkUsable(link: PayoutLinkRow): string | null {
+  if (!link.active) return 'link_disabled'
+  if (link.expires_at && new Date(link.expires_at).getTime() < Date.now()) return 'link_expired'
+  if (link.max_uses !== null && link.use_count >= link.max_uses) return 'link_exhausted'
+  return null
+}
+
+payRoutes.get('/payout-link/:code', async (c) => {
+  const supplied = c.req.param('code')
+  const tokenHash = /^[a-f0-9]{64}$/i.test(supplied) ? createHash('sha256').update(supplied).digest('hex') : null
+  let query = db.from('payout_links').select('*')
+  query = tokenHash ? query.eq('checkout_token_hash', tokenHash) : query.eq('short_code', supplied)
+  const { data: link } = await query.maybeSingle<PayoutLinkRow>()
+  if (!link) return c.json({ error: 'link_not_found' }, 404)
+  const unusable = payoutLinkUsable(link)
+  if (unusable) return c.json({ error: unusable }, 410)
+  return c.json({
+    link: {
+      short_code: link.short_code,
+      title: link.title,
+      client_name: link.client_name,
+      currency: link.currency,
+      amount_mode: link.amount_mode,
+      amount: link.amount,
+      min_amount: link.min_amount,
+      max_amount: link.max_amount,
+    },
+  })
+})
+
+payRoutes.post('/payout-session', async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const code = typeof body?.code === 'string' ? body.code.trim() : ''
+  const myhfmAccount = typeof body?.myhfm_account === 'string' ? body.myhfm_account.trim().slice(0, 60) : ''
+  const receiverName = typeof body?.receiver_name === 'string' ? body.receiver_name.trim().slice(0, 120) : null
+  const receiverWallet = typeof body?.receiver_wallet === 'string' ? body.receiver_wallet.replace(/\D/g, '') : ''
+  const receiverMethod = typeof body?.receiver_method === 'string' ? body.receiver_method.trim().slice(0, 40) : null
+  const note = typeof body?.note === 'string' ? body.note.trim().slice(0, 500) : null
+  const rawAmount = Number(body?.amount)
+
+  if (!code) return c.json({ error: 'link_not_found' }, 404)
+  if (!myhfmAccount) return c.json({ error: 'myhfm_account_required' }, 400)
+  if (!/^01[0-9]{9}$/.test(receiverWallet)) return c.json({ error: 'invalid_wallet' }, 400)
+
+  const tokenHash = /^[a-f0-9]{64}$/i.test(code) ? createHash('sha256').update(code).digest('hex') : null
+  let linkQuery = db.from('payout_links').select('*')
+  linkQuery = tokenHash ? linkQuery.eq('checkout_token_hash', tokenHash) : linkQuery.eq('short_code', code)
+  const { data: link } = await linkQuery.maybeSingle<PayoutLinkRow>()
+  if (!link) return c.json({ error: 'link_not_found' }, 404)
+  const unusable = payoutLinkUsable(link)
+  if (unusable) return c.json({ error: unusable }, 410)
+
+  let amount = link.amount_mode === 'fixed' ? Number(link.amount) : rawAmount
+  if (!Number.isFinite(amount) || amount <= 0) return c.json({ error: 'invalid_amount' }, 400)
+  amount = Math.round(amount * 100) / 100
+  if (link.amount_mode === 'open') {
+    if (link.min_amount !== null && amount < link.min_amount) return c.json({ error: 'amount_below_min', min: link.min_amount }, 400)
+    if (link.max_amount !== null && amount > link.max_amount) return c.json({ error: 'amount_above_max', max: link.max_amount }, 400)
+  }
+
+  const reference = `OP-${randomBytes(5).toString('hex').toUpperCase()}`
+  const { data: request, error } = await db
+    .from('payout_link_requests')
+    .insert({
+      payout_link_id: link.id,
+      reference,
+      myhfm_account: myhfmAccount,
+      receiver_name: receiverName,
+      receiver_wallet: receiverWallet,
+      receiver_method: receiverMethod,
+      amount,
+      currency: link.currency,
+      note,
+      status: 'pending',
+      ip: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+      user_agent: c.req.header('user-agent') ?? null,
+    })
+    .select('id, reference, amount, currency, status, created_at')
+    .single()
+  if (error || !request) {
+    console.error('payout_link_requests insert failed:', error?.message)
+    return c.json({ error: 'request_create_failed' }, 500)
+  }
+
+  await db.from('payout_links').update({ use_count: link.use_count + 1, updated_at: new Date().toISOString() }).eq('id', link.id)
+
+  void notifyTelegram(
+    `🟠 طلب سحب جديد من عميل\nRef: <code>${reference}</code>\nAmount: ${amount} ${link.currency}\nWallet: <code>${receiverWallet}</code>\nMYHFM: <code>${myhfmAccount}</code>\nيحتاج مراجعة يدوية قبل التنفيذ.`,
+  )
+
+  return c.json({ request }, 201)
+})

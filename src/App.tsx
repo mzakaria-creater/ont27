@@ -66,6 +66,7 @@ const P2PTv = lazy(() => import('./pages/P2PTv'))
 const Complaints = lazy(() => import('./pages/Complaints'))
 const LinkGenerator = lazy(() => import('./pages/LinkGenerator'))
 const PaymentCheckout = lazy(() => import('./pages/PaymentCheckout'))
+const PayoutCheckout = lazy(() => import('./pages/PayoutCheckout'))
 const PaymentStatus = lazy(() => import('./pages/PaymentStatus'))
 const PaymentMethods = lazy(() => import('./pages/PaymentMethods'))
 const MerchantPaymentSetup = lazy(() => import('./pages/MerchantPaymentSetup'))
@@ -470,7 +471,7 @@ function RouteResetBoundary({ children }: { children: ReactNode }) {
 // (topbar, staff-only realtime popups) — regardless of whether the person
 // viewing them happens to have a valid staff session in the same browser.
 // Checkout in particular must read as a fully separate site to the customer.
-const PUBLIC_ROUTES = ['/login', '/payment-checkout', '/payment-status', '/account-action']
+const PUBLIC_ROUTES = ['/login', '/payment-checkout', '/payout-checkout', '/payment-status', '/account-action']
 
 function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation()
@@ -495,6 +496,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/payment-checkout" element={<PaymentCheckout />} />
+          <Route path="/payout-checkout" element={<PayoutCheckout />} />
           <Route path="/payment-status" element={<PaymentStatus />} />
           <Route path="/account-action" element={<AccountAction />} />
           <Route element={<ProtectedRoute />}>
