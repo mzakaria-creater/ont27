@@ -23,6 +23,8 @@ interface ComplaintRow {
   admin_note: string | null
   tx_status?: string | null
   tx_gateway?: string | null
+  receiving_wallet?: string | null
+  to_account_number?: string | null
 }
 interface TicketRow { id:number; ticket_no:string|null; tx_id:number|null; customer_phone:string|null; subject:string|null; description:string|null; action_requested?:string|null; assigned_to?:string|null; due_at?:string|null; priority:string|null; ticket_status:string; created_at:string|null }
 interface Assignee { id:string; username:string; display_name:string|null; role:string; active:boolean }
@@ -376,7 +378,7 @@ export default function Complaints() {
               <button className="btn-ghost" disabled={busy || !selected.tx_id} onClick={() => void decide('close')}>
                 🔒 {t('إغلاق', 'Close')}
               </button>
-              {selected.tx_id && <TransactionEditDialog txId={selected.tx_id} status={selected.tx_status ?? 'PENDING'} amount={selected.amount} currency="EGP" gateway={selected.tx_gateway} onDone={() => { void load(); setSelected(null) }} />}
+              {selected.tx_id && <TransactionEditDialog txId={selected.tx_id} status={selected.tx_status ?? 'PENDING'} amount={selected.amount} currency="EGP" gateway={selected.tx_gateway} currentReceivingWallet={selected.receiving_wallet ?? selected.to_account_number} onDone={() => { void load(); setSelected(null) }} />}
             </div>
           </aside>
         </div>

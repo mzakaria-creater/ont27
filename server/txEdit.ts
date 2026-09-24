@@ -379,6 +379,10 @@ txEditRoutes.post('/:txId/edit-request', async (c) => {
 
   const parsed = readEdit(await c.req.json().catch(() => null))
   if ('error' in parsed) return c.json({ error: parsed.error }, 400)
+  // transaction_edit_requests currently has no requested receiving-wallet
+  // column. Never silently drop a wallet change from a non-steward request;
+  // require an authenticated direct editor until that workflow is extended.
+  if (parsed.receiving_wallet != null) return c.json({ error: 'receiving_wallet_edit_requires_direct_editor' }, 403)
 
   const tx = await loadTx(txId)
   if (!tx) return c.json({ error: 'not_found' }, 404)
