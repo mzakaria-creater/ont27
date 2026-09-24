@@ -1,5 +1,6 @@
 {
   "framework": "vite",
+  "installCommand": "npm install",
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api" },
     { "source": "/api-dashboard", "destination": "/index.html" },
