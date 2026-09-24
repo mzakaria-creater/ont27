@@ -29,6 +29,7 @@ import { webhookRoutes } from './webhooks.js'
 import { railwayApiRoutes } from './railwayApi.js'
 import { ticketRoutes } from './tickets.js'
 import { payoutRequestRoutes } from './payoutRequests.js'
+import { payoutLinkRoutes } from './payoutLinks.js'
 import { deviceRoutes } from './devices.js'
 import { gatewayRoutes } from './gateway.js'
 import { emailNotificationRoutes } from './emailNotifications.js'
@@ -43,6 +44,7 @@ app.route('/links', linkRoutes)
 app.route('/deposits', depositRoutes)
 app.route('/payouts', payoutRoutes)
 app.route('/payout-requests', payoutRequestRoutes)
+app.route('/payout-links', payoutLinkRoutes)
 app.route('/devices', deviceRoutes)
 app.route('/merchants', merchantRoutes)
 app.route('/wallets', walletRoutes)
