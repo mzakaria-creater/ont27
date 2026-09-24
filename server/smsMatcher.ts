@@ -153,6 +153,25 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
     const smsWallet = phone(receivingWallet(sms))
     const byAmount = txRows.filter((tx) => cents(tx.amount) === cents(sms.amount))
     if (!byAmount.length) { diagnostics.noAmountCandidate++; continue }
+    // A provider transaction reference is the strongest identity signal. If
+    // it resolves to one same-amount transaction, retain the link even when a
+    // wallet was rotated or the sender field was omitted. Mark it review-only
+    // unless the normal wallet/sender evidence also passes, so this recovers
+    // the SMS assignment without silently approving a questionable payment.
+    const referencedByTrx = txByRef.get(ref(sms.trx_id)) ?? []
+    const directReferenceCandidates = referencedByTrx.filter((tx) => byAmount.some((row) => row.tx_id === tx.tx_id))
+    if (directReferenceCandidates.length === 1) {
+      const direct = directReferenceCandidates[0]
+      const directWalletMatch = Boolean(phone(transactionWallet(direct)) && smsWallet && phone(transactionWallet(direct)) === smsWallet)
+      const directSenderMatch = Boolean(smsPhone && phone(direct.sender_number) && smsPhone === phone(direct.sender_number))
+      const directTimeOk = Boolean(direct.first_seen_at && sms.received_at && Math.abs(Date.parse(direct.first_seen_at) - Date.parse(sms.received_at)) <= MAX_TIME_DIFF_MS)
+      if (directTimeOk || !direct.first_seen_at || !sms.received_at) {
+        const directReview = !(directWalletMatch && directSenderMatch && directTimeOk) || direct.status === 'DECLINED'
+        if (!assignedTx.has(direct.tx_id)) proposals.push({ sms, tx: direct, secDiff: direct.first_seen_at && sms.received_at ? Math.round(Math.abs(Date.parse(direct.first_seen_at) - Date.parse(sms.received_at)) / 1000) : null, requiresReview: directReview })
+        else skippedAlreadyAssigned++
+        continue
+      }
+    }
     const byEvidence = byAmount.filter((tx) => {
       const txWallet = phone(transactionWallet(tx))
       const walletMatch = Boolean(txWallet && smsWallet && txWallet === smsWallet)
