@@ -327,7 +327,12 @@ async function markAmbiguousWallets(rows: Record<string, unknown>[]): Promise<vo
     const device = String(row.webhook_name ?? row.device_name ?? '').trim()
     const mappings = byDevice.get(device) ?? []
     const slot = row.sim_slot == null ? null : Number(row.sim_slot)
-    const match = slot == null ? null : mappings.find((item) => item.sim_slot === slot)
+    // Forwarders often omit sim_slot. When the device has exactly one active
+    // wallet mapping, that sole mapping is safe to use; only multiple mappings
+    // remain ambiguous and must be hidden from operators.
+    const match = slot == null
+      ? (mappings.length === 1 ? mappings[0] : null)
+      : mappings.find((item) => item.sim_slot === slot)
     if (match) {
       row.wallet_number = match.wallet
       row.receiver_number = row.receiver_number ?? match.wallet
