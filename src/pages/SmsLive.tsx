@@ -1140,14 +1140,25 @@ export default function SmsLive() {
                               >
                                 {t('ربط', 'Link')}
                               </button>
-                              {cand.status === 'DECLINED' && can('transactions', 'can_edit') && <button
-                                className="btn-ghost btn-sm danger"
-                                disabled={linkBusy}
-                                title={t('يربط SMS ثم يطلب تغيير الحالة إلى مدفوعة', 'Link SMS, then apply audited PAID status')}
-                                onClick={() => void link(cand.tx_id, false, true)}
-                              >
-                                ✅ {t('ربط + PAID', 'Link + PAID')}
-                              </button>}
+                              {String(cand.status).toUpperCase() === 'DECLINED' && <>
+                                <Link
+                                  className="btn-ghost btn-sm"
+                                  to={`/transactions?q=${encodeURIComponent(cand.ontarget_ref ?? String(cand.tx_id))}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title={t('فتح المعاملة المرفوضة لمراجعتها', 'Open the declined transaction for review')}
+                                >
+                                  ↗ {t('فتح المعاملة', 'Open transaction')}
+                                </Link>
+                                {can('transactions', 'can_edit') && <button
+                                  className="btn-ghost btn-sm danger"
+                                  disabled={linkBusy}
+                                  title={t('يربط SMS ثم يطلب تغيير الحالة إلى مدفوعة', 'Link SMS, then apply audited PAID status')}
+                                  onClick={() => void link(cand.tx_id, false, true)}
+                                >
+                                  ✅ {t('ربط واعتماد', 'Link + approve')}
+                                </button>}
+                              </>}
                             </div>
                           </li>
                         ))}
