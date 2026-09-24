@@ -1,3 +1,5 @@
+import { api } from './api'
+
 let inFlight: Promise<boolean> | null = null
 let lastStartedAt = 0
 // Keep provider changes visible within one fast-sync window while still
@@ -20,10 +22,9 @@ export function syncProviders(): Promise<boolean> {
   if (document.visibilityState === 'hidden') return Promise.resolve(false)
   lastStartedAt = now
   try { localStorage.setItem(SHARED_KEY, String(now)) } catch { /* best-effort cross-tab coordination */ }
-  inFlight ??= fetch('/api/cron/delta-sync', { method: 'POST', credentials: 'same-origin' })
-    .then(async (response) => {
-      const body = await response.json().catch(() => null) as { ok?: boolean } | null
-      const ok = response.ok && body?.ok === true
+  inFlight ??= api<{ ok?: boolean }>('/api/cron/delta-sync', { method: 'POST' })
+    .then((body) => {
+      const ok = body?.ok === true
       if (ok) window.dispatchEvent(new CustomEvent('ontarget:provider-sync'))
       return ok
     })
