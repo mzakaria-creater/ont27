@@ -34,6 +34,20 @@ function providerReference(row: Record<string, unknown>): string | null {
   return entry ? String(entry[1]).trim() : null
 }
 
+// Maven has returned several spellings of the NGPay gateway over time
+// (including values only present in the raw provider payload). Decisions must
+// all use the provider worker; never fall back to a local status update just
+// because the display value is not exactly `NagupayP2P`.
+function isNgPayGateway(row: Record<string, unknown>): boolean {
+  const raw = row.maven_raw_row && typeof row.maven_raw_row === 'object' && !Array.isArray(row.maven_raw_row)
+    ? row.maven_raw_row as Record<string, unknown> : null
+  const values = [row.gateway, raw?.Gateway, raw?.gateway]
+  return values.some((value) => {
+    const normalized = String(value ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+    return normalized === 'nagupayp2p' || normalized === 'nagopayp2p' || normalized.includes('nagupay') || normalized.includes('nagopay')
+  })
+}
+
 const APPROVED_STATUSES = new Set(['PAID', 'APPROVED'])
 const phoneKey = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
 const txTime = (row: Record<string, unknown>) => {
@@ -441,7 +455,7 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
   // pipeline). The worker owns the decision log + row update; the old DB
   // catches up from the provider via its collector, so we deliberately skip
   // dashboard_manual_action here to avoid double execution.
-  if (before.gateway === 'NagupayP2P') {
+  if (isNgPayGateway(before as Record<string, unknown>)) {
     const baseUrl = process.env.SUPABASE_URL
     const serviceKey = process.env.SUPABASE_SECRET_KEY
     if (!baseUrl || !serviceKey) return c.json({ error: 'worker_not_configured' }, 500)
