@@ -128,6 +128,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/binance/p2p-history', icon: '🧾', labelAr: 'سجل P2P', labelEn: 'P2P History', keys: ['binance_p2p', 'treasury'], group: 'automation' },
   // System — reporting, audit, admin
   { to: '/reports', icon: '📊', labelAr: 'التقارير الشاملة', labelEn: 'Full reports', keys: ['reports', 'advanced_analysis'], group: 'insights' },
+  { to: '/enterprise-report', icon: '▤', labelAr: 'التقرير المالي التنفيذي', labelEn: 'Enterprise financial report', keys: ['reports', 'advanced_analysis'], group: 'insights' },
   { to: '/mind-map', icon: '🧠', labelAr: 'خريطة النظام', labelEn: 'System mind map', keys: ['reports', 'advanced_analysis'], group: 'insights' },
   { to: '/hr', icon: '🕒', labelAr: 'الموارد البشرية', labelEn: 'HR workspace', keys: ['reports', 'users'], group: 'insights' },
   { to: '/audit', icon: '🕵️', labelAr: 'سجل التدقيق', labelEn: 'Audit log', keys: ['audit_log', 'audit-logs'], group: 'admin' },
