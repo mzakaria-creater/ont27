@@ -94,7 +94,10 @@ export default function TransactionEditPanel({
       if (e instanceof ApiError && e.code === 'steward_role_required') {
         setErr(t('هذا التعديل يحتاج دور مسؤول.', 'This edit requires a steward role.'))
       } else if (e instanceof ApiError && e.code === 'worker_failed') {
-        setErr(t('فشل التنفيذ على المزوّد — لم يتغيّر شيء.', 'Provider execution failed — nothing changed.'))
+        const body = e.body as { detail?: { error?: unknown }; worker?: { error?: unknown } } | undefined
+        const providerError = body?.worker?.error ?? body?.detail?.error
+        const suffix = typeof providerError === 'string' ? `: ${providerError}` : ''
+        setErr(t(`فشل التنفيذ على المزوّد — لم يتغيّر شيء${suffix}.`, `Provider execution failed — nothing changed${suffix}.`))
       } else {
         setErr(t('تعذّر تنفيذ الطلب.', 'The request could not be completed.'))
       }
