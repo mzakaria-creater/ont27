@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import PanelShell from '../components/PanelShell'
 import ProofModal from '../components/ProofModal'
 import { api, ApiError } from '../lib/api'
 import { depositTime } from '../lib/deposits'
@@ -24,7 +23,7 @@ export default function Review() {
   }, [filter, t])
   useEffect(() => { void load(); const id = setInterval(() => void load(), 30_000); return () => clearInterval(id) }, [load])
   const rows = (data?.rows ?? []).filter((r) => filter === 'all' || filter === 'pending' || r.kind === filter)
-  return <PanelShell>
+  return <>
     <section className="page-head"><h2>{t('مراجعة القرارات', 'Decision review')}</h2><p className="page-sub">{t('سجل قرارات الإيداع والسحب اليدوية من الجدولين، مع إبراز ما لم يُنفَّذ فعلياً على المزوّد بعد.', 'Manual deposit & payout decisions from both logs, highlighting anything not yet executed on the provider.')}</p></section>
     {data !== null && data.pendingProvider > 0 && <div className="card warn">⚠️ {t(`${data.pendingProvider} قرار مسجَّل لكنه لم يُنفَّذ على بوابة المزوّد بعد — التنفيذ الفعلي يدوي.`, `${data.pendingProvider} decision(s) recorded but not yet executed on the provider portal — execution is manual.`)}</div>}
     <div className="filter-bar">
@@ -70,5 +69,5 @@ export default function Review() {
       )}
     </section>}
     {proof && <ProofModal url={proof.url} title={`${t('إثبات الدفع', 'Payment proof')} · ${proof.ref}`} onClose={() => setProof(null)} />}
-  </PanelShell>
+  </>
 }

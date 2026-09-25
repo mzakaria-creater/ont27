@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -668,7 +667,7 @@ export default function SmsLive() {
   const walletAlerts = walletPaidTotals.filter((row) => row.paid_amount >= 50_000)
 
   return (
-    <PanelShell>
+    <>
       {walletAlerts.length > 0 && !walletAlertDismissed && (
         <div className="wallet-limit-popup-backdrop" role="presentation">
           <section className="wallet-limit-popup" role="alertdialog" aria-modal="true" aria-labelledby="wallet-limit-popup-title">
@@ -1196,6 +1195,6 @@ export default function SmsLive() {
           </aside>
         </div>
       )}
-    </PanelShell>
+    </>
   )
 }

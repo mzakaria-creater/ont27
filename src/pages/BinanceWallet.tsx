@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { RefreshCw, ShieldCheck, WalletCards } from 'lucide-react'
-import PanelShell from '../components/PanelShell'
 import BinanceSubNav from '../components/BinanceSubNav'
 import { api, ApiError } from '../lib/api'
 import { useLocale } from '../lib/locale'
@@ -27,7 +26,7 @@ export default function BinanceWallet() {
   useEffect(() => { api<Health>('/api/binance/health').then(setHealth).catch(() => setHealth({ connected: false, reason: 'unreachable', checked_at: new Date().toISOString() })) }, [])
   const totalAssets = data?.balances.length ?? 0
   const nonZero = useMemo(() => data?.balances.filter((row) => Number(row.free) > 0 || Number(row.locked) > 0) ?? [], [data])
-  return <PanelShell>
+  return <>
     <BinanceSubNav />
     <section className="page-head binance-egp-head"><div><span className="guide-eyebrow">BINANCE · WALLET CONTROL</span><h2>{t('محفظة Binance', 'Binance Wallet')}</h2><p className="page-sub">{t('رصيد الحساب الحي مع دمج Spot وFunding.', 'Live account balances merged from Spot and Funding.')}</p></div><div className="control-row"><span className={`pay-status-badge ${health?.connected ? 'st-paid' : 'st-pending'}`}>{health?.connected ? '● Connected' : '○ Not verified'}</span><button className="btn-ghost btn-sm" disabled={loading} onClick={() => void load()}><RefreshCw size={15} className={loading ? 'spin' : ''}/> {t('تحديث', 'Refresh')}</button></div></section>
     <div className="binance-egp-safety"><ShieldCheck size={20}/><div><strong>{t('قراءة آمنة فقط', 'Read-only safe access')}</strong><p>{t('المفاتيح محفوظة في Vault ولا تظهر في المتصفح. لا يوجد سحب أو تحويل من هذه الصفحة.', 'Credentials stay in Vault and never reach the browser. This page cannot withdraw or transfer funds.')}</p></div></div>
@@ -48,5 +47,5 @@ export default function BinanceWallet() {
       <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('الأصل','Asset')}</th><th>{t('المتاح','Available')}</th><th>{t('مقفل','Locked')}</th><th>{t('الإجمالي','Total')}</th></tr></thead><tbody>{nonZero.map((row) => <tr key={row.asset}><td className="mono">{row.asset}</td><td className="mono">{row.free}</td><td className="mono">{row.locked}</td><td className="mono">{(Number(row.free) + Number(row.locked)).toLocaleString('en-US', { maximumFractionDigits: 8 })}</td></tr>)}{!nonZero.length && <tr><td colSpan={4} className="cell-sub">{t('لا توجد أرصدة أو لم يتم تحميل البيانات.', 'No balances available.')}</td></tr>}</tbody></table></div>
       )}
     </section>
-  </PanelShell>
+  </>
 }

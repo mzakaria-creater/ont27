@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import PanelShell from '../components/PanelShell'
 import MerchantLogo from '../components/MerchantLogo'
 import MethodLogo from '../components/MethodLogo'
 import { api } from '../lib/api'
@@ -89,7 +88,7 @@ export default function AnalyticsDashboard() {
     { id: 'overview', ar: 'نظرة عامة', en: 'Overview' }, { id: 'transactions', ar: 'المعاملات', en: 'Transactions' }, { id: 'wallets', ar: 'المحافظ', en: 'Wallets' }, { id: 'merchants', ar: 'التجار', en: 'Merchants' }, { id: 'reports', ar: 'التقارير', en: 'Reports' },
   ]
 
-  return <PanelShell>
+  return <>
     <section className="page-head">
       <h2>{t('لوحة التحليلات المباشرة', 'Live Analytics Dashboard')}</h2>
       <p className="page-sub">{t('عرض تشغيلي موحّد للإيداعات، المحافظ، التجار والتقارير من البيانات الحية.', 'A unified operations view of deposits, wallets, merchants, and reports from live data.')}{executive && <> · {t('تحديث', 'Updated')} {new Date(executive.generatedAt).toLocaleTimeString()}</>}</p>
@@ -222,5 +221,5 @@ export default function AnalyticsDashboard() {
       )}</section>}
 
     {tab === 'reports' && <section className="card recent-card"><div className="recent-head"><h3>{t('ملخص التقارير لكل البيانات', 'All-time report summary')}</h3><Link className="pay-status-link" to="/reports">{t('فتح التقارير التفصيلية', 'Open detailed reports')} ←</Link></div><div className="kpi-grid"><div className="kpi-card"><div className="kpi-value">{money(reportTotals.depVolume, 'EGP')}</div><div className="kpi-label">{t('إيداعات معتمدة', 'Approved deposits')}</div></div><div className="kpi-card"><div className="kpi-value">{money(reportTotals.payVolume, 'EGP')}</div><div className="kpi-label">{t('سحوبات معتمدة', 'Approved payouts')}</div></div><div className="kpi-card"><div className="kpi-value">{reportTotals.depCount}</div><div className="kpi-label">{t('عمليات إيداع', 'Deposit transactions')}</div></div><div className="kpi-card"><div className="kpi-value">{reportTotals.declined}</div><div className="kpi-label">{t('إيداعات مرفوضة', 'Declined deposits')}</div></div></div></section>}
-  </PanelShell>
+  </>
 }

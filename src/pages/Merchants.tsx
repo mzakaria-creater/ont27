@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Building2, CheckCircle2, Download, Layers, RefreshCw, ShieldAlert, XCircle } from 'lucide-react'
-import PanelShell from '../components/PanelShell'
 import MultiSelectFilter from '../components/MultiSelectFilter'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
@@ -168,7 +167,7 @@ export default function Merchants() {
   ], 'merchants')
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head admin-head">
         <span className="admin-head-icon"><Building2 size={20} /></span>
         <div className="admin-head-text">
@@ -313,6 +312,6 @@ export default function Merchants() {
           </aside>
         </div>
       )}
-    </PanelShell>
+    </>
   )
 }

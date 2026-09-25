@@ -1,6 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import PanelShell from '../components/PanelShell'
 import MerchantLogo from '../components/MerchantLogo'
 import MethodLogo from '../components/MethodLogo'
 import { api, ApiError } from '../lib/api'
@@ -409,7 +408,7 @@ export default function Transactions() {
   }
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head all-transactions-head">
         <div><h2>📋 {t('كل المعاملات', 'All transactions')}</h2>
         <p className="page-sub">{t('إيداعات وسحوبات موحّدة', 'Deposits and payouts unified')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p></div>
@@ -614,6 +613,6 @@ export default function Transactions() {
       </section>
       {proof && <ProofModal url={proof.url} title={`${t('إثبات الدفع', 'Payment proof')} · ${proof.ref}`} onClose={() => setProof(null)} actionBusy={actionBusy !== null} onApprove={proof.onApprove} onDecline={proof.onDecline} />}
       {openRef && <TransactionDetailModal txRef={openRef} onClose={closeDetail} onChanged={() => void load(true)} />}
-    </PanelShell>
+    </>
   )
 }

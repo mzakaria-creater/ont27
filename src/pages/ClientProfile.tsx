@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import PanelShell from '../components/PanelShell'
 import MethodLogo from '../components/MethodLogo'
 import MerchantLogo from '../components/MerchantLogo'
 import { api } from '../lib/api'
@@ -80,7 +79,7 @@ export default function ClientProfile() {
     : null
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head">
         <h2>{t('ملف العميل', 'Client profile')}</h2>
         <p className="page-sub">
@@ -337,6 +336,6 @@ export default function ClientProfile() {
           </section>
         </>
       )}
-    </PanelShell>
+    </>
   )
 }

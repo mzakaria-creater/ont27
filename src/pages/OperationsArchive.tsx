@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -50,7 +49,7 @@ export default function OperationsArchive() {
   const totalPages = data ? Math.max(Math.ceil(data.total / PAGE), 1) : 1
   const reset = (fn: () => void) => { setPage(0); fn() }
 
-  return <PanelShell>
+  return <>
     <section className="page-head"><h2>🗄️ {t('أرشيف العمليات', 'Operations archive')}</h2>
       <p className="page-sub">{t('سجل تنفيذ كل قرار (تلقائي/يدوي) على المزوّد — للمراجعة والتدقيق المالي.', 'Every execution attempt (auto/manual) on the provider — for review and financial audit.')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p>
     </section>
@@ -112,5 +111,5 @@ export default function OperationsArchive() {
         <button className="btn-ghost btn-sm" disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)}>{t('التالي', 'Next')} ←</button>
       </div>}
     </section>
-  </PanelShell>
+  </>
 }

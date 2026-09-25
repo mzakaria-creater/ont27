@@ -1,6 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -87,7 +86,7 @@ export default function Settlements() {
   )
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head">
         <h2>🧾 {t('التسويات', 'Settlements')}</h2>
         <p className="page-sub">{t('صافي كل تاجر خلال الفترة (إيداعات معتمدة − سحوبات معتمدة) · محسوبة من المعاملات الحقيقية', 'Net per merchant over the window (approved deposits − approved payouts) · computed from real transactions')}</p>
@@ -293,6 +292,6 @@ export default function Settlements() {
           )}
         </section>
       )}
-    </PanelShell>
+    </>
   )
 }

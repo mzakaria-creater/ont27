@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react'
-import PanelShell from '../components/PanelShell'
 import { api } from '../lib/api'
 import { useLocale } from '../lib/locale'
 import { useIsMobile } from '../lib/useIsMobile'
@@ -147,7 +146,7 @@ export default function SystemHealth() {
   }, [load])
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head">
         <h2>{t('حالة النظام', 'System health')}</h2>
         <p className="page-sub">
@@ -401,6 +400,6 @@ export default function SystemHealth() {
           </p>
         </>
       )}
-    </PanelShell>
+    </>
   )
 }

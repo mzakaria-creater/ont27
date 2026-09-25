@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -224,7 +223,7 @@ export default function Wallets() {
   }[reason] ?? reason)
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head">
         <h2>{t('👛 المحافظ', '👛 Wallets')}</h2>
         <p className="page-sub">
@@ -553,6 +552,6 @@ export default function Wallets() {
           )}
         </section>
       )}
-    </PanelShell>
+    </>
   )
 }

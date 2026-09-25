@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import PanelShell from '../components/PanelShell'
 import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -87,7 +86,7 @@ export default function WalletMovements() {
   const maxFlow = Math.max(1, ...(data?.wallets ?? []).map((w) => Number(w.inAmount) + Number(w.outAmount)))
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head">
         <h2>{t('حركة المحافظ', 'Wallet movements')}</h2>
         <p className="page-sub">
@@ -247,6 +246,6 @@ export default function WalletMovements() {
           </section>
         </>
       )}
-    </PanelShell>
+    </>
   )
 }

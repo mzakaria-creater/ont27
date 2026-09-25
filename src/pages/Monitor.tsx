@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import PanelShell from '../components/PanelShell'
 import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -55,7 +54,7 @@ export default function Monitor() {
   const unassigned = data?.sms.filter((s) => !s.assigned_tx_id && ['deposit', 'withdrawal'].includes(s.sms_category ?? '')).length ?? 0
   const linkedPairs = useMemo(() => data ? data.transactions.map((tx) => ({ tx, sms: data.sms.find((sms) => String(sms.assigned_tx_id) === String(tx.tx_id)) })).filter((pair) => pair.sms) : [], [data])
 
-  return <PanelShell>
+  return <>
     <section className="page-head">
       <div className="recent-head"><h2 style={{ margin: 0 }}>📡 {t('المراقبة المباشرة', 'Live Monitoring')}</h2><button className="btn-ghost btn-sm" onClick={() => void load()}>{t('تحديث', 'Refresh')}</button></div>
       <p className="page-sub">{t('تدفق SMS والمعاملات والتكاملات وحالة الأجهزة.', 'SMS, transaction, integration, and device activity in one operational stream.')}</p>
@@ -104,5 +103,5 @@ export default function Monitor() {
     <section className="card recent-card"><div className="recent-head"><h3>{t('نبض الأجهزة', 'Device heartbeat')}</h3><Link to="/wallets" className="pay-status-link">{t('فتح الأجهزة ←', 'Open devices →')}</Link></div><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('الجهاز', 'Device')}</th><th>{t('الحالة', 'Status')}</th><th>{t('البطارية', 'Battery')}</th><th>{t('الشبكة', 'Network')}</th><th>{t('آخر نبض', 'Last heartbeat')}</th></tr></thead><tbody>
       {(data?.devices ?? []).map((d) => <tr key={`${d.device}:${d.sim_slot ?? ''}`}><td className="mono">{d.device}{d.sim_slot != null ? ` · SIM ${d.sim_slot}` : ''}</td><td><span className={`pay-status-badge ${d.online ? 'st-paid' : 'st-declined'}`}>{d.online ? t('متصل', 'Online') : t('غير متصل', 'Offline')}</span></td><td className="mono">{d.battery == null ? '—' : `${d.battery}%${d.charging ? ' ⚡' : ''}`}</td><td>{d.net_type ?? '—'}</td><td className="mono">{when(d.last_seen_at)}</td></tr>)}
     </tbody></table></div></section>
-  </PanelShell>
+  </>
 }

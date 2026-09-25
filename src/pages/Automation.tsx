@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -441,7 +440,7 @@ export default function Automation() {
   const hasRuleFilters = Boolean(ruleSearch || ruleProviders.length || ruleStatuses.length || ruleActions.length)
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head">
         <h2>🤖 الأتمتة والتكامل</h2>
         <p className="page-sub">{t('محرّك القواعد الحي على هذا المشروع (قابل للتعديل) + إعدادات المحرّك ومهام الـ workers.', 'The live rule engine on this project (editable) + engine settings and worker jobs.')}</p>
@@ -991,6 +990,6 @@ export default function Automation() {
           </form>
         </section>
       </div>}
-    </PanelShell>
+    </>
   )
 }

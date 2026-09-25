@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Activity, CheckCircle2, CircleDollarSign, Clock3, FileSearch, Pause, Play, Radio, RefreshCw, Scale, Server, ShieldCheck, Smartphone, XCircle, Zap } from 'lucide-react'
-import PanelShell from '../components/PanelShell'
 import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -117,7 +116,7 @@ export default function LiveMonitorControl() {
       { label: t('معدل نجاح اليوم', 'Today success rate'), value: `${stats.success.toFixed(1)}%`, icon: Activity, tone: 'violet' },
   ]
 
-  return <PanelShell>
+  return <>
     <div className="live-control-shell">
       <section className="live-control-head">
         <div className="live-control-title">
@@ -186,5 +185,5 @@ export default function LiveMonitorControl() {
         </aside>
       </div>
     </div>
-  </PanelShell>
+  </>
 }

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { RefreshCw, RotateCcw, Search } from 'lucide-react'
-import PanelShell from '../components/PanelShell'
 import MultiSelectFilter from '../components/MultiSelectFilter'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
@@ -101,7 +100,7 @@ export default function WalletReport() {
   }), { wallets: 0, sms: 0, deposits: 0, withdrawals: 0, unconfirmed: 0, balance: 0 })
   const timeline = detail ? [...detail.transactions.map((tx) => ({ kind: 'TRX', at: tx.first_seen_at, label: tx.status ?? 'Transaction', amount: tx.amount })), ...detail.sms.map((sms) => ({ kind: 'SMS', at: sms.received_at, label: sms.sms_category === 'withdrawal' ? 'Withdrawal SMS' : 'Deposit SMS', amount: sms.amount }))].filter((item) => item.at).sort((a, b) => Date.parse(String(b.at)) - Date.parse(String(a.at))).slice(0, 20) : []
 
-  return <PanelShell>
+  return <>
     <section className="page-head">
       <h2>📊 {t('تقرير المحافظ (SMS)', 'Wallet SMS report')}</h2>
       <p className="page-sub">{t('كل SMS ومبلغ ورصيد وفرق لكل محفظة مستقبِلة.', 'Every SMS, amount, balance and difference per receiving wallet.')}</p>
@@ -226,5 +225,5 @@ export default function WalletReport() {
         </aside>
       </div>
     )}
-  </PanelShell>
+  </>
 }

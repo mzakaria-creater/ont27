@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useParams } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, Link, Outlet, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from './auth/AuthContext'
 import ProtectedRoute from './auth/ProtectedRoute'
 import PageGate from './auth/PageGate'
@@ -487,6 +487,21 @@ function AppShell({ children }: { children: ReactNode }) {
   )
 }
 
+// One persistent PanelShell (sidebar, live SMS/Telegram rails, permission
+// polling) shared by every operator page via <Outlet/>, instead of each
+// page mounting its own copy. Previously every navigation fully tore down
+// and rebuilt the sidebar's ~9 effects (permissions, badge polling,
+// realtime channel subscriptions) before the destination page could even
+// start loading its own data — this is what made switching pages feel slow.
+// /tv (kiosk display) deliberately stays outside this layout.
+function ShellLayout() {
+  return (
+    <PanelShell>
+      <Outlet />
+    </PanelShell>
+  )
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -501,6 +516,9 @@ export default function App() {
           <Route path="/payment-status" element={<PaymentStatus />} />
           <Route path="/account-action" element={<AccountAction />} />
           <Route element={<ProtectedRoute />}>
+            <Route path="/tv" element={<PageGate keys={['sms_live']}><TvScreen /></PageGate>} />
+            <Route path="/chat" element={<InternalChat />} />
+          <Route element={<ShellLayout />}>
             <Route path="/" element={<PageGate keys={['transactions','all_transactions']}><Transactions /></PageGate>} />
             <Route path="/welcome" element={<Welcome />} />
             <Route path="/control-room" element={<PageGate keys={['dashboard']}><Dashboard /></PageGate>} />
@@ -565,12 +583,10 @@ export default function App() {
             <Route path="/admin" element={<PageGate keys={['settings','users','permissions']}><AdminPage /></PageGate>} />
             <Route path="/admin/*" element={<PageGate keys={['settings','users','permissions']}><AdminPage /></PageGate>} />
             <Route path="/admin-transactions" element={<Navigate to="/transactions" replace />} />
-            <Route path="/chat" element={<InternalChat />} />
             <Route path="/whatsapp" element={<PageGate keys={['whatsapp','support']}><WhatsApp /></PageGate>} />
             <Route path="/notifications" element={<PageGate keys={['notifications']}><Notifications /></PageGate>} />
             <Route path="/sms-notifications" element={<PageGate keys={['sms_live', 'notifications']}><SmsNotifications /></PageGate>} />
-            <Route path="/tv" element={<PageGate keys={['sms_live']}><TvScreen /></PageGate>} />
-            <Route path="/p2p-tv" element={<PageGate keys={['sms_live']}><PanelShell><P2PTv /></PanelShell></PageGate>} />
+            <Route path="/p2p-tv" element={<PageGate keys={['sms_live']}><P2PTv /></PageGate>} />
             <Route path="/complaints" element={<PageGate keys={['support']}><Complaints /></PageGate>} />
             <Route path="/merchant-link-generator" element={<PageGate keys={['checkout-builder']}><LinkGenerator /></PageGate>} />
             <Route path="/payment-methods" element={<PageGate keys={['wallets','payment_methods']}><PaymentMethods /></PageGate>} />
@@ -582,6 +598,7 @@ export default function App() {
             <Route path="/devices" element={<PageGate keys={['sms_live','wallets']}><Devices /></PageGate>} />
             <Route path="/ontarget-hub" element={<PageGate keys={['wallets','payouts','sms_live','treasury']}><TreasuryHub /></PageGate>} />
             <Route path="/hub" element={<PageGate keys={['wallets','payouts','sms_live','treasury']}><TreasuryHub /></PageGate>} />
+          </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

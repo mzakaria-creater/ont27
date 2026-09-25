@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
 import { useLocale } from '../lib/locale'
@@ -33,7 +32,7 @@ export default function PayoutRequests() {
   const previewAmount = form.amount || '0'
   const pendingLinkCount = linkRows.filter(r=>r.status==='pending').length
   const plPreviewAmount = plForm.amount_mode==='fixed'?(plForm.amount||'0'):`${plForm.min_amount||'Any'} – ${plForm.max_amount||'Any'}`
-  return <PanelShell><section className="page-head"><div><h2>📤 {t('طلبات السحب اليدوية','Manual payout requests')}</h2><p className="page-sub">{t('طلب → موافقة صريحة → تنفيذ USSD على الجهاز','Request → explicit approval → USSD execution on device')}</p></div></section>
+  return <><section className="page-head"><div><h2>📤 {t('طلبات السحب اليدوية','Manual payout requests')}</h2><p className="page-sub">{t('طلب → موافقة صريحة → تنفيذ USSD على الجهاز','Request → explicit approval → USSD execution on device')}</p></div></section>
   <div className="admin-tabs">
     <button className={`pill${tab==='manual'?' active':''}`} onClick={()=>setTab('manual')}><Webhook size={14}/> {t('يدوي','Manual')}</button>
     <button className={`pill${tab==='link'?' active':''}`} onClick={()=>setTab('link')}><Link2 size={14}/> {t('طلبات العملاء','Client requests')}{pendingLinkCount>0?` (${pendingLinkCount})`:''}</button>
@@ -121,5 +120,5 @@ export default function PayoutRequests() {
 </div>
 ):<div className="table-wrap"><table className="data-table"><thead><tr><th>ID</th><th>{t('المحفظة','Wallet')}</th><th>{t('المبلغ','Amount')}</th><th>{t('الجهاز','Device')}</th><th>{t('الحالة','Status')}</th><th>{t('مقدم بواسطة','Requested by')}</th><th>{t('إجراء','Action')}</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td className="mono">{r.id.slice(0,8)}</td><td className="mono">{r.wallet_number}</td><td className="mono">{r.amount.toFixed(2)} EGP</td><td className="mono">{r.device}</td><td><span className={`pay-status-badge ${r.status==='completed'||r.status==='executing'?'st-paid':r.status==='failed'||r.status==='rejected'?'st-declined':'st-pending'}`}>{r.status}</span>{r.webhook_error&&<div className="cell-sub danger-text">{r.webhook_error}</div>}</td><td>{r.requested_by??'—'}</td><td>{r.status==='pending'&&can('payouts','can_approve')&&<div className="row-actions"><button className="btn-primary btn-sm" disabled={busy===r.id} onClick={()=>void decide(r.id,'approve')}>{t('موافقة','Approve')}</button><button className="btn-ghost danger btn-sm" disabled={busy===r.id} onClick={()=>void decide(r.id,'reject')}>{t('رفض','Reject')}</button></div>}</td></tr>)}</tbody></table></div>}</section>
   </>)}
-  </PanelShell>
+  </>
 }

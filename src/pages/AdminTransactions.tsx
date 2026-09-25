@@ -1,6 +1,5 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { ChevronDown, ChevronUp, RefreshCw, Search, X } from 'lucide-react'
-import PanelShell from '../components/PanelShell'
 import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectFilter'
 import MethodLogo from '../components/MethodLogo'
 import SenderIdentity from '../components/SenderIdentity'
@@ -44,7 +43,7 @@ export default function AdminTransactions() {
   const debouncedQ = useDebouncedValue(q, 400)
   useEffect(() => { const trimmed = debouncedQ.trim(); setApplied((current) => current.q === trimmed ? current : { ...current, q: trimmed }) }, [debouncedQ])
   const decide = async (row: Row, action: 'approve'|'decline') => { if (!confirm(`${action} #${row.tx_id}?`)) return; setBusy(row.tx_id); try { await api(`/api/deposits/${row.tx_id}/decision`, { method:'POST', body:JSON.stringify({ action, note:`Admin Transactions: ${action}` }) }); setRows((current)=>current.map((item)=>item.tx_id===row.tx_id?{...item,status:action==='approve'?'PAID':'DECLINED'}:item)) } catch(e) { setError(e instanceof ApiError ? e.code : 'decision_failed') } finally { setBusy(null) } }
-  return <PanelShell>
+  return <>
     <section className="page-head"><h2>Admin Transactions</h2><p className="page-sub">Expanded administrative ledger · {total.toLocaleString()} records</p></section>
     <form className="filter-bar admin-trx-filter" onSubmit={(e)=>{e.preventDefault();setApplied({q:q.trim(),status,merchant:merchant.trim(),method,from,to,sort})}}>
       <label className="analytics-filter-search trx-search-bar"><Search size={16}/><input type="search" value={q} onChange={(e)=>setQ(e.target.value)} aria-label="Search admin transactions" placeholder="Amount, sender, phone, transaction, merchant ref, or user" />{q&&<button type="button" className="trx-search-clear" onClick={()=>setQ('')} aria-label="Clear search"><X size={15}/></button>}</label>
@@ -74,5 +73,5 @@ export default function AdminTransactions() {
       {!loading&&rows.length===0&&<tr><td colSpan={18}>No matching transactions.</td></tr>}
     </tbody></table></div></section>
     {proof&&<ProofModal url={proof.url} title={`Payment proof #${proof.tx}`} onClose={()=>setProof(null)} actionBusy={busy === proof.tx} onApprove={proof.onApprove} onDecline={proof.onDecline}/>}
-  </PanelShell>
+  </>
 }

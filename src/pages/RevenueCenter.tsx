@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import PanelShell from '../components/PanelShell'
 import { useLocale } from '../lib/locale'
 import FinanceOperations from './FinanceOperations'
 import RevenueCenterLegacy from './RevenueCenterLegacy'
@@ -20,11 +19,11 @@ export default function RevenueCenter() {
     </div>
   }
 
-  return <PanelShell>
+  return <>
     <div className="revenue-workspace-switch">
       <button type="button" className="active">{t('العمليات المالية V2', 'Finance Operations V2')}</button>
       <button type="button" onClick={() => setWorkspace('cfo')}>{t('مساحة CFO', 'CFO Workspace')}</button>
     </div>
     <FinanceOperations />
-  </PanelShell>
+  </>
 }

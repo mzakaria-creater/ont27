@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, CheckCircle2, CircleDollarSign, Download, Filter, Pencil, Plus, RefreshCw, RotateCw, Search, ShieldAlert, Smartphone, Target, Trash2, WalletCards, Wifi, WifiOff, X } from 'lucide-react'
-import PanelShell from '../components/PanelShell'
 import { useAuth } from '../auth/AuthContext'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
@@ -280,7 +279,7 @@ export default function MavenWallets() {
   }
 
   return (
-    <PanelShell>
+    <>
       <section className="maven-wallets-head">
         <div>
           <div className="maven-eyebrow"><span className="maven-live-dot" /> MAVEN · NGPay Wallet Operations</div>
@@ -457,6 +456,6 @@ export default function MavenWallets() {
           </section>
         </div>
       )}
-    </PanelShell>
+    </>
   )
 }

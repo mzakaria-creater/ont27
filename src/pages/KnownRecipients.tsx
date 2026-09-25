@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -93,7 +92,7 @@ export default function KnownRecipients() {
   const approvalRate = totals.events ? (totals.approved / totals.events) * 100 : 0
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head">
         <h2>{t('🎯 المستلمون المعروفون', '🎯 Known Recipients')}</h2>
         <p className="page-sub">{t('دليل حي للمستلمين من سجل السحوبات، مع الإجماليات وسجل التحويلات.', 'A live payout-recipient directory with totals and transfer history.')}</p>
@@ -175,6 +174,6 @@ export default function KnownRecipients() {
           ))}
         </section>
       </div>
-    </PanelShell>
+    </>
   )
 }

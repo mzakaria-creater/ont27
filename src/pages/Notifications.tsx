@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import PanelShell from '../components/PanelShell'
 import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -48,7 +47,7 @@ export default function Notifications() {
   useEffect(() => { installNotificationAudioUnlock(); const ready = () => setAudioReady(true); window.addEventListener('ontarget:audio-ready', ready); return () => window.removeEventListener('ontarget:audio-ready', ready) }, [])
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head">
         <h2>🔔 {t('الإشعارات', 'Notifications')}</h2>
         <p className="page-sub">{t('كل ما يحتاج انتباهك الآن · تحديث تلقائي كل 30 ثانية', 'Everything that needs your attention now · auto-refresh every 30s')}</p>
@@ -125,7 +124,7 @@ export default function Notifications() {
           </section>
         </>
       )}
-    </PanelShell>
+    </>
   )
 }
 

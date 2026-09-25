@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { RefreshCw, Search, X } from 'lucide-react'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -192,7 +191,7 @@ export default function Complaints() {
   const counts = (rows ?? []).reduce((acc, row) => { const key = row.status?.toLowerCase() ?? 'open'; if (key === 'approved' || key === 'resolved' || key === 'resolved_approved') acc.resolved += 1; else if (key === 'declined' || key === 'resolved_declined') acc.declined += 1; else if (key === 'closed') acc.closed += 1; else acc.open += 1; return acc }, { open: 0, resolved: 0, declined: 0, closed: 0 })
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head complaint-page-head">
         <div><span className="guide-eyebrow">CONTROL ROOM · CASE MANAGEMENT</span><h2>📮 {t('مركز الشكاوى', 'Complaint center')}</h2>
         <p className="page-sub">{t('افحص المعاملة والدليل وسجل القرار من مكان واحد.', 'Investigate transactions, evidence, and decisions in one place.')}</p></div>
@@ -389,6 +388,6 @@ export default function Complaints() {
         <div className="ticket-form-grid"><label>{t('الموضوع','Subject')}<input className="login-input" value={ticketDraft.subject||''} onChange={e=>setTicketDraft(d=>({...d,subject:e.target.value}))}/></label><label>{t('المسؤول','Assignee')}<select className="filter-select" value={ticketDraft.assigned_to||''} onChange={e=>setTicketDraft(d=>({...d,assigned_to:e.target.value}))}><option value="">{t('غير مسندة','Unassigned')}</option>{assignees.map(a=><option key={a.username} value={a.username}>{a.display_name||a.username}</option>)}</select></label><label>{t('الحالة','Status')}<select className="filter-select" value={ticketDraft.ticket_status||'open'} onChange={e=>setTicketDraft(d=>({...d,ticket_status:e.target.value}))}><option value="open">Open</option><option value="in_progress">In progress</option><option value="resolved">Resolved</option><option value="closed">Closed</option></select></label><label>{t('الأولوية','Priority')}<select className="filter-select" value={ticketDraft.priority||'normal'} onChange={e=>setTicketDraft(d=>({...d,priority:e.target.value}))}><option value="high">High</option><option value="medium">Medium</option><option value="normal">Normal</option><option value="low">Low</option></select></label><label>{t('الموعد النهائي','Deadline')}<input className="login-input" type="datetime-local" value={ticketDraft.due_at ? ticketDraft.due_at.slice(0,16) : ''} onChange={e=>setTicketDraft(d=>({...d,due_at:e.target.value}))}/></label><label className="ticket-form-wide">{t('الإجراء المطلوب','Requested action')}<input className="login-input" value={ticketDraft.action_requested||''} onChange={e=>setTicketDraft(d=>({...d,action_requested:e.target.value}))}/></label><label className="ticket-form-wide">{t('الوصف / الملاحظات','Description / notes')}<textarea className="login-input ticket-description" value={ticketDraft.description||''} onChange={e=>setTicketDraft(d=>({...d,description:e.target.value}))}/></label></div>
         <div className="drawer-actions"><button className="btn-primary" disabled={ticketBusy} onClick={()=>void saveTicket()}>{ticketBusy?t('جارٍ الحفظ…','Saving…'):t('حفظ التغييرات','Save changes')}</button><button className="btn-ghost" onClick={()=>setTicketModal(null)}>{t('إلغاء','Cancel')}</button></div>
       </section></div>}
-    </PanelShell>
+    </>
   )
 }

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -66,7 +65,7 @@ export default function Audit() {
   const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head">
         <h2>🕵️ {t('سجل التدقيق', 'Audit log')}</h2>
         <p className="page-sub">{t('كل إجراء على النظام موثّق', 'Every system action is recorded')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p>
@@ -142,6 +141,6 @@ export default function Audit() {
           </div>
         )}
       </section>
-    </PanelShell>
+    </>
   )
 }

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -72,7 +71,7 @@ export default function TreasuryHub() {
   ]
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head">
         <h2>{t('🏛️ OnTarget — مركز الخزينة والمحافظ', '🏛️ OnTarget — Treasury & Wallets')}</h2>
         <p className="page-sub">{t('حركة المحافظ والرسائل والمعاملات الحية خلال آخر 30 يوماً.', 'Live wallet movement, messages, and transactions for the last 30 days.')}</p>
@@ -196,6 +195,6 @@ export default function TreasuryHub() {
         </table></div>
         )}
       </section>}
-    </PanelShell>
+    </>
   )
 }

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BarChart3, CalendarDays, Download, Printer, RefreshCw, TrendingDown, TrendingUp, WalletCards } from 'lucide-react'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -82,7 +81,7 @@ export default function EnterpriseReport() {
   const maxDaily = Math.max(1, ...daily.map((row) => Math.max(row.incoming, row.outgoing)))
   const exportReport = () => { window.location.assign(`/api/reports/export?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`) }
 
-  return <PanelShell>
+  return <>
     <section className="page-head reports-page-head">
       <div><span className="reports-eyebrow"><BarChart3 size={14} /> ONTARGET · FINANCIAL CONTROL</span><h2>{t('تقرير الميزان المالي', 'Enterprise financial report')}</h2><p className="page-sub">{t('ملخص تنفيذي حي للإيداعات، السحوبات، المحافظ وصحة المطابقة.', 'Live executive view of deposits, payouts, wallets, and reconciliation health.')}</p>{report && <span className="cell-sub mono">{t('آخر تحديث', 'Updated')} {new Date(report.live.updatedAt).toLocaleTimeString(locale)}</span>}</div>
       <div className="control-row"><button className="btn-ghost btn-sm" type="button" onClick={() => window.print()}><Printer size={15} /> {t('طباعة', 'Print')}</button><button className="btn-primary btn-sm" type="button" onClick={exportReport}><Download size={15} /> {t('تصدير CSV', 'Export CSV')}</button></div>
@@ -107,7 +106,7 @@ export default function EnterpriseReport() {
       <section className="card recent-card"><div className="recent-head"><div><h3>{t('تقرير المحافظ والسيولة', 'Wallet liquidity report')}</h3><span className="cell-sub">{wallets.length} {t('محفظة ضمن النطاق', 'wallets in range')}</span></div></div><div className="table-wrap"><table className="data-table reports-table"><thead><tr><th>{t('المحفظة', 'Wallet')}</th><th>{t('الجهاز', 'Device')}</th><th>{t('SMS', 'SMS')}</th><th>{t('الإيداعات', 'Deposits')}</th><th>{t('السحوبات', 'Payouts')}</th><th>{t('الرصيد', 'Balance')}</th><th>{t('غير مؤكدة', 'Unconfirmed')}</th></tr></thead><tbody>{wallets.map((row) => <tr key={row.wallet}><td className="mono">{row.wallet}</td><td>{row.device ?? '—'}</td><td className="mono">{row.sms_count}</td><td className="mono positive-text">{money(row.deposits_amount, 'EGP')}</td><td className="mono negative-text">{money(row.withdrawals_amount, 'EGP')}</td><td className="mono">{money(row.balance, 'EGP')}</td><td className="mono">{row.unconfirmed}</td></tr>)}</tbody></table></div></section>
       <section className="card recent-card"><div className="recent-head"><div><h3>{t('المعاملات', 'Transactions')}</h3><span className="cell-sub">{transactions.length} {t('سجل ضمن النطاق', 'records in range')}</span></div></div><div className="table-wrap"><table className="data-table reports-table"><thead><tr><th>{t('المرجع', 'Reference')}</th><th>{t('التاريخ', 'Date')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('الطريقة', 'Method')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('الحالة', 'Status')}</th></tr></thead><tbody>{transactions.slice(0, 100).map((row, index) => <tr key={`${row.kind}-${row.ontarget_ref ?? index}`}><td className="mono">{row.ontarget_ref ?? '—'}</td><td className="mono">{row.first_seen_at?.slice(0, 16).replace('T', ' ') ?? '—'}</td><td>{row.merchant ?? '—'}</td><td>{row.payment_method ?? '—'}</td><td className="mono">{money(row.amount, 'EGP')}</td><td><span className="pay-status-badge st-dim">{row.status ?? '—'}</span></td></tr>)}</tbody></table></div></section>
     </>}
-  </PanelShell>
+  </>
 }
 
 function StatusCard({ title, rows }: { title: string; rows: Record<string, Bucket> }) {

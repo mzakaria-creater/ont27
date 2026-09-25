@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Check, Eye, LayoutGrid, ListChecks, MessageSquare, Pencil, Save, Search, Send, Settings2, SlidersHorizontal, TableProperties, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
-import PanelShell from "../components/PanelShell";
 import MultiSelectFilter, { splitFilterValues } from "../components/MultiSelectFilter";
 import MerchantLogo from "../components/MerchantLogo";
 import MethodLogo from "../components/MethodLogo";
@@ -762,7 +761,7 @@ export default function Payouts() {
   };
 
   return (
-    <PanelShell>
+    <>
       <section className="admin-head">
         <span className="admin-head-icon"><Send size={24} /></span>
         <div className="admin-head-text">
@@ -1460,6 +1459,6 @@ export default function Payouts() {
             )}
         </DetailModal>
       )}
-    </PanelShell>
+    </>
   );
 }

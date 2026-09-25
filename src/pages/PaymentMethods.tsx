@@ -1,5 +1,4 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
 import { useLocale } from '../lib/locale'
@@ -176,7 +175,7 @@ export default function PaymentMethods() {
   const changeAccountView = (view: 'table' | 'cards') => { setAccountView(view); localStorage.setItem('payment-account-view', view) }
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head payment-page-head">
         <div><h2><CreditCard size={25}/> {t('طرق الدفع والحسابات', 'Payment methods & accounts')}</h2>
         <p className="page-sub">{t('مركز تشغيل الطرق والحسابات والتخصيص وصحة الرصيد.', 'Operations center for methods, accounts, allocation, and balance health.')}</p></div>
@@ -509,6 +508,6 @@ export default function PaymentMethods() {
           </section>
         )
       })}
-    </PanelShell>
+    </>
   )
 }

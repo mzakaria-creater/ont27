@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import PanelShell from '../components/PanelShell'
 import { useLocale } from '../lib/locale'
 import { useIsMobile } from '../lib/useIsMobile'
 import { Check, Copy, ExternalLink, ShieldCheck } from 'lucide-react'
@@ -47,7 +46,7 @@ function DocTable({ headers, rows, codeAll }: { headers: string[]; rows: string[
 
 export default function IntegrationGuide() {
   const { t } = useLocale()
-  return <PanelShell>
+  return <>
     <section className="guide-hero">
       <div><span className="guide-eyebrow">ON TARGET · MERCHANT DOCUMENTATION</span><h2>API Integration Guide</h2><p>{t('مرجع عملي كامل لربط التاجر بواجهة الدفع والاستعلام وWebhooks.', 'Production integration reference for checkout, status queries, and webhooks.')}</p></div>
       <div className="guide-version"><ShieldCheck size={20}/><span>API v1</span><small>Updated August 2026</small></div>
@@ -69,5 +68,5 @@ export default function IntegrationGuide() {
         <footer className="guide-footer"><span>On Target API v1</span><a href="https://api.ontarget-egy.com/v1/health" target="_blank" rel="noreferrer">API health <ExternalLink size={13}/></a></footer>
       </article>
     </div>
-  </PanelShell>
+  </>
 }

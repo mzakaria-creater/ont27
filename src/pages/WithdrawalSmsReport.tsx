@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CalendarDays, Download, RefreshCw } from 'lucide-react'
-import PanelShell from '../components/PanelShell'
 import PageSizeSelect from '../components/PageSizeSelect'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
@@ -67,7 +66,7 @@ export default function WithdrawalSmsReport() {
   const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1
   const k = data?.kpis
 
-  return <PanelShell>
+  return <>
     <section className="page-head withdrawal-report-head">
       <div><h2>{t('تقرير رسائل السحب', 'Withdrawal SMS report')}</h2><p className="page-sub">{t('حركة WD، تغطية الربط، الرصيد والمحافظ في نطاق زمني واحد.', 'WD activity, matching coverage, balances and wallets in one date scope.')}</p></div>
       <button className="btn-ghost btn-sm icon-text-btn" disabled={!data} onClick={exportCsv}><Download size={15}/>{t('تصدير الصفحة', 'Export page')}</button>
@@ -127,5 +126,5 @@ export default function WithdrawalSmsReport() {
       ))}
       {data && totalPages > 1 && <div className="pager"><button className="btn-ghost btn-sm" disabled={page<=1} onClick={()=>setPage(page-1)}>{t('السابق','Prev')}</button><PageSizeSelect value={pageSize} onChange={(size)=>{setPageSize(size);setPage(1)}}/><span className="pager-info mono">{page} / {totalPages}</span><button className="btn-ghost btn-sm" disabled={page>=totalPages} onClick={()=>setPage(page+1)}>{t('التالي','Next')}</button></div>}
     </section>
-  </PanelShell>
+  </>
 }

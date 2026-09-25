@@ -1,7 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts'
 import { AlertTriangle, CalendarRange, Clock3, Download, Printer, RefreshCw } from 'lucide-react'
-import PanelShell from '../components/PanelShell'
 import MultiSelectFilter from '../components/MultiSelectFilter'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
@@ -189,7 +188,7 @@ export default function MerchantMonthly() {
     { header: 'Gap dates', key: 'gap_dates', value: (r) => r.gap_dates.join(' ') },
   ], 'merchant-monthly-volume')
 
-  return <PanelShell>
+  return <>
     <section className="page-head merchant-monthly-page">
       <div><h2>📆 {t('الحجم الشهري للتجار', 'Merchant Monthly Volume')}</h2><p className="page-sub">{t('تجميع شهري لكل تاجر مع الرسوم والصافي وأعلام جودة البيانات.', 'Monthly per-merchant aggregate with fees, net, and data-quality flags.')}</p></div>
       <div className="page-actions no-print">
@@ -336,5 +335,5 @@ export default function MerchantMonthly() {
           : <span className="cell-sub danger-text">⚠️ {t('معاملات بدون تاريخ (لم تُدرج في التجميع الشهري)', 'Undated transactions (not included in the monthly aggregate)')}: {undatedByMerchant.map(([m, n]) => `${m}: ${n}`).join(' · ')}</span>}
       </div>
     </section>
-  </PanelShell>
+  </>
 }

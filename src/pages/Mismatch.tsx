@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -67,7 +66,7 @@ export default function Mismatch() {
   const gapCount = gapEntries.filter(([, v]) => v.old != null && v.current != null && v.old !== v.current).length
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head">
         <h2>🎯 {t('كشف عدم التطابق', 'Mismatch detector')}</h2>
         <p className="page-sub">
@@ -371,6 +370,6 @@ export default function Mismatch() {
           ))}
         </section>
       )}
-    </PanelShell>
+    </>
   )
 }

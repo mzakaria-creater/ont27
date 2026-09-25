@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Activity, ArrowDownToLine, ArrowUpFromLine, CalendarDays, CircleDollarSign, Clock3, Filter, Landmark, RefreshCw, RotateCcw, Table2, TrendingUp, UsersRound, WalletCards } from 'lucide-react'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -127,7 +126,7 @@ export default function ExecutiveDashboard() {
     { icon: Clock3, label: t('قائمة المراجعة', 'Review queue'), value: String((data?.queues.pendingDeposits ?? 0) + (data?.queues.pendingPayouts ?? 0) + (data?.queues.smsReview ?? 0)), sub: t('إيداع + سحب + SMS', 'Deposits + payouts + SMS') },
   ]
 
-  return <PanelShell>
+  return <>
     <section className="page-head executive-page-head">
       <div><h2>{t('لوحة الإدارة التنفيذية', 'Executive Dashboard')}</h2><p className="page-sub">{t('تحليل موحّد للسيولة والأداء حسب نطاق زمني تقويمي.', 'Unified liquidity and performance analysis by calendar date range.')}{data && <> · {t('آخر تحديث', 'Updated')} {new Date(data.generatedAt).toLocaleTimeString()}</>}</p></div>
       <button className="btn-ghost btn-sm" onClick={() => void load()} disabled={loading}><RefreshCw size={14} aria-hidden="true" className={loading ? 'spin' : ''} />{t('تحديث', 'Refresh')}</button>
@@ -188,5 +187,5 @@ export default function ExecutiveDashboard() {
     ) : (
     <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('التاجر', 'Merchant')}</th><th>{t('الطريقة', 'Method')}</th><th>{t('مدفوع', 'Paid')}</th><th>{t('معلق', 'Pending')}</th><th>{t('مرفوض', 'Declined')}</th><th>{t('الإجمالي', 'Total')}</th></tr></thead><tbody>{(data?.pivot ?? []).map((row) => <tr key={`${row.merchant}-${row.method}`}><td><strong>{row.merchant}</strong></td><td>{row.method}</td><td><span className="pivot-count">{row.paidCount}</span><div className="mono pivot-money">{money(row.paidVolume, 'EGP')}</div></td><td><span className="pivot-count pending">{row.pendingCount}</span><div className="mono pivot-money">{money(row.pendingVolume, 'EGP')}</div></td><td><span className="pivot-count declined">{row.declinedCount}</span><div className="mono pivot-money">{money(row.declinedVolume, 'EGP')}</div></td><td><strong className="mono">{money(row.totalVolume, 'EGP')}</strong><div className="cell-sub">{row.totalCount} {t('عملية', 'transactions')}</div></td></tr>)}</tbody></table></div>
     ))}</section>
-  </PanelShell>
+  </>
 }

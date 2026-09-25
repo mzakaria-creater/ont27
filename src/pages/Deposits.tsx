@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import PanelShell from '../components/PanelShell'
 import ProofModal from '../components/ProofModal'
 import ProofIconButton from '../components/ProofIconButton'
 import DepositCard from '../components/DepositCard'
@@ -392,7 +391,7 @@ export default function Deposits() {
   }
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head with-actions">
         <div><h2>💰 الإيداعات</h2>
         <p className="page-sub">
@@ -842,6 +841,6 @@ export default function Deposits() {
           </aside>
         </div>
       )}
-    </PanelShell>
+    </>
   )
 }

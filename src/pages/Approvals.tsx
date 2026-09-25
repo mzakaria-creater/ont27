@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import PanelShell from '../components/PanelShell'
 import ProofModal from '../components/ProofModal'
 import EditRequestQueue from '../components/EditRequestQueue'
 import { api, ApiError } from '../lib/api'
@@ -224,7 +223,7 @@ export default function Approvals() {
   }
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head">
         <div>
           <h2>✅ {t('طابور الموافقات', 'Approval queue')}</h2>
@@ -469,6 +468,6 @@ export default function Approvals() {
           onClose={() => setProof(null)}
         />
       )}
-    </PanelShell>
+    </>
   )
 }

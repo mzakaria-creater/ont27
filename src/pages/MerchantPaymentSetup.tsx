@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import PanelShell from '../components/PanelShell'
 import MethodLogo from '../components/MethodLogo'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
@@ -97,7 +96,7 @@ export default function MerchantPaymentSetup() {
   const assignedMerchants = visibleMerchants.filter((merchant) => merchant.methods.length > 0 || merchant.accounts.length > 0).length
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head">
         <div>
           <h2><WalletCards size={24} /> {t('إعداد دفع التجار', 'Merchant payment setup')}</h2>
@@ -161,6 +160,6 @@ export default function MerchantPaymentSetup() {
         )
       })}
       {data && visibleMerchants.length === 0 && <div className="card empty-state"><Building2 size={20} /><span>{t('لا يوجد تاجر مطابق للفلاتر.', 'No merchant matches the filters.')}</span></div>}
-    </PanelShell>
+    </>
   )
 }

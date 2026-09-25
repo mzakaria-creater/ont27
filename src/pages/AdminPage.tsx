@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import PanelShell from "../components/PanelShell";
 import UserEditor from "../components/UserEditor";
 import type { UserOverride, UserRow } from "../components/UserEditor";
 import { api, ApiError } from "../lib/api";
@@ -307,7 +306,7 @@ export default function AdminPage() {
       role.role_key === roleFilter,
   );
   return (
-    <PanelShell>
+    <>
       <div className="admin-page">
       <section className="admin-head">
         <span className="admin-head-icon"><ShieldCheck size={26} /></span>
@@ -1558,6 +1557,6 @@ export default function AdminPage() {
         </>
       )}
       </div>
-    </PanelShell>
+    </>
   );
 }

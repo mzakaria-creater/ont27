@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ArrowDown, BarChart3, Bot, CheckCircle2, Clock3, Database, ExternalLink, GitBranch, MessageSquareText, RefreshCw, Server, ShieldCheck, Users, WalletCards, XCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import PanelShell from '../components/PanelShell'
 import { api } from '../lib/api'
 import { useLocale } from '../lib/locale'
 
@@ -47,7 +46,7 @@ export default function MindMap() {
   const onlineDevices = live?.devices.filter((row) => row.online).length ?? 0
   const sourcesOk = live ? Object.values(live.sources).filter((source) => source.ok).length : 0
   const sourceTotal = live ? Object.keys(live.sources).length : 0
-  return <PanelShell>
+  return <>
     <section className="page-head mindmap-head">
       <div>
         <span className="mindmap-eyebrow"><GitBranch size={14} /> {t('خريطة التشغيل', 'Operations map')}</span>
@@ -95,7 +94,7 @@ export default function MindMap() {
       <article className="card"><MessageSquareText size={18} /><div><h3>{t('الرسالة دليل قابل للتتبع', 'SMS is traceable evidence')}</h3><p>{t('كل SMS مرتبطة بمعاملة أو تبقى ظاهرة في قائمة الانتظار للمراجعة.', 'Every SMS is linked to a transaction or stays visible in a review queue.')}</p></div></article>
       <article className="card"><Users size={18} /><div><h3>{t('القرار منسوب بوضوح', 'Every decision has an owner')}</h3><p>{t('يظهر هل القرار تلقائي، بواسطة Maven، أو بواسطة عضو من الفريق.', 'The audit trail identifies automation, Maven, or the responsible team member.')}</p></div></article>
     </section>
-  </PanelShell>
+  </>
 }
 
 function ActivityIcon() { return <BarChart3 size={14} /> }

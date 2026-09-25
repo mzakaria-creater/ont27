@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -106,7 +105,7 @@ export default function Crm() {
   }
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head">
         <h2>👥 {t('CRM العملاء', 'Customer CRM')}</h2>
         <p className="page-sub">{t('ملفات المودعين المجمّعة', 'Aggregated depositor profiles')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p>
@@ -240,6 +239,6 @@ export default function Crm() {
           </div>
         </div>
       )}
-    </PanelShell>
+    </>
   )
 }

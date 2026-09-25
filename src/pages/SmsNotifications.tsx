@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { useLocale } from '../lib/locale'
 import { useIsMobile } from '../lib/useIsMobile'
@@ -25,7 +24,7 @@ export default function SmsNotifications() {
   useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 15_000); return () => window.clearInterval(timer) }, [load])
   const rows = useMemo(() => data?.alerts ?? [], [data])
 
-  return <PanelShell>
+  return <>
     <section className="page-head">
       <h2>🚨 {t('تنبيهات وتحذيرات SMS', 'SMS notifications & warnings')}</h2>
       <p className="page-sub">{t('تجميد المحافظ والتحذيرات المالية مع تحديث تلقائي وإشعار Telegram.', 'Wallet freeze and financial warnings with auto-refresh and Telegram delivery.')}</p>
@@ -54,5 +53,5 @@ export default function SmsNotifications() {
       <div className="table-wrap"><table className="data-table sms-alert-table"><thead><tr><th>{t('الدرجة', 'Severity')}</th><th>SMS ID</th><th>{t('الوقت', 'Time')}</th><th>{t('المحفظة', 'Wallet')}</th><th>{t('الجهاز / المزود', 'Device / provider')}</th><th>{t('الرسالة', 'Message')}</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className={row.severity === 'freeze' ? 'sms-freeze-row' : 'sms-warning-row'}><td><span className={`pay-status-badge ${row.severity === 'freeze' ? 'st-declined' : 'st-pending'}`}>{row.severity === 'freeze' ? `🧊 ${t('تجميد', 'Freeze')}` : `⚠️ ${t('تحذير', 'Warning')}`}</span></td><td className="mono">{row.id}</td><td className="mono">{formatTime(row.received_at)}</td><td className="mono">{row.wallet_number ?? row.receiver_number ?? '—'}</td><td>{row.device_name ?? '—'}<div className="cell-sub">{row.provider ?? '—'}</div></td><td className="sms-alert-message" title={textOf(row)}>{textOf(row)}</td></tr>)}</tbody></table></div>
       )}
     </section>
-  </PanelShell>
+  </>
 }

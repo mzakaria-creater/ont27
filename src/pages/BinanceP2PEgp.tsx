@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Filter, RefreshCw, ShieldCheck, Smartphone, Users, WalletCards } from 'lucide-react'
-import PanelShell from '../components/PanelShell'
 import BinanceSubNav from '../components/BinanceSubNav'
 import { api, ApiError } from '../lib/api'
 import { useLocale } from '../lib/locale'
@@ -47,7 +46,7 @@ export default function BinanceP2PEgp() {
   const methods = useMemo(() => [...new Set(orders.map((row) => row.paymentMethod).filter((value): value is string => !!value))].sort(), [orders])
   const grouped = useMemo(() => traders.map((summary) => ({ summary, rows: orders.filter((row) => (row.trader ?? 'Unknown trader') === summary.trader) })), [orders, traders])
 
-  return <PanelShell>
+  return <>
     <BinanceSubNav />
     <section className="page-head binance-egp-head"><div><span className="guide-eyebrow">BINANCE C2C · EGP OPERATIONS</span><h2>{t('Binance P2P — Vodafone Cash', 'Binance P2P — EGP Vodafone Cash')}</h2><p className="page-sub">{t('تقرير حي مقسم حسب Trader مع إجمالي BUY وSELL لكل طرف.', 'Live report split by trader with BUY and SELL totals per counterparty.')}</p></div><button className="btn-ghost btn-sm" disabled={loading} onClick={() => void load()}><RefreshCw size={15} className={loading ? 'spin' : ''}/> {t('تحديث', 'Refresh')}</button></section>
     <div className="binance-egp-safety"><ShieldCheck size={20}/><div><strong>{t('قراءة محمية من Binance', 'Protected Binance read')}</strong><p>{t('المفتاح محفوظ داخل Vault ولا يظهر في المتصفح. لا يوجد تنفيذ تلقائي.', 'The key is stored in Vault and never reaches the browser. No automatic execution is enabled.')}</p></div></div>
@@ -68,5 +67,5 @@ export default function BinanceP2PEgp() {
       ) : (
       <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('الطلب','Order')}</th><th>{t('النوع','Side')}</th><th>{t('الأصل','Asset')}</th><th>{t('الكمية','Qty')}</th><th>{t('الإجمالي','Total EGP')}</th><th>{t('طريقة الدفع','Method')}</th><th>{t('الحالة','Status')}</th><th>{t('الوقت','Time')}</th></tr></thead><tbody>{rows.map((row, index) => <tr key={row.orderNumber ?? `${row.advNo}-${index}`}><td className="mono">{row.orderNumber ?? row.advNo ?? '—'}</td><td><span className={`pay-status-badge ${row.tradeType === 'SELL' ? 'st-declined' : 'st-paid'}`}>{row.tradeType}</span></td><td className="mono">{row.asset}</td><td className="mono">{row.amount ?? '—'}</td><td className="mono">{egp(row.totalPrice)}</td><td>{row.paymentMethod ?? '—'}</td><td><span className="pay-status-badge st-dim">{row.orderStatus ?? '—'}</span></td><td className="mono">{row.createTime ? new Date(row.createTime).toLocaleString('en-US', { timeZone: 'Africa/Cairo' }) : '—'}</td></tr>)}</tbody></table></div>
       )}</article>)}{!grouped.length && <div className="card binance-empty"><WalletCards size={28}/><strong>{t('لا توجد صفقات مطابقة للفلاتر.', 'No trades match the filters.')}</strong><span>{config?.has_credentials ? t('غيّر الفترة أو Trader المحدد.', 'Try another date range or trader.') : t('أدخل مفاتيح Binance من صفحة الإعدادات.', 'Add Binance credentials from settings.')}</span></div>}</section>
-  </PanelShell>
+  </>
 }

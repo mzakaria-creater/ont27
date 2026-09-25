@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ShieldCheck } from 'lucide-react'
-import PanelShell from '../components/PanelShell'
 import BinanceSubNav from '../components/BinanceSubNav'
 import { useAuth } from '../auth/AuthContext'
 import { api, ApiError } from '../lib/api'
@@ -33,7 +32,7 @@ export default function Binance() {
   const saveLimits = async (enabled?: boolean) => { setErr(''); setMsg(''); try { if (!limits.perOrder || !limits.daily) throw new Error('limits'); await api('/api/binance/config', { method: 'PUT', body: JSON.stringify({ max_p2p_order_amount: Number(limits.perOrder), max_p2p_24h_amount: Number(limits.daily), ...(enabled === undefined ? {} : { p2p_enabled: enabled }) }) }); setMsg(t('تم حفظ الحدود.', 'Limits saved.')); await load() } catch (e) { setErr(e instanceof ApiError && e.code === 'super_admin_required' ? t('هذه العملية متاحة لـ super_admin فقط.', 'Only super_admin can perform this action.') : t('أدخل حدَّين موجبين، ولا يمكن التفعيل قبل حفظ المفتاح.', 'Enter two positive limits; credentials are required before enabling.')) } }
   const saveKeys = async () => { setErr(''); setMsg(''); try { await api('/api/binance/credentials', { method: 'PUT', body: JSON.stringify(keys) }); setKeys({ api_key: '', api_secret: '' }); setMsg(t('حُفظ المفتاح داخل Supabase Vault وأُبقي التكامل موقوفاً.', 'Credentials saved in Supabase Vault; the integration remains disabled.')); await load() } catch { setErr(t('تعذر حفظ المفتاح بأمان.', 'Unable to store credentials securely.')) } }
   const cfg = data?.config
-  return <PanelShell>
+  return <>
     <BinanceSubNav />
     <section className="page-head"><h2>Binance P2P — {t('تنفيذ يدوي', 'Manual execution')}</h2><p className="page-sub">{t('لا triggers ولا cron ولا تنفيذ تلقائي. كل عملية مستقبلية تتطلب تأكيداً بشرياً مسجلاً.', 'No triggers, cron, or automatic execution. Every future order requires a recorded human confirmation.')}</p></section>
 
@@ -97,5 +96,5 @@ export default function Binance() {
       )}
     </section>
     </>}
-  </PanelShell>
+  </>
 }

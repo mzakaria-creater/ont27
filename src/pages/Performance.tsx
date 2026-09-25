@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CalendarDays, RotateCcw, Search } from 'lucide-react'
-import PanelShell from '../components/PanelShell'
 import MethodLogo from '../components/MethodLogo'
 import MultiSelectFilter from '../components/MultiSelectFilter'
 import { api } from '../lib/api'
@@ -183,7 +182,7 @@ export default function Performance() {
   const maxVolume = Math.max(1, ...visibleGroups.map((g) => g.volume))
 
   return (
-    <PanelShell>
+    <>
       <section className="page-head">
         <h2>{t('أداء المزوّدين والتجار', 'Provider & merchant performance')}</h2>
         <p className="page-sub">
@@ -369,6 +368,6 @@ export default function Performance() {
           </section>
         </>
       )}
-    </PanelShell>
+    </>
   )
 }

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, CheckSquare, Edit3, RefreshCw, Search, ShieldCheck, Smartphone, WalletCards } from 'lucide-react'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { useLocale } from '../lib/locale'
 import { useIsMobile } from '../lib/useIsMobile'
@@ -69,7 +68,7 @@ export default function NgpayWalletManagement() {
     } finally { setBusy(false) }
   }
 
-  return <PanelShell>
+  return <>
     <section className="page-head">
       <div><h2><WalletCards size={25} /> {t('إدارة محافظ NGPay', 'NGPay wallet management')}</h2><p className="page-sub">{t('غيّر رقم الاستقبال مع معاينة وحماية من دمج الأجهزة أو فقدان سجل SMS.', 'Change receiving numbers with a guarded preview that protects device mappings and SMS history.')}</p></div>
       <button className="btn-ghost" type="button" onClick={() => void load()} disabled={loading}><RefreshCw size={15} /> {t('تحديث', 'Refresh')}</button>
@@ -118,5 +117,5 @@ export default function NgpayWalletManagement() {
       ))}
     </section>
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 14 }} className="page-sub"><Smartphone size={15} /> {t('هذه الصفحة تعدّل إعدادات التوجيه المحلية فقط؛ لا تعيد كتابة أرقام المعاملات أو SMS القديمة.', 'This page changes local routing configuration only; it never rewrites historical transactions or SMS.')}</div>
-  </PanelShell>
+  </>
 }

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Activity, CheckCircle2, Clock3, Database, Download, ExternalLink, RefreshCw, Server, WalletCards, XCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import PanelShell from '../components/PanelShell'
 import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useIsMobile } from '../lib/useIsMobile'
@@ -57,7 +56,7 @@ export default function ApiDashboard() {
     const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `ontarget-transactions-${new Date().toISOString().slice(0,10)}.xlsx`; anchor.click(); URL.revokeObjectURL(url)
   }
 
-  return <PanelShell>
+  return <>
     <section className="api-dash-head"><div><span>ONTARGET · OPERATIONS API</span><h2>API Dashboard</h2><p>Live platform health, transaction flow, and operational tools in one authenticated workspace.</p></div><div className="api-dash-actions"><button className="btn-ghost btn-sm" disabled={!data?.transactions.length} onClick={()=>void exportXlsx()}><Download size={15}/>Export XLSX</button><button className="btn-primary btn-sm" disabled={loading} onClick={()=>void load()}><RefreshCw size={15} className={loading?'spin':''}/>Refresh</button></div></section>
     {error&&<div className="card warn">The monitoring API could not be reached. Existing operational pages remain available.</div>}
 
@@ -103,5 +102,5 @@ export default function ApiDashboard() {
     </div>
 
     <section className="card api-provider-strip"><div><span>NagoPay / NGPay</span><strong>{data?.providers.nagopay?.count24h??'—'}</strong><small>{data?.providers.nagopay?.pending??'—'} pending · 24h</small></div><div><span>PayFuture {data?.providers.payfuture?.stale ? '⚠ stale' : '● live'}</span><strong>{data?.providers.payfuture?.count24h??'—'}</strong><small>{data?.providers.payfuture?.pending??'—'} pending · 24h · last {when(data?.providers.payfuture?.latestTransaction ?? null)}</small></div><div><span>Edit requests</span><strong>{data?.queues.editRequests??'—'}</strong><small>awaiting review</small></div><div><span>Generated</span><strong className="api-generated"><Clock3 size={15}/>{when(data?.generatedAt??null)}</strong><small>auto-refresh every 15 seconds</small></div></section>
-  </PanelShell>
+  </>
 }

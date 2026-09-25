@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { CalendarDays, Download, Printer, RefreshCw } from 'lucide-react'
-import PanelShell from '../components/PanelShell'
 import MultiSelectFilter from '../components/MultiSelectFilter'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
@@ -85,7 +84,7 @@ export default function MerchantSettlements() {
     const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' })); link.download = 'merchant-settlement-report.csv'; link.click(); URL.revokeObjectURL(link.href)
   }
 
-  return <PanelShell>
+  return <>
     <section className="page-head">
       <div><h2>🧾 {t('تسويات التجار', 'Merchant settlements')}</h2><p className="page-sub">{t('تقرير حي للتجار الرئيسي والفرعي مع إجمالي EGP وUSDT والرصيد المستحق.', 'Live master/sub-merchant settlement report with EGP, USDT, and balance due.')}</p></div>
       <div className="page-actions"><button className="btn-ghost btn-sm" onClick={exportCsv} disabled={loading}><Download size={15}/> CSV</button><button className="btn-ghost btn-sm" onClick={() => window.print()} disabled={loading}><Printer size={15}/> PDF / Print</button><button className="btn-ghost btn-sm" onClick={() => void load()} disabled={loading}><RefreshCw size={15} className={loading ? 'spin' : ''}/>{t('تحديث', 'Refresh')}</button></div>
@@ -155,5 +154,5 @@ export default function MerchantSettlements() {
       <div className="table-wrap"><table className="data-table"><thead><tr><th>{t('النوع','Type')}</th><th>{t('الملف/المرجع','File/reference')}</th><th>EGP</th><th>USDT</th><th>{t('التاريخ','Date')}</th><th>{t('بواسطة','Uploaded by')}</th><th>{t('ملاحظات','Notes')}</th></tr></thead><tbody>{proofs.map((proof) => <tr key={proof.id}><td>{proof.proof_type}</td><td>{proof.file_url ? <a className="transaction-cell-link" href={proof.file_url} target="_blank" rel="noreferrer">{proof.file_name}</a> : proof.file_name}</td><td className="mono">{proof.amount_egp == null ? '—' : money(proof.amount_egp, 'EGP')}</td><td className="mono">{proof.amount_usdt == null ? '—' : `${Number(proof.amount_usdt).toFixed(2)} USDT`}</td><td className="mono">{proof.settlement_date ? new Date(proof.settlement_date).toLocaleDateString('en-GB') : '—'}</td><td>{proof.uploaded_by ?? '—'}</td><td>{proof.notes ?? '—'}</td></tr>)}{!proofs.length && <tr><td colSpan={7} className="sidebar-hint">{t('لا توجد إثباتات بعد.', 'No proofs yet.')}</td></tr>}</tbody></table></div>
       )}
     </section>
-  </PanelShell>
+  </>
 }

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, CheckCircle2, GitBranch, RefreshCw, Search } from 'lucide-react'
-import PanelShell from '../components/PanelShell'
 import MultiSelectFilter from '../components/MultiSelectFilter'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
@@ -46,7 +45,7 @@ export default function SmsBalanceChains() {
   const deviceOptions = useMemo(() => (data?.options.devices ?? []).map((value) => ({ value, label: value.toUpperCase() })), [data])
   const reset = () => { setQuery(''); setProviders([]); setDevices([]); setFrom(''); setTo(''); setStatus('all') }
 
-  return <PanelShell>
+  return <>
     <section className="page-head">
       <h2><GitBranch size={22} /> SMS balance chains</h2>
       <p className="page-sub">Trace each SMS to the previous wallet balance and detect continuity warnings.</p>
@@ -91,5 +90,5 @@ export default function SmsBalanceChains() {
       </tr>)}</tbody></table></div>}
       {data && <div className="cell-sub" style={{ padding: '12px 0 0' }}>Showing {rows.length} of {data.total} matching chain rows.</div>}
     </section>
-  </PanelShell>
+  </>
 }

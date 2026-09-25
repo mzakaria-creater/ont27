@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import PanelShell from '../components/PanelShell'
 import { api, ApiError } from '../lib/api'
 import { depositTime } from '../lib/deposits'
 import { useAuth } from '../auth/AuthContext'
@@ -74,7 +73,7 @@ export default function Telegram() {
     }
   }
 
-  return <PanelShell>
+  return <>
     <section className="page-head">
       <div><h2>✈️ {t('Telegram', 'Telegram')}</h2><p className="page-sub">{t('محادثة مباشرة داخل اللوحة، وتنبيهات تشغيلية تلقائية.', 'A live conversation right inside the panel, plus automatic operational alerts.')}</p></div>
       <div className="page-actions"><button className="btn-ghost btn-sm" onClick={() => setShowSettings((v) => !v)}><Settings2 size={15}/> {t('الإعدادات', 'Settings')}</button></div>
@@ -196,5 +195,5 @@ export default function Telegram() {
         </section>
       </>}
     </>}
-  </PanelShell>
+  </>
 }

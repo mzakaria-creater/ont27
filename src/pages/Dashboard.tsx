@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import PanelShell from '../components/PanelShell'
 import MerchantLogo from '../components/MerchantLogo'
 import { api } from '../lib/api'
 import { depositTime, money, statusMeta } from '../lib/deposits'
@@ -102,7 +101,7 @@ export default function Dashboard() {
     return 'attention'
   }, [monitor, healthySources, totalSources, onlineDevices])
 
-  return <PanelShell>
+  return <>
     <section className="command-hero">
       <div>
         <span className="command-kicker">{t('مركز العمليات', 'OPERATIONS COMMAND')}</span>
@@ -190,5 +189,5 @@ export default function Dashboard() {
           <div className="table-wrap"><table className="data-table command-table"><thead><tr><th>{t('المرجع', 'Reference')}</th><th>{t('المبلغ', 'Amount')}</th><th>{t('المرسل', 'Sender')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('الحالة', 'Status')}</th><th>{t('وصلت', 'Received')}</th></tr></thead><tbody>{stats.recent.slice(0, 8).map((row) => { const status = statusMeta(row.status); return <tr key={row.tx_id}><td><Link to={`/transactions/${row.ontarget_ref ?? row.tx_id}`} className="mono command-ref">{row.ontarget_ref ?? row.tx_id}</Link></td><td className="mono command-money">{money(row.amount, row.currency)}</td><td>{row.sender_name ?? row.sender_number ?? '—'}<DepositKindBadge row={row} /></td><td><MerchantLogo merchant={row.merchant} /></td><td><span className={`pay-status-badge ${status.cls}`}>{status.label}</span>{row.ngpay_status && <div className={`provider-row-status ${status.cls}`}>NagoPay · {row.ngpay_status}</div>}</td><td className="mono muted">{depositTime(row)}</td></tr>})}</tbody></table></div>
         )}
     </section>
-  </PanelShell>
+  </>
 }
