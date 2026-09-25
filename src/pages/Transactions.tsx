@@ -27,6 +27,13 @@ import { Download } from 'lucide-react'
 
 const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
 
+const currentMonthRange = () => {
+  const now = new Date()
+  const pad = (value: number) => String(value).padStart(2, '0')
+  const date = (year: number, month: number, day: number) => `${year}-${pad(month)}-${pad(day)}`
+  return { from: date(now.getFullYear(), now.getMonth() + 1, 1), to: date(now.getFullYear(), now.getMonth() + 1, now.getDate()) }
+}
+
 function TransactionStatusIcon({ status, label }: { status: string; label: string }) {
   const Icon = status === 'PENDING'
     ? Clock3
@@ -118,11 +125,10 @@ export default function Transactions() {
   const status = params.get('status') ?? ''
   const statusValues = splitFilterValues(status)
   const typeValues = splitFilterValues(type)
-  // The unified v2 ledger is retained from 2025 onward. Start the home/all-
-  // transactions view at that boundary while still allowing operators to
-  // change or clear the date filter from the toolbar.
-  const from = params.get('from') ?? '2025-01-01'
-  const to = params.get('to') ?? ''
+  const monthRange = currentMonthRange()
+  const dateRange = params.get('date_range') === 'all' ? 'all' : params.get('date_range') === 'custom' ? 'custom' : 'month'
+  const from = dateRange === 'all' ? '' : params.get('from') ?? monthRange.from
+  const to = dateRange === 'all' ? '' : params.get('to') ?? monthRange.to
   const merchant = params.get('merchant') ?? ''
   const method = params.get('method') ?? ''
   const currency = params.get('currency') ?? ''
@@ -245,7 +251,7 @@ export default function Transactions() {
       .catch(() => setCounts({}))
   }, [type])
 
-  const setFilter = (next: { type?: string; status?: string; q?: string; page?: number; from?: string; to?: string; merchant?: string; method?: string; currency?: string; min_amount?: string; max_amount?: string; view?: string }) => {
+  const setFilter = (next: { type?: string; status?: string; q?: string; page?: number; from?: string; to?: string; date_range?: string; merchant?: string; method?: string; currency?: string; min_amount?: string; max_amount?: string; view?: string }) => {
     const p = new URLSearchParams(params)
     const put = (k: string, v: string | undefined) => {
       if (v === undefined) return
@@ -256,7 +262,7 @@ export default function Transactions() {
     put('status', next.status)
     put('q', next.q)
     put('view', next.view)
-    put('from', next.from); put('to', next.to); put('merchant', next.merchant); put('method', next.method); put('currency', next.currency); put('min_amount', next.min_amount); put('max_amount', next.max_amount)
+    put('date_range', next.date_range); put('from', next.from); put('to', next.to); put('merchant', next.merchant); put('method', next.method); put('currency', next.currency); put('min_amount', next.min_amount); put('max_amount', next.max_amount)
     if (next.page !== undefined) {
       if (next.page > 1) p.set('page', String(next.page)); else p.delete('page')
     }
@@ -414,8 +420,9 @@ export default function Transactions() {
         </div>
         {showMoreFilters && (
           <div className="transaction-filter-fields">
-            <label className="filter-field">{t('من', 'From')}<input className="login-input" type="date" value={from} onChange={(e) => setFilter({ from: e.target.value })} /></label>
-            <label className="filter-field">{t('إلى', 'To')}<input className="login-input" type="date" value={to} onChange={(e) => setFilter({ to: e.target.value })} /></label>
+            <label className="filter-field">{t('نطاق التاريخ', 'Date range')}<select className="filter-select" value={dateRange} onChange={(e) => { const value = e.target.value; if (value === 'all') setFilter({ date_range: 'all', from: '', to: '' }); else if (value === 'month') setFilter({ date_range: 'month', from: monthRange.from, to: monthRange.to }); else setFilter({ date_range: 'custom' }) }}><option value="month">{t('هذا الشهر', 'This month')}</option><option value="all">{t('كل التواريخ', 'All dates')}</option><option value="custom">{t('مخصص', 'Custom')}</option></select></label>
+            {dateRange !== 'all' && <><label className="filter-field">{t('من', 'From')}<input className="login-input" type="date" value={from} onChange={(e) => setFilter({ date_range: 'custom', from: e.target.value })} /></label>
+            <label className="filter-field">{t('إلى', 'To')}<input className="login-input" type="date" value={to} onChange={(e) => setFilter({ date_range: 'custom', to: e.target.value })} /></label></>}
             <label className="filter-field">{t('التاجر', 'Merchant')}<input className="login-input" value={merchant} onChange={(e) => setFilter({ merchant: e.target.value })} /></label>
             <label className="filter-field">{t('الطريقة', 'Method')}<input className="login-input" value={method} onChange={(e) => setFilter({ method: e.target.value })} /></label>
             <MultiSelectFilter label={t('العملة','Currency')} allLabel={t('كل العملات','All currencies')} options={['EGP','USD','USDT'].map((value)=>({value,label:value}))} value={currencyValues} onChange={(values)=>setFilter({currency:values.join(',')})}/>

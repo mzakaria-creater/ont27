@@ -13,6 +13,12 @@ import { useAuth } from '../auth/AuthContext'
 
 type Row = Record<string, unknown> & { tx_id: number; status: string; amount: number | null; ontarget_ref?: string | null }
 type Summary = { volume: number; pending: number; paid: number; declined: number }
+const currentMonthRange = () => {
+  const now = new Date()
+  const pad = (value: number) => String(value).padStart(2, '0')
+  const date = (year: number, month: number, day: number) => `${year}-${pad(month)}-${pad(day)}`
+  return { from: date(now.getFullYear(), now.getMonth() + 1, 1), to: date(now.getFullYear(), now.getMonth() + 1, now.getDate()) }
+}
 const text = (row: Row, ...keys: string[]) => { for (const key of keys) if (row[key] != null && row[key] !== '') return String(row[key]); return '—' }
 const rawValue = (row: Row, ...keys: string[]) => { const raw = row.maven_raw_row as Record<string, unknown> | null; for (const key of keys) { if (row[key] != null && row[key] !== '') return String(row[key]); if (raw?.[key] != null && raw[key] !== '') return String(raw[key]) } return '—' }
 const proofUrl = (row: Row) => {
@@ -28,8 +34,9 @@ export default function AdminTransactions() {
   const { can } = useAuth()
   const [rows, setRows] = useState<Row[]>([]); const [total, setTotal] = useState(0); const [loading, setLoading] = useState(true)
   const [summary, setSummary] = useState<Summary>({ volume: 0, pending: 0, paid: 0, declined: 0 })
-  const [error, setError] = useState<string | null>(null); const [q, setQ] = useState(''); const [status, setStatus] = useState(''); const [merchant, setMerchant] = useState(''); const [method, setMethod] = useState(''); const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [sort, setSort] = useState('desc')
-  const [applied, setApplied] = useState({ q: '', status: '', merchant: '', method: '', from: '', to: '', sort: 'desc' }); const [expanded, setExpanded] = useState<number | null>(null); const [busy, setBusy] = useState<number | null>(null); const [proof, setProof] = useState<{url:string; tx:number; onApprove?: () => void | Promise<void>; onDecline?: () => void | Promise<void>}|null>(null)
+  const monthRange = currentMonthRange()
+  const [error, setError] = useState<string | null>(null); const [q, setQ] = useState(''); const [status, setStatus] = useState(''); const [merchant, setMerchant] = useState(''); const [method, setMethod] = useState(''); const [from, setFrom] = useState(monthRange.from); const [to, setTo] = useState(monthRange.to); const [dateRange, setDateRange] = useState('month'); const [sort, setSort] = useState('desc')
+  const [applied, setApplied] = useState({ q: '', status: '', merchant: '', method: '', from: monthRange.from, to: monthRange.to, sort: 'desc' }); const [expanded, setExpanded] = useState<number | null>(null); const [busy, setBusy] = useState<number | null>(null); const [proof, setProof] = useState<{url:string; tx:number; onApprove?: () => void | Promise<void>; onDecline?: () => void | Promise<void>}|null>(null)
   const load = useCallback(async () => { setLoading(true); try { const p = new URLSearchParams({ limit: '100' }); Object.entries(applied).forEach(([k,v]) => v && p.set(k,v)); const res = await api<{rows: Row[]; total: number; summary: Summary}>(`/api/admin/transactions?${p}`); setRows(res.rows); setTotal(res.total); setSummary(res.summary); setError(null) } catch (e) { setError(e instanceof ApiError ? e.code : 'load_failed') } finally { setLoading(false) } }, [applied])
   useEffect(() => { void load() }, [load])
   const decide = async (row: Row, action: 'approve'|'decline') => { if (!confirm(`${action} #${row.tx_id}?`)) return; setBusy(row.tx_id); try { await api(`/api/deposits/${row.tx_id}/decision`, { method:'POST', body:JSON.stringify({ action, note:`Admin Transactions: ${action}` }) }); setRows((current)=>current.map((item)=>item.tx_id===row.tx_id?{...item,status:action==='approve'?'PAID':'DECLINED'}:item)) } catch(e) { setError(e instanceof ApiError ? e.code : 'decision_failed') } finally { setBusy(null) } }
@@ -40,9 +47,9 @@ export default function AdminTransactions() {
       <MultiSelectFilter label="Status" allLabel="All statuses" options={['PENDING','PAID','APPROVED','DECLINED','EXPIRED','UNDERPAID'].map((value)=>({value,label:value}))} value={splitFilterValues(status)} onChange={(values)=>setStatus(values.join(','))}/>
       <MultiSelectFilter label="Payment type" allLabel="All payment types" options={['Mobile Wallet','Bank Account Transfer','InstaPay','P2P'].map((value)=>({value,label:value}))} value={splitFilterValues(method)} onChange={(values)=>setMethod(values.join(','))}/>
       <input className="login-input" value={merchant} onChange={(e)=>setMerchant(e.target.value)} placeholder="Merchant" aria-label="Merchant"/>
-      <input className="login-input" type="date" value={from} onChange={(e)=>setFrom(e.target.value)} aria-label="From"/><input className="login-input" type="date" value={to} onChange={(e)=>setTo(e.target.value)} aria-label="To"/>
+      <select className="filter-select" value={dateRange} onChange={(e)=>{const value=e.target.value;setDateRange(value);if(value==='all'){setFrom('');setTo('')}else if(value==='month'){setFrom(monthRange.from);setTo(monthRange.to)}}} aria-label="Date range"><option value="month">This month</option><option value="all">All dates</option><option value="custom">Custom</option></select>{dateRange !== 'all' && <><input className="login-input" type="date" value={from} onChange={(e)=>{setDateRange('custom');setFrom(e.target.value)}} aria-label="From"/><input className="login-input" type="date" value={to} onChange={(e)=>{setDateRange('custom');setTo(e.target.value)}} aria-label="To"/></>}
       <select className="filter-select" value={sort} onChange={(e)=>setSort(e.target.value)} aria-label="Date order"><option value="desc">Date: newest first</option><option value="asc">Date: oldest first</option></select>
-      <button className="btn-primary btn-sm">Apply</button><button type="button" className="btn-ghost btn-sm" onClick={()=>{setQ('');setStatus('');setMerchant('');setMethod('');setFrom('');setTo('');setSort('desc');setApplied({q:'',status:'',merchant:'',method:'',from:'',to:'',sort:'desc'})}}>Reset</button><button type="button" className="btn-ghost btn-sm" onClick={()=>void load()}><RefreshCw size={14}/>Refresh</button>
+      <button className="btn-primary btn-sm">Apply</button><button type="button" className="btn-ghost btn-sm" onClick={()=>{setQ('');setStatus('');setMerchant('');setMethod('');setDateRange('month');setFrom(monthRange.from);setTo(monthRange.to);setSort('desc');setApplied({q:'',status:'',merchant:'',method:'',from:monthRange.from,to:monthRange.to,sort:'desc'})}}>Reset</button><button type="button" className="btn-ghost btn-sm" onClick={()=>void load()}><RefreshCw size={14}/>Refresh</button>
     </form>
     <section className="kpi-grid" aria-live="polite">
       <div className="kpi-card"><div className="kpi-value">{loading ? '…' : total.toLocaleString('en-US')}</div><div className="kpi-label">Matching transactions</div><div className="cell-sub">Current filters and search</div></div>
