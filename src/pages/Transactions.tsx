@@ -18,6 +18,7 @@ import ColumnPicker, { useVisibleColumns } from '../components/ColumnPicker'
 import type { ColumnDef } from '../components/ColumnPicker'
 import { supabase } from '../lib/supabase'
 import { syncProviders } from '../lib/providerSync'
+import { useDebouncedValue } from '../lib/useDebouncedValue'
 import { useIsMobile } from '../lib/useIsMobile'
 import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectFilter'
 import { exportCsv, exportXlsx, type ExportColumn } from '../lib/exportTable'
@@ -116,6 +117,14 @@ interface ListResponse {
   total: number
 }
 
+// Cheap stand-in for a deep JSON.stringify comparison — this page polls
+// every few seconds (realtime + a 10s provider-sync tick), and stringifying
+// the full row set (nested matched_sms, raw_preview, etc.) on every tick was
+// real, repeated main-thread work for no visible change most of the time.
+function fingerprint(list: ListResponse): string {
+  return `${list.total}|${list.rows.map((r) => `${r.kind}:${r.tx_id ?? r.maven_id ?? ''}:${r.status}:${r.modified_utc ?? r.updated_utc ?? ''}`).join(',')}`
+}
+
 export default function Transactions() {
   const [pageSize, setPageSize] = usePageSize('transactions')
   const { t } = useLocale()
@@ -186,6 +195,7 @@ export default function Transactions() {
   const refreshTimer = useRef<number | null>(null)
   const requestSeq = useRef(0)
   const abortRef = useRef<AbortController | null>(null)
+  const lastFingerprint = useRef('')
   const load = useCallback(async (silent = false) => {
     const seq = ++requestSeq.current
     abortRef.current?.abort()
@@ -204,7 +214,8 @@ export default function Transactions() {
     try {
       const next = await api<ListResponse>(`/api/transactions?${search}`, { signal: controller.signal })
       if (seq !== requestSeq.current) return
-      setData((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next)
+      const fp = fingerprint(next)
+      if (fp !== lastFingerprint.current) { lastFingerprint.current = fp; setData(next) }
     } catch (e) {
       if (controller.signal.aborted) return
       if (seq !== requestSeq.current) return
@@ -271,6 +282,15 @@ export default function Transactions() {
     }
     setParams(p)
   }
+
+  // Auto-apply the search box after typing pauses, so results appear without
+  // needing Enter/the Search button. Debounced (not per-keystroke) so it
+  // still costs at most one request per pause, not one per character.
+  const debouncedQ = useDebouncedValue(q, 400)
+  useEffect(() => {
+    const trimmed = debouncedQ.trim()
+    if (trimmed !== appliedQ) setFilter({ q: trimmed })
+  }, [debouncedQ])
 
   const openDetail = (ref: string) => {
     const p = new URLSearchParams(params)

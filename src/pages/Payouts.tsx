@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Check, Eye, LayoutGrid, ListChecks, MessageSquare, Pencil, Save, Search, Send, Settings2, SlidersHorizontal, TableProperties, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
@@ -21,6 +21,7 @@ import { supabase } from "../lib/supabase";
 import { syncProviders } from "../lib/providerSync";
 import { exportCsv, exportXlsx, type ExportColumn } from "../lib/exportTable";
 import { Download } from "lucide-react";
+import { useDebouncedValue } from "../lib/useDebouncedValue";
 
 const STATUS_FILTERS = ["PENDING", "APPROVED", "DECLINED"];
 const CURRENCY = "EGP";
@@ -93,6 +94,14 @@ interface ListResponse {
   total: number;
   limit: number;
   offset: number;
+}
+
+// Cheap stand-in for a deep JSON.stringify comparison — this page polls
+// repeatedly, and stringifying the full row set (nested linked_sms) on every
+// tick was real, repeated main-thread work for no visible change most of
+// the time.
+function fingerprint(list: ListResponse): string {
+  return `${list.total}|${list.rows.map((r) => `${r.maven_id}:${r.status}:${r.last_seen_at ?? ""}`).join(",")}`;
 }
 interface DecisionResult {
   ok: boolean;
@@ -267,6 +276,7 @@ export default function Payouts() {
     }
   };
 
+  const lastFingerprint = useRef("");
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setErr(null);
@@ -282,7 +292,8 @@ export default function Payouts() {
     if (appliedMethod) search.set("method", appliedMethod);
     try {
       const next = await api<ListResponse>(`/api/payouts?${search}`);
-      setData((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next);
+      const fp = fingerprint(next);
+      if (fp !== lastFingerprint.current) { lastFingerprint.current = fp; setData(next); }
     } catch (e) {
       setErr(
         e instanceof ApiError && e.status === 403
@@ -344,6 +355,15 @@ export default function Payouts() {
     }
     setParams(p);
   };
+
+  // Auto-apply the search box after typing pauses, so results appear without
+  // needing Enter/the Search button.
+  const debouncedQ = useDebouncedValue(q, 400);
+  useEffect(() => {
+    const trimmed = debouncedQ.trim();
+    if (trimmed !== appliedQ) setFilter({ q: trimmed });
+  }, [debouncedQ]);
+
   const dateValue = (date: Date) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");

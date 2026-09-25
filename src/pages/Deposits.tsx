@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import PanelShell from '../components/PanelShell'
@@ -22,6 +22,7 @@ import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectF
 import { useIsMobile } from '../lib/useIsMobile'
 import { exportCsv, exportXlsx, type ExportColumn } from '../lib/exportTable'
 import { Download } from 'lucide-react'
+import { useDebouncedValue } from '../lib/useDebouncedValue'
 
 const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
 const MASTER_PILLS = [
@@ -34,6 +35,13 @@ interface ListResponse {
   total: number
   limit: number
   offset: number
+}
+
+// Cheap stand-in for a deep JSON.stringify comparison — this page polls
+// every 10s, and stringifying the full row set on every tick was real,
+// repeated main-thread work for no visible change most of the time.
+function fingerprint(list: ListResponse): string {
+  return `${list.total}|${list.rows.map((r) => `${r.tx_id}:${r.status}:${r.last_status_change ?? ''}`).join(',')}`
 }
 
 interface MatchedSms {
@@ -110,6 +118,7 @@ export default function Deposits() {
   const appliedQ = params.get('q') ?? ''
   useEffect(() => setQ(appliedQ), [appliedQ])
 
+  const lastFingerprint = useRef('')
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     setErr(null)
@@ -122,7 +131,8 @@ export default function Deposits() {
     if (appliedQ) search.set('q', appliedQ)
     try {
       const next = await api<ListResponse>(`/api/deposits?${search}`)
-      setData((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next)
+      const fp = fingerprint(next)
+      if (fp !== lastFingerprint.current) { lastFingerprint.current = fp; setData(next) }
     } catch (e) {
       setErr(e instanceof ApiError && e.status === 403 ? 'لا تملك صلاحية عرض الإيداعات.' : 'تعذّر تحميل الإيداعات.')
     } finally {
@@ -173,6 +183,14 @@ export default function Deposits() {
     }
     setParams(p)
   }
+
+  // Auto-apply the search box after typing pauses, so results appear without
+  // needing Enter/the Search button.
+  const debouncedQ = useDebouncedValue(q, 400)
+  useEffect(() => {
+    const trimmed = debouncedQ.trim()
+    if (trimmed !== appliedQ) setFilter({ q: trimmed })
+  }, [debouncedQ])
 
   const openDetail = async (txId: number) => {
     setDetailLoading(true)

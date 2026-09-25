@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Activity, CheckCircle2, CircleDollarSign, Clock3, FileSearch, Pause, Play, Radio, RefreshCw, Scale, Server, ShieldCheck, Smartphone, XCircle, Zap } from 'lucide-react'
 import PanelShell from '../components/PanelShell'
@@ -16,6 +16,27 @@ type MarketPrices = { xauUsd: number | null; usdtEgp: number | null; usdtBuyEgp?
 const when = (value: string | null | undefined) => value ? new Date(value).toLocaleString() : '—'
 const statusClass = (status: string) => status === 'PAID' || status === 'APPROVED' ? 'success' : status === 'DECLINED' || status === 'FAILED' ? 'error' : 'processing'
 
+// The old JSON.stringify(current) === JSON.stringify(next) check never
+// actually skipped anything: the server stamps generatedAt with `new
+// Date().toISOString()` on every response, so the two stringified payloads
+// always differed and this page re-rendered its full transaction/SMS lists
+// every 5s regardless of whether anything real changed. This fingerprint
+// drops generatedAt and reduces the arrays to identity+status, so it is both
+// cheap and actually meaningful.
+function fingerprint(d: MonitorData): string {
+  return JSON.stringify({
+    lastSync: d.lastSync,
+    api: d.api, supabase: d.supabase,
+    queues: d.queues,
+    todaySummary: d.todaySummary,
+    sources: d.sources,
+    sms: d.sms.map((s) => `${s.id}:${s.assigned_tx_id ?? ''}`),
+    transactions: d.transactions.map((t) => `${t.tx_id}:${t.status}:${t.last_status_change ?? ''}`),
+    telegram: d.telegram.map((x) => `${x.id}:${x.ok}`),
+    devices: d.devices.map((x) => `${x.device}:${x.online}:${x.last_seen_at ?? ''}`),
+  })
+}
+
 export default function LiveMonitorControl() {
   const { t } = useLocale()
   const [data, setData] = useState<MonitorData | null>(null)
@@ -25,11 +46,13 @@ export default function LiveMonitorControl() {
   const [error, setError] = useState<string | null>(null)
   const [prices, setPrices] = useState<MarketPrices | null>(null)
 
+  const lastFingerprint = useRef('')
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const next = await api<MonitorData>('/api/monitoring')
-      setData((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next)
+      const fp = fingerprint(next)
+      if (fp !== lastFingerprint.current) { lastFingerprint.current = fp; setData(next) }
       setError(null)
     } catch {
       setError(t('تعذّر الوصول إلى بيانات المراقبة الحية.', 'Live monitoring data could not be reached.'))
@@ -42,11 +65,15 @@ export default function LiveMonitorControl() {
 
   useEffect(() => {
     if (!monitoring) return
-    const refresh = async () => {
-      await syncProviders()
-      await load()
+    // Paint this page's own data immediately instead of waiting on the
+    // provider-sync round trip first — sync runs in parallel and only
+    // triggers a follow-up read when it actually changed something,
+    // matching the pattern already used on Transactions/Deposits/Payouts.
+    const refresh = () => {
+      void load()
+      void syncProviders().then((changed) => { if (changed) void load() })
     }
-    void refresh()
+    refresh()
     void loadPrices()
     const interval = setInterval(() => void refresh(), 5_000)
     const priceInterval = setInterval(() => void loadPrices(), 30_000)

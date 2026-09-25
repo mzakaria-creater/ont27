@@ -10,6 +10,7 @@ import TransactionEditDialog from '../components/TransactionEditDialog'
 import { api, ApiError } from '../lib/api'
 import { money, statusMeta } from '../lib/deposits'
 import { useAuth } from '../auth/AuthContext'
+import { useDebouncedValue } from '../lib/useDebouncedValue'
 
 type Row = Record<string, unknown> & { tx_id: number; status: string; amount: number | null; ontarget_ref?: string | null }
 type Summary = { volume: number; pending: number; paid: number; declined: number }
@@ -39,6 +40,9 @@ export default function AdminTransactions() {
   const [applied, setApplied] = useState({ q: '', status: '', merchant: '', method: '', from: monthRange.from, to: monthRange.to, sort: 'desc' }); const [expanded, setExpanded] = useState<number | null>(null); const [busy, setBusy] = useState<number | null>(null); const [proof, setProof] = useState<{url:string; tx:number; onApprove?: () => void | Promise<void>; onDecline?: () => void | Promise<void>}|null>(null)
   const load = useCallback(async () => { setLoading(true); try { const p = new URLSearchParams({ limit: '100' }); Object.entries(applied).forEach(([k,v]) => v && p.set(k,v)); const res = await api<{rows: Row[]; total: number; summary: Summary}>(`/api/admin/transactions?${p}`); setRows(res.rows); setTotal(res.total); setSummary(res.summary); setError(null) } catch (e) { setError(e instanceof ApiError ? e.code : 'load_failed') } finally { setLoading(false) } }, [applied])
   useEffect(() => { void load() }, [load])
+  // Auto-apply the search box after typing pauses, so results appear without needing to click Apply.
+  const debouncedQ = useDebouncedValue(q, 400)
+  useEffect(() => { const trimmed = debouncedQ.trim(); setApplied((current) => current.q === trimmed ? current : { ...current, q: trimmed }) }, [debouncedQ])
   const decide = async (row: Row, action: 'approve'|'decline') => { if (!confirm(`${action} #${row.tx_id}?`)) return; setBusy(row.tx_id); try { await api(`/api/deposits/${row.tx_id}/decision`, { method:'POST', body:JSON.stringify({ action, note:`Admin Transactions: ${action}` }) }); setRows((current)=>current.map((item)=>item.tx_id===row.tx_id?{...item,status:action==='approve'?'PAID':'DECLINED'}:item)) } catch(e) { setError(e instanceof ApiError ? e.code : 'decision_failed') } finally { setBusy(null) } }
   return <PanelShell>
     <section className="page-head"><h2>Admin Transactions</h2><p className="page-sub">Expanded administrative ledger · {total.toLocaleString()} records</p></section>
