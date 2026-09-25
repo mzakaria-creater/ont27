@@ -83,6 +83,11 @@ function extractSenderName(message: string): string | null {
   return message.match(/من\s+([^،\n]{2,60})،\s*رصيدك/)?.[1]?.trim() || null;
 }
 
+function extractSenderNumber(message: string): string | null {
+  const match = message.match(/(?:من|from)\s+[^\n،]*?(\+?(?:20|0020)\d{10}|01\d{9,10})/i);
+  return match?.[1] ?? null;
+}
+
 // Vodafone-style messages state the receiving wallet explicitly
 // ("... على رقم محفظتك"); Orange Cash generally does not, so the reliable
 // fallback there is the wallet currently mapped to this device (+ SIM slot
@@ -225,7 +230,7 @@ Deno.serve(async (req: Request) => {
     // given template variant — "ناجحة" (successful, confirming the SENDER's
     // own action) never appears on the incoming "تم استلام" confirmation.
     const isWithdrawal = /(withdraw|withdrawal|debit|sent|paid out|سحب|خصم|تحويل إلى|تحويل الي|تم خصم|لرقم|رسوم\s*التحويل|تحويل\s*أموال\s*ناجحة)/i.test(messageText);
-    const isIncoming = /(received|deposit|credited|credit|incoming|تم استلام|إيداع)/i.test(messageText);
+    const isIncoming = /(received|deposit|credited|credit|incoming|تم استلام|استقبلت|إيداع)/i.test(messageText);
 
     // A genuine wallet-provider deposit notification always originates from a
     // regulated sender ID (e.g. "OrangeCash") — Egyptian carriers never let a
@@ -237,7 +242,7 @@ Deno.serve(async (req: Request) => {
     // without knowing the real live balance), sent from +201200793615, used
     // to get a 5,000 EGP and a 950 EGP transaction auto-approved with no real
     // payment ever received.
-    const rawSender = senderValue === null ? null : String(senderValue).trim();
+    const rawSender = senderValue === null ? extractSenderNumber(message) : String(senderValue).trim();
     const isPeerPhoneSender = rawSender !== null && /^\+\d{8,15}$/.test(rawSender);
 
     const textWallet = walletValue !== null ? String(walletValue) : extractWalletFromText(message);
