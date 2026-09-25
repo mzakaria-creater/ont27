@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Building2, CheckCircle2, Download, Layers, RefreshCw, ShieldAlert, XCircle } from 'lucide-react'
 import PanelShell from '../components/PanelShell'
+import MultiSelectFilter from '../components/MultiSelectFilter'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
+import { exportCsv } from '../lib/exportTable'
 import { useLocale } from '../lib/locale'
 import { useIsMobile } from '../lib/useIsMobile'
 
@@ -40,10 +43,6 @@ interface MasterRow {
   id: string
   name: string | null
   code: string | null
-  provider: string | null
-  status: string | null
-  country_code: string | null
-  base_currency: string | null
 }
 
 interface HierarchyRow {
@@ -72,10 +71,15 @@ export default function Merchants() {
   const [rows, setRows] = useState<MerchantRow[] | null>(null)
   const [masters, setMasters] = useState<MasterRow[]>([])
   const [err, setErr] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'disabled'>('all')
+  const [masterFilter, setMasterFilter] = useState<string[]>([])
+  const [kycFilter, setKycFilter] = useState<string[]>([])
   const [selected, setSelected] = useState<MerchantRow | null>(null)
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true); setErr(null)
     api<{ rows: MerchantRow[]; masters: MasterRow[]; hierarchy?: HierarchyRow[] }>('/api/merchants')
       .then((res) => {
         const hierarchyRows: MerchantRow[] = (res.hierarchy ?? []).map((row) => ({
@@ -111,31 +115,79 @@ export default function Merchants() {
       .catch((e) => {
         setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض التجار.', 'You do not have permission to view merchants.') : t('تعذّر تحميل التجار.', 'Failed to load merchants.'))
       })
-  }, [])
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { load() }, [])
 
   const masterName = useMemo(() => {
     const map = new Map(masters.map((m) => [m.id, m.name ?? m.code ?? m.id]))
     return (id: string | null) => (id ? map.get(id) ?? id : null)
   }, [masters])
 
+  const kycOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const m of rows ?? []) if (m.kyc_status) set.add(m.kyc_status.toLowerCase())
+    return [...set].sort()
+  }, [rows])
+
   const filtered = useMemo(() => {
     if (!rows) return null
     const needle = q.trim().toLowerCase()
-    if (!needle) return rows
-    return rows.filter((m) =>
-      [m.name, m.code, m.MID, m.email, m.phone, m.country, masterName(m.master_merchant_id)]
-        .some((v) => v?.toLowerCase().includes(needle)),
-    )
-  }, [rows, q, masterName])
+    return rows.filter((m) => {
+      if (statusFilter === 'active' && !isLive(m)) return false
+      if (statusFilter === 'disabled' && isLive(m)) return false
+      if (masterFilter.length && !masterFilter.includes(masterName(m.master_merchant_id) ?? '')) return false
+      if (kycFilter.length && !kycFilter.includes((m.kyc_status ?? '').toLowerCase())) return false
+      if (!needle) return true
+      return [m.name, m.code, m.MID, m.email, m.phone, m.country, masterName(m.master_merchant_id)]
+        .some((v) => v?.toLowerCase().includes(needle))
+    })
+  }, [rows, q, statusFilter, masterFilter, kycFilter, masterName])
+
+  const totals = useMemo(() => {
+    const list = rows ?? []
+    return {
+      total: list.length,
+      active: list.filter(isLive).length,
+      disabled: list.filter((m) => !isLive(m)).length,
+      blocked: list.filter((m) => Number(m.blocked_amount) > 0).length,
+    }
+  }, [rows])
+
+  const exportRows = () => exportCsv(filtered ?? [], [
+    { header: 'Merchant', key: 'name', value: (r) => r.name ?? '' },
+    { header: 'Code', key: 'code', value: (r) => r.code ?? '' },
+    { header: 'MID', key: 'mid', value: (r) => r.MID ?? '' },
+    { header: 'Master merchant', key: 'master', value: (r) => masterName(r.master_merchant_id) ?? '' },
+    { header: 'Country', key: 'country', value: (r) => r.country_code ?? r.country ?? '' },
+    { header: 'Currency', key: 'currency', value: (r) => r.base_currency ?? '' },
+    { header: 'KYC', key: 'kyc', value: (r) => r.kyc_status ?? '' },
+    { header: 'Status', key: 'status', value: (r) => isLive(r) ? 'Active' : 'Disabled' },
+    { header: 'Blocked amount', key: 'blocked', value: (r) => r.blocked_amount ?? 0 },
+  ], 'merchants')
 
   return (
     <PanelShell>
-      <section className="page-head">
-        <h2>🏬 {t('التجار', 'Merchants')}</h2>
-        <p className="page-sub">
-          {rows && <>{rows.length.toLocaleString('en-US')} {t('تاجر', 'merchants')} · {masters.length} {t('تاجر رئيسي', 'master merchants')}</>}
-        </p>
+      <section className="page-head admin-head">
+        <span className="admin-head-icon"><Building2 size={20} /></span>
+        <div className="admin-head-text">
+          <span className="admin-head-eyebrow">{t('دليل التجار', 'Merchant directory')}</span>
+          <h2>{t('التجار', 'Merchants')}</h2>
+          <p className="page-sub">{rows && <>{totals.total.toLocaleString('en-US')} {t('تاجر', 'merchants')} · {masters.length} {t('تاجر رئيسي', 'master merchants')}</>}</p>
+        </div>
+        <div className="admin-head-actions">
+          <button className="btn-ghost btn-sm" onClick={exportRows} disabled={loading || !filtered?.length}><Download size={15}/> CSV</button>
+          <button className="btn-ghost btn-sm" onClick={load} disabled={loading}><RefreshCw size={15} className={loading ? 'spin' : ''}/>{t('تحديث', 'Refresh')}</button>
+        </div>
       </section>
+
+      <div className="kpi-grid">
+        <div className="kpi-card"><Layers className="kpi-icon"/><div className="kpi-value">{totals.total.toLocaleString()}</div><div className="kpi-label">{t('إجمالي التجار', 'Total merchants')}</div></div>
+        <div className="kpi-card"><CheckCircle2 className="kpi-icon"/><div className="kpi-value">{totals.active.toLocaleString()}</div><div className="kpi-label">{t('نشط', 'Active')}</div></div>
+        <div className="kpi-card"><XCircle className="kpi-icon"/><div className="kpi-value">{totals.disabled.toLocaleString()}</div><div className="kpi-label">{t('موقوف', 'Disabled')}</div></div>
+        <div className="kpi-card"><ShieldAlert className="kpi-icon"/><div className="kpi-value">{totals.blocked.toLocaleString()}</div><div className="kpi-label">{t('لديه مبالغ محجوزة', 'With blocked funds')}</div></div>
+      </div>
 
       <div className="filter-bar">
         <form className="search-row" onSubmit={(e) => e.preventDefault()}>
@@ -146,6 +198,13 @@ export default function Merchants() {
             onChange={(e) => setQ(e.target.value)}
           />
         </form>
+        <div className="admin-tabs">
+          <button type="button" className={`pill${statusFilter === 'all' ? ' active' : ''}`} onClick={() => setStatusFilter('all')}>{t('الكل', 'All')}</button>
+          <button type="button" className={`pill${statusFilter === 'active' ? ' active' : ''}`} onClick={() => setStatusFilter('active')}>{t('نشط', 'Active')}</button>
+          <button type="button" className={`pill${statusFilter === 'disabled' ? ' active' : ''}`} onClick={() => setStatusFilter('disabled')}>{t('موقوف', 'Disabled')}</button>
+        </div>
+        <MultiSelectFilter label={t('التاجر الرئيسي', 'Master merchant')} allLabel={t('الكل', 'All')} options={masters.map((m) => ({ value: m.name ?? m.code ?? m.id, label: m.name ?? m.code ?? m.id }))} value={masterFilter} onChange={setMasterFilter}/>
+        {kycOptions.length > 0 && <MultiSelectFilter label="KYC" allLabel={t('الكل', 'All')} options={kycOptions.map((v) => ({ value: v, label: KYC_META[v] ? t(KYC_META[v].ar, KYC_META[v].en) : v }))} value={kycFilter} onChange={setKycFilter}/>}
       </div>
 
       {err && <div className="card warn">{err}</div>}
@@ -223,7 +282,7 @@ export default function Merchants() {
         <div className="drawer-backdrop" onClick={() => setSelected(null)}>
           <aside className="drawer" onClick={(e) => e.stopPropagation()}>
             <div className="drawer-head">
-              <h3>{selected.name ?? selected.code ?? '—'}</h3>
+              <h3><Building2 size={16}/> {selected.name ?? selected.code ?? '—'}</h3>
               <button className="btn-ghost btn-sm" onClick={() => setSelected(null)}>✕</button>
             </div>
 
