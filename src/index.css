@@ -4105,8 +4105,10 @@ html, body { overflow-x: hidden; overflow-y: auto; }
 .merchant-monthly-flag{margin-inline-end:5px}
 .merchant-monthly-subtotal td{background:color-mix(in srgb,var(--surface) 88%,var(--text) 12%);font-weight:700}
 .merchant-monthly-undated{margin-top:10px}
+.print-only{display:none}
 @media print{
   .sidebar,.nav-toggle,.mobile-bottom-nav,.telegram-widget-launcher,.sms-widget-launcher,.no-print{display:none!important}
+  .print-only{display:block!important}
   .dash-main{padding:0}
   .card{box-shadow:none;border:1px solid #ccc}
 }

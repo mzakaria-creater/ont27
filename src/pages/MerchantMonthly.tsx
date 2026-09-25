@@ -210,6 +210,16 @@ export default function MerchantMonthly() {
       <label className="filter-field">{t('سعر USDT', 'USDT rate')}<input className="login-input mono" type="number" min="0.01" step="0.01" value={fxRate} onChange={(e) => setFxRate(e.target.value)}/></label>
     </section>
 
+    {/* Static text stand-in for the interactive filter bar above, which
+        is hidden from print — a dropdown widget prints as nothing
+        useful, so the applied filters need a plain-text form instead. */}
+    <p className="cell-sub print-only merchant-monthly-print-summary">
+      {t('التجار', 'Merchants')}: {selectedMerchants.length ? selectedMerchants.join(', ') : t('الكل', 'All')}
+      {' · '}{t('الفترة', 'Period')}: {formatMonthLabel(monthKeyToFirstDay(fromMonth), locale)} – {formatMonthLabel(monthKeyToFirstDay(toMonth), locale)}
+      {' · '}{t('العرض', 'View')}: {viewMode === 'net' ? t('صافي', 'Net') : t('إجمالي', 'Gross')}
+      {' · '}{t('تم الإنشاء', 'Generated')}: {new Date().toLocaleString()}
+    </p>
+
     {error && <div className="card warn">{error}</div>}
 
     <p className="cell-sub merchant-monthly-fee-line">
