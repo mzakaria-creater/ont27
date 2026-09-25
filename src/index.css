@@ -2792,6 +2792,9 @@ a.command-metric:hover { border-color: var(--accent); transform: translateY(-1px
 .proof-body { overflow: auto; padding: 12px; display: flex; justify-content: center; align-items: flex-start; background: var(--bg); }
 .proof-body img { max-width: 100%; max-height: calc(90vh - 60px); border-radius: 8px; object-fit: contain; transform-origin: top center; transition: transform .12s ease; cursor: zoom-in; }
 .proof-decision-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--border); background: var(--surface); }
+.proof-extract-panel { padding: 12px 14px; border-top: 1px solid var(--border); background: var(--surface); max-height: 220px; overflow: auto; }
+.proof-extract-panel > strong { display: block; margin-bottom: 8px; font-size: 12px; }
+.proof-extract-panel .detail-grid { margin: 0; }
 @media (prefers-reduced-motion: reduce) { .proof-body img { transition: none; } }
 @media (max-width: 640px) { .proof-head { align-items: flex-start; flex-direction: column; } .proof-actions { width: 100%; flex-wrap: wrap; } .proof-decision-actions { justify-content: stretch; } .proof-decision-actions > button { flex: 1; } }
 
