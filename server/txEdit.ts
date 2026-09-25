@@ -204,7 +204,7 @@ async function applyEdit(
   // An amount-only edit still has to go through Maven. The panel may omit
   // status when the operator only changes the amount, so use the current
   // provider status as the decision in that case.
-  const localTargetStatus = edit.status ?? currentStatus
+    const localTargetStatus = edit.status ?? currentStatus
   // Maven has no "APPROVED" state — ngpay-approve rejects it outright — but
   // the rest of the panel already treats APPROVED and PAID as the same
   // outcome (see APPROVED_STATUSES in deposits.ts), and operators were
@@ -256,11 +256,12 @@ async function applyEdit(
     }
     executed = true
     localOnly = false
+    const providerConfirmedStatus = typeof out.after_status === 'string' ? out.after_status : localTargetStatus
     // The worker already verified Maven. Mirror the confirmed result locally
     // now so the queue does not wait for a later provider sync repaint.
     const mirrorNow = new Date().toISOString()
     const { error: mirrorErr } = await db.from('maven_transactions').update({
-      status: localTargetStatus,
+      status: providerConfirmedStatus,
       approved_by: actorName,
       last_status_change: mirrorNow,
       updated_at: mirrorNow,
