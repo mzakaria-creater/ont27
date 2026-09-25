@@ -163,6 +163,10 @@ export default function Transactions() {
   const [exportBusy, setExportBusy] = useState(false)
   const [proof, setProof] = useState<{ url: string; ref: string; onApprove?: () => void | Promise<void>; onDecline?: () => void | Promise<void> } | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  // Raw-details JSON is expensive to pretty-print and rarely viewed — defer
+  // it until someone actually opens that disclosure, instead of stringifying
+  // it eagerly the moment a row is expanded.
+  const [rawOpen, setRawOpen] = useState<Set<string>>(() => new Set())
 
   const ALL_COLUMNS: ColumnDef[] = [
     { id: 'status', label: t('الحالة', 'Status') },
@@ -541,7 +545,7 @@ export default function Transactions() {
                         <div><span>{t('اعتمد بواسطة', 'Approved by')}</span><strong>{r.status === 'PENDING' ? '—' : (r.decision_actor ?? (isAutomaticApprovalActor(r.approved_by) ? t('آلي (Auto)', 'Auto') : r.approved_by))}</strong></div>
                       </div>
                       <div className="tx-expanded-actions">{r.status === 'PENDING' && !r.is_checkout_session && r.kind === 'deposit' && can('deposits','can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r,'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.status === 'PENDING' && r.kind === 'payout' && can('payouts','can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.kind === 'deposit' && r.status === 'DECLINED' && !r.matched_sms && can('sms_live','can_edit') && <Link className="btn-ghost btn-sm danger" to={smsAssignHref(r)}>🔗✅ {t('ربط واعتماد SMS', 'Link & approve SMS')}</Link>}{r.is_checkout_session && <span className="cell-sub">{t('جلسة رابط دفع — بانتظار ظهور المعاملة المزوّدة', 'Payment-link session — waiting for provider transaction')}</span>}</div>
-                      <details className="tx-raw-details"><summary>{t('عرض تفاصيل Raw', 'View raw details')}</summary>{r.raw_preview ? <pre>{JSON.stringify(r.raw_preview, null, 2)}</pre> : <p className="cell-sub">{t('لا تتوفر بيانات Raw لهذا الصف.', 'Raw data is not available for this row.')}</p>}</details>
+                      <details className="tx-raw-details" onToggle={(e) => { if (e.currentTarget.open) setRawOpen((current) => current.has(rowKey) ? current : new Set(current).add(rowKey)) }}><summary>{t('عرض تفاصيل Raw', 'View raw details')}</summary>{rawOpen.has(rowKey) ? (r.raw_preview ? <pre>{JSON.stringify(r.raw_preview, null, 2)}</pre> : <p className="cell-sub">{t('لا تتوفر بيانات Raw لهذا الصف.', 'Raw data is not available for this row.')}</p>) : null}</details>
                       </div>
                       <div className="tx-expanded-sms-side">
                         <span className="tx-expanded-sms-side-title">{t('دليل SMS', 'SMS evidence')}</span>
