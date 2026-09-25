@@ -197,7 +197,10 @@ export default function Transactions() {
     if (type) search.set('type', type)
     if (status) search.set('status', status)
     if (appliedQ) search.set('q', appliedQ)
-    for (const [key, value] of Object.entries({ from, to, merchant, method, currency, min_amount: minAmount, max_amount: maxAmount })) if (value) search.set(key, value)
+    // An explicit transaction search must be able to find historical rows
+    // even though the normal list defaults to the current month.
+    const dateFilters = appliedQ.trim() ? {} : { from, to }
+    for (const [key, value] of Object.entries({ ...dateFilters, merchant, method, currency, min_amount: minAmount, max_amount: maxAmount })) if (value) search.set(key, value)
     try {
       const next = await api<ListResponse>(`/api/transactions?${search}`, { signal: controller.signal })
       if (seq !== requestSeq.current) return
@@ -312,7 +315,8 @@ export default function Transactions() {
       if (type) search.set('type', type)
       if (status) search.set('status', status)
       if (appliedQ) search.set('q', appliedQ)
-      for (const [key, value] of Object.entries({ from, to, merchant, method, currency, min_amount: minAmount, max_amount: maxAmount })) if (value) search.set(key, value)
+      const dateFilters = appliedQ.trim() ? {} : { from, to }
+      for (const [key, value] of Object.entries({ ...dateFilters, merchant, method, currency, min_amount: minAmount, max_amount: maxAmount })) if (value) search.set(key, value)
       const page = await api<ListResponse>(`/api/transactions?${search}`)
       collected.push(...page.rows)
       offset += batchSize
