@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { db } from './db.js'
+import { oldDb } from './oldDb.js'
 import { requireAuth, requirePerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 import { learnTrustedSmsName } from './clientIdentity.js'
@@ -693,6 +694,28 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
   const normalizePhone = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
   const senderConfirmed = Boolean(normalizePhone(sms.sender_number) && normalizePhone(tx.sender_number) && normalizePhone(sms.sender_number) === normalizePhone(tx.sender_number))
   const walletConfirmed = Boolean(normalizePhone(receivingWallet) && normalizePhone(tx.to_account_number) && normalizePhone(receivingWallet) === normalizePhone(tx.to_account_number))
+  const exactSmsMatch = !amountMismatch && senderConfirmed && walletConfirmed
+  const { data: blacklistRows } = tx.sender_number
+    ? await db.from('api_risk_blacklist').select('value').eq('type', 'phone').limit(10_000)
+    : { data: [] as { value: string }[] }
+  const blacklistedSender = Boolean(normalizePhone(tx.sender_number) && (blacklistRows ?? []).some((row) => normalizePhone(row.value) === normalizePhone(tx.sender_number)))
+
+  // Persist the operator assignment as the review clock. A blacklisted sender
+  // with an exact 100% SMS match is deliberately held for manual review; it
+  // must never take the generic immediate-approval path below.
+  await db.from('inbound_sms').update({ auto_match_score: exactSmsMatch ? 100 : 0 }).eq('id', id).eq('consumed_by_tx_id', txId)
+  const reviewDb = oldDb()
+  if (reviewDb) {
+    await reviewDb.from('review_queue').update({
+      decision: 'pending_review',
+      matched_sms_id: Number(id),
+      match_score: exactSmsMatch ? 100 : 0,
+      decision_reason: blacklistedSender && exactSmsMatch
+        ? 'Blacklisted client with 100% SMS match — manual review; auto-approve after 15 minutes'
+        : 'SMS assigned — pending review',
+      decided_at: null,
+    }).eq('tx_id', txId).eq('source', 'maven')
+  }
 
   const secDiff =
     sms.received_at && tx.first_seen_at
@@ -748,7 +771,7 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
     ? { attempted: false, skipped: 'amount_mismatch' }
     : { attempted: false }
   const gateway = String(tx.gateway ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase()
-  if (!amountMismatch && senderConfirmed && walletConfirmed && !isWalidCompanyMethod(tx.payment_method) && tx.status === 'PENDING' && (gateway === 'nagupayp2p' || gateway === 'nagopay')) {
+  if (!amountMismatch && senderConfirmed && walletConfirmed && !blacklistedSender && !isWalidCompanyMethod(tx.payment_method) && tx.status === 'PENDING' && (gateway === 'nagupayp2p' || gateway === 'nagopay')) {
     // Do not hold the SMS assignment request open while Maven performs its
     // browser action. The link is already committed; the provider action runs
     // in the platform background and updates the mirror when confirmed.
@@ -786,6 +809,9 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
   } else if (!amountMismatch && isWalidCompanyMethod(tx.payment_method)) {
     providerApproval = { attempted: false, skipped: 'walid_company_ltd_manual_only' }
     await db.from('audit_log').insert({ actor_type: 'system', actor_name: 'sms-link-worker', action: 'sms.link_auto_approval_skipped_method', entity: 'maven_transactions', entity_id: String(txId), after: { sms_id: Number(id), payment_method: tx.payment_method } })
+  } else if (blacklistedSender && exactSmsMatch && tx.status === 'PENDING') {
+    providerApproval = { attempted: false, skipped: 'blacklisted_exact_sms_manual_review_15m' }
+    await db.from('audit_log').insert({ actor_type: 'system', actor_name: 'sms-link-worker', action: 'sms.link_blacklist_manual_review', entity: 'maven_transactions', entity_id: String(txId), after: { sms_id: Number(id), match_score: 100, review_minutes: 15 } })
   } else if (!amountMismatch && tx.status === 'PENDING') {
     providerApproval = { attempted: false, skipped: 'wallet_or_sender_not_confirmed' }
     await db.from('audit_log').insert({ actor_type: 'system', actor_name: 'sms-link-worker', action: 'sms.link_auto_approval_skipped_identity', entity: 'maven_transactions', entity_id: String(txId), after: { sms_id: Number(id), sender_confirmed: senderConfirmed, wallet_confirmed: walletConfirmed, sms_wallet: receivingWallet, tx_wallet: tx.to_account_number ?? null } })

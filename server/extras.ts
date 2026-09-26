@@ -518,7 +518,9 @@ extraRoutes.get(
         const { data: reviews } = await source.from('review_queue')
           .select('tx_id, decision, decision_reason, match_score, match_reasons, matched_sms_id, updated_at')
           .in('tx_id', txIds).order('updated_at', { ascending: false })
-        for (const row of reviews ?? []) if (!reasonByTx.has(Number(row.tx_id))) reasonByTx.set(Number(row.tx_id), row)
+        // The review row carries the manual-assignment clock and match score;
+        // prefer it over an older decision-log entry when both exist.
+        for (const row of reviews ?? []) reasonByTx.set(Number(row.tx_id), { ...(reasonByTx.get(Number(row.tx_id)) ?? {}), ...row })
       }
     }
     const retentionSummary = { paid: 0, declined: 0, pending: 0, total: 0 }

@@ -44,7 +44,7 @@ interface DepRow {
   client_status_counts?: { paid: number; declined: number; pending: number } | null
   wallet_status_counts?: { paid: number; declined: number; pending: number } | null
   linked_sms?: { id: number; received_at: string | null; sender_name: string | null; sender_number: string | null; receiver_number: string | null; amount: number | null; sms_first_line: string | null; match_status: string | null; matched: boolean | null } | null
-  decision_context?: { decision?: string | null; decision_reason?: string | null; reason?: string | null; match_score?: number | null; match_reasons?: unknown; actor_name?: string | null } | null
+  decision_context?: { decision?: string | null; decision_reason?: string | null; reason?: string | null; match_score?: number | null; match_reasons?: unknown; actor_name?: string | null; updated_at?: string | null } | null
   blacklisted_sender?: boolean
   duplicate_flag?: boolean
 }
@@ -55,6 +55,17 @@ function DepositKindBadge({ kind, count }: { kind?: DepRow['deposit_kind']; coun
 }
 
 function AutomationCountdown({ row, now }: { row: DepRow; now: number }) {
+  const exactBlacklistedSms = Boolean(row.blacklisted_sender && row.linked_sms && Number(row.decision_context?.match_score) === 100)
+  if (exactBlacklistedSms) {
+    const started = new Date(row.decision_context?.updated_at ?? row.linked_sms?.received_at ?? '').getTime()
+    if (Number.isFinite(started)) {
+      const remaining = Math.max(0, 15 * 60 * 1000 - (now - started))
+      const seconds = Math.ceil(remaining / 1000)
+      const mm = Math.floor(seconds / 60).toString().padStart(2, '0')
+      const ss = (seconds % 60).toString().padStart(2, '0')
+      return <div className={`approval-automation-countdown ${remaining === 0 ? 'expired' : ''}`}>🛡 Manual review · auto-approve in <strong>{remaining === 0 ? 'due' : `${mm}:${ss}`}</strong></div>
+    }
+  }
   if (row.linked_sms) return <div className="approval-automation-ready">⚡ SMS linked · ready for fast approval</div>
   const started = new Date(row.created_utc ?? row.first_seen_at ?? '').getTime()
   if (!Number.isFinite(started)) return null
