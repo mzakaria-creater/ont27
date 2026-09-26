@@ -215,6 +215,15 @@ Deno.serve(async (req) => {
       const row = toDbRow(raw);
       return row ? { ...row, row_hash: await sha256(raw) } : null;
     }))).filter(Boolean) as Record<string, any>[];
+
+    // An authenticated Maven session that returns no rows is not a healthy
+    // reconciliation result.  Treat it as a provider-access/list-permission
+    // failure instead of reporting a successful zero-row sync; otherwise the
+    // UI remains frozen on the last transaction while the cron looks green.
+    if (mapped.length === 0) {
+      throw new Error("Maven transaction list returned zero rows after authenticated login (provider list access or merchant/site permission is empty)");
+    }
+
     const ids = mapped.map((row) => row.tx_id);
     const local = new Map<number, any>();
     for (let i = 0; i < ids.length; i += 500) {
