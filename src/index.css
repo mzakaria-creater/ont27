@@ -84,6 +84,44 @@
   line-height: 1.6;
 }
 
+/* Auto-fit the transaction table without shrinking operational text into
+   unreadable 8px labels. The SMS evidence remains a dedicated right rail
+   when the row disclosure arrow is opened. */
+.portal-transactions-card .portal-table-wrap {
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+.portal-transactions-card .portal-transaction-grid {
+  width: 100%;
+  min-width: 1180px;
+  table-layout: auto;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+.portal-transactions-card .portal-transaction-grid th,
+.portal-transactions-card .portal-transaction-grid td {
+  max-width: 190px;
+  padding: 7px 8px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.portal-transactions-card .portal-transaction-grid th:nth-child(1),
+.portal-transactions-card .portal-transaction-grid th:nth-child(2),
+.portal-transactions-card .portal-transaction-grid th:nth-child(3) {
+  max-width: none;
+}
+.portal-transactions-card .tx-expanded-split {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 390px);
+}
+.portal-transactions-card .tx-expanded-sms-side {
+  min-height: 180px;
+  max-height: 360px;
+  overflow: auto;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  border-inline-start: 2px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+}
+
 /* Glassmorphism pass: backdrop-blur every card/panel/kpi/modal-style surface
    now that their background tokens are translucent. Kept to a class-name
    match so it doesn't require touching each component's markup. */
@@ -1538,6 +1576,17 @@ a.stat-card:hover { border-color: var(--accent); }
 .portal-transaction-grid .portal-method-cell{gap:4px}.portal-transaction-grid .portal-method-cell .method-logo{width:21px;height:21px}
 .portal-transaction-grid .portal-status-tag{padding:3px 4px;font-size:8px}.portal-transaction-grid .tx-action-primary{min-height:24px;padding-inline:5px;font-size:9px}.portal-transaction-grid .tx-action-primary span{max-width:38px;overflow:hidden;text-overflow:ellipsis}
 .tx-raw-details{grid-column:1/-1;text-align:start}.tx-raw-details summary{cursor:pointer;color:var(--accent);font-size:11px;font-weight:700}.tx-raw-details pre{max-height:220px;overflow:auto;margin:6px 0;padding:8px;border-radius:6px;background:color-mix(in srgb,var(--surface) 70%,#000 30%);font:10px/1.4 ui-monospace,monospace;white-space:pre-wrap;word-break:break-word}.tx-sms-raw-details{margin-inline-start:auto;min-width:80px}.tx-sms-raw-details pre{position:absolute;z-index:4;width:min(600px,80vw);margin-inline-start:-300px}
+/* Final transaction layout overrides: readable auto-fit columns and a clear
+   right-side SMS evidence rail when the disclosure arrow is opened. */
+.portal-transactions-card .portal-table-wrap { overflow: auto; scrollbar-gutter: stable; }
+.portal-transactions-card .portal-transaction-grid { width: 100%; min-width: 1180px; table-layout: auto; font-size: 13px; letter-spacing: 0; }
+.portal-transactions-card .portal-transaction-grid th,
+.portal-transactions-card .portal-transaction-grid td { max-width: 190px; padding: 7px 8px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; }
+.portal-transactions-card .portal-transaction-grid th:nth-child(1),
+.portal-transactions-card .portal-transaction-grid th:nth-child(2),
+.portal-transactions-card .portal-transaction-grid th:nth-child(3) { max-width: none; }
+.portal-transactions-card .tx-expanded-split { grid-template-columns: minmax(0, 1fr) minmax(320px, 390px); }
+.portal-transactions-card .tx-expanded-sms-side { min-height: 180px; max-height: 360px; overflow: auto; background: color-mix(in srgb, var(--accent) 7%, var(--surface)); border-inline-start: 2px solid color-mix(in srgb, var(--accent) 42%, var(--border)); }
 @media (max-width: 768px) {
   .transaction-filter-toolbar { padding: 8px; gap: 8px; }
   .transaction-filter-toolbar .filter-pills, .transaction-filter-toolbar .chip-row { width: 100%; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
