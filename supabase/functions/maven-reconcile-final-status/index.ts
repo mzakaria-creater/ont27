@@ -234,13 +234,10 @@ Deno.serve(async (req) => {
       return row ? { ...row, row_hash: await sha256(raw) } : null;
     }))).filter(Boolean) as Record<string, any>[];
 
-    // An authenticated Maven session that returns no rows is not a healthy
-    // reconciliation result.  Treat it as a provider-access/list-permission
-    // failure instead of reporting a successful zero-row sync; otherwise the
-    // UI remains frozen on the last transaction while the cron looks green.
-    if (mapped.length === 0) {
-      throw new Error("Maven transaction list returned zero rows after authenticated login (provider list access or merchant/site permission is empty)");
-    }
+    // An empty live window is a valid no-op: Maven may simply have received no
+    // transactions during the last 15 minutes. Do not turn that into
+    // worker_failed; the next overlap window will pick up a new transaction.
+    // Authentication/list errors still throw from login/listTransactions above.
 
     const ids = mapped.map((row) => row.tx_id);
     const local = new Map<number, any>();
@@ -259,7 +256,9 @@ Deno.serve(async (req) => {
       const old = local.get(Number(row.tx_id));
       if (!old) {
         const insertRow = { ...providerPatch(row, nowIso), first_seen_at: createdAt(row, nowIso), last_status_change: nowIso, paid_source: row.status === "PAID" ? "reconciliation" : null, row_hash: row.row_hash };
-        const { error } = await sb.from("maven_transactions").insert(insertRow);
+        // Reconcile is intentionally idempotent. A duplicate tx_id must not
+        // abort the whole worker when another overlap run inserted it first.
+        const { error } = await sb.from("maven_transactions").upsert(insertRow, { onConflict: "tx_id", ignoreDuplicates: false });
         if (error) throw new Error(`insert ${row.tx_id}: ${error.message}`);
         inserted++;
         continue;
