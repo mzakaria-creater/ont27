@@ -43,9 +43,33 @@ export async function login(username: string, password: string, area = "Supplier
 }
 export async function listTransactions(cookie: string, start: number, from: string, to: string, area = "Supplier") {
   const body = new URLSearchParams({ draw: "1", start: String(start), length: String(PAGE_SIZE), "search[value]": "", "search[regex]": "false", "order[0][column]": "26", "order[0][dir]": "desc", StartCreatedDate: from, EndCreatedDate: to, DbFieldName_1: "Guid", FilterType_1: "contains", SearchVal_1: "", DbFieldName_2: "Guid", FilterType_2: "contains", SearchVal_2: "", DbFieldName_3: "Guid", FilterType_3: "contains", SearchVal_3: "", DbFieldName_4: "Guid", FilterType_4: "contains", SearchVal_4: "", IsTxnWithSS: "false" });
-  const response = await fetch(`${ROOT}/${area}/Transactions/GetP2PPendingTransactions`, { method: "POST", headers: { cookie, "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest", accept: "application/json, text/javascript, */*; q=0.01", referer: `${ROOT}/${area}/Transactions/GetP2PPendingTransactionList`, origin: ROOT }, body });
-  const text = await response.text();
-  if (!response.ok || /<html[\s>]/i.test(text)) throw new Error(`Maven list failed (${response.status})`);
+  const headers = { cookie, "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest", accept: "application/json, text/javascript, */*; q=0.01", origin: ROOT };
+  // The pending endpoint drops rows immediately after Maven marks them PAID
+  // or DECLINED. Reconciliation must use the full P2P transaction list so
+  // completed transactions reach the app as well. Keep the pending endpoint
+  // as a compatibility fallback for older Maven deployments.
+  const endpoints = [
+    "GetP2PTransactionList",
+    "GetP2PPendingTransactions",
+  ];
+  let response: Response | null = null;
+  let text = "";
+  for (const endpoint of endpoints) {
+    const candidate = await fetch(`${ROOT}/${area}/Transactions/${endpoint}`, {
+      method: "POST",
+      headers: { ...headers, referer: `${ROOT}/${area}/Transactions/${endpoint === "GetP2PTransactionList" ? "GetP2PTransactionList" : "GetP2PPendingTransactionList"}` },
+      body,
+    });
+    const candidateText = await candidate.text();
+    if (candidate.ok && !/<html[\s>]/i.test(candidateText)) {
+      response = candidate;
+      text = candidateText;
+      break;
+    }
+    response = candidate;
+    text = candidateText;
+  }
+  if (!response || !response.ok || /<html[\s>]/i.test(text)) throw new Error(`Maven list failed (${response?.status ?? 0})`);
   const payload = JSON.parse(text) as { data?: MavenRow[]; recordsTotal?: number; errorMessage?: string | null };
   if (payload.errorMessage) throw new Error(payload.errorMessage);
   return { rows: payload.data ?? [], total: Number(payload.recordsTotal ?? 0) };
