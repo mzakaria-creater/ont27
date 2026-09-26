@@ -105,6 +105,7 @@ const FAST_UPDATED_LOOKBACK_MS = 2 * 60_000
 // into the live provider executor.
 const AUTO_DECLINE_BRIDGE_CUTOFF = '2026-08-25T02:17:31.579426Z'
 let lastFastRunAt = 0
+let lastLegacyMavenCollectorAt = 0
 // Fast provider pulls must never wait behind the full repair pass. They touch
 // the same idempotent mirror with status/timestamp guards, so concurrent runs
 // are safe and keep new Maven transactions visible while a full scan runs.
@@ -567,6 +568,34 @@ async function reconcileMaven(mode: 'live' | 'repair') {
   return body
 }
 
+// The legacy collector is still the live-authorized Maven ingress.  When the
+// direct list endpoint is empty, refresh that collector periodically, then
+// mirror its rows into the current project. This keeps the panel live without
+// logging into Maven from every browser tab.
+async function refreshLegacyMavenCollector(): Promise<string> {
+  const oldUrl = process.env.OLD_SUPABASE_URL
+  const oldKey = process.env.OLD_SERVICE_KEY
+  if (!oldUrl || !oldKey) return 'legacy_collector_not_configured'
+  const now = Date.now()
+  if (now - lastLegacyMavenCollectorAt < 60_000) return 'legacy_collector_throttled'
+  if (!(await claimDistributedLease(60, 'maven_legacy_collector_refresh'))) return 'legacy_collector_lease'
+  lastLegacyMavenCollectorAt = now
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const stamp = (d: Date) => `${pad(d.getUTCDate())}-${months[d.getUTCMonth()]}-${d.getUTCFullYear()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
+  const since = stamp(new Date(now - 30 * 60_000))
+  const until = stamp(new Date(now + 60_000))
+  const response = await fetch(`${oldUrl}/functions/v1/maven-collector`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(45_000),
+    headers: { authorization: `Bearer ${oldKey}`, apikey: oldKey, 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'sync_p2p_deposits', since, until }),
+  })
+  const body = await response.json().catch(() => ({ error: 'invalid_legacy_collector_response' })) as Record<string, unknown>
+  if (!response.ok || body.success !== true) throw new Error(`legacy_maven_collector_${response.status}: ${String(body.error ?? 'failed')}`)
+  return `legacy_collector_rows_${String(body.records_found ?? 0)}`
+}
+
 function mergeReconcileResult(results: Record<string, number | string>, direct: Record<string, unknown>) {
   results.maven_reconcile_rows = Number(direct.rows_provider ?? 0)
   results.maven_reconcile_inserted = Number(direct.inserted ?? 0)
@@ -598,6 +627,8 @@ deltaSyncRoutes.get('/delta-sync', async (c) => {
   let directOk = true
   try { mergeReconcileResult(results, await reconcileMaven('live')) }
   catch (e) { directOk = false; results.maven_reconcile = `error: ${(e as Error).message}` }
+  try { results.maven_legacy_collector = await refreshLegacyMavenCollector() }
+  catch (e) { results.maven_legacy_collector = `error: ${(e as Error).message}` }
   const mirror = await syncOnce('fast').catch((e) => ({ error: `error: ${(e as Error).message}` }))
   Object.assign(results, mirror)
   if (!directOk && Number((mirror as Record<string, unknown>).maven_transactions ?? 0) > 0) directOk = true
@@ -617,6 +648,8 @@ deltaSyncRoutes.get('/delta-sync-full', async (c) => {
   let directOk = true
   try { mergeReconcileResult(results, await reconcileMaven('repair')) }
   catch (e) { directOk = false; results.maven_reconcile = `error: ${(e as Error).message}` }
+  try { results.maven_legacy_collector = await refreshLegacyMavenCollector() }
+  catch (e) { results.maven_legacy_collector = `error: ${(e as Error).message}` }
   const mirror = await syncOnce('full').catch((e) => ({ error: `error: ${(e as Error).message}` }))
   Object.assign(results, mirror)
   if (!directOk && Number((mirror as Record<string, unknown>).maven_transactions ?? 0) > 0) directOk = true
@@ -738,6 +771,8 @@ deltaSyncRoutes.post('/delta-sync', async (c) => {
   let directOk = true
   try { mergeReconcileResult(results, await reconcileMaven('live')) }
   catch (e) { directOk = false; results.maven_reconcile = `error: ${(e as Error).message}` }
+  try { results.maven_legacy_collector = await refreshLegacyMavenCollector() }
+  catch (e) { results.maven_legacy_collector = `error: ${(e as Error).message}` }
   const mirror = await syncOnce(mode).catch((e) => ({ error: `error: ${(e as Error).message}` }))
   Object.assign(results, mirror)
   if (!directOk && Number((mirror as Record<string, unknown>).maven_transactions ?? 0) > 0) directOk = true
