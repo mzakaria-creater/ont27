@@ -58,6 +58,7 @@ type SmsFilterInput = {
   category?: string
   match?: string
   q?: string
+  device?: string
   amount?: string
   from?: string
   to?: string
@@ -155,7 +156,7 @@ function isPotentialDeposit(sms: QueueSms) {
 // deliberately shared: adding a filter to the table without adding it to the
 // cards was the reason their numbers previously looked stale/wrong.
 function applySmsFilters(query: any, filters: SmsFilterInput) {
-  const { category, match, q, amount, from, to, provider } = filters
+  const { category, match, q, device, amount, from, to, provider } = filters
   // Only approved financial inbox senders belong in Live SMS or matching.
   // Unsupported messages are retained for audit but hidden from operations.
   query = query.or('is_blocked.eq.false,is_blocked.is.null')
@@ -164,6 +165,7 @@ function applySmsFilters(query: any, filters: SmsFilterInput) {
   const providers = (provider ?? '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean)
   const providerPatterns = providers.flatMap((key) => PROVIDER_FILTER_PATTERNS[key] ?? [])
   if (providerPatterns.length) query = query.or(providerPatterns.map((pattern) => `provider.ilike.${pattern}`).join(','))
+  if (device) query = query.ilike('device_name', `%${device.replaceAll('%', '')}%`)
   if (from) query = query.gte('received_at', cairoBoundary(from))
   if (to) query = query.lte('received_at', cairoBoundary(to, true))
   // Link state is derived from every authoritative/legacy link column. The
@@ -351,6 +353,7 @@ smsRoutes.get('/stats', requirePerm('sms_live', 'can_view'), async (c) => {
     category: c.req.query('category')?.toLowerCase(),
     match: c.req.query('match')?.toLowerCase(),
     q: c.req.query('q')?.trim(),
+    device: c.req.query('device')?.trim(),
     amount: c.req.query('amount')?.trim(),
     from: c.req.query('from')?.trim(),
     to: c.req.query('to')?.trim(),
@@ -452,6 +455,7 @@ smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
   const from = c.req.query('from')?.trim()
   const to = c.req.query('to')?.trim()
   const provider = c.req.query('provider')?.trim()
+  const device = c.req.query('device')?.trim()
   // The live P2P wall requests a full month so wallet totals and the latest
   // SMS balance are correct. Keep a bounded server-side cap, while allowing
   // the existing paginated screens to continue using their smaller limits.
@@ -472,7 +476,7 @@ smsRoutes.get('/', requirePerm('sms_live', 'can_view'), async (c) => {
   // 2026-07-11. On the live TV wall that made a busy matching engine look
   // stalled for hours at a time.
   const amount = c.req.query('amount')?.trim()
-  query = applySmsFilters(query, { category, match, q, amount, from, to, provider })
+  query = applySmsFilters(query, { category, match, q, device, amount, from, to, provider })
 
   const { data, count, error } = await query
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)

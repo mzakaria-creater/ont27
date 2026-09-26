@@ -219,6 +219,7 @@ export default function SmsLive() {
   const categoryValues = splitFilterValues(category)
   const provider = params.get('provider') ?? ''
   const providerValues = splitFilterValues(provider)
+  const device = params.get('device') ?? ''
   const match = params.get('match') ?? ''
   const page = Math.max(Number(params.get('page')) || 1, 1)
   const from = params.get('from') ?? ''
@@ -296,6 +297,7 @@ export default function SmsLive() {
     })
     if (category) search.set('category', category)
     if (provider) search.set('provider', provider)
+    if (device) search.set('device', device)
     if (match) search.set('match', match)
     if (appliedQ) search.set('q', appliedQ)
     if (amount) search.set('amount', amount)
@@ -317,7 +319,7 @@ export default function SmsLive() {
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [category, provider, match, appliedQ, amount, from, to, page, pageSize])
+  }, [category, provider, device, match, appliedQ, amount, from, to, page, pageSize])
 
   const runSmsRepair = async () => {
     setSyncBusy(true)
@@ -339,7 +341,7 @@ export default function SmsLive() {
     return () => clearInterval(iv)
   }, [load])
 
-  const setFilter = (next: { category?: string; provider?: string; match?: string; q?: string; amount?: string; from?: string; to?: string; page?: number }) => {
+  const setFilter = (next: { category?: string; provider?: string; device?: string; match?: string; q?: string; amount?: string; from?: string; to?: string; page?: number }) => {
     const p = new URLSearchParams(params)
     const setOrDel = (key: string, v: string | undefined) => {
       if (v === undefined) return
@@ -348,6 +350,7 @@ export default function SmsLive() {
     }
     setOrDel('category', next.category)
     setOrDel('provider', next.provider)
+    setOrDel('device', next.device)
     setOrDel('match', next.match)
     setOrDel('q', next.q)
     setOrDel('amount', next.amount)
@@ -763,6 +766,12 @@ export default function SmsLive() {
             placeholder={t('بحث: مُرسِل / محفظة / رقم عملية / جهاز…', 'Search: sender / wallet / tx id / device…')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
+          />
+          <input
+            className="login-input"
+            placeholder={t('الجهاز مثل ont11', 'Device e.g. ont11')}
+            value={device}
+            onChange={(e) => setFilter({ device: e.target.value.trim() })}
           />
           <input className="login-input" type="date" value={from} onChange={(e) => setFilter({ from: e.target.value })} aria-label={t('من', 'From')} />
           <input className="login-input" type="date" value={to} onChange={(e) => setFilter({ to: e.target.value })} aria-label={t('إلى', 'To')} />
