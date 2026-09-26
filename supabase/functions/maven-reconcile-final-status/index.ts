@@ -114,7 +114,7 @@ Deno.serve(async (req) => {
     const pass = (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_COLLECTOR_PASSWORD").eq("owner_name", "global").maybeSingle()).data?.value ?? (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_PASSWORD").eq("owner_name", "global").maybeSingle()).data?.value;
     if (!user || !pass) return json({ ok: false, error: "Missing Maven credentials in maven_runtime_config" }, 500);
 
-    const cookie = await login(user, pass, "Supplier");
+    let cookie = await login(user, pass, "Supplier");
 
     if (isBackfill) {
       const summaries: any[] = [];
@@ -193,6 +193,22 @@ Deno.serve(async (req) => {
         offset += page.rows.length;
       }
       if (expectedForWindow > 0 && fetchedForWindow !== expectedForWindow) throw new Error(`Maven completeness gap for ${windowFrom}: fetched ${fetchedForWindow}, expected ${expectedForWindow}`);
+    }
+
+    // Supplier can authenticate successfully while its transaction-list
+    // permission is empty. Retry the same live window with the configured
+    // operator account before declaring a successful zero-row sync.
+    if (providerRows.length === 0) {
+      const operatorUser = (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_OPERATOR_USERNAME").eq("owner_name", "global").maybeSingle()).data?.value;
+      const operatorPass = (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_OPERATOR_PASSWORD").eq("owner_name", "global").maybeSingle()).data?.value;
+      if (operatorUser && operatorPass) {
+        const operatorCookie = await login(operatorUser, operatorPass, "Supplieroperator");
+        const operatorRows = await fetchMapped(operatorCookie, from, to);
+        if (operatorRows.length > 0) {
+          cookie = operatorCookie;
+          providerRows.push(...operatorRows);
+        }
+      }
     }
 
     const mapped = (await Promise.all(providerRows.map(async (raw) => {
