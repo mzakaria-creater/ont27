@@ -205,7 +205,7 @@ function smsReport(row: SmsDetail) {
     phone,
     ref,
     provider: row.provider ?? row.sms_sender ?? 'SMS',
-    time: row.received_at ? new Date(row.received_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—',
+    time: row.received_at ? new Date(row.received_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—',
     date: row.received_at ? new Date(row.received_at).toLocaleDateString([], { year: 'numeric', month: '2-digit', day: '2-digit' }) : '—',
   }
 }

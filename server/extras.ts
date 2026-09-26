@@ -97,7 +97,7 @@ extraRoutes.get(
 )
 
 const DEPOSIT_COLS =
-  'tx_id, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, receiving_wallet, to_account_number, to_account_name, payment_method, gateway, merchant, master_merchant, approved_by, paid_source, proof_image_url, first_seen_at, created_utc, modified_utc, maven_raw_row, provider_amount, local_amount, amount_sync_status, amount_mismatch_reason, amount_confirmed_at, amount_confirmed_by, settlement_blocked'
+  'tx_id, ontarget_ref, merchant_tx_reference, status, amount, currency, sender_name, sender_number, receiving_wallet, to_account_number, to_account_name, payment_method, gateway, merchant, master_merchant, approved_by, paid_source, reconciled_from_provider, proof_image_url, first_seen_at, created_utc, modified_utc, maven_raw_row, provider_amount, local_amount, amount_sync_status, amount_mismatch_reason, amount_confirmed_at, amount_confirmed_by, settlement_blocked'
 const PAYOUT_COLS =
   'maven_id, ontarget_ref, status, amount, pay_by, merchant, account_name, mobile_no, agent_name, approved_by, image_url, first_seen_at, created_utc, updated_utc'
 
@@ -343,7 +343,7 @@ extraRoutes.get(
         const phone = normalizePhone(row.kind === 'deposit' ? row.sender_number : row.mobile_no)
         const manualDecision = row.kind === 'deposit' ? decisionByTx.get(Number(row.tx_id)) : decisionByPayout.get(Number(row.maven_id))
         const providerHistoryRow = row.kind === 'deposit' ? providerDecisionByTx.get(Number(row.tx_id)) : null
-        const providerDecision = providerHistoryRow ?? (row.kind === 'deposit' && row.paid_source === 'reconciliation'
+        const providerDecision = providerHistoryRow ?? (row.kind === 'deposit' && ['PAID', 'APPROVED', 'DECLINED'].includes(String(row.status ?? '').toUpperCase()) && (row.paid_source === 'reconciliation' || row.reconciled_from_provider === true)
           ? { actor_name: 'Maven team', reason: 'Maven provider status update', created_at: row.modified_utc ?? row.first_seen_at }
           : null)
         const manualAt = manualDecision?.created_at ? Date.parse(String(manualDecision.created_at)) : 0
