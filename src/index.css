@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap');
+
 :root,
 :root[data-theme='dark'] {
   /* "Live Transaction Monitor" design system — dark. Status colors are
@@ -51,7 +53,35 @@
   --success: var(--status-paid);
   --danger: var(--status-declined);
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-transaction: 'IBM Plex Sans Arabic', 'Segoe UI', Tahoma, sans-serif;
   --shadow: var(--shadow-panel);
+}
+
+/* Readable Arabic/Latin typography for the all-transactions workspace. */
+.portal-transactions-card,
+.portal-transactions-card .all-tx-card {
+  font-family: var(--font-transaction);
+  letter-spacing: 0;
+}
+.portal-transactions-card .portal-transaction-grid {
+  font-family: var(--font-transaction);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.portal-transactions-card .portal-transaction-grid th {
+  font-weight: 700;
+  line-height: 1.35;
+}
+.portal-transactions-card .mono,
+.portal-transactions-card code,
+.portal-transactions-card pre,
+.portal-transactions-card .portal-status-tag {
+  font-family: var(--mono);
+}
+.portal-transactions-card .tx-expanded-grid,
+.portal-transactions-card .tx-sms-raw,
+.portal-transactions-card .all-tx-card dl {
+  line-height: 1.6;
 }
 
 /* Glassmorphism pass: backdrop-blur every card/panel/kpi/modal-style surface
