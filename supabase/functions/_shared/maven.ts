@@ -54,6 +54,7 @@ export async function listTransactions(cookie: string, start: number, from: stri
   ];
   let response: Response | null = null;
   let text = "";
+  let best: { rows: MavenRow[]; total: number; errorMessage?: string | null } | null = null;
   for (const endpoint of endpoints) {
     const candidate = await fetch(`${ROOT}/${area}/Transactions/${endpoint}`, {
       method: "POST",
@@ -61,16 +62,20 @@ export async function listTransactions(cookie: string, start: number, from: stri
       body,
     });
     const candidateText = await candidate.text();
-    if (candidate.ok && !/<html[\s>]/i.test(candidateText)) {
-      response = candidate;
-      text = candidateText;
-      break;
-    }
     response = candidate;
     text = candidateText;
+    if (candidate.ok && !/<html[\s>]/i.test(candidateText)) {
+      try {
+        const parsed = JSON.parse(candidateText) as { data?: MavenRow[]; recordsTotal?: number; errorMessage?: string | null };
+        const rows = Array.isArray(parsed.data) ? parsed.data : [];
+        const total = Number(parsed.recordsTotal ?? rows.length);
+        if (!best || total > best.total || rows.length > best.rows.length) best = { rows, total, errorMessage: parsed.errorMessage };
+      } catch { /* try the next Maven endpoint */ }
+    }
   }
   if (!response || !response.ok || /<html[\s>]/i.test(text)) throw new Error(`Maven list failed (${response?.status ?? 0})`);
-  const payload = JSON.parse(text) as { data?: MavenRow[]; recordsTotal?: number; errorMessage?: string | null };
+  if (!best) throw new Error(`Maven list failed (${response.status})`);
+  const payload = best;
   if (payload.errorMessage) throw new Error(payload.errorMessage);
   return { rows: payload.data ?? [], total: Number(payload.recordsTotal ?? 0) };
 }
