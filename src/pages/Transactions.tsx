@@ -375,6 +375,32 @@ export default function Transactions() {
     return `/sms?${query.toString()}`
   }
 
+  // Keep every provider/reference identifier visible to operators. Maven IDs
+  // commonly start with 13, while merchant references can start with 777;
+  // neither should be shortened or hidden behind the local reference.
+  const transactionIdentifiers = (row: TxRow) => {
+    const values = [
+      row.tx_id,
+      row.maven_id,
+      row.ontarget_ref,
+      row.merchant_tx_reference,
+      row.merchant_reference,
+    ]
+      .filter((value) => value != null && String(value).trim() !== '')
+      .map((value) => String(value))
+    return [...new Set(values)]
+  }
+
+  const liveSmsHref = (row: TxRow) => {
+    const query = new URLSearchParams()
+    const providerId = row.kind === 'deposit' ? row.tx_id : row.maven_id
+    if (providerId != null) query.set('q', String(providerId))
+    if (row.amount != null) query.set('amount', String(row.amount))
+    const day = row.first_seen_at?.slice(0, 10)
+    if (day) { query.set('from', day); query.set('to', day) }
+    return `/sms?${query.toString()}`
+  }
+
   const decide = async (row: TxRow, action: 'approve' | 'decline') => {
     const id = row.kind === 'deposit' ? row.tx_id : row.maven_id
     if (!id) return
@@ -488,9 +514,11 @@ export default function Transactions() {
                   const canOpenModal = r.kind === 'deposit' && !r.is_checkout_session && !!r.ontarget_ref
                   const details = r.is_checkout_session ? `/payment-status?id=${encodeURIComponent(r.checkout_session_id ?? '')}` : r.kind === 'deposit' && r.ontarget_ref ? `/transactions/${encodeURIComponent(r.ontarget_ref)}` : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`
                   const senderAccountName = r.kind === 'deposit' ? (r.sender_account_name ?? r.payment_method ?? party) : (r.account_name ?? party)
+                  const isDeclinedDuplicate = r.status === 'DECLINED' && (r.client_transaction_count ?? 1) > 1
+                  const identifiers = transactionIdentifiers(r)
                   const cell = (colId: string) => {
                     switch (colId) {
-                      case 'status': return <td key={colId}><TransactionStatusIcon status={r.status} label={st.label} /></td>
+                      case 'status': return <td key={colId}><TransactionStatusIcon status={r.status} label={st.label} />{isDeclinedDuplicate && <span className="deposit-kind is-declined-duplicate">⚠ {t('مرفوض مكرر', 'Declined duplicate')}</span>}</td>
                       case 'type': return <td key={colId}><div className="portal-method-cell"><MethodLogo method={r.kind === 'deposit' ? r.payment_method : r.pay_by}/><span>{r.kind === 'deposit' ? (r.payment_method ?? t('إيداع', 'Deposit')) : (r.pay_by ?? t('سحب', 'Payout'))}</span></div></td>
                       case 'amount': return (
                         <td key={colId} className="mono portal-amount-cell">
@@ -528,7 +556,7 @@ export default function Transactions() {
                         <tr key={rowKey} className={`${r.status === 'PENDING' ? 'row-pending ' : ''}${r.matched_sms?.match_status === 'auto_review' ? (r.kind === 'payout' ? 'sms-review-neon-out' : 'sms-review-neon-in') : ''}`}>
                         <td><button type="button" className="tx-expand-btn" onClick={() => toggleExpanded(rowKey)} aria-expanded={isExpanded} aria-label={isExpanded ? t('إغلاق التفاصيل', 'Collapse details') : t('فتح التفاصيل', 'Expand details')}>{isExpanded ? <ChevronDown size={15}/> : <ChevronRight size={15}/>}</button></td>
                         <td><div className="portal-row-actions">{canOpenModal ? <button type="button" className="tx-action-primary tx-action-icon" onClick={() => openDetail(r.ontarget_ref!)} title={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')} aria-label={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')}>{r.status === 'PENDING' ? <Pencil size={17}/> : <Eye size={17}/>}</button> : <Link className="tx-action-primary tx-action-icon" to={details} title={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')} aria-label={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')}>{r.status === 'PENDING' ? <Pencil size={17}/> : <Eye size={17}/>}</Link>}{id && (r.kind === 'deposit' ? <TransactionEditDialog iconOnly txId={Number(id)} ontargetRef={r.ontarget_ref} status={r.status} amount={r.amount} currency={r.currency} gateway={r.gateway} currentReceivingWallet={r.to_account_number ?? r.receiving_wallet} onDone={() => void load()} /> : <Link className="btn-ghost btn-sm tx-action-icon" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}&edit=1`} title={t('تعديل المعاملة', 'Edit transaction')} aria-label={t('تعديل المعاملة', 'Edit transaction')}><Pencil size={17}/></Link>)}{proofUrl && <button type="button" className="tx-proof-icon tx-action-icon" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id), onApprove: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'approve'); setProof(null) } : undefined, onDecline: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'decline'); setProof(null) } : undefined })} aria-label={t('عرض الإثبات', 'View proof')} title={t('عرض الإثبات', 'View proof')}><Image size={17}/></button>}</div></td>
-                        <td className="mono">{canOpenModal ? <button type="button" className="transaction-cell-link tx-id-link" onClick={() => openDetail(r.ontarget_ref!)}>{id}</button> : <Link className="transaction-cell-link" to={details}>{r.is_checkout_session ? r.ontarget_ref : id}</Link>}{r.is_blacklisted && <span className="blacklist-marker" title={t('رقم الهاتف محظور — رفض تلقائي', 'Phone blacklisted — auto-decline')} aria-label={t('رقم الهاتف محظور', 'Phone blacklisted')}>🚫</span>}{r.is_checkout_session && <span className="deposit-kind is-first">🔗 Payment link</span>}{!r.is_checkout_session && r.ontarget_ref && String(r.ontarget_ref) !== String(id) && <div className="cell-sub mono">{r.ontarget_ref}</div>}{(r.merchant_reference ?? r.merchant_tx_reference) && <div className="cell-sub mono" title="NGPay merchant reference">{r.merchant_reference ?? r.merchant_tx_reference}</div>}{r.kind === 'deposit' && !r.is_checkout_session && <span className={`deposit-kind ${r.deposit_kind === 'retention_deposit' ? 'is-retention' : 'is-first'}`}>{r.deposit_kind === 'retention_deposit' ? `↻ ${t('Retention','Retention')}` : `★ ${t('First','First')}`}</span>}</td>
+                        <td className="mono">{canOpenModal ? <button type="button" className="transaction-cell-link tx-id-link" onClick={() => openDetail(r.ontarget_ref!)}>{id}</button> : <Link className="transaction-cell-link" to={details}>{r.is_checkout_session ? r.ontarget_ref : id}</Link>}{r.is_blacklisted && <span className="blacklist-marker" title={t('رقم الهاتف محظور — رفض تلقائي', 'Phone blacklisted — auto-decline')} aria-label={t('رقم الهاتف محظور', 'Phone blacklisted')}>🚫</span>}{r.is_checkout_session && <span className="deposit-kind is-first">🔗 Payment link</span>}{identifiers.filter((value) => value !== String(id)).map((value) => <div key={value} className="cell-sub mono">{value}</div>)}{isDeclinedDuplicate && <span className="deposit-kind is-declined-duplicate">⚠ {t('مرفوض مكرر','Declined duplicate')}</span>}{r.kind === 'deposit' && !r.is_checkout_session && <span className={`deposit-kind ${r.deposit_kind === 'retention_deposit' ? 'is-retention' : 'is-first'}`}>{r.deposit_kind === 'retention_deposit' ? `↻ ${t('Retention','Retention')}` : `★ ${t('First','First')}`}</span>}</td>
                         {shownColumns.map((c) => cell(c.id))}
                       </tr>
                       {isExpanded && <tr key={`${rowKey}-details`} className="tx-expanded-row"><td colSpan={3 + shownColumns.length}><div className="tx-expanded-split">
@@ -540,10 +568,11 @@ export default function Transactions() {
                         <div><span>{t('المحفظة المستلمة', 'Receiving wallet')}</span>{wallet ? <Link className="mono transaction-cell-link" to={`/transactions?type=deposit&q=${encodeURIComponent(wallet)}`}>{wallet}</Link> : '—'}</div>
                         <div><span>{t('التاجر', 'Merchant')}</span><MerchantLogo merchant={r.merchant ?? r.master_merchant}/></div>
                         <div><span>{t('البوابة', 'Gateway')}</span><strong>{r.gateway ?? '—'}</strong></div>
-                        <div><span>{t('التكرار', 'Duplicates')}</span>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First transaction')}</div>
+                        <div><span>{t('معرفات العملية', 'Transaction IDs')}</span><strong className="mono">{identifiers.length ? identifiers.join(' · ') : '—'}</strong></div>
+                        <div><span>{t('التكرار', 'Duplicates')}</span>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First transaction')}{isDeclinedDuplicate && <span className="deposit-kind is-declined-duplicate">⚠ {t('مرفوض مكرر','Declined duplicate')}</span>}</div>
                         <div><span>{t('اعتمد بواسطة', 'Approved by')}</span><strong>{r.status === 'PENDING' ? '—' : (r.decision_actor ?? (isAutomaticApprovalActor(r.approved_by) ? t('آلي (Auto)', 'Auto') : r.approved_by))}</strong></div>
                       </div>
-                      <div className="tx-expanded-actions">{r.status === 'PENDING' && !r.is_checkout_session && r.kind === 'deposit' && can('deposits','can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r,'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.status === 'PENDING' && r.kind === 'payout' && can('payouts','can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.kind === 'deposit' && r.status === 'DECLINED' && !r.matched_sms && can('sms_live','can_edit') && <Link className="btn-ghost btn-sm danger" to={smsAssignHref(r)}>🔗✅ {t('ربط واعتماد SMS', 'Link & approve SMS')}</Link>}{r.is_checkout_session && <span className="cell-sub">{t('جلسة رابط دفع — بانتظار ظهور المعاملة المزوّدة', 'Payment-link session — waiting for provider transaction')}</span>}</div>
+                      <div className="tx-expanded-actions">{r.status === 'PENDING' && !r.is_checkout_session && r.kind === 'deposit' && can('deposits','can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r,'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.status === 'PENDING' && r.kind === 'payout' && can('payouts','can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.kind === 'deposit' && r.status === 'DECLINED' && !r.matched_sms && can('sms_live','can_edit') && <><Link className="btn-primary btn-sm" to={liveSmsHref(r)}>📨 {t('SMS مباشر', 'Live SMS')}</Link><Link className="btn-ghost btn-sm danger" to={smsAssignHref(r)}>🔗✅ {t('ربط واعتماد SMS', 'Link & approve SMS')}</Link></>}{r.is_checkout_session && <span className="cell-sub">{t('جلسة رابط دفع — بانتظار ظهور المعاملة المزوّدة', 'Payment-link session — waiting for provider transaction')}</span>}</div>
                       <details className="tx-raw-details" onToggle={(e) => { if (e.currentTarget.open) setRawOpen((current) => current.has(rowKey) ? current : new Set(current).add(rowKey)) }}><summary>{t('عرض تفاصيل Raw', 'View raw details')}</summary>{rawOpen.has(rowKey) ? (r.raw_preview ? <pre>{JSON.stringify(r.raw_preview, null, 2)}</pre> : <p className="cell-sub">{t('لا تتوفر بيانات Raw لهذا الصف.', 'Raw data is not available for this row.')}</p>) : null}</details>
                       </div>
                       <div className="tx-expanded-sms-side">
@@ -567,10 +596,12 @@ export default function Transactions() {
               const clientPhone = r.kind === 'deposit' ? r.sender_number : r.mobile_no
               const wallet = r.kind === 'deposit' ? (r.to_account_number ?? r.receiving_wallet) : null
               const proofUrl = r.kind === 'deposit' ? r.proof_image_url : r.image_url
+              const isDeclinedDuplicate = r.status === 'DECLINED' && (r.client_transaction_count ?? 1) > 1
+              const identifiers = transactionIdentifiers(r)
               const canOpenModal = r.kind === 'deposit' && !r.is_checkout_session && !!r.ontarget_ref
               const details = r.is_checkout_session ? `/payment-status?id=${encodeURIComponent(r.checkout_session_id ?? '')}` : r.kind === 'deposit' && r.ontarget_ref ? `/transactions/${encodeURIComponent(r.ontarget_ref)}` : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`
               return <article key={`${r.kind}-${r.checkout_session_id ?? id}`} className={`all-tx-card${r.status === 'PENDING' ? ' pending' : ''}`}>
-                <header>{canOpenModal ? <button type="button" className="mono transaction-cell-link tx-id-link" onClick={() => openDetail(r.ontarget_ref!)}>{r.ontarget_ref}</button> : <Link className="mono transaction-cell-link" to={details}>{r.ontarget_ref ?? id}</Link>}{r.is_blacklisted && <span className="blacklist-marker" title={t('رقم الهاتف محظور — رفض تلقائي', 'Phone blacklisted — auto-decline')} aria-label={t('رقم الهاتف محظور', 'Phone blacklisted')}>🚫</span>}<span className={`pay-status-badge ${st.cls}`}>{st.label}</span></header>
+                <header>{canOpenModal ? <button type="button" className="mono transaction-cell-link tx-id-link" onClick={() => openDetail(r.ontarget_ref!)}>{r.ontarget_ref}</button> : <Link className="mono transaction-cell-link" to={details}>{r.ontarget_ref ?? id}</Link>}{r.is_blacklisted && <span className="blacklist-marker" title={t('رقم الهاتف محظور — رفض تلقائي', 'Phone blacklisted — auto-decline')} aria-label={t('رقم الهاتف محظور', 'Phone blacklisted')}>🚫</span>}<span className={`pay-status-badge ${st.cls}`}>{st.label}</span>{isDeclinedDuplicate && <span className="deposit-kind is-declined-duplicate">⚠ {t('مرفوض مكرر','Declined duplicate')}</span>}</header>
                 <div className="all-tx-card-amount mono">
                   {money(r.amount, r.currency ?? 'EGP')}
                   {r.amount_sync_status === 'mismatch' && <div className="amount-critical-warning" title={r.amount_mismatch_reason ?? 'Maven amount confirmation required'}>⚠ CRITICAL</div>}
@@ -587,14 +618,15 @@ export default function Transactions() {
                   <div><dt>{t('حساب المرسل', 'Sender account')}</dt><dd className="mono">{r.kind === 'deposit' ? (r.sender_account_number ?? r.sender_number ?? '—') : '—'}</dd></div>
                   <div><dt>{t('المحفظة', 'Wallet')}</dt><dd className="mono">{wallet ?? '—'}</dd></div>
                   <div><dt>{t('نوع الإيداع', 'Deposit type')}</dt><dd>{r.kind === 'deposit' ? <span className={`deposit-kind ${r.deposit_kind === 'retention_deposit' ? 'is-retention' : 'is-first'}`}>{r.deposit_kind === 'retention_deposit' ? `↻ ${t('Retention deposit','Retention deposit')}` : `★ ${t('First deposit','First deposit')}`}</span> : '—'}</dd></div>
-                  <div><dt>{t('التكرار', 'Duplicates')}</dt><dd>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First')}</dd></div>
+                  <div><dt>{t('معرفات العملية', 'Transaction IDs')}</dt><dd className="mono">{identifiers.length ? identifiers.join(' · ') : '—'}</dd></div>
+                  <div><dt>{t('التكرار', 'Duplicates')}</dt><dd>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First')}{isDeclinedDuplicate && <span className="deposit-kind is-declined-duplicate">⚠ {t('مرفوض مكرر','Declined duplicate')}</span>}</dd></div>
                   <div><dt>{t('اعتمد بواسطة', 'Approved by')}</dt><dd>{r.status === 'PENDING' ? '—' : (r.decision_actor ?? (isAutomaticApprovalActor(r.approved_by) ? t('آلي (Auto)', 'Auto') : r.approved_by))}</dd></div>
                   <div><dt>{t('الوقت', 'Time')}</dt><dd className="mono">{depositTime(r)}</dd></div>
                 </dl>
                 <div className="all-tx-card-actions">
                   {id && (r.kind === 'deposit' ? <TransactionEditDialog txId={Number(id)} ontargetRef={r.ontarget_ref} status={r.status} amount={r.amount} currency={r.currency} gateway={r.gateway} currentReceivingWallet={r.to_account_number ?? r.receiving_wallet} onDone={() => void load()} /> : <Link className="btn-ghost btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}&edit=1`}><Pencil size={13}/> {t('تعديل', 'Edit')}</Link>)}
                   {r.status === 'PENDING' && !r.is_checkout_session && r.kind === 'deposit' && can('deposits', 'can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r, 'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost danger btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r, 'decline')}>{t('رفض', 'Reject')}</button></>}
-                  {r.kind === 'deposit' && r.status === 'DECLINED' && !r.matched_sms && can('sms_live','can_edit') && <Link className="btn-ghost btn-sm" to={smsAssignHref(r)}>🔗 {t('تعيين SMS', 'Assign SMS')}</Link>}
+                  {r.kind === 'deposit' && r.status === 'DECLINED' && !r.matched_sms && can('sms_live','can_edit') && <><Link className="btn-primary btn-sm" to={liveSmsHref(r)}>📨 {t('SMS مباشر', 'Live SMS')}</Link><Link className="btn-ghost btn-sm" to={smsAssignHref(r)}>🔗✅ {t('تعيين واعتماد SMS', 'Assign & approve SMS')}</Link></>}
                   {r.status === 'PENDING' && r.kind === 'payout' && can('payouts', 'can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost danger btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r, 'decline')}>{t('رفض', 'Reject')}</button></>}
                   {canOpenModal ? <button type="button" className="btn-ghost btn-sm" onClick={() => openDetail(r.ontarget_ref!)}>{t('التفاصيل', 'Details')}</button> : <Link className="btn-ghost btn-sm" to={details}>{t('التفاصيل', 'Details')}</Link>}
                 </div>

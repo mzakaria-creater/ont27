@@ -2888,6 +2888,11 @@ a.command-metric:hover { border-color: var(--accent); transform: translateY(-1px
   background: color-mix(in srgb, var(--status-paid) 10%, transparent);
   border-color: color-mix(in srgb, var(--status-paid) 24%, transparent);
 }
+.deposit-kind.is-declined-duplicate {
+  color: var(--status-declined, #b42335);
+  background: color-mix(in srgb, var(--status-declined, #b42335) 12%, transparent);
+  border-color: color-mix(in srgb, var(--status-declined, #b42335) 30%, transparent);
+}
 .deposit-kind svg { flex: none; }
 .dep-ref {
   background: none; border: 0; padding: 0; cursor: pointer;
