@@ -138,7 +138,20 @@ Deno.serve(async (req) => {
       let totalAmountChanges = 0;
       for (const [chunkFrom, chunkTo] of chunkWindows(from, to)) {
         const chunkStarted = Date.now();
-        const mapped = await fetchMapped(cookie, chunkFrom, chunkTo, merchantFilter);
+        let mapped = await fetchMapped(cookie, chunkFrom, chunkTo, merchantFilter);
+        // The collector login can authenticate while the supplier role has an
+        // empty P2P list. Try the configured operator account before declaring
+        // a backfill window empty, so a valid transaction is not skipped.
+        if (mapped.length === 0) {
+          const operatorUser = (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_OPERATOR_USERNAME").eq("owner_name", "global").maybeSingle()).data?.value;
+          const operatorPass = (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_OPERATOR_PASSWORD").eq("owner_name", "global").maybeSingle()).data?.value;
+          if (operatorUser && operatorPass) {
+            try {
+              const operatorCookie = await login(operatorUser, operatorPass, "SupplierOperator");
+              mapped = await fetchMapped(operatorCookie, chunkFrom, chunkTo, merchantFilter);
+            } catch { /* retain the primary account result */ }
+          }
+        }
         const ids = mapped.map((row) => row.tx_id);
         const local = new Map<number, any>();
         for (let i = 0; i < ids.length; i += 500) {
@@ -156,6 +169,11 @@ Deno.serve(async (req) => {
           const old = local.get(Number(row.tx_id));
           if (!old) {
             inserted++;
+            if (!dryRun) {
+              const insertRow = { ...providerPatch(row, nowIso), first_seen_at: createdAt(row, nowIso), last_status_change: nowIso, paid_source: row.status === "PAID" ? "reconciliation" : null, row_hash: row.row_hash };
+              const { error } = await sb.from("maven_transactions").upsert(insertRow, { onConflict: "tx_id", ignoreDuplicates: false });
+              if (error) throw new Error(`insert ${row.tx_id}: ${error.message}`);
+            }
             continue;
           }
           const amountDiff = old.amount != null && Number(old.amount) !== Number(row.amount);
