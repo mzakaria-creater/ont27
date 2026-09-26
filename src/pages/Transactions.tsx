@@ -369,6 +369,8 @@ export default function Transactions() {
 
   const smsAssignHref = (row: TxRow) => {
     const query = new URLSearchParams()
+    const providerId = row.kind === 'deposit' ? row.tx_id : row.maven_id
+    if (providerId != null) query.set('q', String(providerId))
     if (row.amount != null) query.set('amount', String(row.amount))
     const day = row.first_seen_at?.slice(0, 10)
     if (day) { query.set('from', day); query.set('to', day) }
