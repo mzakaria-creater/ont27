@@ -110,6 +110,19 @@ Deno.serve(async (req) => {
     if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from >= to) return json({ ok: false, error: "invalid_window" }, 400);
     windowStart = from;
 
+    // The browser pump and the Vercel cron can hit this function at the same
+    // time.  Serialize live Maven calls here as a final safety net; otherwise
+    // concurrent logins can trigger provider throttling and make a healthy
+    // account appear to have an empty transaction list.
+    if (mode === "live") {
+      const { data: lease, error: leaseError } = await sb.rpc("claim_provider_sync_lease", {
+        p_lease_name: "maven_reconcile_edge_live",
+        p_ttl_seconds: 45,
+      });
+      if (leaseError) throw new Error(`reconcile lease: ${leaseError.message}`);
+      if (lease !== true) return json({ ok: true, mode, skipped: "maven_reconcile_lease" }, 202);
+    }
+
     const user = (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_COLLECTOR_USERNAME").eq("owner_name", "global").maybeSingle()).data?.value ?? (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_USERNAME").eq("owner_name", "global").maybeSingle()).data?.value;
     const pass = (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_COLLECTOR_PASSWORD").eq("owner_name", "global").maybeSingle()).data?.value ?? (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_PASSWORD").eq("owner_name", "global").maybeSingle()).data?.value;
     if (!user || !pass) return json({ ok: false, error: "Missing Maven credentials in maven_runtime_config" }, 500);
