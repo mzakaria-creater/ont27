@@ -323,7 +323,7 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
         const localTs = new Map<number, number>()
         // The guard needs our CURRENT values, not just the timestamp: a blocked
         // row is rewritten with them rather than having the keys removed.
-        const localHold = new Map<number, { status: unknown; last_status_change: unknown }>()
+        const localHold = new Map<number, { status: unknown; last_status_change: unknown; modified_utc: unknown }>()
         // A full page is 1000 ids, and PostgREST puts .in() in the query
         // string — one request would build a ~10KB URL and be rejected. It
         // must also THROW on failure rather than fall through: an empty map
@@ -333,19 +333,30 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
         for (let i = 0; i < ids.length; i += LOOKUP_CHUNK) {
           const { data: locals, error: localErr } = await db
             .from('maven_transactions')
-            .select('tx_id, status, last_status_change')
+            .select('tx_id, status, last_status_change, modified_utc')
             .in('tx_id', ids.slice(i, i + LOOKUP_CHUNK))
           if (localErr) throw new Error(`status guard lookup: ${localErr.message}`)
           for (const l of locals ?? []) {
             localTs.set(l.tx_id, l.last_status_change ? Date.parse(l.last_status_change) : 0)
-            localHold.set(l.tx_id, { status: l.status, last_status_change: l.last_status_change })
+            localHold.set(l.tx_id, { status: l.status, last_status_change: l.last_status_change, modified_utc: l.modified_utc })
           }
         }
         payload = payload.map((r) => {
           const mine = localTs.get(r.tx_id as number)
           if (mine == null) return r // not held locally yet — a plain insert
           const raw = r.last_status_change
-          const theirs = typeof raw === 'string' ? Date.parse(raw) : NaN
+          const statusStamp = typeof raw === 'string' ? Date.parse(raw) : NaN
+          const providerStamp = typeof r.modified_utc === 'string' ? Date.parse(r.modified_utc) : NaN
+          const theirs = Math.max(Number.isFinite(statusStamp) ? statusStamp : 0, Number.isFinite(providerStamp) ? providerStamp : 0)
+          const held = localHold.get(r.tx_id as number)
+          const localProviderStamp = typeof held?.modified_utc === 'string' ? Date.parse(held.modified_utc) : NaN
+          // The legacy collector often refreshes Maven status/ModifiedDateUTC
+          // before it refreshes last_status_change. Treat that provider stamp
+          // as authoritative so a Maven-side PAID/DECLINED action cannot be
+          // held at PENDING by the local timestamp guard.
+          if (held && held.status !== r.status && Number.isFinite(providerStamp) && (!Number.isFinite(localProviderStamp) || providerStamp > localProviderStamp)) {
+            return { ...r, last_status_change: new Date(providerStamp).toISOString() }
+          }
           // An incoming row with no usable timestamp cannot prove it is newer,
           // so it does not get to move a status we already hold.
           if (Number.isFinite(theirs) && theirs >= mine) return r
@@ -357,7 +368,6 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
           // was caught into the results object that nothing reads, so status
           // updates simply stopped arriving while new rows kept syncing through
           // the other pass. Same protection, homogeneous payload.
-          const held = localHold.get(r.tx_id as number)
           return { ...r, status: held?.status, last_status_change: held?.last_status_change }
         })
 
@@ -370,7 +380,9 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
           const txId = Number(r.tx_id)
           const held = localHold.get(txId)
           if (!held || held.status === r.status) return false
-          const theirs = typeof r.last_status_change === 'string' ? Date.parse(r.last_status_change) : NaN
+          const statusStamp = typeof r.last_status_change === 'string' ? Date.parse(r.last_status_change) : NaN
+          const providerStamp = typeof r.modified_utc === 'string' ? Date.parse(r.modified_utc) : NaN
+          const theirs = Math.max(Number.isFinite(statusStamp) ? statusStamp : 0, Number.isFinite(providerStamp) ? providerStamp : 0)
           const mine = localTs.get(txId) ?? 0
           return Number.isFinite(theirs) && theirs > mine
         })
@@ -382,9 +394,7 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
           // action, not an automation/agent decision. Preserve that identity
           // on the mirrored transaction so every UI can render the same actor.
           for (const row of providerActions) {
-            const actor = String(row.approved_by ?? '').trim().toLowerCase()
-            const isAutomationMarker = !actor || actor === 'manual' || actor === 'auto' || actor === 'auto_trigger' || actor === 'automation' || actor.startsWith('auto_') || actor.startsWith('system')
-            if (['PAID', 'APPROVED', 'DECLINED'].includes(String(row.status ?? '').toUpperCase()) && isAutomationMarker) {
+            if (['PAID', 'APPROVED', 'DECLINED'].includes(String(row.status ?? '').toUpperCase())) {
               row.approved_by = 'Maven Team'
             }
           }

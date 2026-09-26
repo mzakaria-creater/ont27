@@ -168,6 +168,11 @@ Deno.serve(async (req) => {
             if (statusDiff) {
               patch.last_status_change = nowIso;
               patch.paid_source = row.status === "PAID" ? "reconciliation" : null;
+              // This transition was observed from Maven itself, so the
+              // provider is the actor regardless of any stale local label.
+              // Keep the UI from showing a local operator or Pending action
+              // after Maven has already completed the transaction.
+              patch.approved_by = "Maven Team";
               await sb.from("maven_transaction_history").insert({ tx_id: row.tx_id, old_status: old.status, new_status: row.status, source: "reconciliation", actor: "maven-reconcile-final-status", provider_modified_at: row.modified_utc ?? null });
               await sb.from("audit_log").insert({ entity: "maven_transactions", entity_id: String(row.tx_id), action: "deposit.status_reconciled_from_provider", actor_name: "maven-reconcile-final-status", before: { status: old.status }, after: { status: row.status } });
               if (old.status === "PAID" && row.status !== "PAID") { patch.needs_review = true; }
@@ -265,6 +270,8 @@ Deno.serve(async (req) => {
       if (old.status !== row.status) {
         patch.last_status_change = nowIso;
         patch.paid_source = row.status === "PAID" ? "reconciliation" : null;
+        // Status changes read directly from Maven are provider actions.
+        patch.approved_by = "Maven Team";
         if (old.status === "PAID" && row.status !== "PAID") { patch.needs_review = true; alerts++; }
         await sb.from("maven_transaction_history").insert({ tx_id: row.tx_id, old_status: old.status, new_status: row.status, source: "reconciliation", actor: "maven-reconcile-final-status", provider_modified_at: row.modified_utc ?? null });
         await sb.from("audit_log").insert({ entity: "maven_transactions", entity_id: String(row.tx_id), action: "deposit.status_reconciled_from_provider", actor_name: "maven-reconcile-final-status", before: { status: old.status }, after: { status: row.status } });
