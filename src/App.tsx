@@ -48,6 +48,7 @@ const AdminPage = lazy(() => import('./pages/AdminPage'))
 const Reports = lazy(() => import('./pages/Reports'))
 const EnterpriseReport = lazy(() => import('./pages/EnterpriseReport'))
 const Review = lazy(() => import('./pages/Review'))
+const RecoverTransactions = lazy(() => import('./pages/RecoverTransactions'))
 const Mismatch = lazy(() => import('./pages/Mismatch'))
 const Telegram = lazy(() => import('./pages/Telegram'))
 const Binance = lazy(() => import('./pages/Binance'))
@@ -567,6 +568,7 @@ export default function App() {
             <Route path="/hr" element={<PageGate keys={['reports','users']}><StaffAttendance /></PageGate>} />
             <Route path="/staff-attendance" element={<Navigate to="/hr" replace />} />
             <Route path="/review" element={<PageGate keys={['review','audit_log','audit-logs']}><Review /></PageGate>} />
+            <Route path="/recover-transactions" element={<PageGate keys={['deposits','transactions','all_transactions']}><RecoverTransactions /></PageGate>} />
             <Route path="/mismatch" element={<PageGate keys={['review','audit_log','audit-logs','risk','risk_audit','compliance']}><Mismatch /></PageGate>} />
             <Route path="/telegram" element={<PageGate keys={['telegram_bot','automation']}><Telegram /></PageGate>} />
             <Route path="/binance" element={<PageGate keys={['binance_p2p_config','binance_p2p','treasury']}><Binance /></PageGate>} />

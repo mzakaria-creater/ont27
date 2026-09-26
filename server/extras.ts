@@ -376,6 +376,43 @@ extraRoutes.get(
   },
 )
 
+// ---- Recoverable transactions ----------------------------------------------
+// Deposits that were DECLINED but have since picked up SMS evidence the
+// matcher found too late to have influenced the original decision.
+// repairPaidSmsMatches() (server/smsMatcher.ts) already refuses to
+// auto-approve a declined row — it always marks the link match_status
+// 'auto_review' for them — so this is purely a dedicated worklist for
+// that existing, always-review-only signal. Recovering one still goes
+// through the same POST /api/deposits/:id/decision approve action every
+// other approval uses; nothing here approves anything on its own.
+extraRoutes.get('/transactions/recoverable', requireAnyPerm(['transactions', 'all_transactions', 'deposits'], 'can_view'), async (c) => {
+  const limit = Math.min(Math.max(Number(c.req.query('limit')) || 200, 1), 500)
+  const { data: smsRows, error: smsErr } = await db.from('inbound_sms')
+    .select('id, matched_transaction_id, consumed_by_tx_id, received_at, amount, balance_after, sender_name, sender_number, receiver_number, sms_first_line, raw_sms, raw_payload, message, device_name, provider, sms_category, match_status, matched')
+    .eq('match_status', 'auto_review')
+    .eq('sms_category', 'deposit')
+    .not('matched_transaction_id', 'is', null)
+    .order('received_at', { ascending: false })
+    .limit(1000)
+  if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
+  const smsByTx = new Map<number, Record<string, unknown>>()
+  for (const sms of smsRows ?? []) {
+    const txId = Number(sms.matched_transaction_id)
+    if (Number.isFinite(txId) && !smsByTx.has(txId)) smsByTx.set(txId, sms)
+  }
+  const txIds = [...smsByTx.keys()]
+  if (!txIds.length) return c.json({ rows: [] })
+  const { data: txRows, error: txErr } = await db.from('maven_transactions')
+    .select(DEPOSIT_COLS)
+    .in('tx_id', txIds)
+    .eq('status', 'DECLINED')
+    .order('first_seen_at', { ascending: false })
+    .limit(limit)
+  if (txErr) return c.json({ error: 'db_error', detail: txErr.message }, 500)
+  const rows = (txRows ?? []).map((row) => ({ ...withSenderAccount(row), matched_sms: smsByTx.get(Number(row.tx_id)) ?? null }))
+  return c.json({ rows })
+})
+
 // Cash-out settlement ledger for withdrawal SMS reconciliation. These entries
 // are local operational records and never mutate Maven transactions.
 extraRoutes.get('/cash-settlements', requireAnyPerm(['reports', 'advanced_analysis', 'settlements', 'sms_live'], 'can_view'), async (c) => {
