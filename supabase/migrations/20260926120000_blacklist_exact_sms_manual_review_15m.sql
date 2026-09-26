@@ -39,10 +39,9 @@ BEGIN
           = right(regexp_replace(coalesce(v_tx.receiving_wallet, v_tx.to_account_number, ''), '\D', '', 'g'), 10)
   ) INTO v_blacklisted_exact_sms;
   IF v_blacklisted_exact_sms THEN
-    SELECT rq.updated_at INTO v_manual_review_at
-    FROM public.review_queue rq
-    WHERE rq.tx_id = v_tx.tx_id AND rq.source = 'maven'
-    ORDER BY rq.updated_at DESC NULLS LAST LIMIT 1;
+    SELECT greatest(max(s.processed_at), max(s.received_at)) INTO v_manual_review_at
+    FROM public.inbound_sms s
+    WHERE (s.consumed_by_tx_id = v_tx.tx_id OR s.matched_transaction_id = v_tx.tx_id OR s.maven_transaction_id = v_tx.tx_id::text);
     IF v_manual_review_at IS NULL OR now() < v_manual_review_at + interval '15 minutes' THEN
       RETURN 'blacklisted_exact_sms_manual_review';
     END IF;
