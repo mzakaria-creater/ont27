@@ -73,8 +73,13 @@ const PAGE = 1000
 // Maven deposit/payout rows are now reconciled directly from Maven by the V2
 // Edge Function. Keeping them in this legacy mirror list would allow a stale
 // old-project collector row to overwrite a live provider status.
-const LEGACY_MIRROR_TABLES = new Set(['inbound_sms', 'crm_clients', 'api_risk_blacklist', 'wallet_device_map'])
-const FAST_TABLES = new Set(['inbound_sms'])
+// Maven direct-list reconciliation is the preferred source, but the old
+// production collector remains a live, already-authorized mirror. Keep it in
+// the fast path as a fail-safe so a provider list outage cannot freeze the
+// panel at its last transaction. The status/timestamp guard below prevents an
+// older collector row from undoing a newer local/provider decision.
+const LEGACY_MIRROR_TABLES = new Set(['maven_transactions', 'inbound_sms', 'crm_clients', 'api_risk_blacklist', 'wallet_device_map'])
+const FAST_TABLES = new Set(['maven_transactions', 'inbound_sms'])
 
 // Two cadences, because the two passes cost very different amounts.
 //
@@ -593,7 +598,9 @@ deltaSyncRoutes.get('/delta-sync', async (c) => {
   let directOk = true
   try { mergeReconcileResult(results, await reconcileMaven('live')) }
   catch (e) { directOk = false; results.maven_reconcile = `error: ${(e as Error).message}` }
-  Object.assign(results, await syncOnce('fast').catch((e) => ({ error: `error: ${(e as Error).message}` })))
+  const mirror = await syncOnce('fast').catch((e) => ({ error: `error: ${(e as Error).message}` }))
+  Object.assign(results, mirror)
+  if (!directOk && Number((mirror as Record<string, unknown>).maven_transactions ?? 0) > 0) directOk = true
   const ok = directOk && resultOk(results)
   return c.json({ ok, mode: 'fast', results, at: new Date().toISOString() }, ok ? 200 : 502)
 })
@@ -610,7 +617,9 @@ deltaSyncRoutes.get('/delta-sync-full', async (c) => {
   let directOk = true
   try { mergeReconcileResult(results, await reconcileMaven('repair')) }
   catch (e) { directOk = false; results.maven_reconcile = `error: ${(e as Error).message}` }
-  Object.assign(results, await syncOnce('full').catch((e) => ({ error: `error: ${(e as Error).message}` })))
+  const mirror = await syncOnce('full').catch((e) => ({ error: `error: ${(e as Error).message}` }))
+  Object.assign(results, mirror)
+  if (!directOk && Number((mirror as Record<string, unknown>).maven_transactions ?? 0) > 0) directOk = true
   const ok = directOk && resultOk(results)
   return c.json({ ok, mode: 'full', results, at: new Date().toISOString() }, ok ? 200 : 502)
 })
@@ -729,7 +738,9 @@ deltaSyncRoutes.post('/delta-sync', async (c) => {
   let directOk = true
   try { mergeReconcileResult(results, await reconcileMaven('live')) }
   catch (e) { directOk = false; results.maven_reconcile = `error: ${(e as Error).message}` }
-  Object.assign(results, await syncOnce(mode).catch((e) => ({ error: `error: ${(e as Error).message}` })))
+  const mirror = await syncOnce(mode).catch((e) => ({ error: `error: ${(e as Error).message}` }))
+  Object.assign(results, mirror)
+  if (!directOk && Number((mirror as Record<string, unknown>).maven_transactions ?? 0) > 0) directOk = true
   const ok = directOk && resultOk(results)
   return c.json({ ok, mode, results, at: new Date().toISOString() }, ok ? 200 : 502)
 })
