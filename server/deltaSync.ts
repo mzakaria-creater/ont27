@@ -416,7 +416,31 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
       }
 
       const { error: upErr } = await db.from(table).upsert(payload, { onConflict: pk })
-      if (upErr) throw new Error(`upsert: ${upErr.message}`)
+      if (upErr) {
+        // onConflict already resolves any conflict on `pk` — a duplicate-key
+        // error here can only be a *different* unique constraint (seen live:
+        // maven_transactions_ontarget_ref_key, meaning two different tx_id
+        // rows from the source share one ontarget_ref). Left as a hard throw,
+        // one poisoned row blocked the whole page forever: offset never
+        // advances past a failed upsert, so every future run re-fetched and
+        // re-failed on the exact same page, and every valid row behind it in
+        // that table stopped syncing. Fall back to one row at a time so only
+        // the genuine offender is skipped — logged clearly for follow-up,
+        // never silently guessed at — while the rest of the page still lands.
+        if (/duplicate key value violates unique constraint/i.test(upErr.message) && payload.length > 1) {
+          let failures = 0
+          for (const row of payload) {
+            const { error: rowErr } = await db.from(table).upsert([row], { onConflict: pk })
+            if (rowErr) {
+              failures++
+              console.error('deltaSync: row skipped (secondary unique-constraint conflict)', { table, pk, pkValue: (row as Record<string, unknown>)[pk], error: rowErr.message })
+            }
+          }
+          if (failures === payload.length) throw new Error(`upsert: ${upErr.message}`)
+        } else {
+          throw new Error(`upsert: ${upErr.message}`)
+        }
+      }
       if (table === 'maven_transactions' && newlyApproved.length) {
         const emailResults = await Promise.allSettled(newlyApproved.map((row) => notifyApprovedTransaction({
           ...row,
