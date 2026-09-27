@@ -409,7 +409,18 @@ extraRoutes.get('/transactions/recoverable', requireAnyPerm(['transactions', 'al
     .order('first_seen_at', { ascending: false })
     .limit(limit)
   if (txErr) return c.json({ error: 'db_error', detail: txErr.message }, 500)
-  const rows = (txRows ?? []).map((row) => ({ ...withSenderAccount(row), matched_sms: smsByTx.get(Number(row.tx_id)) ?? null }))
+  const declinedIds = (txRows ?? []).map((row) => Number(row.tx_id)).filter(Number.isFinite)
+  const decisionByTx = new Map<number, { reason: string | null; actor_name: string | null }>()
+  if (declinedIds.length) {
+    const { data: decisions } = await db.from('deposit_decision_log').select('tx_id, reason, actor_name, created_at').in('tx_id', declinedIds).order('created_at', { ascending: false })
+    for (const decision of decisions ?? []) if (!decisionByTx.has(Number(decision.tx_id))) decisionByTx.set(Number(decision.tx_id), { reason: decision.reason ?? null, actor_name: decision.actor_name ?? null })
+  }
+  const rows = (txRows ?? []).map((row) => ({
+    ...withSenderAccount(row),
+    matched_sms: smsByTx.get(Number(row.tx_id)) ?? null,
+    decline_reason: decisionByTx.get(Number(row.tx_id))?.reason ?? null,
+    decline_actor: decisionByTx.get(Number(row.tx_id))?.actor_name ?? null,
+  }))
   return c.json({ rows })
 })
 

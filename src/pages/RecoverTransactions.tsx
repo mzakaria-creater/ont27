@@ -42,6 +42,8 @@ interface RecoverRow {
   proof_image_url: string | null
   first_seen_at: string | null
   matched_sms: MatchedSms | null
+  decline_reason: string | null
+  decline_actor: string | null
 }
 
 export default function RecoverTransactions() {
@@ -105,6 +107,7 @@ export default function RecoverTransactions() {
                 <div className="risk-row-card-head"><span className="mono">{r.ontarget_ref ?? r.tx_id}</span><span className="pay-status-badge st-declined">{r.status}</span></div>
                 <div className="cell-sub">{r.merchant ?? '—'} · {r.sender_name ?? r.sender_number ?? '—'}</div>
                 <div className="risk-row-card-foot"><span className="mono">{money(r.amount, r.currency ?? 'EGP')}</span>{r.proof_image_url && <ProofIconButton url={r.proof_image_url} onOpen={setProof} compact/>}</div>
+                {r.decline_reason && <div className="cell-sub recover-decline-reason"><strong>{t('سبب الرفض', 'Decline reason')}:</strong> {r.decline_reason}{r.decline_actor ? ` — ${r.decline_actor}` : ''}</div>}
                 {r.matched_sms && <div className="tx-sms-raw" style={{ marginTop: 6 }}>
                   <span className="tx-sms-label">📨 {t('SMS متأخر', 'Late SMS')}</span>
                   <span className="mono">#{r.matched_sms.id}</span>
@@ -117,9 +120,10 @@ export default function RecoverTransactions() {
             ))}
           </div>
         ) : (
-          <div className="table-wrap"><table className="data-table">
+          <div className="table-wrap"><table className="data-table recover-table">
             <thead><tr>
               <th>{t('المرجع', 'Reference')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('المبلغ', 'Amount')}</th>
+              <th>{t('سبب الرفض', 'Decline reason')}</th>
               <th>{t('دليل SMS المتأخر', 'Late SMS evidence')}</th><th>{t('الإثبات', 'Proof')}</th><th>{t('إجراء', 'Action')}</th>
             </tr></thead>
             <tbody>
@@ -128,6 +132,7 @@ export default function RecoverTransactions() {
                   <td className="mono">{r.ontarget_ref ?? r.tx_id}<div className="cell-sub">{r.first_seen_at ? new Date(r.first_seen_at).toLocaleString() : '—'}</div></td>
                   <td>{r.merchant ?? '—'}<div className="cell-sub">{r.sender_name ?? r.sender_number ?? '—'}</div></td>
                   <td className="mono">{money(r.amount, r.currency ?? 'EGP')}</td>
+                  <td className="recover-decline-reason">{r.decline_reason ?? '—'}{r.decline_actor && <div className="cell-sub">{r.decline_actor}</div>}</td>
                   <td>{r.matched_sms ? <div className="tx-sms-raw">
                     <span className="mono">#{r.matched_sms.id}</span>
                     <span>{r.matched_sms.sender_name ?? r.matched_sms.sender_number ?? '—'}</span>
