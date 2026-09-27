@@ -52,6 +52,8 @@ export default function MZReport() {
   const declined = report?.depositStatuses?.DECLINED?.count ?? 0
   const pending = report?.depositStatuses?.PENDING?.count ?? 0
   const riskCount = declined + pending + (report?.unassigned.count ?? 0)
+  const averagePaidTicket = report?.live.paidCount ? totalVolume / report.live.paidCount : 0
+  const reconciliationGap = Math.max(0, (report?.live.paidCount ?? 0) - (report?.live.linkedPaid ?? 0))
 
   return <main className="mz-report-page" dir="rtl">
     <header className="mz-report-hero">
@@ -70,9 +72,25 @@ export default function MZReport() {
         <article className="mz-kpi slate"><span><Users size={16}/>{t('المحافظ النشطة', 'Active wallets')}</span><strong>{report.live.activeWallets}</strong><small>{t('من نطاق التقرير', 'in selected range')}</small></article>
       </section>
 
+      <section className="mz-insight-grid">
+        <article className="card mz-insight-card revenue"><div className="mz-insight-icon">💹</div><div><small>{t('أداء الإيراد', 'Revenue performance')}</small><strong>{money(totalVolume, 'EGP')}</strong><span>{t('حجم المدفوعات المؤكدة', 'Confirmed paid volume')}</span></div><b>{averagePaidTicket ? `${money(averagePaidTicket, 'EGP')} ${t('متوسط التذكرة', 'avg ticket')}` : '—'}</b></article>
+        <article className="card mz-insight-card health"><div className="mz-insight-icon">🩺</div><div><small>{t('صحة المعاملات', 'Transaction health')}</small><strong>{Number(report.live.successRate ?? 0).toFixed(1)}%</strong><span>{paid} {t('ناجحة', 'successful')} · {pending} {t('معلقة', 'pending')}</span></div><b>{declined} {t('مرفوضة', 'declined')}</b></article>
+        <article className="card mz-insight-card coverage"><div className="mz-insight-icon">📡</div><div><small>{t('تغطية المحافظ', 'Wallet coverage')}</small><strong>{report.live.activeWallets}</strong><span>{t('محافظ نشطة في النطاق', 'active wallets in range')}</span></div><b>{Number(report.live.smsCoverage ?? 0).toFixed(1)}% SMS</b></article>
+        <article className="card mz-insight-card reconcile"><div className="mz-insight-icon">🧾</div><div><small>{t('المطابقة', 'Reconciliation')}</small><strong>{reconciliationGap}</strong><span>{t('مدفوعة بلا ربط SMS', 'paid without SMS link')}</span></div><b>{report.unassigned.count} {t('غير مصنفة', 'unassigned')}</b></article>
+      </section>
+
       <section className="mz-report-grid">
         <article className="card mz-panel mz-wide"><div className="mz-panel-head"><div><h2><BarChart3 size={18}/>{t('الحركة اليومية', 'Daily movement')}</h2><small>{t('إيداعات مقابل سحوبات — قراءة CFO', 'Deposits versus payouts — CFO view')}</small></div><span className="mz-live"><i/>LIVE</span></div><div className="mz-bars">{report.daily.length ? report.daily.slice(-14).map((d) => <div className="mz-bar-day" key={d.date}><div className="mz-bars-stack"><i className="in" style={{ height: `${Math.max(3, d.deposits / maxDaily * 150)}px` }} title={money(d.deposits, 'EGP')}/><i className="out" style={{ height: `${Math.max(3, d.payouts / maxDaily * 150)}px` }} title={money(d.payouts, 'EGP')}/></div><b>{d.date.slice(5)}</b></div>) : <div className="mz-empty">{t('لا توجد حركة في النطاق.', 'No movement in this range.')}</div>}</div><div className="mz-legend"><span><i className="in"/>{t('إيداعات','Deposits')}</span><span><i className="out"/>{t('سحوبات','Payouts')}</span></div></article>
         <article className="card mz-panel"><div className="mz-panel-head"><div><h2><ShieldCheck size={18}/>{t('حالات الإيداع', 'Deposit status')}</h2><small>{t('منظور محاسبي للمخاطر', 'Accounting risk view')}</small></div></div><div className="mz-status-list">{statuses.map(([status, row]) => { const Icon = statusIcon(status); return <div className="mz-status-row" key={status}><span className={`mz-status-icon ${status.toLowerCase()}`}><Icon size={16}/></span><span>{status}</span><b>{row.count}</b><em>{money(row.amount, 'EGP')}</em></div> })}</div></article>
+      </section>
+
+      <section className="card mz-panel mz-ceo-strip">
+        <div className="mz-panel-head"><div><h2>🎯 {t('قراءة CEO / CFO / Accounting', 'CEO / CFO / Accounting readout')}</h2><small>{t('ملخص قرار سريع مبني على نفس البيانات الحية.', 'Fast decision summary based on the same live ledger.')}</small></div></div>
+        <div className="mz-readout-grid">
+          <div><span>🚀 {t('فرصة النمو', 'Growth signal')}</span><p>{topMerchants[0] ? `${topMerchants[0].master} · ${money(topMerchants[0].amount, 'EGP')}` : t('لا توجد بيانات كافية', 'Not enough data')}</p></div>
+          <div><span>⚠️ {t('أولوية المخاطر', 'Risk priority')}</span><p>{riskCount ? `${pending} ${t('معلقة +', 'pending +')} ${report.unassigned.count} ${t('غير مصنفة', 'unassigned')}` : t('لا توجد نقاط حرجة', 'No critical points')}</p></div>
+          <div><span>✅ {t('قرار المطابقة', 'Reconciliation decision')}</span><p>{reconciliationGap ? t('مراجعة المدفوعات غير المرتبطة قبل الإقفال.', 'Review unlinked paid transactions before close.') : t('التغطية مكتملة ضمن النطاق.', 'Coverage is complete in this range.')}</p></div>
+        </div>
       </section>
 
       <section className="mz-report-grid">

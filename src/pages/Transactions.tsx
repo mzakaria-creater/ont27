@@ -47,7 +47,8 @@ function TransactionStatusIcon({ status, label }: { status: string; label: strin
             ? AlertTriangle
             : CircleHelp
   const tone = status === 'PENDING' ? 'st-pending' : status === 'PAID' || status === 'APPROVED' ? 'st-paid' : status === 'DECLINED' ? 'st-declined' : status === 'EXPIRED' ? 'st-expired' : status === 'UNDERPAID' ? 'st-under' : 'st-dim'
-  return <span className={`portal-status-icon ${tone}`} title={label} aria-label={label} role="img"><Icon size={21} strokeWidth={2.5} aria-hidden="true" /><span className="portal-status-icon-label">{label}</span></span>
+  const emoji = status === 'PENDING' ? '⏳' : status === 'PAID' || status === 'APPROVED' ? '✅' : status === 'DECLINED' ? '⛔' : status === 'EXPIRED' ? '🗓️' : status === 'UNDERPAID' ? '⚠️' : '❔'
+  return <span className={`portal-status-icon ${tone}`} title={label} aria-label={label} role="img"><span className="portal-status-emoji" aria-hidden="true">{emoji}</span><Icon size={19} strokeWidth={2.5} aria-hidden="true" /><span className="portal-status-icon-label">{label}</span></span>
 }
 
 // Fixed columns (expand / action / transaction id) always show; everything
@@ -438,7 +439,7 @@ export default function Transactions() {
   return (
     <>
       <section className="page-head all-transactions-head">
-        <div><h2>📋 {t('كل المعاملات', 'All transactions')}</h2>
+        <div><h2>🧾 {t('كل المعاملات', 'All transactions')}</h2>
         <p className="page-sub">{t('إيداعات وسحوبات موحّدة', 'Deposits and payouts unified')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p></div>
         <div className="all-transactions-head-actions">
           <div className="view-switch" role="group" aria-label={t('طريقة العرض', 'View mode')}>
@@ -446,9 +447,9 @@ export default function Transactions() {
             <button className={view === 'cards' ? 'active' : ''} aria-pressed={view === 'cards'} onClick={() => setFilter({ view: 'cards' })}><LayoutGrid size={16} />{t('بطاقات', 'Cards')}</button>
           </div>
           <div className="export-actions">
-            <button type="button" className="btn-primary btn-sm" disabled={loading} onClick={() => void refreshNow()}><RefreshCw size={14} className={loading ? 'spin' : ''} /> {loading ? t('جارٍ التحديث…', 'Refreshing…') : t('تحديث الآن', 'Refresh now')}</button>
-            <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport('csv')}><Download size={14}/> CSV</button>
-            <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport('xlsx')}><Download size={14}/> {exportBusy ? t('جارٍ التصدير…', 'Exporting…') : 'XLSX'}</button>
+            <button type="button" className="btn-primary btn-sm" disabled={loading} onClick={() => void refreshNow()}><RefreshCw size={14} className={loading ? 'spin' : ''} /> 🔄 {loading ? t('جارٍ التحديث…', 'Refreshing…') : t('تحديث الآن', 'Refresh now')}</button>
+            <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport('csv')}><Download size={14}/> 📥 CSV</button>
+            <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport('xlsx')}><Download size={14}/> 📊 {exportBusy ? t('جارٍ التصدير…', 'Exporting…') : 'XLSX'}</button>
           </div>
         </div>
       </section>
