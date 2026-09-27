@@ -464,16 +464,49 @@ extraRoutes.post('/settlements/payments', requireAnyPerm(['settlements', 'settle
   const paymentFee = body?.payment_fee == null || body.payment_fee === '' ? 0 : Number(body.payment_fee)
   const serviceFee = body?.service_fee == null || body.service_fee === '' ? 0 : Number(body.service_fee)
   const blockedPercent = body?.blocked_percent == null || body.blocked_percent === '' ? 0 : Number(body.blocked_percent)
-  if (!merchant || !month || !Number.isFinite(amount) || amount <= 0 || (usdtRate != null && (!Number.isFinite(usdtRate) || usdtRate <= 0)) || !Number.isFinite(paymentFee) || paymentFee < 0 || !Number.isFinite(serviceFee) || serviceFee < 0 || !Number.isFinite(blockedPercent) || blockedPercent < 0 || blockedPercent > 100) return c.json({ error: 'merchant_month_amount_and_valid_fees_required' }, 400)
+  const payinFeePercent = body?.payin_fee_percent == null || body.payin_fee_percent === '' ? 0 : Number(body.payin_fee_percent)
+  const payinFeeFixed = body?.payin_fee_fixed == null || body.payin_fee_fixed === '' ? 0 : Number(body.payin_fee_fixed)
+  const payoutFeePercent = body?.payout_fee_percent == null || body.payout_fee_percent === '' ? 0 : Number(body.payout_fee_percent)
+  const payoutFeeFixed = body?.payout_fee_fixed == null || body.payout_fee_fixed === '' ? 0 : Number(body.payout_fee_fixed)
+  const settlementDate = typeof body?.settlement_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.settlement_date) ? body.settlement_date : null
+  const proofUrl = typeof body?.proof_url === 'string' ? body.proof_url.trim().slice(0, 1000) || null : null
+  const proofFileName = typeof body?.proof_file_name === 'string' ? body.proof_file_name.trim().slice(0, 160) || null : null
+  if (!merchant || !month || !Number.isFinite(amount) || amount <= 0 || (usdtRate != null && (!Number.isFinite(usdtRate) || usdtRate <= 0)) || !Number.isFinite(paymentFee) || paymentFee < 0 || !Number.isFinite(serviceFee) || serviceFee < 0 || !Number.isFinite(blockedPercent) || blockedPercent < 0 || blockedPercent > 100 || !Number.isFinite(payinFeePercent) || payinFeePercent < 0 || payinFeePercent > 100 || !Number.isFinite(payinFeeFixed) || payinFeeFixed < 0 || !Number.isFinite(payoutFeePercent) || payoutFeePercent < 0 || payoutFeePercent > 100 || !Number.isFinite(payoutFeeFixed) || payoutFeeFixed < 0) return c.json({ error: 'merchant_month_amount_and_valid_fees_required' }, 400)
   const { data: guard, error: guardError } = await db.rpc('guard_settlement_amount_mismatch', { p_merchant: merchant })
   if (guardError) return c.json({ error: 'settlement_guard_unavailable', detail: guardError.message }, 503)
   const guardRow = Array.isArray(guard) ? guard[0] : guard
   if (!guardRow?.allowed) return c.json({ error: 'settlement_blocked_amount_mismatch', critical: true, mismatches: Number(guardRow?.mismatch_count ?? 0), message: 'Local amount differs from provider amount. Maven confirmation is required before settlement.' }, 409)
   const actor = c.get('actor')
-  const { data, error } = await db.from('settlement_merchant_payments').insert({ merchant, settlement_month: month, amount, usdt_rate: usdtRate, payment_fee: paymentFee, service_fee: serviceFee, blocked_percent: blockedPercent, note: typeof body?.note === 'string' ? body.note.trim().slice(0, 500) || null : null, paid_by: actor.username }).select().single()
+  const { data, error } = await db.from('settlement_merchant_payments').insert({ merchant, settlement_month: month, amount, usdt_rate: usdtRate, payment_fee: paymentFee, service_fee: serviceFee, blocked_percent: blockedPercent, payin_fee_percent: payinFeePercent, payin_fee_fixed: payinFeeFixed, payout_fee_percent: payoutFeePercent, payout_fee_fixed: payoutFeeFixed, settlement_date: settlementDate, proof_url: proofUrl, proof_file_name: proofFileName, note: typeof body?.note === 'string' ? body.note.trim().slice(0, 500) || null : null, paid_by: actor.username }).select().single()
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'settlement.payment_added', entity: 'settlement_merchant_payments', entity_id: data.id, after: data })
   return c.json({ payment: data }, 201)
+})
+
+extraRoutes.post('/settlements/payments/proof', requireAnyPerm(['settlements', 'settlements_list', 'settlement_recon', 'reports', 'advanced_analysis'], 'can_edit'), async (c) => {
+  const form = await c.req.formData().catch(() => null)
+  const file = form?.get('file')
+  if (!(file instanceof File) || file.size < 1) return c.json({ error: 'proof_file_required' }, 400)
+  if (file.size > 10 * 1024 * 1024) return c.json({ error: 'proof_file_too_large' }, 400)
+  if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type)) return c.json({ error: 'invalid_proof_type' }, 400)
+  const actor = c.get('actor')
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-100) || 'settlement-proof'
+  const path = `settlement-proofs/${actor.sub}/${Date.now()}-${safeName}`
+  const { error } = await db.storage.from('pop').upload(path, new Uint8Array(await file.arrayBuffer()), { contentType: file.type, upsert: false })
+  if (error) return c.json({ error: 'proof_upload_failed', detail: error.message }, 500)
+  const { data } = db.storage.from('pop').getPublicUrl(path)
+  return c.json({ proof_url: data.publicUrl, proof_file_name: file.name, path }, 201)
+})
+
+extraRoutes.patch('/settlements/payments/:id', requireAnyPerm(['settlements', 'settlements_list', 'settlement_recon', 'reports', 'advanced_analysis'], 'can_edit'), async (c) => {
+  const id = c.req.param('id'); const body = await c.req.json().catch(() => null)
+  const amount = Number(body?.amount)
+  if (!id || !Number.isFinite(amount) || amount <= 0) return c.json({ error: 'valid_amount_required' }, 400)
+  const { data, error } = await db.from('settlement_merchant_payments').update({ amount }).eq('id', id).select().maybeSingle()
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  if (!data) return c.json({ error: 'payment_not_found' }, 404)
+  await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: c.get('actor').sub, actor_name: c.get('actor').username, action: 'settlement.payment_amount_updated', entity: 'settlement_merchant_payments', entity_id: id, after: { amount } })
+  return c.json({ payment: data })
 })
 
 // Per-status transaction counts for the summary strip (respects type filter).

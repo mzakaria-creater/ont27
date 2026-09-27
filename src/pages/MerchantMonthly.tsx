@@ -33,6 +33,7 @@ interface MonthlyRow {
   balance_payment_fees_egp?: number | string
   net_after_balance_egp?: number | string
 }
+interface BalancePayment { id: string; merchant: string; settlement_month: string; amount: number; settlement_date: string | null; proof_url: string | null; proof_file_name: string | null }
 
 const DEFAULT_RATE = 52.6
 const DEFAULT_DEPOSIT_FEE_PCT = 5.5
@@ -89,7 +90,8 @@ export default function MerchantMonthly() {
   const [error, setError] = useState<string | null>(null)
   const [showPaymentForm, setShowPaymentForm] = useState(false)
   const [paymentBusy, setPaymentBusy] = useState(false)
-  const [paymentForm, setPaymentForm] = useState({ merchant: '', settlement_month: monthKey(new Date()), amount: '', note: '' })
+  const [balancePayments, setBalancePayments] = useState<BalancePayment[]>([])
+  const [paymentForm, setPaymentForm] = useState({ merchant: '', settlement_month: monthKey(new Date()), amount: '', usdt_rate: '', payin_fee_percent: '0', payin_fee_fixed: '0', payout_fee_percent: '0', payout_fee_fixed: '0', settlement_date: new Date().toISOString().slice(0, 10), note: '', proof: null as File | null })
 
   const loadMerchants = useCallback(async () => {
     try {
@@ -114,16 +116,27 @@ export default function MerchantMonthly() {
     } finally { setLoading(false) }
   }, [selectedMerchants, fromMonth, toMonth, t])
   useEffect(() => { void load() }, [load])
+  const loadPayments = useCallback(async () => {
+    try { setBalancePayments((await api<{ payments: BalancePayment[] }>('/api/settlements/payments')).payments ?? []) } catch { setBalancePayments([]) }
+  }, [])
+  useEffect(() => { void loadPayments() }, [loadPayments])
 
   const addPayment = async (event: FormEvent) => {
     event.preventDefault()
     if (!paymentForm.merchant || !paymentForm.amount) return
     setPaymentBusy(true); setError(null)
     try {
-      await api('/api/settlements/payments', { method: 'POST', body: JSON.stringify({ ...paymentForm, payment_fee: 0, service_fee: 0, blocked_percent: 0 }) })
-      setPaymentForm((current) => ({ ...current, amount: '', note: '' }))
+      let proof: { proof_url?: string; proof_file_name?: string } = {}
+      if (paymentForm.proof) {
+        const form = new FormData(); form.append('file', paymentForm.proof)
+        proof = await api<{ proof_url?: string; proof_file_name?: string }>('/api/settlements/payments/proof', { method: 'POST', body: form })
+      }
+      const { proof: _file, ...values } = paymentForm
+      await api('/api/settlements/payments', { method: 'POST', body: JSON.stringify({ ...values, ...proof, payment_fee: 0, service_fee: 0, blocked_percent: 0 }) })
+      setPaymentForm((current) => ({ ...current, amount: '', note: '', proof: null }))
       setShowPaymentForm(false)
       await load()
+      await loadPayments()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('تعذّر تسجيل الدفعة من الرصيد.', 'Could not record the balance payment.'))
     } finally { setPaymentBusy(false) }
@@ -240,10 +253,18 @@ export default function MerchantMonthly() {
         <select className="login-input" required value={paymentForm.merchant} onChange={(e) => setPaymentForm({ ...paymentForm, merchant: e.target.value })}><option value="">{t('اختر التاجر', 'Select merchant')}</option>{merchantOptions.map((merchant) => <option key={merchant} value={merchant}>{merchant}</option>)}</select>
         <input className="login-input" type="month" required value={paymentForm.settlement_month} onChange={(e) => setPaymentForm({ ...paymentForm, settlement_month: e.target.value })}/>
         <input className="login-input" type="number" min="0.01" step="0.01" required placeholder={t('المبلغ المدفوع من الرصيد', 'Amount paid from balance')} value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}/>
+        <input className="login-input" type="number" min="0.01" step="0.01" placeholder={t('سعر USDT للشهر', 'Monthly USDT rate')} value={paymentForm.usdt_rate} onChange={(e) => setPaymentForm({ ...paymentForm, usdt_rate: e.target.value })}/>
+        <input className="login-input" type="number" min="0" step="0.01" placeholder={t('Pay-in %', 'Pay-in %')} value={paymentForm.payin_fee_percent} onChange={(e) => setPaymentForm({ ...paymentForm, payin_fee_percent: e.target.value })}/>
+        <input className="login-input" type="number" min="0" step="0.01" placeholder={t('Pay-in ثابت / معاملة', 'Pay-in fixed / trx')} value={paymentForm.payin_fee_fixed} onChange={(e) => setPaymentForm({ ...paymentForm, payin_fee_fixed: e.target.value })}/>
+        <input className="login-input" type="number" min="0" step="0.01" placeholder={t('Pay-out %', 'Pay-out %')} value={paymentForm.payout_fee_percent} onChange={(e) => setPaymentForm({ ...paymentForm, payout_fee_percent: e.target.value })}/>
+        <input className="login-input" type="number" min="0" step="0.01" placeholder={t('Pay-out ثابت / معاملة', 'Pay-out fixed / trx')} value={paymentForm.payout_fee_fixed} onChange={(e) => setPaymentForm({ ...paymentForm, payout_fee_fixed: e.target.value })}/>
+        <input className="login-input" type="date" required value={paymentForm.settlement_date} onChange={(e) => setPaymentForm({ ...paymentForm, settlement_date: e.target.value })}/>
+        <input className="login-input" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(e) => setPaymentForm({ ...paymentForm, proof: e.target.files?.[0] ?? null })}/>
         <input className="login-input" placeholder={t('ملاحظة (اختياري)', 'Note (optional)')} value={paymentForm.note} onChange={(e) => setPaymentForm({ ...paymentForm, note: e.target.value })}/>
         <button className="btn-primary" disabled={paymentBusy}>{paymentBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ الدفعة', 'Save payment')}</button>
       </form>
     </section>}
+    {can('settlements', 'can_edit') && balancePayments.length > 0 && <section className="card recent-card no-print"><div className="recent-head"><h3>{t('مدفوعات الرصيد القابلة للتعديل', 'Editable balance payments')}</h3></div><div className="table-wrap"><table className="data-table"><thead><tr><th>{t('التاجر','Merchant')}</th><th>{t('الشهر','Month')}</th><th>{t('المبلغ','Amount')}</th><th>{t('تاريخ التسوية','Settlement date')}</th><th>{t('الإثبات','Proof')}</th><th /></tr></thead><tbody>{balancePayments.map((payment) => <tr key={payment.id}><td>{payment.merchant}</td><td className="mono">{payment.settlement_month.slice(0, 7)}</td><td><input className="login-input mono" type="number" min="0.01" step="0.01" defaultValue={payment.amount} onBlur={async (e) => { const amount = Number(e.currentTarget.value); if (!Number.isFinite(amount) || amount <= 0 || amount === Number(payment.amount)) return; try { await api(`/api/settlements/payments/${payment.id}`, { method: 'PATCH', body: JSON.stringify({ amount }) }); await loadPayments(); await load() } catch (error) { setError(error instanceof ApiError ? error.message : t('تعذر تعديل المبلغ','Could not update amount')) } }} /></td><td className="mono">{payment.settlement_date ?? '—'}</td><td>{payment.proof_url ? <a href={payment.proof_url} target="_blank" rel="noreferrer">{payment.proof_file_name ?? t('عرض','View')}</a> : '—'}</td><td className="cell-sub">{t('عدّل المبلغ ثم اخرج من الحقل للحفظ','Edit amount then leave the field to save')}</td></tr>)}</tbody></table></div></section>}
 
     {/* Static text stand-in for the interactive filter bar above, which
         is hidden from print — a dropdown widget prints as nothing
