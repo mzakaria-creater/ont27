@@ -20,14 +20,7 @@ interface WalletRow {
   provider?: string | null; sms_balance?: number | null; received?: number; sent?: number; transaction_count?: number
   avg_deposit?: number; avg_withdrawal?: number; today_profit?: number; daily_used?: number; monthly_used?: number
   daily_limit?: number; monthly_limit?: number; daily_remaining?: number; monthly_remaining?: number; daily_utilization_pct?: number; monthly_utilization_pct?: number; utilization_pct?: number; limit_warning?: string | null
-}
-
-// Balance diff = (balance change) − (deposits − withdrawals). Mirrors the old
-// report's "Balance extra": SMS-reported activity vs the actual balance move.
-// Large values are usually treasury sweeps out of the wallet, not errors.
-function balanceDiff(r: WalletRow): number | null {
-  if (r.sms_balance == null || r.first_balance == null) return null
-  return Math.round(((r.sms_balance - r.first_balance) - ((r.deposits_amount ?? 0) - (r.withdrawals_amount ?? 0))) * 100) / 100
+  expected_balance?: number | null; balance_variance?: number | null; balance_source?: string | null; balance_updated_at?: string | null
 }
 
 interface WalletSms { id: number; sms_first_line: string | null; message: string | null; amount: number | null; sms_category: string | null; matched: boolean | null; match_status: string | null; balance_after: number | null; device_name: string | null; received_at: string | null }
@@ -97,7 +90,8 @@ export default function WalletReport() {
     withdrawals: a.withdrawals + (r.withdrawals_amount ?? 0),
     unconfirmed: a.unconfirmed + r.unconfirmed,
     balance: a.balance + (r.balance ?? 0),
-  }), { wallets: 0, sms: 0, deposits: 0, withdrawals: 0, unconfirmed: 0, balance: 0 })
+    expected: a.expected + (r.expected_balance ?? 0), variance: a.variance + (r.balance_variance ?? 0),
+  }), { wallets: 0, sms: 0, deposits: 0, withdrawals: 0, unconfirmed: 0, balance: 0, expected: 0, variance: 0 })
   const timeline = detail ? [...detail.transactions.map((tx) => ({ kind: 'TRX', at: tx.first_seen_at, label: tx.status ?? 'Transaction', amount: tx.amount })), ...detail.sms.map((sms) => ({ kind: 'SMS', at: sms.received_at, label: sms.sms_category === 'withdrawal' ? 'Withdrawal SMS' : 'Deposit SMS', amount: sms.amount }))].filter((item) => item.at).sort((a, b) => Date.parse(String(b.at)) - Date.parse(String(a.at))).slice(0, 20) : []
 
   return <>
@@ -113,6 +107,8 @@ export default function WalletReport() {
       <div className="kpi-card"><div className="kpi-value">{rows ? money(totals.withdrawals, 'EGP') : '…'}</div><div className="kpi-label">{t('سحوبات', 'Withdrawals')}</div></div>
       <div className="kpi-card stat-pending"><div className="kpi-value">{rows ? totals.unconfirmed.toLocaleString('en-US') : '…'}</div><div className="kpi-label">{t('غير مؤكدة', 'Unconfirmed')}</div></div>
       <div className="kpi-card"><div className="kpi-value">{rows ? money(totals.balance, 'EGP') : '…'}</div><div className="kpi-label">{t('إجمالي الرصيد', 'Total balance')}</div></div>
+      <div className="kpi-card"><div className="kpi-value">{rows ? money(totals.expected, 'EGP') : '…'}</div><div className="kpi-label">{t('الرصيد المتوقع', 'Expected balance')}</div><div className="cell-sub">{t('رصيد بداية الرصد + الوارد − الصادر', 'Observed start + received − sent')}</div></div>
+      <div className="kpi-card"><div className="kpi-value" style={{ color: totals.variance === 0 ? 'var(--status-paid)' : 'var(--status-declined)' }}>{rows ? money(totals.variance, 'EGP') : '…'}</div><div className="kpi-label">{t('فرق المطابقة', 'Reconciliation variance')}</div></div>
     </div>
 
     <div className="filter-bar transaction-filter-toolbar wallet-report-filter-bar">
@@ -140,6 +136,7 @@ export default function WalletReport() {
               <div className="risk-row-card-head"><span className="mono">{r.wallet}</span><span className="mono">{money(r.balance, 'EGP')}</span></div>
               <div className="cell-sub">{r.device ?? '—'}{r.merchant && ` · ${r.merchant}`}</div>
               <div className="cell-sub mono">{r.sms_count} SMS ({money(r.sms_amount, 'EGP')}) · {t('إيداعات', 'Deposits')} {r.deposits_count} ({money(r.deposits_amount, 'EGP')}) · {t('سحوبات', 'Withdrawals')} {r.withdrawals_count} ({money(r.withdrawals_amount, 'EGP')})</div>
+              <div className="cell-sub mono">{t('فعلي', 'Actual')} {money(r.balance, 'EGP')} · {t('متوقع', 'Expected')} {money(r.expected_balance, 'EGP')} · {t('الفرق', 'Variance')} {money(r.balance_variance, 'EGP')}</div>
               <div className="risk-row-card-foot">
                 {r.unconfirmed > 0 ? <span className="pay-status-badge st-pending">{r.unconfirmed} {t('غير مؤكدة', 'unconfirmed')}</span> : null}
                 <span>{t('الاستفادة', 'Utilization')} {(r.utilization_pct ?? 0).toFixed(1)}%{r.limit_warning === 'limit_reached' ? ' · LIMIT' : r.limit_warning === 'limit_soon' ? ' · SOON' : ''}</span>
@@ -154,8 +151,7 @@ export default function WalletReport() {
           <th>{t('المحفظة', 'Wallet')}</th><th>{t('الجهاز / التاجر', 'Device / merchant')}</th>
           <th>SMS</th><th>{t('مبلغ SMS', 'SMS amount')}</th>
           <th>{t('إيداعات', 'Deposits')}</th><th>{t('سحوبات', 'Withdrawals')}</th>
-          <th>{t('غير مؤكدة', 'Unconfirmed')}</th><th>{t('الوارد', 'Received')}</th><th>{t('الصادر', 'Sent')}</th><th>{t('الرصيد الحالي', 'Current balance')}</th><th>{t('استخدام الحد', 'Limit used')}</th><th>{t('المتاح حتى الحد', 'Remaining capacity')}</th><th>{t('الاستفادة', 'Utilization')}</th><th>{t('ربح اليوم', "Today's profit")}</th><th>{t('متوسط الإيداع', 'Avg deposit')}</th><th>{t('متوسط السحب', 'Avg withdrawal')}</th>
-          <th title={t('فرق نشاط SMS عن تغيّر الرصيد — غالباً تحويلات للخزينة', 'SMS activity vs balance change — usually treasury sweeps')}>{t('فرق الرصيد', 'Balance diff')}</th><th /></tr></thead>
+          <th>{t('غير مؤكدة', 'Unconfirmed')}</th><th>{t('الوارد', 'Received')}</th><th>{t('الصادر', 'Sent')}</th><th>{t('الرصيد الفعلي', 'Actual balance')}</th><th>{t('الرصيد المتوقع', 'Expected balance')}</th><th title={t('الفعلي ناقص المتوقع — يكشف السحوبات/الإيداعات غير المسجلة', 'Actual minus expected — reveals unrecorded movements')}>{t('فرق المطابقة', 'Variance')}</th><th>{t('مصدر الرصيد', 'Balance source')}</th><th>{t('استخدام الحد', 'Limit used')}</th><th>{t('المتاح حتى الحد', 'Remaining capacity')}</th><th>{t('الاستفادة', 'Utilization')}</th><th>{t('ربح اليوم', "Today's profit")}</th><th>{t('متوسط الإيداع', 'Avg deposit')}</th><th>{t('متوسط السحب', 'Avg withdrawal')}</th><th /></tr></thead>
         <tbody>{filteredRows.map((r) => (
           <tr key={r.wallet} className="clickable-row" onClick={() => void openDetail(r.wallet)}>
             <td className="mono">{r.wallet}</td>
@@ -168,13 +164,15 @@ export default function WalletReport() {
             <td className="mono positive-text">{money(r.received ?? r.deposits_amount, 'EGP')}</td>
             <td className="mono negative-text">{money(r.sent ?? r.withdrawals_amount, 'EGP')}</td>
             <td className="mono">{money(r.balance, 'EGP')}<div className="cell-sub">SMS: {money(r.sms_balance, 'EGP')}</div></td>
+            <td className="mono">{money(r.expected_balance, 'EGP')}</td>
+            <td className="mono" style={r.balance_variance != null && Math.abs(r.balance_variance) > 1 ? { color: 'var(--status-declined)' } : undefined}>{money(r.balance_variance, 'EGP')}</td>
+            <td className="cell-sub">{r.balance_source ?? '—'}<div>{r.balance_updated_at ? new Date(r.balance_updated_at).toLocaleString('en-GB', { timeZone: 'Africa/Cairo', dateStyle: 'short', timeStyle: 'short' }) : '—'}</div></td>
             <td className="mono"><div>{money(r.daily_used ?? 0, 'EGP')} / {money(r.daily_limit ?? 60000, 'EGP')}</div><div className="cell-sub">M: {money(r.monthly_used ?? 0, 'EGP')} / {money(r.monthly_limit ?? 200000, 'EGP')}</div></td>
             <td className={`mono wallet-remaining${r.limit_warning ? ` ${r.limit_warning}` : ''}`}><div>D: {money(r.daily_remaining ?? Math.max(0, (r.daily_limit ?? 60000) - (r.daily_used ?? 0)), 'EGP')}</div><div className="cell-sub">M: {money(r.monthly_remaining ?? Math.max(0, (r.monthly_limit ?? 200000) - (r.monthly_used ?? 0)), 'EGP')}</div></td>
             <td><div className={`wallet-limit-meter${r.limit_warning ? ` ${r.limit_warning}` : ''}`}><i style={{ width: `${Math.min(100, r.utilization_pct ?? 0)}%` }} /></div><span className={`cell-sub${r.limit_warning ? ' wallet-limit-warning' : ''}`}>{(r.utilization_pct ?? 0).toFixed(1)}%{r.limit_warning === 'limit_reached' ? ' · LIMIT' : r.limit_warning === 'limit_soon' ? ' · SOON' : ''}</span></td>
             <td className="mono positive-text">{money(r.today_profit ?? 0, 'EGP')}</td>
             <td className="mono">{money(r.avg_deposit ?? 0, 'EGP')}</td>
             <td className="mono">{money(r.avg_withdrawal ?? 0, 'EGP')}</td>
-            <td className="mono" style={balanceDiff(r) != null && balanceDiff(r) !== 0 ? { color: 'var(--status-declined)' } : undefined}>{balanceDiff(r) != null ? money(balanceDiff(r), 'EGP') : '—'}</td>
             <td onClick={(e) => e.stopPropagation()}><Link className="btn-ghost btn-sm" to={`/sms?q=${encodeURIComponent(r.wallet)}`}>{t('👁 الرسائل', '👁 Messages')}</Link></td>
           </tr>
         ))}</tbody>

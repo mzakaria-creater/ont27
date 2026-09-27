@@ -123,12 +123,6 @@ function cairoBoundary(date: string, end = false) {
 function walletDigits(value: unknown) {
   return String(value ?? '').replace(/\D/g, '')
 }
-type WalletReportDbRow = {
-  wallet: string; device: string | null; merchant: string | null; sms_count: number; sms_amount: number | null
-  deposits_count: number; deposits_amount: number | null; withdrawals_count: number; withdrawals_amount: number | null
-  unconfirmed: number; balance: number | null; first_balance: number | null; last_sms: string | null
-}
-
 function withSenderAccount<T extends Record<string, unknown>>(row: T): Omit<T, 'maven_raw_row'> & { sender_account_number: string | null; sender_account_name: string | null; user_email: string | null; raw_preview: Record<string, unknown> | null } {
   const raw = row.maven_raw_row && typeof row.maven_raw_row === 'object' && !Array.isArray(row.maven_raw_row)
     ? row.maven_raw_row as Record<string, unknown>
@@ -693,23 +687,27 @@ extraRoutes.get(
   },
 )
 
-// ---- Wallet SMS report — per-wallet aggregate (idea from the old
-// wallet-sms-report): SMS count/amount, deposits, withdrawals, unconfirmed,
-// and current balance for each receiving wallet, over a window. ----
+// ---- Wallet liquidity report. The old implementation reported
+// `deposits - withdrawals` as the balance, which is a flow, not a balance.
+// This implementation keeps the two separate and reconciles observed SMS
+// activity with the latest account/device balance. ----
 extraRoutes.get('/wallet-report', requireAnyPerm(['sms_live', 'wallets'], 'can_view'), async (c) => {
   const days = Math.min(Math.max(Number(c.req.query('days')) || 30, 1), 365)
-  const from = c.req.query('from')?.trim() || null
-  const to = c.req.query('to')?.trim() || null
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(c.req.query('from')?.trim() ?? '') ? c.req.query('from')!.trim() : null
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(c.req.query('to')?.trim() ?? '') ? c.req.query('to')!.trim() : null
   const today = cairoToday()
   const monthStart = `${today.slice(0, 7)}-01`
-  const [report, mappings, monthTxns, todayPayouts] = await Promise.all([
-    from || to ? db.rpc('panel_wallet_sms_report_range', { p_from: from, p_to: to }) : db.rpc('panel_wallet_sms_report', { p_days: days }),
-    db.from('wallet_device_map').select('to_account_number, device, merchant, provider').limit(20_000),
+  const rangeFrom = from ? cairoBoundary(from) : cairoBoundary(new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10))
+  const rangeTo = to ? cairoBoundary(to, true) : cairoBoundary(today, true)
+  const [smsResult, mappings, accounts, devices, monthTxns, todayPayouts] = await Promise.all([
+    db.from('inbound_sms').select('id, received_at, device_name, sim_slot, sender_name, sender_number, receiver_number, wallet_number, confirmed_wallet_number, manual_wallet_from, amount, balance_after, sms_category, matched, match_status, provider').gte('received_at', rangeFrom).lte('received_at', rangeTo).order('received_at', { ascending: true }).limit(50_000),
+    db.from('wallet_device_map').select('to_account_number, device, sim_slot, merchant, provider').limit(20_000),
+    db.from('payment_accounts').select('account_number, current_balance, balance_updated_at, is_active').limit(20_000),
+    db.from('device_status').select('device, sim_slot, balance, balance_at, last_seen_at').limit(20_000),
     db.from('maven_transactions').select('amount, status, receiving_wallet, to_account_number, fees, commission, first_seen_at').gte('first_seen_at', cairoBoundary(monthStart)).limit(20_000),
     db.from('maven_payout_transactions').select('amount, status, mobile_no, commission, first_seen_at').gte('first_seen_at', cairoBoundary(today)).limit(20_000),
   ])
-  if (report.error) return c.json({ error: 'db_error', detail: report.error.message }, 500)
-  if (mappings.error || monthTxns.error || todayPayouts.error) return c.json({ error: 'db_error', detail: mappings.error?.message ?? monthTxns.error?.message ?? todayPayouts.error?.message }, 500)
+  if (smsResult.error || mappings.error || accounts.error || devices.error || monthTxns.error || todayPayouts.error) return c.json({ error: 'db_error', detail: smsResult.error?.message ?? mappings.error?.message ?? accounts.error?.message ?? devices.error?.message ?? monthTxns.error?.message ?? todayPayouts.error?.message }, 500)
   type Usage = { daily: number; monthly: number; profit: number }
   const usage = new Map<string, Usage>()
   const dayBoundary = new Date(cairoBoundary(today)).getTime()
@@ -729,34 +727,51 @@ extraRoutes.get('/wallet-report', requireAnyPerm(['sms_live', 'wallets'], 'can_v
     const item = usage.get(wallet) ?? { daily: 0, monthly: 0, profit: 0 }
     item.profit += Number(payout.commission ?? 0); usage.set(wallet, item)
   }
-  const reportData = (report.data ?? []) as WalletReportDbRow[]
-  const reportRows = new Map(reportData.map((row) => [walletDigits(row.wallet), row]))
-  const rows = (mappings.data ?? []).map((mapping) => {
-    const wallet = walletDigits(mapping.to_account_number); const row = reportRows.get(wallet)
+  type SmsRow = { id: number; received_at: string | null; device_name: string | null; sim_slot: number | null; receiver_number: string | null; wallet_number: string | null; confirmed_wallet_number: string | null; manual_wallet_from: string | null; amount: number | null; balance_after: number | null; sms_category: string | null; matched: boolean | null; match_status: string | null; provider: string | null }
+  type WalletFlow = { wallet: string; sms_count: number; sms_amount: number; deposits_count: number; deposits_amount: number; withdrawals_count: number; withdrawals_amount: number; unconfirmed: number; first_balance: number | null; latest_sms_balance: number | null; latest_sms_at: string | null; first_sms_at: string | null; device: string | null; merchant: string | null; provider: string | null }
+  const flows = new Map<string, WalletFlow>()
+  const smsWallet = (sms: SmsRow) => walletDigits(sms.confirmed_wallet_number || sms.manual_wallet_from || sms.wallet_number || sms.receiver_number)
+  for (const sms of (smsResult.data ?? []) as SmsRow[]) {
+    const wallet = smsWallet(sms); if (!wallet) continue
+    const item = flows.get(wallet) ?? { wallet, sms_count: 0, sms_amount: 0, deposits_count: 0, deposits_amount: 0, withdrawals_count: 0, withdrawals_amount: 0, unconfirmed: 0, first_balance: null, latest_sms_balance: null, latest_sms_at: null, first_sms_at: null, device: sms.device_name, merchant: null, provider: sms.provider }
+    const amount = Number(sms.amount ?? 0); const withdrawal = String(sms.sms_category ?? '').toLowerCase() === 'withdrawal'
+    item.sms_count += 1; item.sms_amount += amount
+    if (withdrawal) { item.withdrawals_count += 1; item.withdrawals_amount += amount } else { item.deposits_count += 1; item.deposits_amount += amount; if (sms.matched !== true) item.unconfirmed += 1 }
+    if (item.first_sms_at == null) item.first_sms_at = sms.received_at
+    if (sms.balance_after != null && item.first_balance == null) item.first_balance = Number(sms.balance_after)
+    if (sms.balance_after != null) { item.latest_sms_balance = Number(sms.balance_after); item.latest_sms_at = sms.received_at }
+    item.device = item.device ?? sms.device_name; item.provider = item.provider ?? sms.provider
+    flows.set(wallet, item)
+  }
+  const accountBalances = new Map<string, { balance: number; at: string | null; source: string }>()
+  for (const account of accounts.data ?? []) { const wallet = walletDigits(account.account_number); if (wallet && account.current_balance != null) accountBalances.set(wallet, { balance: Number(account.current_balance), at: account.balance_updated_at, source: 'payment_accounts' }) }
+  const deviceBalances = new Map<string, { balance: number; at: string | null; source: string }>()
+  for (const mapping of mappings.data ?? []) { const wallet = walletDigits(mapping.to_account_number); const device = (devices.data ?? []).find((row) => row.device === mapping.device && (mapping.sim_slot == null || row.sim_slot === mapping.sim_slot)); if (wallet && device?.balance != null && !accountBalances.has(wallet)) deviceBalances.set(wallet, { balance: Number(device.balance), at: device.balance_at ?? device.last_seen_at, source: 'device_status' }) }
+  const buildRow = (wallet: string, mapping: any, flow: WalletFlow | undefined) => {
+    const item = flow ?? { wallet, sms_count: 0, sms_amount: 0, deposits_count: 0, deposits_amount: 0, withdrawals_count: 0, withdrawals_amount: 0, unconfirmed: 0, first_balance: null, latest_sms_balance: null, latest_sms_at: null, first_sms_at: null, device: null, merchant: null, provider: null }
     const use = usage.get(wallet) ?? { daily: 0, monthly: 0, profit: 0 }
-    const received = Number(row?.deposits_amount ?? 0); const sent = Number(row?.withdrawals_amount ?? 0)
+    const received = Number(item.deposits_amount ?? 0); const sent = Number(item.withdrawals_amount ?? 0)
+    const actual = accountBalances.get(wallet) ?? deviceBalances.get(wallet)
+    const expected = item.first_balance == null ? null : Number((item.first_balance + received - sent).toFixed(2))
+    const actualBalance = actual?.balance ?? item.latest_sms_balance
     const dailyUtilization = use.daily / WALLET_DAILY_LIMIT; const monthlyUtilization = use.monthly / WALLET_MONTHLY_LIMIT
     const limitWarning = dailyUtilization >= 1 || monthlyUtilization >= 1 ? 'limit_reached' : dailyUtilization >= WALLET_LIMIT_WARNING_RATIO || monthlyUtilization >= WALLET_LIMIT_WARNING_RATIO ? 'limit_soon' : null
-    const depositsCount = Number(row?.deposits_count ?? 0); const withdrawalsCount = Number(row?.withdrawals_count ?? 0)
     return {
-      ...(row ?? { wallet, device: null, merchant: null, sms_count: 0, sms_amount: 0, deposits_count: 0, deposits_amount: 0, withdrawals_count: 0, withdrawals_amount: 0, unconfirmed: 0, balance: null, first_balance: null, last_sms: null }),
-      wallet, device: row?.device ?? mapping.device ?? null, merchant: row?.merchant ?? mapping.merchant ?? null, provider: mapping.provider ?? null,
-      sms_balance: row?.balance ?? null, received, sent, balance: Math.round((received - sent) * 100) / 100,
-      transaction_count: depositsCount + withdrawalsCount,
-      avg_deposit: depositsCount ? received / depositsCount : 0, avg_withdrawal: withdrawalsCount ? sent / withdrawalsCount : 0,
+      ...item, wallet, device: item.device ?? mapping?.device ?? null, merchant: item.merchant ?? mapping?.merchant ?? null, provider: item.provider ?? mapping?.provider ?? null,
+      sms_balance: item.latest_sms_balance, balance: actualBalance == null ? null : Math.round(actualBalance * 100) / 100, balance_source: actual?.source ?? (item.latest_sms_balance == null ? null : 'inbound_sms'), balance_updated_at: actual?.at ?? item.latest_sms_at,
+      expected_balance: expected, balance_variance: actualBalance == null || expected == null ? null : Math.round((actualBalance - expected) * 100) / 100,
+      received, sent, transaction_count: item.deposits_count + item.withdrawals_count,
+      avg_deposit: item.deposits_count ? received / item.deposits_count : 0, avg_withdrawal: item.withdrawals_count ? sent / item.withdrawals_count : 0,
       today_profit: Math.round(use.profit * 100) / 100, daily_used: Math.round(use.daily * 100) / 100, monthly_used: Math.round(use.monthly * 100) / 100,
       daily_limit: WALLET_DAILY_LIMIT, monthly_limit: WALLET_MONTHLY_LIMIT,
       daily_remaining: Math.max(0, Math.round((WALLET_DAILY_LIMIT - use.daily) * 100) / 100), monthly_remaining: Math.max(0, Math.round((WALLET_MONTHLY_LIMIT - use.monthly) * 100) / 100),
       daily_utilization_pct: Math.round(dailyUtilization * 10000) / 100, monthly_utilization_pct: Math.round(monthlyUtilization * 10000) / 100,
       utilization_pct: Math.round(Math.max(dailyUtilization, monthlyUtilization) * 10000) / 100, limit_warning: limitWarning,
     }
-  })
-  const mappedWallets = new Set(rows.map((row) => row.wallet))
-  for (const row of reportData) if (!mappedWallets.has(walletDigits(row.wallet))) {
-    const received = Number(row.deposits_amount ?? 0); const sent = Number(row.withdrawals_amount ?? 0); const depositsCount = Number(row.deposits_count ?? 0); const withdrawalsCount = Number(row.withdrawals_count ?? 0)
-    rows.push({ ...row, wallet: walletDigits(row.wallet), provider: null, sms_balance: row.balance, received, sent, balance: received - sent, transaction_count: depositsCount + withdrawalsCount, avg_deposit: depositsCount ? received / depositsCount : 0, avg_withdrawal: withdrawalsCount ? sent / withdrawalsCount : 0, today_profit: 0, daily_used: 0, monthly_used: 0, daily_limit: WALLET_DAILY_LIMIT, monthly_limit: WALLET_MONTHLY_LIMIT, daily_remaining: WALLET_DAILY_LIMIT, monthly_remaining: WALLET_MONTHLY_LIMIT, daily_utilization_pct: 0, monthly_utilization_pct: 0, utilization_pct: 0, limit_warning: null })
   }
-  return c.json({ rows, days, from, to, limits: { daily: WALLET_DAILY_LIMIT, monthly: WALLET_MONTHLY_LIMIT, warning_ratio: WALLET_LIMIT_WARNING_RATIO }, as_of: new Date().toISOString(), time_zone: CAIRO_TIME_ZONE })
+  const rows = (mappings.data ?? []).map((mapping) => buildRow(walletDigits(mapping.to_account_number), mapping, flows.get(walletDigits(mapping.to_account_number))))
+  for (const [wallet, flow] of flows) if (!(mappings.data ?? []).some((mapping) => walletDigits(mapping.to_account_number) === wallet)) rows.push(buildRow(wallet, null, flow))
+  return c.json({ rows, days, from: from ?? rangeFrom.slice(0, 10), to: to ?? today, range_from: rangeFrom, range_to: rangeTo, limits: { daily: WALLET_DAILY_LIMIT, monthly: WALLET_MONTHLY_LIMIT, warning_ratio: WALLET_LIMIT_WARNING_RATIO }, as_of: new Date().toISOString(), time_zone: CAIRO_TIME_ZONE })
 })
 
 // Lightweight paid-volume totals used by the live SMS safety alert. Counts
