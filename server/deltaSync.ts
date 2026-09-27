@@ -651,10 +651,12 @@ export async function runMavenGapCheck(windowMinutes = 75): Promise<MavenGapChec
   if (!source) throw new Error('old_db_not_configured')
 
   const [{ data: sourceRows, count: sourceCount, error: sourceError }, { data: localRows, count: localCount, error: localError }] = await Promise.all([
-    source.from('maven_transactions').select('tx_id, created_utc', { count: 'exact' })
-      .gte('created_utc', windowStart).order('tx_id', { ascending: true }).limit(20_000),
-    db.from('maven_transactions').select('tx_id, created_utc', { count: 'exact' })
-      .gte('created_utc', windowStart).order('tx_id', { ascending: true }).limit(20_000),
+    // first_seen_at is the same non-null ingestion watermark used by the
+    // mirror itself; created_utc can be null on older Maven records.
+    source.from('maven_transactions').select('tx_id, first_seen_at', { count: 'exact' })
+      .gte('first_seen_at', windowStart).order('tx_id', { ascending: true }).limit(20_000),
+    db.from('maven_transactions').select('tx_id, first_seen_at', { count: 'exact' })
+      .gte('first_seen_at', windowStart).order('tx_id', { ascending: true }).limit(20_000),
   ])
   if (sourceError) throw new Error(`gap source query: ${sourceError.message}`)
   if (localError) throw new Error(`gap local query: ${localError.message}`)
