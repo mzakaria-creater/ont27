@@ -46,6 +46,7 @@ const Automation = lazy(() => import('./pages/Automation'))
 const Audit = lazy(() => import('./pages/Audit'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 const Reports = lazy(() => import('./pages/Reports'))
+const MZReport = lazy(() => import('./pages/MZReport'))
 const EnterpriseReport = lazy(() => import('./pages/EnterpriseReport'))
 const Review = lazy(() => import('./pages/Review'))
 const RecoverTransactions = lazy(() => import('./pages/RecoverTransactions'))
@@ -560,6 +561,7 @@ export default function App() {
             <Route path="/integration-guide" element={<PageGate keys={['api-keys','settings','merchants']}><IntegrationGuide /></PageGate>} />
             <Route path="/audit" element={<PageGate keys={['audit_log','audit-logs']}><Audit /></PageGate>} />
             <Route path="/reports" element={<PageGate keys={['reports','advanced_analysis']}><Reports /></PageGate>} />
+            <Route path="/mz-report" element={<PageGate keys={['reports','advanced_analysis']}><MZReport /></PageGate>} />
             <Route path="/enterprise-report" element={<PageGate keys={['reports','advanced_analysis']}><EnterpriseReport /></PageGate>} />
             <Route path="/reportspage" element={<Navigate to="/reports" replace />} />
             <Route path="/company-report" element={<Navigate to="/reports?tab=companies" replace />} />
