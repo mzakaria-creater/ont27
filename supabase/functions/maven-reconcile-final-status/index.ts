@@ -60,8 +60,12 @@ function providerPatchForExisting(row: Record<string, unknown>, old: Record<stri
   const patch = providerPatch(row, now);
   const providerAmount = row.amount == null ? null : Number(row.amount);
   const localAmount = old.local_amount == null ? null : Number(old.local_amount);
+  const confirmedAt = old.amount_confirmed_at ? Date.parse(String(old.amount_confirmed_at)) : NaN;
+  const providerModifiedAt = old.modified_at_utc ? Date.parse(String(old.modified_at_utc)) : NaN;
+  const providerSnapshotMayBeStale = Number.isFinite(confirmedAt) &&
+    (!Number.isFinite(providerModifiedAt) || confirmedAt > providerModifiedAt);
   const hasPendingLocalCorrection =
-    (old.amount_sync_status === "mismatch" || old.amount_sync_status === "pending_confirmation") &&
+    (old.amount_sync_status === "mismatch" || old.amount_sync_status === "pending_confirmation" || providerSnapshotMayBeStale) &&
     localAmount != null && providerAmount != null && Math.abs(localAmount - providerAmount) > 0.009;
   if (hasPendingLocalCorrection) {
     patch.amount = localAmount;
@@ -175,7 +179,7 @@ Deno.serve(async (req) => {
         const ids = mapped.map((row) => row.tx_id);
         const local = new Map<number, any>();
         for (let i = 0; i < ids.length; i += 500) {
-          const { data, error } = await sb.from("maven_transactions").select("tx_id,status,row_hash,amount,local_amount,provider_amount,amount_sync_status,created_at_utc,first_seen_at,approved_by,paid_source").in("tx_id", ids.slice(i, i + 500));
+          const { data, error } = await sb.from("maven_transactions").select("tx_id,status,row_hash,amount,local_amount,provider_amount,amount_sync_status,amount_confirmed_at,modified_at_utc,created_at_utc,first_seen_at,approved_by,paid_source").in("tx_id", ids.slice(i, i + 500));
           if (error) throw new Error(`local lookup: ${error.message}`);
           for (const row of data ?? []) local.set(Number(row.tx_id), row);
         }
@@ -280,7 +284,7 @@ Deno.serve(async (req) => {
     const ids = mapped.map((row) => row.tx_id);
     const local = new Map<number, any>();
     for (let i = 0; i < ids.length; i += 500) {
-      const { data, error } = await sb.from("maven_transactions").select("tx_id,status,row_hash,amount,local_amount,provider_amount,amount_sync_status,created_at_utc,first_seen_at,approved_by,paid_source").in("tx_id", ids.slice(i, i + 500));
+      const { data, error } = await sb.from("maven_transactions").select("tx_id,status,row_hash,amount,local_amount,provider_amount,amount_sync_status,amount_confirmed_at,modified_at_utc,created_at_utc,first_seen_at,approved_by,paid_source").in("tx_id", ids.slice(i, i + 500));
       if (error) throw new Error(`local lookup: ${error.message}`);
       for (const row of data ?? []) local.set(Number(row.tx_id), row);
     }
