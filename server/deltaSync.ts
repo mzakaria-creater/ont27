@@ -422,6 +422,7 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
 
       const { error: upErr } = await db.from(table).upsert(payload, { onConflict: pk })
       let failedRows = 0
+      const failedKeys: string[] = []
       if (upErr) {
         // onConflict already resolves any conflict on `pk` — a duplicate-key
         // error here can only be a *different* unique constraint (seen live:
@@ -433,11 +434,20 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
           const { error: rowErr } = await db.from(table).upsert([row], { onConflict: pk })
           if (rowErr) {
             failedRows++
+            failedKeys.push(String((row as Record<string, unknown>)[pk] ?? 'unknown'))
             console.error('deltaSync: row skipped after batch upsert failure', {
               table, pk, pkValue: (row as Record<string, unknown>)[pk],
               batchError: upErr.message, error: rowErr.message,
             })
           }
+        }
+        if (failedKeys.length && await claimDistributedLease(300, 'maven_delta_sync_row_failure_alert')) {
+          await sendTelegramAlert('maven_delta_sync_row_failure', [
+            '⚠️ Maven mirror row write failed',
+            `Table: ${table} | key: ${pk}`,
+            `Skipped rows: ${failedKeys.slice(0, 50).join(', ')}`,
+            'The worker continued valid rows; the hourly gap detector will verify recovery.',
+          ].join('\n'))
         }
         if (failedRows === payload.length) throw new Error(`upsert: ${upErr.message}`)
       }
