@@ -8,7 +8,7 @@ import { depositTime, money } from '../lib/deposits'
 import { useBulk } from '../lib/useBulk'
 import { useLocale } from '../lib/locale'
 import { syncProviders } from '../lib/providerSync'
-import { Ban, LayoutGrid, Search, TableProperties, Unlock, X } from 'lucide-react'
+import { Ban, CheckCircle2, LayoutGrid, Search, TableProperties, Unlock, X } from 'lucide-react'
 import MerchantLogo from '../components/MerchantLogo'
 import MethodLogo from '../components/MethodLogo'
 import SenderIdentity from '../components/SenderIdentity'
@@ -235,21 +235,25 @@ export default function Approvals() {
 
   return (
     <>
-      <section className="page-head">
-        <div>
-          <h2>✅ {t('طابور الموافقات', 'Approval queue')}</h2>
-        <p className="page-sub">
-          {t('كل المعلّق في مكان واحد · تحديث لحظي مع مزامنة المزود', 'Everything pending in one place · realtime updates with provider sync')}
-          {deposits && payouts && <> · {deposits.length + payouts.length} {t('بانتظار قرار', 'awaiting decision')}</>}
-        </p>
+      <section className="page-head admin-head">
+        <span className="admin-head-icon"><CheckCircle2 size={20} /></span>
+        <div className="admin-head-text">
+          <span className="admin-head-eyebrow">{t('سير العمليات', 'Operations')}</span>
+          <h2>{t('طابور الموافقات', 'Approval queue')}</h2>
+          <p className="page-sub">
+            {t('كل المعلّق في مكان واحد · تحديث لحظي مع مزامنة المزود', 'Everything pending in one place · realtime updates with provider sync')}
+            {deposits && payouts && <> · {deposits.length + payouts.length} {t('بانتظار قرار', 'awaiting decision')}</>}
+          </p>
         </div>
-        <div className="view-switch" role="group" aria-label={t('طريقة العرض', 'View mode')}>
-          <button className={viewMode === 'table' ? 'active' : ''} aria-pressed={viewMode === 'table'} onClick={() => changeView('table')}><TableProperties size={16} /> {t('جدول', 'Table')}</button>
-          <button className={viewMode === 'cards' ? 'active' : ''} aria-pressed={viewMode === 'cards'} onClick={() => changeView('cards')}><LayoutGrid size={16} /> {t('بطاقات', 'Cards')}</button>
-        </div>
-        <div className="export-actions">
-          <button type="button" className="btn-ghost btn-sm" onClick={() => runExport('csv')}><Download size={14}/> CSV</button>
-          <button type="button" className="btn-ghost btn-sm" onClick={() => runExport('xlsx')}><Download size={14}/> XLSX</button>
+        <div className="admin-head-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div className="view-switch" role="group" aria-label={t('طريقة العرض', 'View mode')}>
+            <button className={viewMode === 'table' ? 'active' : ''} aria-pressed={viewMode === 'table'} onClick={() => changeView('table')}><TableProperties size={16} /> {t('جدول', 'Table')}</button>
+            <button className={viewMode === 'cards' ? 'active' : ''} aria-pressed={viewMode === 'cards'} onClick={() => changeView('cards')}><LayoutGrid size={16} /> {t('بطاقات', 'Cards')}</button>
+          </div>
+          <div className="export-actions">
+            <button type="button" className="btn-ghost btn-sm" onClick={() => runExport('csv')}><Download size={14}/> CSV</button>
+            <button type="button" className="btn-ghost btn-sm" onClick={() => runExport('xlsx')}><Download size={14}/> XLSX</button>
+          </div>
         </div>
       </section>
 
