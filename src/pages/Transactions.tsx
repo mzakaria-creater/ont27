@@ -521,7 +521,7 @@ export default function Transactions() {
                   const identifiers = transactionIdentifiers(r)
                   const cell = (colId: string) => {
                     switch (colId) {
-                      case 'status': return <td key={colId}><TransactionStatusIcon status={r.status} label={st.label} />{isDeclinedDuplicate && <span className="deposit-kind is-declined-duplicate">⚠ {t('مرفوض مكرر', 'Declined duplicate')}</span>}</td>
+                      case 'status': return <td key={colId}><TransactionStatusIcon status={r.status} label={st.label} /></td>
                       case 'type': return <td key={colId}><div className="portal-method-cell"><MethodLogo method={r.kind === 'deposit' ? r.payment_method : r.pay_by}/><span>{r.kind === 'deposit' ? (r.payment_method ?? t('إيداع', 'Deposit')) : (r.pay_by ?? t('سحب', 'Payout'))}</span></div></td>
                       case 'amount': return (
                         <td key={colId} className="mono portal-amount-cell">
@@ -606,7 +606,7 @@ export default function Transactions() {
               const canOpenModal = r.kind === 'deposit' && !r.is_checkout_session && !!r.ontarget_ref
               const details = r.is_checkout_session ? `/payment-status?id=${encodeURIComponent(r.checkout_session_id ?? '')}` : r.kind === 'deposit' && r.ontarget_ref ? `/transactions/${encodeURIComponent(r.ontarget_ref)}` : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`
               return <article key={`${r.kind}-${r.checkout_session_id ?? id}`} className={`all-tx-card${r.status === 'PENDING' ? ' pending' : ''}`}>
-                <header>{canOpenModal ? <button type="button" className="mono transaction-cell-link tx-id-link" onClick={() => openDetail(r.ontarget_ref!)}>{r.ontarget_ref}</button> : <Link className="mono transaction-cell-link" to={details}>{r.ontarget_ref ?? id}</Link>}{r.is_blacklisted && <span className="blacklist-marker" title={t('رقم الهاتف محظور — رفض تلقائي', 'Phone blacklisted — auto-decline')} aria-label={t('رقم الهاتف محظور', 'Phone blacklisted')}>🚫</span>}<span className={`pay-status-badge ${st.cls}`}>{st.label}</span>{isDeclinedDuplicate && <span className="deposit-kind is-declined-duplicate">⚠ {t('مرفوض مكرر','Declined duplicate')}</span>}</header>
+                <header>{canOpenModal ? <button type="button" className="mono transaction-cell-link tx-id-link" onClick={() => openDetail(r.ontarget_ref!)}>{r.ontarget_ref}</button> : <Link className="mono transaction-cell-link" to={details}>{r.ontarget_ref ?? id}</Link>}{r.is_blacklisted && <span className="blacklist-marker" title={t('رقم الهاتف محظور — رفض تلقائي', 'Phone blacklisted — auto-decline')} aria-label={t('رقم الهاتف محظور', 'Phone blacklisted')}>🚫</span>}<span className={`pay-status-badge ${st.cls}`}>{st.label}</span></header>
                 <div className="all-tx-card-amount mono">
                   {money(r.amount, r.currency ?? 'EGP')}
                   {r.amount_sync_status === 'mismatch' && <div className="amount-critical-warning" title={r.amount_mismatch_reason ?? 'Maven amount confirmation required'}>⚠ CRITICAL</div>}
