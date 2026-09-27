@@ -9,6 +9,7 @@ import { autoLinkWithdrawalSms } from './payoutSmsMatcher.js'
 import { oldDb } from './oldDb.js'
 import { processWalletFreezeAlerts } from './smsAlerts.js'
 import { notifyApprovedTransaction } from './approvalEmail.js'
+import { sendTelegramAlert } from './notify.js'
 
 // Pulls new rows from the OLD prod Supabase (where the Maven workers still
 // write) into the panel-v2 DB. Same overlap-window upsert idea as
@@ -631,6 +632,63 @@ async function refreshLegacyMavenCollector(): Promise<string> {
   return `legacy_collector_rows_${String(body.records_found ?? 0)}`
 }
 
+export interface MavenGapCheck {
+  ok: boolean
+  windowStart: string
+  sourceRows: number
+  localRows: number
+  missingTxIds: number[]
+  highestSourceTxId: number | null
+  highestLocalTxId: number | null
+  alertSent: number
+  error?: string
+}
+
+/** Compare the source and mirror over a recent UTC window without mutating either DB. */
+export async function runMavenGapCheck(windowMinutes = 75): Promise<MavenGapCheck> {
+  const source = oldDb()
+  const windowStart = new Date(Date.now() - windowMinutes * 60_000).toISOString()
+  if (!source) throw new Error('old_db_not_configured')
+
+  const [{ data: sourceRows, count: sourceCount, error: sourceError }, { data: localRows, count: localCount, error: localError }] = await Promise.all([
+    source.from('maven_transactions').select('tx_id, created_utc', { count: 'exact' })
+      .gte('created_utc', windowStart).order('tx_id', { ascending: true }).limit(20_000),
+    db.from('maven_transactions').select('tx_id, created_utc', { count: 'exact' })
+      .gte('created_utc', windowStart).order('tx_id', { ascending: true }).limit(20_000),
+  ])
+  if (sourceError) throw new Error(`gap source query: ${sourceError.message}`)
+  if (localError) throw new Error(`gap local query: ${localError.message}`)
+
+  const sourceIds = new Set((sourceRows ?? []).map((row) => Number(row.tx_id)).filter(Number.isFinite))
+  const localIds = new Set((localRows ?? []).map((row) => Number(row.tx_id)).filter(Number.isFinite))
+  const missingTxIds = [...sourceIds].filter((id) => !localIds.has(id)).sort((a, b) => a - b)
+  const highest = (ids: Set<number>) => ids.size ? Math.max(...ids) : null
+  let alertSent = 0
+
+  if (missingTxIds.length || (sourceCount ?? 0) > (localCount ?? 0)) {
+    const detail = missingTxIds.slice(0, 40).join(', ') || 'not enumerable (window count differs)'
+    const delivery = await sendTelegramAlert('maven_delta_gap', [
+      '🚨 Maven mirror gap detected',
+      `Window (UTC): ${windowStart} → now`,
+      `Source rows: ${sourceCount ?? sourceIds.size} | Production rows: ${localCount ?? localIds.size}`,
+      `Missing tx_id (${missingTxIds.length}): ${detail}`,
+      `Highest source/local: ${highest(sourceIds) ?? '—'} / ${highest(localIds) ?? '—'}`,
+    ].join('\n'))
+    alertSent = delivery.sent
+  }
+
+  return {
+    ok: missingTxIds.length === 0 && (sourceCount ?? sourceIds.size) <= (localCount ?? localIds.size),
+    windowStart,
+    sourceRows: sourceCount ?? sourceIds.size,
+    localRows: localCount ?? localIds.size,
+    missingTxIds,
+    highestSourceTxId: highest(sourceIds),
+    highestLocalTxId: highest(localIds),
+    alertSent,
+  }
+}
+
 function mergeReconcileResult(results: Record<string, number | string>, direct: Record<string, unknown>) {
   results.maven_reconcile_rows = Number(direct.rows_provider ?? 0)
   results.maven_reconcile_inserted = Number(direct.inserted ?? 0)
@@ -690,6 +748,20 @@ deltaSyncRoutes.get('/delta-sync-full', async (c) => {
   if (!directOk && Number((mirror as Record<string, unknown>).maven_transactions ?? 0) > 0) directOk = true
   const ok = directOk && resultOk(results)
   return c.json({ ok, mode: 'full', results, at: new Date().toISOString() }, ok ? 200 : 502)
+})
+
+// Hourly read-only safety net. It compares the source and production mirror;
+// it never writes transaction data and is safe to retry.
+deltaSyncRoutes.get('/delta-gap-check', async (c) => {
+  const secret = process.env.CRON_SECRET
+  if (!secret || c.req.header('authorization') !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401)
+  if (!(await claimDistributedLease(3_600, 'maven_delta_gap_detector'))) return c.json({ ok: true, skipped: 'distributed_lease' })
+  try {
+    const result = await runMavenGapCheck(75)
+    return c.json({ ...result, at: new Date().toISOString() }, result.ok ? 200 : 409)
+  } catch (error) {
+    return c.json({ ok: false, error: error instanceof Error ? error.message : 'gap_check_failed', at: new Date().toISOString() }, 502)
+  }
 })
 
 // 2026-09-20: sweep_auto_decline_stale_unmatched() is a leftover from the old
