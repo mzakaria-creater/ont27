@@ -111,6 +111,11 @@ let lastLegacyMavenCollectorAt = 0
 // are safe and keep new Maven transactions visible while a full scan runs.
 const activeSync: { fast: Promise<Record<string, number | string>> | null; full: Promise<Record<string, number | string>> | null } = { fast: null, full: null }
 
+/** Stable keyset predicate for a (timestamp, primary-key) ordered feed. */
+export function buildKeysetOr(column: string, primaryKey: string, cursor: { value: string; key: string }): string {
+  return `${column}.gt.${cursor.value},and(${column}.eq.${cursor.value},${primaryKey}.gt.${cursor.key})`
+}
+
 async function executeRecordedAutoDeclines(): Promise<{ executed: number; skipped: number; failed: number }> {
   const old = oldDb()
   const baseUrl = process.env.SUPABASE_URL
@@ -199,15 +204,14 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
 
   async function pullSince(table: string, pk: string, col: string, since: string): Promise<number> {
     let upserted = 0
-    let offset = 0
+    let cursor: { value: string; key: string } | null = null
     for (;;) {
-      const { data: rows, error: fetchErr } = await oldDb
-        .from(table)
-        .select('*')
-        .gte(col, since)
+      let query = oldDb.from(table).select('*').gte(col, since)
+      if (cursor) query = query.or(buildKeysetOr(col, pk, cursor))
+      const { data: rows, error: fetchErr } = await query
         .order(col, { ascending: true })
         .order(pk, { ascending: true })
-        .range(offset, offset + PAGE - 1)
+        .limit(PAGE)
       if (fetchErr) throw new Error(`old: ${fetchErr.message}`)
       if (!rows?.length) break
 
@@ -416,30 +420,25 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
       }
 
       const { error: upErr } = await db.from(table).upsert(payload, { onConflict: pk })
+      let failedRows = 0
       if (upErr) {
         // onConflict already resolves any conflict on `pk` — a duplicate-key
         // error here can only be a *different* unique constraint (seen live:
         // maven_transactions_ontarget_ref_key, meaning two different tx_id
-        // rows from the source share one ontarget_ref). Left as a hard throw,
-        // one poisoned row blocked the whole page forever: offset never
-        // advances past a failed upsert, so every future run re-fetched and
-        // re-failed on the exact same page, and every valid row behind it in
-        // that table stopped syncing. Fall back to one row at a time so only
-        // the genuine offender is skipped — logged clearly for follow-up,
-        // never silently guessed at — while the rest of the page still lands.
-        if (/duplicate key value violates unique constraint/i.test(upErr.message) && payload.length > 1) {
-          let failures = 0
-          for (const row of payload) {
-            const { error: rowErr } = await db.from(table).upsert([row], { onConflict: pk })
-            if (rowErr) {
-              failures++
-              console.error('deltaSync: row skipped (secondary unique-constraint conflict)', { table, pk, pkValue: (row as Record<string, unknown>)[pk], error: rowErr.message })
-            }
+        // rows from the source share one ontarget_ref). Retry one row at a
+        // time for any batch error so a single poisoned row cannot block the
+        // rest of the page; failed keys are logged for follow-up.
+        for (const row of payload) {
+          const { error: rowErr } = await db.from(table).upsert([row], { onConflict: pk })
+          if (rowErr) {
+            failedRows++
+            console.error('deltaSync: row skipped after batch upsert failure', {
+              table, pk, pkValue: (row as Record<string, unknown>)[pk],
+              batchError: upErr.message, error: rowErr.message,
+            })
           }
-          if (failures === payload.length) throw new Error(`upsert: ${upErr.message}`)
-        } else {
-          throw new Error(`upsert: ${upErr.message}`)
         }
+        if (failedRows === payload.length) throw new Error(`upsert: ${upErr.message}`)
       }
       if (table === 'maven_transactions' && newlyApproved.length) {
         const emailResults = await Promise.allSettled(newlyApproved.map((row) => notifyApprovedTransaction({
@@ -453,9 +452,11 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
         const failed = emailResults.filter((result) => result.status === 'rejected').length
         if (failed) console.error('provider approval email post-processing failed', { failed, total: newlyApproved.length })
       }
-      upserted += rows.length
+      upserted += payload.length - failedRows
       if (rows.length < PAGE) break
-      offset += rows.length
+      const last = rows[rows.length - 1] as Record<string, unknown>
+      if (last[col] == null || last[pk] == null) throw new Error(`pagination cursor missing ${col}/${pk}`)
+      cursor = { value: String(last[col]), key: String(last[pk]) }
     }
     return upserted
   }
