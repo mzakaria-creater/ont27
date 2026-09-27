@@ -3,39 +3,46 @@ import { db } from './db.js'
 import { requireAnyPerm, requireAuth } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 import { sendTelegramAlert } from './notify.js'
-import { oldDb } from './oldDb.js'
 
 export const reportsRoutes = new Hono<AuthEnv>()
 reportsRoutes.use('*', requireAuth)
 
-// Calendar-based wallet cash-flow report. The source project owns the wallet
-// activity RPCs because SMS and Maven collector data still live there.
-reportsRoutes.get('/wallet-activity', requireAnyPerm(['wallets', 'treasury', 'reports', 'sms_live'], 'can_view'), async (c) => {
+// Calendar-based wallet cash-flow report. The RPCs return one row per wallet;
+// totals are calculated here so the API contract stays stable even if an RPC
+// returns an empty set.
+reportsRoutes.get('/wallet-activity', requireAnyPerm(['reports', 'advanced_analysis', 'wallets'], 'can_view'), async (c) => {
   const mode = c.req.query('mode') ?? 'day'
   const wallet = c.req.query('wallet')?.trim() || null
-  const old = oldDb()
-  if (!old) return c.json({ error: 'old_db_not_configured' }, 503)
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/
+  let rpcName: string
+  let rpcArgs: Record<string, unknown>
 
-  let fn: string
-  let args: Record<string, unknown>
   if (mode === 'day') {
-    const date = c.req.query('date')
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return c.json({ error: 'invalid_date' }, 400)
-    fn = 'wallet_daily_report'; args = { p_date: date, p_wallet: wallet }
+    const date = c.req.query('date') ?? new Date().toISOString().slice(0, 10)
+    if (!dateRe.test(date)) return c.json({ error: 'date must be YYYY-MM-DD' }, 400)
+    rpcName = 'wallet_daily_report'; rpcArgs = { p_date: date, p_wallet: wallet }
   } else if (mode === 'month') {
     const year = Number(c.req.query('year')); const month = Number(c.req.query('month'))
-    if (!Number.isInteger(year) || year < 2000 || year > 2200 || !Number.isInteger(month) || month < 1 || month > 12) return c.json({ error: 'invalid_month' }, 400)
-    fn = 'wallet_monthly_report'; args = { p_year: year, p_month: month, p_wallet: wallet }
+    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) return c.json({ error: 'year and month (1-12) are required' }, 400)
+    rpcName = 'wallet_monthly_report'; rpcArgs = { p_year: year, p_month: month, p_wallet: wallet }
   } else if (mode === 'range') {
-    const from = c.req.query('from'); const to = c.req.query('to')
-    if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return c.json({ error: 'invalid_range' }, 400)
-    fn = 'wallet_range_report'; args = { p_from: from, p_to: to, p_wallet: wallet }
-  } else return c.json({ error: 'invalid_mode' }, 400)
+    const from = c.req.query('from') ?? ''; const to = c.req.query('to') ?? ''
+    if (!dateRe.test(from) || !dateRe.test(to)) return c.json({ error: 'from and to must be YYYY-MM-DD' }, 400)
+    if (from > to) return c.json({ error: '"from" must not be after "to"' }, 400)
+    rpcName = 'wallet_range_report'; rpcArgs = { p_from: from, p_to: to, p_wallet: wallet }
+  } else return c.json({ error: 'mode must be day, month, or range' }, 400)
 
-  const { data, error } = await old.rpc(fn, args)
-  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  const value = data && typeof data === 'object' ? data as Record<string, unknown> : {}
-  return c.json({ mode, wallet, wallets: Array.isArray(value.wallets) ? value.wallets : [], totals: value.totals ?? { in_count: 0, in_amount: 0, out_count: 0, out_amount: 0, net_amount: 0 } })
+  const { data, error } = await db.rpc(rpcName, rpcArgs)
+  if (error) return c.json({ error: error.message }, 500)
+  const rows = (data ?? []) as Array<{ wallet: string | null; in_count: number; in_amount: number; out_count: number; out_amount: number; net_amount: number }>
+  const totals = rows.reduce((acc, row) => ({
+    in_count: acc.in_count + Number(row.in_count ?? 0),
+    in_amount: acc.in_amount + Number(row.in_amount ?? 0),
+    out_count: acc.out_count + Number(row.out_count ?? 0),
+    out_amount: acc.out_amount + Number(row.out_amount ?? 0),
+    net_amount: acc.net_amount + Number(row.net_amount ?? 0),
+  }), { in_count: 0, in_amount: 0, out_count: 0, out_amount: 0, net_amount: 0 })
+  return c.json({ mode, wallet, wallets: rows, totals })
 })
 
 // Structured merchant settlement ledger. This is separate from the live
