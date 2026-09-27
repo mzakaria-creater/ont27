@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Activity, AlertTriangle, BarChart3, CalendarDays, CheckCircle2, CircleDollarSign, Clock3, RefreshCw, ShieldCheck, TrendingDown, TrendingUp, Users, WalletCards, XCircle } from 'lucide-react'
+import { Activity, AlertTriangle, BarChart3, CalendarDays, CheckCircle2, CircleDollarSign, Clock3, RefreshCw, ShieldCheck, TrendingUp, Users, WalletCards, XCircle } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'

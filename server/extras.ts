@@ -450,7 +450,7 @@ extraRoutes.post('/cash-settlements', requireAnyPerm(['reports', 'advanced_analy
 
 // Merchant settlement payments/holds. These are explicit ledger entries and
 // never mutate the underlying payin/payout transaction history.
-extraRoutes.get('/settlements/payments', requireAnyPerm(['settlements', 'settlements_list', 'settlement_recon'], 'can_view'), async (c) => {
+extraRoutes.get('/settlements/payments', requireAnyPerm(['settlements', 'settlements_list', 'settlement_recon', 'reports', 'advanced_analysis'], 'can_view'), async (c) => {
   const merchant = c.req.query('merchant')?.trim()
   const month = c.req.query('month')?.trim()
   let query = db.from('settlement_merchant_payments').select('*').order('settlement_month', { ascending: false }).order('created_at', { ascending: false }).limit(500)
@@ -461,7 +461,7 @@ extraRoutes.get('/settlements/payments', requireAnyPerm(['settlements', 'settlem
   return c.json({ payments: data ?? [] })
 })
 
-extraRoutes.post('/settlements/payments', requireAnyPerm(['settlements', 'settlements_list', 'settlement_recon'], 'can_edit'), async (c) => {
+extraRoutes.post('/settlements/payments', requireAnyPerm(['settlements', 'settlements_list', 'settlement_recon', 'reports', 'advanced_analysis'], 'can_edit'), async (c) => {
   const body = await c.req.json().catch(() => null)
   const merchant = typeof body?.merchant === 'string' ? body.merchant.trim().slice(0, 180) : ''
   const month = typeof body?.settlement_month === 'string' && /^\d{4}-\d{2}$/.test(body.settlement_month) ? `${body.settlement_month}-01` : ''

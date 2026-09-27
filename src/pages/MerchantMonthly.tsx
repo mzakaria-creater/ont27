@@ -1,7 +1,8 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts'
-import { AlertTriangle, CalendarRange, Clock3, Download, Printer, RefreshCw } from 'lucide-react'
+import { AlertTriangle, CalendarRange, Clock3, Download, PlusCircle, Printer, RefreshCw } from 'lucide-react'
 import MultiSelectFilter from '../components/MultiSelectFilter'
+import { useAuth } from '../auth/AuthContext'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { exportCsv } from '../lib/exportTable'
@@ -26,6 +27,11 @@ interface MonthlyRow {
   partial_month: boolean
   gap_dates: string[]
   undated_n: number
+  volume_share_pct?: number | string
+  paid_from_balance_egp?: number | string
+  held_from_balance_egp?: number | string
+  balance_payment_fees_egp?: number | string
+  net_after_balance_egp?: number | string
 }
 
 const DEFAULT_RATE = 52.6
@@ -36,11 +42,6 @@ const BAR_COLORS = ['#f7b84b', '#4b9bf7', '#7fd47f', '#e56b8c', '#b98af7', '#5cd
 const num = (v: unknown): number => { const n = Number(v); return Number.isFinite(n) ? n : 0 }
 
 function monthKey(d: Date): string { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
-function addMonthsKey(key: string, delta: number): string {
-  const [y, m] = key.split('-').map(Number)
-  const d = new Date(y, m - 1 + delta, 1)
-  return monthKey(d)
-}
 function monthKeyToFirstDay(key: string): string { return `${key}-01` }
 function monthKeyToLastDay(key: string): string {
   const [y, m] = key.split('-').map(Number)
@@ -75,16 +76,20 @@ function compressDateRanges(dates: string[]): string {
 
 export default function MerchantMonthly() {
   const { t, locale } = useLocale()
+  const { can } = useAuth()
   const isMobile = useIsMobile()
   const [merchantOptions, setMerchantOptions] = useState<string[]>([])
   const [selectedMerchants, setSelectedMerchants] = useState<string[]>([])
-  const [fromMonth, setFromMonth] = useState(() => addMonthsKey(monthKey(new Date()), -5))
+  const [fromMonth, setFromMonth] = useState('2025-01')
   const [toMonth, setToMonth] = useState(() => monthKey(new Date()))
   const [viewMode, setViewMode] = useState<'gross' | 'net'>('gross')
   const [fxRate, setFxRate] = useState(String(DEFAULT_RATE))
   const [rows, setRows] = useState<MonthlyRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showPaymentForm, setShowPaymentForm] = useState(false)
+  const [paymentBusy, setPaymentBusy] = useState(false)
+  const [paymentForm, setPaymentForm] = useState({ merchant: '', settlement_month: monthKey(new Date()), amount: '', note: '' })
 
   const loadMerchants = useCallback(async () => {
     try {
@@ -110,6 +115,20 @@ export default function MerchantMonthly() {
   }, [selectedMerchants, fromMonth, toMonth, t])
   useEffect(() => { void load() }, [load])
 
+  const addPayment = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!paymentForm.merchant || !paymentForm.amount) return
+    setPaymentBusy(true); setError(null)
+    try {
+      await api('/api/settlements/payments', { method: 'POST', body: JSON.stringify({ ...paymentForm, payment_fee: 0, service_fee: 0, blocked_percent: 0 }) })
+      setPaymentForm((current) => ({ ...current, amount: '', note: '' }))
+      setShowPaymentForm(false)
+      await load()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t('تعذّر تسجيل الدفعة من الرصيد.', 'Could not record the balance payment.'))
+    } finally { setPaymentBusy(false) }
+  }
+
   const fx = Number(fxRate) > 0 ? Number(fxRate) : DEFAULT_RATE
 
   // Group in the order rows already arrive (merchant, then month — both
@@ -131,7 +150,9 @@ export default function MerchantMonthly() {
     deposit_fee_egp: sum.deposit_fee_egp + num(r.deposit_fee_egp),
     settlement_fee_egp: sum.settlement_fee_egp + num(r.settlement_fee_egp),
     net_egp: sum.net_egp + num(r.net_egp),
-  }), { paid_n: 0, paid_amt: 0, declined_n: 0, deposit_fee_egp: 0, settlement_fee_egp: 0, net_egp: 0 }), [rows])
+    paid_from_balance_egp: sum.paid_from_balance_egp + num(r.paid_from_balance_egp) + num(r.held_from_balance_egp),
+    net_after_balance_egp: sum.net_after_balance_egp + num(r.net_after_balance_egp),
+  }), { paid_n: 0, paid_amt: 0, declined_n: 0, deposit_fee_egp: 0, settlement_fee_egp: 0, net_egp: 0, paid_from_balance_egp: 0, net_after_balance_egp: 0 }), [rows])
 
   const undatedByMerchant = useMemo(() => {
     const map = new Map<string, number>()
@@ -177,6 +198,9 @@ export default function MerchantMonthly() {
     { header: 'Merchant', key: 'merchant', value: (r) => r.merchant },
     { header: 'Paid count', key: 'paid_n', value: (r) => num(r.paid_n) },
     { header: 'Paid amount (EGP)', key: 'paid_amt', value: (r) => num(r.paid_amt).toFixed(2) },
+    { header: 'Month share %', key: 'volume_share_pct', value: (r) => num(r.volume_share_pct).toFixed(2) },
+    { header: 'Paid from balance (EGP)', key: 'paid_from_balance_egp', value: (r) => (num(r.paid_from_balance_egp) + num(r.held_from_balance_egp)).toFixed(2) },
+    { header: 'Net remaining (EGP)', key: 'net_after_balance_egp', value: (r) => num(r.net_after_balance_egp).toFixed(2) },
     { header: 'Declined count', key: 'declined_n', value: (r) => num(r.declined_n) },
     { header: 'Deposit fee', key: 'deposit_fee_egp', value: (r) => num(r.deposit_fee_egp).toFixed(2) },
     { header: 'Settlement fee', key: 'settlement_fee_egp', value: (r) => num(r.settlement_fee_egp).toFixed(2) },
@@ -194,6 +218,7 @@ export default function MerchantMonthly() {
       <div className="page-actions no-print">
         <button className="btn-ghost btn-sm" onClick={exportRows} disabled={loading || !rows.length}><Download size={15}/> CSV</button>
         <button className="btn-ghost btn-sm" onClick={() => window.print()} disabled={loading || !rows.length}><Printer size={15}/> PDF</button>
+        {can('settlements', 'can_edit') && <button className="btn-primary btn-sm" onClick={() => setShowPaymentForm((value) => !value)}><PlusCircle size={15}/>{t('إضافة مدفوع من الرصيد', 'Add paid from balance')}</button>}
         <button className="btn-ghost btn-sm" onClick={() => void load()} disabled={loading}><RefreshCw size={15} className={loading ? 'spin' : ''}/>{t('تحديث', 'Refresh')}</button>
       </div>
     </section>
@@ -208,6 +233,17 @@ export default function MerchantMonthly() {
       </div>
       <label className="filter-field">{t('سعر USDT', 'USDT rate')}<input className="login-input mono" type="number" min="0.01" step="0.01" value={fxRate} onChange={(e) => setFxRate(e.target.value)}/></label>
     </section>
+
+    {showPaymentForm && can('settlements', 'can_edit') && <section className="card merchant-monthly-payment-card no-print">
+      <div className="recent-head"><div><h3>{t('إضافة مبلغ مدفوع من رصيد التاجر', 'Add paid amount from merchant balance')}</h3><p className="cell-sub">{t('سيُخصم المبلغ من صافي الشهر ويظهر في عمود المدفوع من الرصيد.', 'The amount is deducted from monthly net and shown in the balance-paid column.')}</p></div></div>
+      <form className="settlement-payment-form" onSubmit={addPayment}>
+        <select className="login-input" required value={paymentForm.merchant} onChange={(e) => setPaymentForm({ ...paymentForm, merchant: e.target.value })}><option value="">{t('اختر التاجر', 'Select merchant')}</option>{merchantOptions.map((merchant) => <option key={merchant} value={merchant}>{merchant}</option>)}</select>
+        <input className="login-input" type="month" required value={paymentForm.settlement_month} onChange={(e) => setPaymentForm({ ...paymentForm, settlement_month: e.target.value })}/>
+        <input className="login-input" type="number" min="0.01" step="0.01" required placeholder={t('المبلغ المدفوع من الرصيد', 'Amount paid from balance')} value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}/>
+        <input className="login-input" placeholder={t('ملاحظة (اختياري)', 'Note (optional)')} value={paymentForm.note} onChange={(e) => setPaymentForm({ ...paymentForm, note: e.target.value })}/>
+        <button className="btn-primary" disabled={paymentBusy}>{paymentBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ الدفعة', 'Save payment')}</button>
+      </form>
+    </section>}
 
     {/* Static text stand-in for the interactive filter bar above, which
         is hidden from print — a dropdown widget prints as nothing
@@ -257,7 +293,8 @@ export default function MerchantMonthly() {
                 <div key={row.month} className="risk-row-card">
                   <div className="risk-row-card-head"><strong>{merchant}</strong><span className="mono">{money(num(row.net_egp), 'EGP')}</span></div>
                   <div className="cell-sub">{formatMonthLabel(row.month, locale)}{row.is_current_month ? ` (${t('حتى الآن', 'to date')})` : ''}</div>
-                  <div className="cell-sub">{t('مدفوع', 'Paid')} {num(row.paid_n)} · {money(num(row.paid_amt), 'EGP')} · {t('مرفوض', 'Declined')} {num(row.declined_n)}</div>
+                  <div className="cell-sub">{t('مدفوع', 'Paid')} {num(row.paid_n)} · {money(num(row.paid_amt), 'EGP')} · {t('نسبة الشهر', 'Month share')} {num(row.volume_share_pct).toFixed(2)}%</div>
+                  <div className="cell-sub">{t('مدفوع من الرصيد', 'Paid from balance')} {money(num(row.paid_from_balance_egp) + num(row.held_from_balance_egp), 'EGP')} · {t('الصافي المتبقي', 'Net remaining')} {money(num(row.net_after_balance_egp), 'EGP')}</div>
                   <div className="cell-sub">{t('رسوم الإيداع', 'Deposit fee')} {money(num(row.deposit_fee_egp), 'EGP')} · {t('رسوم التسوية', 'Settlement fee')} {money(num(row.settlement_fee_egp), 'EGP')}</div>
                   <div className="cell-sub">{formatDay(row.first_day)} – {formatDay(row.last_day)}</div>
                   {(row.partial_month || row.gap_dates.length > 0) && <div className="chip-row">
@@ -274,7 +311,7 @@ export default function MerchantMonthly() {
       <div className="table-wrap"><table className="data-table">
         <thead><tr>
           <th>{t('الشهر', 'Month')}</th><th>{t('التاجر', 'Merchant')}</th><th>{t('عدد المدفوع', 'Paid count')}</th>
-          <th>{t('المبلغ المدفوع (EGP)', 'Paid amount (EGP)')}</th><th>{t('عدد المرفوض', 'Declined count')}</th>
+          <th>{t('المبلغ المدفوع (EGP)', 'Paid amount (EGP)')}</th><th>{t('نسبة الشهر', 'Month share')}</th><th>{t('عدد المرفوض', 'Declined count')}</th><th>{t('مدفوع من الرصيد', 'Paid from balance')}</th><th>{t('الصافي المتبقي', 'Net remaining')}</th>
           <th>{t('رسوم الإيداع', 'Deposit fee')}</th><th>{t('رسوم التسوية', 'Settlement fee')}</th>
           <th>{t('صافي (EGP)', 'Net (EGP)')}</th><th>{t('صافي (USDT)', 'Net (USDT)')}</th>
           <th>{t('أول يوم', 'First day')}</th><th>{t('آخر يوم', 'Last day')}</th><th>{t('أعلام', 'Flags')}</th>
@@ -291,7 +328,7 @@ export default function MerchantMonthly() {
                 <td><strong>{row.merchant}</strong></td>
                 <td className="mono">{num(row.paid_n).toLocaleString()}</td>
                 <td className="mono">{money(num(row.paid_amt), 'EGP')}</td>
-                <td className="mono">{num(row.declined_n).toLocaleString()}</td>
+                <td className="mono">{num(row.volume_share_pct).toFixed(2)}%</td><td className="mono">{num(row.declined_n).toLocaleString()}</td><td className="mono">{money(num(row.paid_from_balance_egp) + num(row.held_from_balance_egp), 'EGP')}</td><td className="mono">{money(num(row.net_after_balance_egp), 'EGP')}</td>
                 <td className="mono">{money(num(row.deposit_fee_egp), 'EGP')}</td>
                 <td className="mono">{money(num(row.settlement_fee_egp), 'EGP')}</td>
                 <td className="mono">{money(num(row.net_egp), 'EGP')}</td>
@@ -305,7 +342,7 @@ export default function MerchantMonthly() {
                 <td colSpan={2}>{t('إجمالي', 'Subtotal')} — {merchant}</td>
                 <td className="mono">{subtotal.paid_n.toLocaleString()}</td>
                 <td className="mono">{money(subtotal.paid_amt, 'EGP')}</td>
-                <td className="mono">{subtotal.declined_n.toLocaleString()}</td>
+                <td className="mono">—</td><td className="mono">{subtotal.declined_n.toLocaleString()}</td><td colSpan={2}>—</td>
                 <td className="mono">{money(subtotal.deposit_fee_egp, 'EGP')}</td>
                 <td className="mono">{money(subtotal.settlement_fee_egp, 'EGP')}</td>
                 <td className="mono">{money(subtotal.net_egp, 'EGP')}</td>
@@ -314,13 +351,13 @@ export default function MerchantMonthly() {
               </tr>
             </Fragment>
           })}
-          {!loading && !rows.length && <tr><td colSpan={12} className="sidebar-hint">{t('لا توجد بيانات في هذا النطاق.', 'No data in this range.')}</td></tr>}
+          {!loading && !rows.length && <tr><td colSpan={16} className="sidebar-hint">{t('لا توجد بيانات في هذا النطاق.', 'No data in this range.')}</td></tr>}
         </tbody>
         <tfoot><tr>
           <th colSpan={2}>{t('الإجمالي الكلي', 'Grand total')}</th>
           <th className="mono">{grandTotal.paid_n.toLocaleString()}</th>
           <th className="mono">{money(grandTotal.paid_amt, 'EGP')}</th>
-          <th className="mono">{grandTotal.declined_n.toLocaleString()}</th>
+          <th className="mono">—</th><th className="mono">{grandTotal.declined_n.toLocaleString()}</th><th className="mono">{money(grandTotal.paid_from_balance_egp, 'EGP')}</th><th className="mono">{money(grandTotal.net_after_balance_egp, 'EGP')}</th>
           <th className="mono">{money(grandTotal.deposit_fee_egp, 'EGP')}</th>
           <th className="mono">{money(grandTotal.settlement_fee_egp, 'EGP')}</th>
           <th className="mono">{money(grandTotal.net_egp, 'EGP')}</th>

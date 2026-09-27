@@ -572,11 +572,55 @@ reportsRoutes.get('/merchant-monthly', requireAnyPerm(['reports', 'advanced_anal
   const from = c.req.query('from')
   const to = c.req.query('to')
   const validDate = (v: string | undefined) => v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null
+  const defaultTo = new Date().toISOString().slice(0, 10)
   const { data, error } = await db.rpc('get_merchant_monthly', {
     p_merchants: merchants && merchants.length ? merchants : null,
-    p_from: validDate(from),
-    p_to: validDate(to),
+    p_from: validDate(from) ?? '2025-01-01',
+    p_to: validDate(to) ?? defaultTo,
   })
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  return c.json({ rows: data ?? [] })
+  const rows = data ?? []
+  // Settlement payments are kept in their own ledger. Enriching this report
+  // here keeps the monthly RPC focused on provider volume while exposing the
+  // remaining net balance for each merchant/month in one request.
+  const firstMonth = rows.map((r: any) => String(r.month ?? '').slice(0, 10)).filter(Boolean).sort()[0]
+  const lastMonth = rows.map((r: any) => String(r.month ?? '').slice(0, 10)).filter(Boolean).sort().at(-1)
+  let paymentQuery = db.from('settlement_merchant_payments').select('id, merchant, settlement_month, amount, blocked_percent, payment_fee, service_fee, note, paid_by, paid_at')
+  if (firstMonth) paymentQuery = paymentQuery.gte('settlement_month', firstMonth)
+  if (lastMonth) paymentQuery = paymentQuery.lte('settlement_month', lastMonth)
+  if (merchants?.length) paymentQuery = paymentQuery.in('merchant', merchants)
+  const { data: payments, error: paymentsError } = await paymentQuery.order('settlement_month', { ascending: false }).order('created_at', { ascending: false }).limit(5000)
+  if (paymentsError) return c.json({ error: 'db_error', detail: paymentsError.message }, 500)
+  const paymentMap = new Map<string, { paid: number; held: number; fees: number }>()
+  for (const payment of payments ?? []) {
+    const key = `${payment.merchant}::${String(payment.settlement_month).slice(0, 7)}`
+    const current = paymentMap.get(key) ?? { paid: 0, held: 0, fees: 0 }
+    const amount = Number(payment.amount ?? 0)
+    const held = amount * Number(payment.blocked_percent ?? 0) / 100
+    current.paid += amount
+    current.held += held
+    current.fees += Number(payment.payment_fee ?? 0) + Number(payment.service_fee ?? 0)
+    paymentMap.set(key, current)
+  }
+  const monthTotals = new Map<string, number>()
+  for (const row of rows as any[]) {
+    const key = String(row.month ?? '').slice(0, 7)
+    monthTotals.set(key, (monthTotals.get(key) ?? 0) + Number(row.paid_amt ?? 0))
+  }
+  const enrichedRows = (rows as any[]).map((row) => {
+    const key = `${row.merchant}::${String(row.month ?? '').slice(0, 7)}`
+    const payment = paymentMap.get(key) ?? { paid: 0, held: 0, fees: 0 }
+    const net = Number(row.net_egp ?? 0)
+    const paidFromBalance = payment.paid + payment.held
+    return {
+      ...row,
+      volume_share_pct: (monthTotals.get(String(row.month ?? '').slice(0, 7)) ?? 0) > 0
+        ? Number((Number(row.paid_amt ?? 0) / (monthTotals.get(String(row.month ?? '').slice(0, 7)) ?? 1) * 100).toFixed(2)) : 0,
+      paid_from_balance_egp: Number(payment.paid.toFixed(2)),
+      held_from_balance_egp: Number(payment.held.toFixed(2)),
+      balance_payment_fees_egp: Number(payment.fees.toFixed(2)),
+      net_after_balance_egp: Number((net - paidFromBalance - payment.fees).toFixed(2)),
+    }
+  })
+  return c.json({ rows: enrichedRows, payments: payments ?? [] })
 })
