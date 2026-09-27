@@ -97,6 +97,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/withdrawal-sms-report', icon: '🧾', labelAr: 'تقرير SMS السحب', labelEn: 'Withdrawal SMS report', keys: ['reports', 'advanced_analysis', 'sms_live'], group: 'insights' },
   { to: '/cash-settlements', icon: '💵', labelAr: 'تسوية كاش SMS', labelEn: 'Cash SMS settlement', keys: ['reports', 'advanced_analysis', 'settlements', 'sms_live'], group: 'insights' },
   { to: '/wallet-movements', icon: '💱', labelAr: 'حركة المحافظ', labelEn: 'Wallet movements', keys: ['wallets', 'treasury', 'reports', 'sms_live'], group: 'payments' },
+  { to: '/wallet-activity', icon: '🗓️', labelAr: 'نشاط المحافظ الزمني', labelEn: 'Wallet activity by period', keys: ['wallets', 'treasury', 'reports', 'sms_live'], group: 'payments' },
   { to: '/tv', icon: '🖥️', labelAr: 'شاشة TV', labelEn: 'TV screen', keys: ['sms_live'], group: 'overview' },
   { to: '/p2p-tv', icon: '📺', labelAr: 'شاشة P2P الحية', labelEn: 'P2P Live TV', keys: ['sms_live'], group: 'overview' },
   { to: '/complaints', icon: '🛎️', labelAr: 'الشكاوى', labelEn: 'Complaints', keys: ['support'], roles: COMPLAINT_ROLES, group: 'customers' },

@@ -3,9 +3,40 @@ import { db } from './db.js'
 import { requireAnyPerm, requireAuth } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 import { sendTelegramAlert } from './notify.js'
+import { oldDb } from './oldDb.js'
 
 export const reportsRoutes = new Hono<AuthEnv>()
 reportsRoutes.use('*', requireAuth)
+
+// Calendar-based wallet cash-flow report. The source project owns the wallet
+// activity RPCs because SMS and Maven collector data still live there.
+reportsRoutes.get('/wallet-activity', requireAnyPerm(['wallets', 'treasury', 'reports', 'sms_live'], 'can_view'), async (c) => {
+  const mode = c.req.query('mode') ?? 'day'
+  const wallet = c.req.query('wallet')?.trim() || null
+  const old = oldDb()
+  if (!old) return c.json({ error: 'old_db_not_configured' }, 503)
+
+  let fn: string
+  let args: Record<string, unknown>
+  if (mode === 'day') {
+    const date = c.req.query('date')
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return c.json({ error: 'invalid_date' }, 400)
+    fn = 'wallet_daily_report'; args = { p_date: date, p_wallet: wallet }
+  } else if (mode === 'month') {
+    const year = Number(c.req.query('year')); const month = Number(c.req.query('month'))
+    if (!Number.isInteger(year) || year < 2000 || year > 2200 || !Number.isInteger(month) || month < 1 || month > 12) return c.json({ error: 'invalid_month' }, 400)
+    fn = 'wallet_monthly_report'; args = { p_year: year, p_month: month, p_wallet: wallet }
+  } else if (mode === 'range') {
+    const from = c.req.query('from'); const to = c.req.query('to')
+    if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return c.json({ error: 'invalid_range' }, 400)
+    fn = 'wallet_range_report'; args = { p_from: from, p_to: to, p_wallet: wallet }
+  } else return c.json({ error: 'invalid_mode' }, 400)
+
+  const { data, error } = await old.rpc(fn, args)
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  const value = data && typeof data === 'object' ? data as Record<string, unknown> : {}
+  return c.json({ mode, wallet, wallets: Array.isArray(value.wallets) ? value.wallets : [], totals: value.totals ?? { in_count: 0, in_amount: 0, out_count: 0, out_amount: 0, net_amount: 0 } })
+})
 
 // Structured merchant settlement ledger. This is separate from the live
 // transaction analytics below because it stores the approved settlement

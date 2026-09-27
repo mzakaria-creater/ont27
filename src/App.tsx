@@ -80,6 +80,7 @@ const AnalyticsDashboard = lazy(() => import('./pages/AnalyticsDashboard'))
 const SystemHealth = lazy(() => import('./pages/SystemHealth'))
 const Performance = lazy(() => import('./pages/Performance'))
 const WalletMovements = lazy(() => import('./pages/WalletMovements'))
+const WalletActivity = lazy(() => import('./pages/WalletActivity'))
 const ClientProfile = lazy(() => import('./pages/ClientProfile'))
 const ReplayLab = lazy(() => import('./pages/ReplayLab'))
 const AirDroid = lazy(() => import('./pages/AirDroid'))
@@ -533,6 +534,7 @@ export default function App() {
             <Route path="/performance" element={<PageGate keys={['reports','analytics','dashboard','transactions','merchants']}><Performance /></PageGate>} />
             <Route path="/revenue" element={<PageGate keys={['revenue_center']}><RevenueCenter /></PageGate>} />
             <Route path="/wallet-movements" element={<PageGate keys={['wallets','treasury','reports','sms_live']}><WalletMovements /></PageGate>} />
+            <Route path="/wallet-activity" element={<PageGate keys={['wallets','treasury','reports','sms_live']}><WalletActivity /></PageGate>} />
             <Route path="/walletflow" element={<Navigate to="/wallet-movements" replace />} />
             <Route path="/client" element={<PageGate keys={['client_crm']}><ClientProfile /></PageGate>} />
             <Route path="/client/:phone" element={<PageGate keys={['client_crm']}><ClientProfile /></PageGate>} />
