@@ -54,6 +54,26 @@ function providerPatch(row: Record<string, unknown>, now: string) {
   return patch;
 }
 
+// Preserve an operator's pending local amount correction. Reconciliation still
+// refreshes provider_amount, but must not overwrite amount on every sync pass.
+function providerPatchForExisting(row: Record<string, unknown>, old: Record<string, any>, now: string) {
+  const patch = providerPatch(row, now);
+  const providerAmount = row.amount == null ? null : Number(row.amount);
+  const localAmount = old.local_amount == null ? null : Number(old.local_amount);
+  const hasPendingLocalCorrection =
+    (old.amount_sync_status === "mismatch" || old.amount_sync_status === "pending_confirmation") &&
+    localAmount != null && providerAmount != null && Math.abs(localAmount - providerAmount) > 0.009;
+  if (hasPendingLocalCorrection) {
+    patch.amount = localAmount;
+    patch.local_amount = localAmount;
+    patch.provider_amount = providerAmount;
+    patch.amount_sync_status = "mismatch";
+    patch.amount_mismatch_reason = `Local amount correction preserved (${localAmount}); Maven currently reports ${providerAmount}`;
+    patch.settlement_blocked = true;
+  }
+  return patch;
+}
+
 async function fetchMapped(cookie: string, from: Date, to: Date, merchantFilter = "") {
   const providerRows: any[] = [];
   const windows = chunkWindows(from, to);
@@ -155,7 +175,7 @@ Deno.serve(async (req) => {
         const ids = mapped.map((row) => row.tx_id);
         const local = new Map<number, any>();
         for (let i = 0; i < ids.length; i += 500) {
-          const { data, error } = await sb.from("maven_transactions").select("tx_id,status,row_hash,amount,created_at_utc,first_seen_at,approved_by,paid_source").in("tx_id", ids.slice(i, i + 500));
+          const { data, error } = await sb.from("maven_transactions").select("tx_id,status,row_hash,amount,local_amount,provider_amount,amount_sync_status,created_at_utc,first_seen_at,approved_by,paid_source").in("tx_id", ids.slice(i, i + 500));
           if (error) throw new Error(`local lookup: ${error.message}`);
           for (const row of data ?? []) local.set(Number(row.tx_id), row);
         }
@@ -182,7 +202,7 @@ Deno.serve(async (req) => {
           if (statusDiff) statusChanges++;
           if (statusDiff && old.status === "PAID" && row.status !== "PAID") alerts++;
           if (!dryRun && old.row_hash !== row.row_hash) {
-            const patch: Record<string, any> = { ...providerPatch(row, nowIso), row_hash: row.row_hash };
+            const patch: Record<string, any> = { ...providerPatchForExisting(row, old, nowIso), row_hash: row.row_hash };
             if (statusDiff) {
               patch.last_status_change = nowIso;
               patch.paid_source = row.status === "PAID" ? "reconciliation" : null;
@@ -260,7 +280,7 @@ Deno.serve(async (req) => {
     const ids = mapped.map((row) => row.tx_id);
     const local = new Map<number, any>();
     for (let i = 0; i < ids.length; i += 500) {
-      const { data, error } = await sb.from("maven_transactions").select("tx_id,status,row_hash,amount,created_at_utc,first_seen_at,approved_by,paid_source").in("tx_id", ids.slice(i, i + 500));
+      const { data, error } = await sb.from("maven_transactions").select("tx_id,status,row_hash,amount,local_amount,provider_amount,amount_sync_status,created_at_utc,first_seen_at,approved_by,paid_source").in("tx_id", ids.slice(i, i + 500));
       if (error) throw new Error(`local lookup: ${error.message}`);
       for (const row of data ?? []) local.set(Number(row.tx_id), row);
     }
@@ -283,7 +303,7 @@ Deno.serve(async (req) => {
       }
       if (old.row_hash === row.row_hash) { unchanged++; continue; }
 
-      const patch: Record<string, any> = { ...providerPatch(row, nowIso), row_hash: row.row_hash };
+      const patch: Record<string, any> = { ...providerPatchForExisting(row, old, nowIso), row_hash: row.row_hash };
       if (old.status !== row.status) {
         patch.last_status_change = nowIso;
         patch.paid_source = row.status === "PAID" ? "reconciliation" : null;
