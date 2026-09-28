@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Bell } from 'lucide-react'
 import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -48,9 +49,13 @@ export default function Notifications() {
 
   return (
     <>
-      <section className="page-head">
-        <h2>🔔 {t('الإشعارات', 'Notifications')}</h2>
-        <p className="page-sub">{t('كل ما يحتاج انتباهك الآن · تحديث تلقائي كل 30 ثانية', 'Everything that needs your attention now · auto-refresh every 30s')}</p>
+      <section className="page-head admin-head">
+        <span className="admin-head-icon"><Bell size={20} /></span>
+        <div className="admin-head-text">
+          <span className="admin-head-eyebrow">{t('المراقبة الحية', 'Live overview')}</span>
+          <h2>{t('الإشعارات', 'Notifications')}</h2>
+          <p className="page-sub">{t('كل ما يحتاج انتباهك الآن · تحديث تلقائي كل 30 ثانية', 'Everything that needs your attention now · auto-refresh every 30s')}</p>
+        </div>
       </section>
 
       <section className="card notification-sound-card">

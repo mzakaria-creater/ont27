@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Users } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -93,9 +94,13 @@ export default function KnownRecipients() {
 
   return (
     <>
-      <section className="page-head">
-        <h2>{t('🎯 المستلمون المعروفون', '🎯 Known Recipients')}</h2>
-        <p className="page-sub">{t('دليل حي للمستلمين من سجل السحوبات، مع الإجماليات وسجل التحويلات.', 'A live payout-recipient directory with totals and transfer history.')}</p>
+      <section className="page-head admin-head">
+        <span className="admin-head-icon"><Users size={20} /></span>
+        <div className="admin-head-text">
+          <span className="admin-head-eyebrow">{t('المدفوعات والمحافظ', 'Payments & wallets')}</span>
+          <h2>{t('المستلمون المعروفون', 'Known Recipients')}</h2>
+          <p className="page-sub">{t('دليل حي للمستلمين من سجل السحوبات، مع الإجماليات وسجل التحويلات.', 'A live payout-recipient directory with totals and transfer history.')}</p>
+        </div>
       </section>
 
       {error && <div className="card warn">{error}</div>}
