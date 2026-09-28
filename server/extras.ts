@@ -184,7 +184,10 @@ extraRoutes.get(
     const depQuery = () => {
       let query = db
         .from('maven_transactions')
-        .select(DEPOSIT_COLS, { count: 'exact' })
+        // The list only needs a pagination estimate; exact COUNT(*) on the
+        // production ledger can exceed the DB statement timeout and turn an
+        // otherwise fast page read into an intermittent HTTP 500.
+        .select(DEPOSIT_COLS, { count: 'planned' })
         .order('created_utc', { ascending: false, nullsFirst: false })
         .range(0, fetchTo - 1)
       if (statuses.length) query = query.in('status', [...new Set(statuses.flatMap((value) => value === 'PAID' ? ['PAID', 'APPROVED'] : [value]))])
@@ -208,7 +211,7 @@ extraRoutes.get(
     const payQuery = () => {
       let query = db
         .from('maven_payout_transactions')
-        .select(PAYOUT_COLS, { count: 'exact' })
+        .select(PAYOUT_COLS, { count: 'planned' })
         .order('created_utc', { ascending: false, nullsFirst: false })
         .range(0, fetchTo - 1)
       if (statuses.length) query = query.in('status', [...new Set(statuses.flatMap((value) => value === 'PAID' ? ['PAID', 'APPROVED'] : [value]))])
@@ -246,7 +249,7 @@ extraRoutes.get(
     let checkoutCount = 0
     if (wantDep) {
       let checkoutQuery = db.from('checkout_sessions')
-        .select('id, reference, status, amount, currency, customer_name, customer_phone, payment_link_id, metadata, success_url, created_at, expires_at, paid_at', { count: 'exact' })
+        .select('id, reference, status, amount, currency, customer_name, customer_phone, payment_link_id, metadata, success_url, created_at, expires_at, paid_at', { count: 'planned' })
         .order('created_at', { ascending: false })
         .range(0, fetchTo - 1)
       if (from) checkoutQuery = checkoutQuery.gte('created_at', `${from}T00:00:00Z`)
