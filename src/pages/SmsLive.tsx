@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { api, ApiError } from '../lib/api'
@@ -260,6 +260,7 @@ export default function SmsLive() {
   const [expenseBusy, setExpenseBusy] = useState(false)
   const [manualOpen, setManualOpen] = useState(false)
   const [manualBusy, setManualBusy] = useState(false)
+  const walletTotalsRefreshRef = useRef(0)
   const [manualForm, setManualForm] = useState({ message: '', sms_category: 'deposit', amount: '', sender_name: '', sender_number: '', receiver_number: '', trx_id: '', received_at: '', note: '' })
   // Respect an explicit prior choice either way; absent one, a phone opens
   // straight into the card view (a data table is a desktop concept — nobody
@@ -304,15 +305,22 @@ export default function SmsLive() {
     if (from) search.set('from', from)
     if (to) search.set('to', to)
     try {
-      const [list, st, walletTotals] = await Promise.all([
+      const [list, st] = await Promise.all([
         api<ListResponse>(`/api/sms?${search}`),
         api<SmsStats>(`/api/sms/stats?${search}`),
-        api<{ rows: WalletPaidTotal[] }>('/api/wallet-paid-totals'),
       ])
       setData((current) => JSON.stringify(current) === JSON.stringify(list) ? current : list)
       setStats(st)
-      setWalletPaidTotals(walletTotals.rows ?? [])
-      if (!(walletTotals.rows ?? []).some((row) => row.paid_amount >= 50_000)) setWalletAlertDismissed(false)
+      // Capacity totals are advisory and must never block the live SMS inbox.
+      // Refresh them independently once per minute; the inbox itself remains
+      // on its eight-second cadence even if the aggregate report is slow.
+      if (Date.now() - walletTotalsRefreshRef.current >= 60_000) {
+        walletTotalsRefreshRef.current = Date.now()
+        void api<{ rows: WalletPaidTotal[] }>('/api/wallet-paid-totals').then((walletTotals) => {
+          setWalletPaidTotals(walletTotals.rows ?? [])
+          if (!(walletTotals.rows ?? []).some((row) => row.paid_amount >= 50_000)) setWalletAlertDismissed(false)
+        }).catch(() => { walletTotalsRefreshRef.current = 0 })
+      }
       setErr(null)
     } catch (e) {
       setErr(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض رسائل SMS.', 'You do not have permission to view SMS.') : t('تعذّر تحميل الرسائل.', 'Failed to load messages.'))

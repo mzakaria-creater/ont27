@@ -22,7 +22,13 @@ export function syncProviders(): Promise<boolean> {
   if (document.visibilityState === 'hidden') return Promise.resolve(false)
   lastStartedAt = now
   try { localStorage.setItem(SHARED_KEY, String(now)) } catch { /* best-effort cross-tab coordination */ }
-  inFlight ??= api<{ ok?: boolean }>('/api/cron/delta-sync', { method: 'POST' })
+  // A provider outage must not leave navigation or login stuck behind a
+  // serverless request. The backend keeps its own reconciliation cron; this
+  // browser pump is a low-latency hint with a hard UI deadline.
+  inFlight ??= api<{ ok?: boolean }>('/api/cron/delta-sync', {
+    method: 'POST',
+    signal: AbortSignal.timeout(20_000),
+  })
     .then((body) => {
       const ok = body?.ok === true
       if (ok) window.dispatchEvent(new CustomEvent('ontarget:provider-sync'))

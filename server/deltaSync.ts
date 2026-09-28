@@ -110,7 +110,7 @@ let lastLegacyMavenCollectorAt = 0
 // Fast provider pulls must never wait behind the full repair pass. They touch
 // the same idempotent mirror with status/timestamp guards, so concurrent runs
 // are safe and keep new Maven transactions visible while a full scan runs.
-const activeSync: { fast: Promise<Record<string, number | string>> | null; full: Promise<Record<string, number | string>> | null } = { fast: null, full: null }
+const activeSync: { fast: Promise<Record<string, number | string>> | null; full: Promise<Record<string, number | string>> | null; mirror: Promise<Record<string, number | string>> | null } = { fast: null, full: null, mirror: null }
 
 /** Stable keyset predicate for a (timestamp, primary-key) ordered feed. */
 export function buildKeysetOr(column: string, primaryKey: string, cursor: { value: string; key: string }): string {
@@ -240,7 +240,7 @@ async function claimDistributedLease(ttlSeconds: number, leaseName = 'provider_d
   return data === true
 }
 
-async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, number | string>> {
+async function runSync(mode: 'fast' | 'full' = 'full', runPostProcessing = true): Promise<Record<string, number | string>> {
   const oldUrl = process.env.OLD_SUPABASE_URL
   const oldKey = process.env.OLD_SERVICE_KEY
   if (!oldUrl || !oldKey) throw new Error('old_db_not_configured')
@@ -580,6 +580,12 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
     }
   }
 
+  // Browser-triggered sync only needs to move rows into the production DB.
+  // Matchers, alerts and notification delivery are background work owned by
+  // the cron pass; waiting for them made a completed mirror request hang for
+  // up to five minutes and starved unrelated API routes such as login.
+  if (!runPostProcessing) return results
+
   // Run a bounded exact-reference matcher after every provider pull. This only
   // links evidence; it never approves/declines or calls a provider. The full
   // pass scans farther back as a repair net.
@@ -618,24 +624,30 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
     console.error('withdrawal SMS → payout matcher failed:', e)
   }
 
-  try {
-    const alerts = await produceRiskAlerts()
-    results['risk_alerts_sent'] = alerts.sent
-    console.info('risk alert producers completed', alerts)
-    if (alerts.errors.length) console.error('risk alert producer partial errors:', alerts.errors)
-  } catch (e) {
-    results['risk_alerts_sent'] = `error: ${(e as Error).message}`
-    console.error('risk alert producers failed:', e)
-  }
+  // Risk/freeze sweeps are not part of live ingestion. Running them on every
+  // fast tick caused hundreds of duplicate DB scans and was the last step
+  // visible before the 300-second runtime timeouts. The ten-minute full pass
+  // remains their owner.
+  if (mode === 'full') {
+    try {
+      const alerts = await produceRiskAlerts()
+      results['risk_alerts_sent'] = alerts.sent
+      console.info('risk alert producers completed', alerts)
+      if (alerts.errors.length) console.error('risk alert producer partial errors:', alerts.errors)
+    } catch (e) {
+      results['risk_alerts_sent'] = `error: ${(e as Error).message}`
+      console.error('risk alert producers failed:', e)
+    }
 
-  try {
-    const smsAlerts = await processWalletFreezeAlerts()
-    results['sms_freeze_alerts_scanned'] = smsAlerts.scanned
-    results['sms_freeze_alerts_sent'] = smsAlerts.sent
-    if (smsAlerts.errors.length) console.error('SMS freeze alert partial errors:', smsAlerts.errors)
-  } catch (e) {
-    results['sms_freeze_alerts_sent'] = `error: ${(e as Error).message}`
-    console.error('SMS freeze alert producer failed:', e)
+    try {
+      const smsAlerts = await processWalletFreezeAlerts()
+      results['sms_freeze_alerts_scanned'] = smsAlerts.scanned
+      results['sms_freeze_alerts_sent'] = smsAlerts.sent
+      if (smsAlerts.errors.length) console.error('SMS freeze alert partial errors:', smsAlerts.errors)
+    } catch (e) {
+      results['sms_freeze_alerts_sent'] = `error: ${(e as Error).message}`
+      console.error('SMS freeze alert producer failed:', e)
+    }
   }
 
   // Legacy auto-decline execution is disabled during the v2 cutover. The old
@@ -661,13 +673,13 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
   return results
 }
 
-async function reconcileMaven(mode: 'live' | 'repair') {
+async function reconcileMaven(mode: 'live' | 'repair', timeoutMs = mode === 'live' ? 55_000 : 240_000) {
   const baseUrl = process.env.SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SECRET_KEY
   if (!baseUrl || !serviceKey) throw new Error('v2_reconcile_not_configured')
   const response = await fetch(`${baseUrl}/functions/v1/maven-reconcile-final-status`, {
     method: 'POST',
-    signal: AbortSignal.timeout(mode === 'live' ? 55_000 : 240_000),
+    signal: AbortSignal.timeout(timeoutMs),
     headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
     body: JSON.stringify({ mode }),
   })
@@ -775,6 +787,12 @@ function syncOnce(mode: 'fast' | 'full'): Promise<Record<string, number | string
   if (activeSync[mode]) return activeSync[mode]!
   activeSync[mode] = runSync(mode).finally(() => { activeSync[mode] = null })
   return activeSync[mode]!
+}
+
+function syncMirrorOnce(): Promise<Record<string, number | string>> {
+  if (activeSync.mirror) return activeSync.mirror
+  activeSync.mirror = runSync('fast', false).finally(() => { activeSync.mirror = null })
+  return activeSync.mirror
 }
 
 function resultOk(results: Record<string, number | string>): boolean {
@@ -976,9 +994,20 @@ deltaSyncRoutes.post('/delta-sync', async (c) => {
   // minimum so browser pumps stay responsive without generating invalid RPCs.
   if (!(await claimDistributedLease(5, 'provider_delta_sync_fast'))) return c.json({ ok: true, skipped: 'distributed_lease' })
 
-  const mode = 'fast'
   lastFastRunAt = now
-  const { results, directOk } = await runFastIngress()
-  const ok = directOk && resultOk(results)
-  return c.json({ ok, mode, results, at: new Date().toISOString() }, ok ? 200 : 502)
+  const startedAt = Date.now()
+  const [direct, mirror] = await Promise.all([
+    reconcileMaven('live', 15_000).then((value) => ({ ok: true as const, value })).catch((error) => ({ ok: false as const, error })),
+    syncMirrorOnce().then((value) => ({ ok: true as const, value })).catch((error) => ({ ok: false as const, error })),
+  ])
+  const results: Record<string, number | string> = { sync_total_duration_ms: Date.now() - startedAt }
+  if (direct.ok) mergeReconcileResult(results, direct.value)
+  else results.maven_reconcile = `error: ${direct.error instanceof Error ? direct.error.message : String(direct.error)}`
+  if (mirror.ok) Object.assign(results, mirror.value)
+  else results.error = `error: ${mirror.error instanceof Error ? mirror.error.message : String(mirror.error)}`
+  // The browser pump is successful when the mirror pass completed. Direct
+  // Maven reconciliation still reports its own error and is retried by cron,
+  // but must not suppress the immediate UI refresh of rows already mirrored.
+  const ok = mirror.ok && resultOk(mirror.value)
+  return c.json({ ok, mode: 'fast', results, at: new Date().toISOString() }, ok ? 200 : 502)
 })

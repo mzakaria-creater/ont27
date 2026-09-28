@@ -816,10 +816,13 @@ extraRoutes.get('/wallet-report', requireAnyPerm(['sms_live', 'wallets'], 'can_v
 // intended to route it. Restricted to wallets Maven currently reports as
 // live so a retired number can no longer trigger the alert.
 let walletPaidTotalsCache: { expiresAt: number; body: unknown } | null = null
-const WALLET_PAID_TOTALS_CACHE_MS = 20_000
+const WALLET_PAID_TOTALS_CACHE_MS = 60_000
 extraRoutes.get('/wallet-paid-totals', requireAnyPerm(['sms_live', 'wallets'], 'can_view'), async (c) => {
   if (walletPaidTotalsCache && walletPaidTotalsCache.expiresAt > Date.now()) return c.json(walletPaidTotalsCache.body)
-  const monthStart = cairoBoundary(`${cairoToday().slice(0, 7)}-01`)
+  // This is a daily routing-cap alert (50k), not a monthly volume report.
+  // Scanning a full month every eight seconds caused request stampedes and
+  // exhausted the shared API function, which also made login appear stuck.
+  const periodStart = cairoBoundary(cairoToday())
   const walletAlertKey = (value: unknown) => {
     const valueDigits = walletDigits(value)
     return valueDigits.length > 11 ? valueDigits.slice(-11) : valueDigits
@@ -828,10 +831,11 @@ extraRoutes.get('/wallet-paid-totals', requireAnyPerm(['sms_live', 'wallets'], '
   for (let offset = 0; ; offset += 1_000) {
     const page = await db.from('maven_transactions')
       .select('tx_id, ontarget_ref, merchant, sub_merchant, amount, status, receiving_wallet, to_account_number')
-      .gte('first_seen_at', monthStart)
+      .gte('first_seen_at', periodStart)
       .in('status', ['PAID', 'APPROVED', 'SUCCESS', 'COMPLETED'])
       .order('tx_id', { ascending: true })
       .range(offset, offset + 999)
+      .abortSignal(AbortSignal.timeout(8_000))
     if (page.error) return c.json({ error: 'db_error', detail: page.error.message }, 500)
     rows.push(...(page.data ?? []))
     if ((page.data ?? []).length < 1_000) break
@@ -839,7 +843,7 @@ extraRoutes.get('/wallet-paid-totals', requireAnyPerm(['sms_live', 'wallets'], '
   const liveResult = await (async () => {
     const old = oldDb()
     if (!old) return [] as { phone_number?: string | null }[]
-    const { data } = await old.rpc('maven_banks_live_list')
+    const { data } = await old.rpc('maven_banks_live_list').abortSignal(AbortSignal.timeout(5_000))
     return Array.isArray(data) ? data as { phone_number?: string | null }[] : []
   })()
   const liveWallets = new Set(liveResult.map((row) => walletAlertKey(row.phone_number)).filter(Boolean))
@@ -855,10 +859,11 @@ extraRoutes.get('/wallet-paid-totals', requireAnyPerm(['sms_live', 'wallets'], '
       .select('id, consumed_by_tx_id, confirmed_wallet_number, wallet_number, manual_wallet_from, receiver_number, sms_category, received_at')
       .eq('sms_category', 'deposit')
       .not('consumed_by_tx_id', 'is', null)
-      .gte('received_at', monthStart)
+      .gte('received_at', periodStart)
       .order('received_at', { ascending: false, nullsFirst: false })
       .order('id', { ascending: false })
       .range(offset, offset + 999)
+      .abortSignal(AbortSignal.timeout(8_000))
     if (modern.error) return c.json({ error: 'db_error', detail: modern.error.message }, 500)
     for (const sms of modern.data ?? []) {
       const txId = Number(sms.consumed_by_tx_id)
@@ -870,10 +875,11 @@ extraRoutes.get('/wallet-paid-totals', requireAnyPerm(['sms_live', 'wallets'], '
   for (let offset = 0; ; offset += 1_000) {
     const legacy = await db.from('sms_maven_matches')
       .select('tx_id, receiving_wallet, received_at')
-      .gte('received_at', monthStart)
+      .gte('received_at', periodStart)
       .order('received_at', { ascending: false, nullsFirst: false })
       .order('tx_id', { ascending: false })
       .range(offset, offset + 999)
+      .abortSignal(AbortSignal.timeout(8_000))
     if (legacy.error) return c.json({ error: 'db_error', detail: legacy.error.message }, 500)
     for (const match of legacy.data ?? []) {
       const txId = Number(match.tx_id)
@@ -897,7 +903,7 @@ extraRoutes.get('/wallet-paid-totals', requireAnyPerm(['sms_live', 'wallets'], '
     current.merchant ??= row.sub_merchant ?? row.merchant ?? null
     totals.set(smsWallet, current)
   }
-  const body = { period_start: monthStart, rows: [...totals.entries()].map(([wallet, value]) => ({ wallet, paid_amount: Math.round(value.paid_amount * 100) / 100, transaction_count: value.transaction_count, transaction_ref: value.transaction_ref, merchant: value.merchant })).sort((a, b) => b.paid_amount - a.paid_amount) }
+  const body = { period_start: periodStart, rows: [...totals.entries()].map(([wallet, value]) => ({ wallet, paid_amount: Math.round(value.paid_amount * 100) / 100, transaction_count: value.transaction_count, transaction_ref: value.transaction_ref, merchant: value.merchant })).sort((a, b) => b.paid_amount - a.paid_amount) }
   walletPaidTotalsCache = { expiresAt: Date.now() + WALLET_PAID_TOTALS_CACHE_MS, body }
   return c.json(body)
 })
