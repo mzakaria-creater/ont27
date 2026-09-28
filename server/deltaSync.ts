@@ -781,6 +781,44 @@ function resultOk(results: Record<string, number | string>): boolean {
   return !Object.values(results).some((value) => typeof value === 'string' && value.startsWith('error:'))
 }
 
+// The direct Maven reader, legacy collector and database mirror are
+// independent ingress paths. Running them serially made the already-available
+// legacy rows wait behind a 10-55 second Maven HTTP request on every browser
+// refresh. Start all three together; direct reconciliation remains the primary
+// path, while the old collector/mirror are the fail-safe for provider outages.
+async function runFastIngress(): Promise<{ results: Record<string, number | string>; directOk: boolean }> {
+  const startedAt = Date.now()
+  const directStartedAt = Date.now()
+  const directPromise = reconcileMaven('live')
+    .then((value) => ({ ok: true as const, value, durationMs: Date.now() - directStartedAt }))
+    .catch((error) => ({ ok: false as const, error, durationMs: Date.now() - directStartedAt }))
+  const collectorStartedAt = Date.now()
+  const collectorPromise = refreshLegacyMavenCollector()
+    .then((value) => ({ ok: true as const, value, durationMs: Date.now() - collectorStartedAt }))
+    .catch((error) => ({ ok: false as const, error, durationMs: Date.now() - collectorStartedAt }))
+  const mirrorStartedAt = Date.now()
+  const mirrorPromise = syncOnce('fast')
+    .then((value) => ({ ok: true as const, value, durationMs: Date.now() - mirrorStartedAt }))
+    .catch((error) => ({ ok: false as const, error, durationMs: Date.now() - mirrorStartedAt }))
+
+  const [direct, collector, mirror] = await Promise.all([directPromise, collectorPromise, mirrorPromise])
+  const results: Record<string, number | string> = {
+    maven_reconcile_duration_ms: direct.durationMs,
+    maven_legacy_collector_duration_ms: collector.durationMs,
+    mirror_duration_ms: mirror.durationMs,
+    sync_total_duration_ms: Date.now() - startedAt,
+  }
+  let directOk = direct.ok
+  if (direct.ok) mergeReconcileResult(results, direct.value)
+  else results.maven_reconcile = `error: ${direct.error instanceof Error ? direct.error.message : String(direct.error)}`
+  if (collector.ok) results.maven_legacy_collector = collector.value
+  else results.maven_legacy_collector = `error: ${collector.error instanceof Error ? collector.error.message : String(collector.error)}`
+  if (mirror.ok) Object.assign(results, mirror.value)
+  else results.error = `error: ${mirror.error instanceof Error ? mirror.error.message : String(mirror.error)}`
+  if (!directOk && mirror.ok && Number(mirror.value.maven_transactions ?? 0) > 0) directOk = true
+  return { results, directOk }
+}
+
 // Fast Vercel Cron. The live provider path is intentionally separate from the
 // heavier repair pass below so a full scan can never delay fresh Maven rows.
 deltaSyncRoutes.get('/delta-sync', async (c) => {
@@ -790,15 +828,7 @@ deltaSyncRoutes.get('/delta-sync', async (c) => {
     return c.json({ error: 'unauthorized' }, 401)
   }
   if (!(await claimDistributedLease(20, 'provider_delta_sync_fast_cron'))) return c.json({ ok: true, skipped: 'distributed_lease' })
-  const results: Record<string, number | string> = {}
-  let directOk = true
-  try { mergeReconcileResult(results, await reconcileMaven('live')) }
-  catch (e) { directOk = false; results.maven_reconcile = `error: ${(e as Error).message}` }
-  try { results.maven_legacy_collector = await refreshLegacyMavenCollector() }
-  catch (e) { results.maven_legacy_collector = `error: ${(e as Error).message}` }
-  const mirror = await syncOnce('fast').catch((e) => ({ error: `error: ${(e as Error).message}` }))
-  Object.assign(results, mirror)
-  if (!directOk && Number((mirror as Record<string, unknown>).maven_transactions ?? 0) > 0) directOk = true
+  const { results, directOk } = await runFastIngress()
   const ok = directOk && resultOk(results)
   return c.json({ ok, mode: 'fast', results, at: new Date().toISOString() }, ok ? 200 : 502)
 })
@@ -948,15 +978,7 @@ deltaSyncRoutes.post('/delta-sync', async (c) => {
 
   const mode = 'fast'
   lastFastRunAt = now
-  const results: Record<string, number | string> = {}
-  let directOk = true
-  try { mergeReconcileResult(results, await reconcileMaven('live')) }
-  catch (e) { directOk = false; results.maven_reconcile = `error: ${(e as Error).message}` }
-  try { results.maven_legacy_collector = await refreshLegacyMavenCollector() }
-  catch (e) { results.maven_legacy_collector = `error: ${(e as Error).message}` }
-  const mirror = await syncOnce(mode).catch((e) => ({ error: `error: ${(e as Error).message}` }))
-  Object.assign(results, mirror)
-  if (!directOk && Number((mirror as Record<string, unknown>).maven_transactions ?? 0) > 0) directOk = true
+  const { results, directOk } = await runFastIngress()
   const ok = directOk && resultOk(results)
   return c.json({ ok, mode, results, at: new Date().toISOString() }, ok ? 200 : 502)
 })

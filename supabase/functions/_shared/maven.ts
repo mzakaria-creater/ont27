@@ -41,17 +41,16 @@ export async function login(username: string, password: string, area = "Supplier
   if (response.status !== 302 || location.includes("/Error/")) throw new Error(`Maven login failed (${response.status})`);
   return mergeCookies(cookiesFrom(page.headers.get("set-cookie")), cookiesFrom(response.headers.get("set-cookie")));
 }
-export async function listTransactions(cookie: string, start: number, from: string, to: string, area = "Supplier") {
+export async function listTransactions(cookie: string, start: number, from: string, to: string, area = "Supplier", preferPending = false) {
   const body = new URLSearchParams({ draw: "1", start: String(start), length: String(PAGE_SIZE), "search[value]": "", "search[regex]": "false", "order[0][column]": "26", "order[0][dir]": "desc", StartCreatedDate: from, EndCreatedDate: to, DbFieldName_1: "Guid", FilterType_1: "contains", SearchVal_1: "", DbFieldName_2: "Guid", FilterType_2: "contains", SearchVal_2: "", DbFieldName_3: "Guid", FilterType_3: "contains", SearchVal_3: "", DbFieldName_4: "Guid", FilterType_4: "contains", SearchVal_4: "", IsTxnWithSS: "false" });
   const headers = { cookie, "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest", accept: "application/json, text/javascript, */*; q=0.01", origin: ROOT };
   // The pending endpoint drops rows immediately after Maven marks them PAID
   // or DECLINED. Reconciliation must use the full P2P transaction list so
   // completed transactions reach the app as well. Keep the pending endpoint
   // as a compatibility fallback for older Maven deployments.
-  const endpoints = [
-    "GetP2PTransactionList",
-    "GetP2PPendingTransactions",
-  ];
+  const endpoints = preferPending
+    ? ["GetP2PPendingTransactions", "GetP2PTransactionList"]
+    : ["GetP2PTransactionList", "GetP2PPendingTransactions"];
   let response: Response | null = null;
   let text = "";
   let best: { rows: MavenRow[]; total: number; errorMessage?: string | null } | null = null;
@@ -70,6 +69,11 @@ export async function listTransactions(cookie: string, start: number, from: stri
         const rows = Array.isArray(parsed.data) ? parsed.data : [];
         const total = Number(parsed.recordsTotal ?? rows.length);
         if (!best || total > best.total || rows.length > best.rows.length) best = { rows, total, errorMessage: parsed.errorMessage };
+        // The full list is authoritative and includes terminal transactions.
+        // Do not make the slower compatibility request when it already
+        // returned rows; the pending endpoint is only a fallback for an empty
+        // or unavailable full-list response.
+        if (endpoint === endpoints[0] && (total > 0 || rows.length > 0)) break;
       } catch { /* try the next Maven endpoint */ }
     }
   }
@@ -77,7 +81,11 @@ export async function listTransactions(cookie: string, start: number, from: stri
   if (!best) throw new Error(`Maven list failed (${response.status})`);
   const payload = best;
   if (payload.errorMessage) throw new Error(payload.errorMessage);
-  return { rows: payload.data ?? [], total: Number(payload.recordsTotal ?? 0) };
+  // `best` is already normalized above. Returning the original Maven field
+  // names here made every successful response look empty (`data` and
+  // `recordsTotal` do not exist on this object), so live reconciliation
+  // logged rows_provider=0 indefinitely.
+  return { rows: payload.rows, total: payload.total };
 }
 export function toDbRow(row: MavenRow) {
   const txId = Number(row.TransactionId ?? 0); if (!txId) return null;

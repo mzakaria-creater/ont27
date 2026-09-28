@@ -78,7 +78,7 @@ function providerPatchForExisting(row: Record<string, unknown>, old: Record<stri
   return patch;
 }
 
-async function fetchMapped(cookie: string, from: Date, to: Date, merchantFilter = "") {
+async function fetchMapped(cookie: string, from: Date, to: Date, merchantFilter = "", area = "Supplier", preferPending = false) {
   const providerRows: any[] = [];
   const windows = chunkWindows(from, to);
   for (const [chunkFrom, chunkTo] of windows) {
@@ -89,7 +89,7 @@ async function fetchMapped(cookie: string, from: Date, to: Date, merchantFilter 
     const windowTo = mavenStamp(chunkTo);
     while (true) {
       if (offset > 0) await sleep(MAVEN_REQUEST_DELAY_MS);
-      const page = await listTransactions(cookie, offset, windowFrom, windowTo);
+      const page = await listTransactions(cookie, offset, windowFrom, windowTo, area, preferPending);
       expected = Math.max(expected, page.total);
       fetched += page.rows.length;
       providerRows.push(...page.rows);
@@ -122,6 +122,7 @@ Deno.serve(async (req) => {
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   let windowStart = new Date(Date.now() - LIVE_OVERLAP_MS);
   const windowEnd = new Date();
+  let liveLeaseClaimed = false;
   try {
     const body = await req.json().catch(() => ({}));
     const isBackfill = body?.mode === "backfill";
@@ -141,17 +142,34 @@ Deno.serve(async (req) => {
     if (mode === "live") {
       const { data: lease, error: leaseError } = await sb.rpc("claim_provider_sync_lease", {
         p_lease_name: "maven_reconcile_edge_live",
-        p_ttl_seconds: 45,
+        // Normal calls release the lease in finally. The longer TTL only
+        // protects Maven if the Edge worker is killed mid-request.
+        p_ttl_seconds: 240,
       });
       if (leaseError) throw new Error(`reconcile lease: ${leaseError.message}`);
       if (lease !== true) return json({ ok: true, mode, skipped: "maven_reconcile_lease" }, 202);
+      liveLeaseClaimed = true;
     }
 
     const user = (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_COLLECTOR_USERNAME").eq("owner_name", "global").maybeSingle()).data?.value ?? (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_USERNAME").eq("owner_name", "global").maybeSingle()).data?.value;
     const pass = (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_COLLECTOR_PASSWORD").eq("owner_name", "global").maybeSingle()).data?.value ?? (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_PASSWORD").eq("owner_name", "global").maybeSingle()).data?.value;
     if (!user || !pass) return json({ ok: false, error: "Missing Maven credentials in maven_runtime_config" }, 500);
+    const operatorUser = (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_OPERATOR_USERNAME").eq("owner_name", "global").maybeSingle()).data?.value;
+    const operatorPass = (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_OPERATOR_PASSWORD").eq("owner_name", "global").maybeSingle()).data?.value;
 
-    let cookie = await login(user, pass, "Supplier");
+    // Production's Supplier login is valid but currently has no P2P-list
+    // permission. The established collector succeeds through SupplierOperator,
+    // so live reconciliation must try that role first instead of spending tens
+    // of seconds accepting an empty Supplier response.
+    let activeArea = "Supplier";
+    let cookie: string | null = null;
+    if (mode === "live" && operatorUser && operatorPass) {
+      try {
+        cookie = await login(operatorUser, operatorPass, "SupplierOperator");
+        activeArea = "SupplierOperator";
+      } catch { /* supplier fallback below */ }
+    }
+    if (!cookie) cookie = await login(user, pass, "Supplier");
 
     if (isBackfill) {
       const summaries: any[] = [];
@@ -167,12 +185,10 @@ Deno.serve(async (req) => {
         // empty P2P list. Try the configured operator account before declaring
         // a backfill window empty, so a valid transaction is not skipped.
         if (mapped.length === 0) {
-          const operatorUser = (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_OPERATOR_USERNAME").eq("owner_name", "global").maybeSingle()).data?.value;
-          const operatorPass = (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_OPERATOR_PASSWORD").eq("owner_name", "global").maybeSingle()).data?.value;
           if (operatorUser && operatorPass) {
             try {
               const operatorCookie = await login(operatorUser, operatorPass, "SupplierOperator");
-              mapped = await fetchMapped(operatorCookie, chunkFrom, chunkTo, merchantFilter);
+              mapped = await fetchMapped(operatorCookie, chunkFrom, chunkTo, merchantFilter, "SupplierOperator");
             } catch { /* retain the primary account result */ }
           }
         }
@@ -245,7 +261,10 @@ Deno.serve(async (req) => {
       let fetchedForWindow = 0;
       let expectedForWindow = 0;
       while (true) {
-        const page = await listTransactions(cookie, offset, windowFrom, windowTo);
+        // Fresh deposits live on the pending endpoint first, and that endpoint
+        // is materially faster on Maven. Repair/backfill still start from the
+        // full list so terminal transactions remain covered.
+        const page = await listTransactions(cookie, offset, windowFrom, windowTo, activeArea, mode === "live");
         expectedForWindow = Math.max(expectedForWindow, page.total);
         fetchedForWindow += page.rows.length;
         providerRows.push(...page.rows);
@@ -259,14 +278,19 @@ Deno.serve(async (req) => {
     // permission is empty. Retry the same live window with the configured
     // operator account before declaring a successful zero-row sync.
     if (providerRows.length === 0) {
-      const operatorUser = (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_OPERATOR_USERNAME").eq("owner_name", "global").maybeSingle()).data?.value;
-      const operatorPass = (await sb.from("maven_runtime_config").select("value").eq("name", "MAVEN_OPERATOR_PASSWORD").eq("owner_name", "global").maybeSingle()).data?.value;
-      if (operatorUser && operatorPass) {
-        const operatorCookie = await login(operatorUser, operatorPass, "Supplieroperator");
-        const operatorRows = await fetchMapped(operatorCookie, from, to);
+      if (activeArea !== "SupplierOperator" && operatorUser && operatorPass) {
+        const operatorCookie = await login(operatorUser, operatorPass, "SupplierOperator");
+        const operatorRows = await fetchMapped(operatorCookie, from, to, "", "SupplierOperator", true);
         if (operatorRows.length > 0) {
           cookie = operatorCookie;
           providerRows.push(...operatorRows);
+        }
+      } else if (activeArea !== "Supplier") {
+        const supplierCookie = await login(user, pass, "Supplier");
+        const supplierRows = await fetchMapped(supplierCookie, from, to, "", "Supplier", true);
+        if (supplierRows.length > 0) {
+          cookie = supplierCookie;
+          providerRows.push(...supplierRows);
         }
       }
     }
@@ -329,5 +353,14 @@ Deno.serve(async (req) => {
     const message = error instanceof Error ? error.message : String(error);
     await sb.from("maven_reconcile_runs").insert({ window_start: windowStart.toISOString(), window_end: windowEnd.toISOString(), error: message.slice(0, 1000), duration_ms: Date.now() - started });
     return json({ ok: false, error: message }, 500);
+  } finally {
+    if (liveLeaseClaimed) {
+      // Do not force the next six-second poll to wait for the safety TTL after
+      // a clean completion. Service-role access is required for this table.
+      await sb.from("provider_sync_leases").update({
+        locked_until: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq("lease_name", "maven_reconcile_edge_live");
+    }
   }
 });
