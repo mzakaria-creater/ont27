@@ -117,6 +117,51 @@ export function buildKeysetOr(column: string, primaryKey: string, cursor: { valu
   return `${column}.gt.${cursor.value},and(${column}.eq.${cursor.value},${primaryKey}.gt.${cursor.key})`
 }
 
+const LOCAL_AMOUNT_FIELDS = [
+  'local_amount', 'provider_amount', 'amount_sync_status', 'amount_mismatch_reason',
+  'amount_confirmed_at', 'amount_confirmed_by', 'settlement_blocked',
+] as const
+
+type LocalAmountHold = {
+  amount?: unknown
+  local_amount?: unknown
+  amount_confirmed_at?: unknown
+}
+
+function timestamp(value: unknown): number {
+  if (typeof value !== 'string' || !value) return Number.NaN
+  return Date.parse(value)
+}
+
+/**
+ * Prevent an older legacy-collector snapshot from undoing a provider-confirmed
+ * amount edit. A genuinely newer Maven snapshot is still authoritative.
+ */
+export function guardLegacyAmount(
+  incoming: Record<string, unknown>,
+  local: LocalAmountHold | undefined,
+): Record<string, unknown> {
+  const clean = { ...incoming }
+  for (const field of LOCAL_AMOUNT_FIELDS) delete clean[field]
+  if (!local?.amount_confirmed_at) return clean
+
+  const confirmedAt = timestamp(local.amount_confirmed_at)
+  const providerTimestamps = [
+    timestamp(incoming.modified_at_utc),
+    timestamp(incoming.modified_utc),
+  ].filter(Number.isFinite)
+  const providerModifiedAt = providerTimestamps.length ? Math.max(...providerTimestamps) : Number.NaN
+  const confirmedAmount = local.local_amount ?? local.amount
+  if (
+    confirmedAmount != null &&
+    Number.isFinite(confirmedAt) &&
+    (!Number.isFinite(providerModifiedAt) || providerModifiedAt < confirmedAt)
+  ) {
+    clean.amount = confirmedAmount
+  }
+  return clean
+}
+
 async function executeRecordedAutoDeclines(): Promise<{ executed: number; skipped: number; failed: number }> {
   const old = oldDb()
   const baseUrl = process.env.SUPABASE_URL
@@ -328,7 +373,15 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
         const localTs = new Map<number, number>()
         // The guard needs our CURRENT values, not just the timestamp: a blocked
         // row is rewritten with them rather than having the keys removed.
-        const localHold = new Map<number, { status: unknown; last_status_change: unknown; modified_utc: unknown }>()
+        const localHold = new Map<number, {
+          status: unknown
+          last_status_change: unknown
+          modified_utc: unknown
+          modified_at_utc: unknown
+          amount: unknown
+          local_amount: unknown
+          amount_confirmed_at: unknown
+        }>()
         // A full page is 1000 ids, and PostgREST puts .in() in the query
         // string — one request would build a ~10KB URL and be rejected. It
         // must also THROW on failure rather than fall through: an empty map
@@ -338,15 +391,24 @@ async function runSync(mode: 'fast' | 'full' = 'full'): Promise<Record<string, n
         for (let i = 0; i < ids.length; i += LOOKUP_CHUNK) {
           const { data: locals, error: localErr } = await db
             .from('maven_transactions')
-            .select('tx_id, status, last_status_change, modified_utc')
+            .select('tx_id, status, last_status_change, modified_utc, modified_at_utc, amount, local_amount, amount_confirmed_at')
             .in('tx_id', ids.slice(i, i + LOOKUP_CHUNK))
           if (localErr) throw new Error(`status guard lookup: ${localErr.message}`)
           for (const l of locals ?? []) {
             localTs.set(l.tx_id, l.last_status_change ? Date.parse(l.last_status_change) : 0)
-            localHold.set(l.tx_id, { status: l.status, last_status_change: l.last_status_change, modified_utc: l.modified_utc })
+            localHold.set(l.tx_id, {
+              status: l.status,
+              last_status_change: l.last_status_change,
+              modified_utc: l.modified_utc,
+              modified_at_utc: l.modified_at_utc,
+              amount: l.amount,
+              local_amount: l.local_amount,
+              amount_confirmed_at: l.amount_confirmed_at,
+            })
           }
         }
-        payload = payload.map((r) => {
+        payload = payload.map((sourceRow) => {
+          const r = guardLegacyAmount(sourceRow, localHold.get(sourceRow.tx_id as number))
           const mine = localTs.get(r.tx_id as number)
           if (mine == null) return r // not held locally yet — a plain insert
           const raw = r.last_status_change
