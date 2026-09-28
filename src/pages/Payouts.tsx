@@ -448,7 +448,7 @@ export default function Payouts() {
       setEditError(t("اختيار Paid يتطلب إثباتاً وUTR.", "Selecting Paid requires proof and UTR."));
       return;
     }
-    if (statusChanged && !window.confirm(t("سيتم تغيير الحالة مباشرة على NagoPay. متابعة؟", "This will change the status live on NagoPay. Continue?"))) return;
+    if (statusChanged && !window.confirm(`${t("سيتم تغيير الحالة مباشرة على NagoPay. متابعة؟", "This will change the status live on NagoPay. Continue?")}\n${t('المبلغ', 'Amount')}: ${money(selected.amount, 'EGP')}`)) return;
     setEditBusy(true);
     setEditError(null);
     try {
@@ -595,7 +595,7 @@ export default function Payouts() {
   // needs neither proof nor UTR, so it does not require opening the detail
   // modal first. Mirrors the same pattern on All Transactions.
   const quickDecline = async (row: PayoutRow) => {
-    if (!window.confirm(t("تأكيد رفض هذا السحب مباشرة على NagoPay؟", "Decline this payout live on NagoPay?"))) return;
+    if (!window.confirm(`${t("تأكيد رفض هذا السحب مباشرة على NagoPay؟", "Decline this payout live on NagoPay?")}\n${t('المبلغ', 'Amount')}: ${money(row.amount, 'EGP')}`)) return;
     setQuickBusy(row.maven_id);
     setErr(null);
     try {
@@ -687,8 +687,8 @@ export default function Payouts() {
     if (
       !window.confirm(
         t(
-          `تأكيد إرسال ${rows.length} معاملة إلى NagoPay؟ كل معاملة ستُنفذ وتُدقق منفصلة.`,
-          `Submit ${rows.length} payouts to NagoPay? Each will be executed and audited separately.`,
+          `تأكيد إرسال ${rows.length} معاملة بإجمالي ${money(rows.reduce((sum, row) => sum + Number(row.amount ?? 0), 0), 'EGP')} إلى NagoPay؟ كل معاملة ستُنفذ وتُدقق منفصلة.`,
+          `Submit ${rows.length} payouts totalling ${money(rows.reduce((sum, row) => sum + Number(row.amount ?? 0), 0), 'EGP')} to NagoPay? Each will be executed and audited separately.`,
         ),
       )
     )

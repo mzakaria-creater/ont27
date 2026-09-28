@@ -808,52 +808,98 @@ extraRoutes.get('/wallet-report', requireAnyPerm(['sms_live', 'wallets'], 'can_v
 })
 
 // Lightweight paid-volume totals used by the live SMS safety alert. Counts
-// only PAID transactions that have real SMS evidence (sms_maven_matches —
-// the same table attachSms() in deposits.ts uses), grouped by the
+// only PAID transactions that have real SMS evidence. Modern links are stored
+// on inbound_sms.consumed_by_tx_id; sms_maven_matches is retained as a legacy
+// fallback. Group by the
 // SMS-confirmed receiving wallet rather than the allocated to_account_number
 // — that's proof of where the money actually landed, not just where Maven
 // intended to route it. Restricted to wallets Maven currently reports as
 // live so a retired number can no longer trigger the alert.
+let walletPaidTotalsCache: { expiresAt: number; body: unknown } | null = null
+const WALLET_PAID_TOTALS_CACHE_MS = 20_000
 extraRoutes.get('/wallet-paid-totals', requireAnyPerm(['sms_live', 'wallets'], 'can_view'), async (c) => {
+  if (walletPaidTotalsCache && walletPaidTotalsCache.expiresAt > Date.now()) return c.json(walletPaidTotalsCache.body)
   const monthStart = cairoBoundary(`${cairoToday().slice(0, 7)}-01`)
-  const [txResult, liveResult] = await Promise.all([
-    db.from('maven_transactions')
+  const walletAlertKey = (value: unknown) => {
+    const valueDigits = walletDigits(value)
+    return valueDigits.length > 11 ? valueDigits.slice(-11) : valueDigits
+  }
+  const rows: Array<{ tx_id: number; ontarget_ref: string | null; merchant: string | null; sub_merchant: string | null; amount: number | null; status: string | null; receiving_wallet: string | null; to_account_number: string | null }> = []
+  for (let offset = 0; ; offset += 1_000) {
+    const page = await db.from('maven_transactions')
       .select('tx_id, ontarget_ref, merchant, sub_merchant, amount, status, receiving_wallet, to_account_number')
       .gte('first_seen_at', monthStart)
       .in('status', ['PAID', 'APPROVED', 'SUCCESS', 'COMPLETED'])
-      .limit(20_000),
-    (async () => {
-      const old = oldDb()
-      if (!old) return [] as { phone_number?: string | null }[]
-      const { data } = await old.rpc('maven_banks_live_list')
-      return Array.isArray(data) ? data as { phone_number?: string | null }[] : []
-    })(),
-  ])
-  if (txResult.error) return c.json({ error: 'db_error', detail: txResult.error.message }, 500)
-  const rows = txResult.data ?? []
-  const liveWallets = new Set(liveResult.map((row) => walletDigits(row.phone_number)).filter(Boolean))
+      .order('tx_id', { ascending: true })
+      .range(offset, offset + 999)
+    if (page.error) return c.json({ error: 'db_error', detail: page.error.message }, 500)
+    rows.push(...(page.data ?? []))
+    if ((page.data ?? []).length < 1_000) break
+  }
+  const liveResult = await (async () => {
+    const old = oldDb()
+    if (!old) return [] as { phone_number?: string | null }[]
+    const { data } = await old.rpc('maven_banks_live_list')
+    return Array.isArray(data) ? data as { phone_number?: string | null }[] : []
+  })()
+  const liveWallets = new Set(liveResult.map((row) => walletAlertKey(row.phone_number)).filter(Boolean))
 
   const ids = rows.map((row) => row.tx_id).filter((id): id is number => id != null)
-  const { data: matches, error: matchError } = ids.length
-    ? await db.from('sms_maven_matches').select('tx_id, receiving_wallet').in('tx_id', ids)
-    : { data: [], error: null }
-  if (matchError) return c.json({ error: 'db_error', detail: matchError.message }, 500)
-  const smsWalletByTx = new Map((matches ?? []).map((m) => [m.tx_id, walletDigits(m.receiving_wallet)]))
+  const idSet = new Set(ids)
+  const smsWalletByTx = new Map<number, string>()
+  // Page the month's evidence instead of creating one PostgREST request per
+  // 200 transaction IDs. That removes the old URL-length risk without turning
+  // an eight-second UI poll into dozens of sequential database round trips.
+  for (let offset = 0; ; offset += 1_000) {
+    const modern = await db.from('inbound_sms')
+      .select('id, consumed_by_tx_id, confirmed_wallet_number, wallet_number, manual_wallet_from, receiver_number, sms_category, received_at')
+      .eq('sms_category', 'deposit')
+      .not('consumed_by_tx_id', 'is', null)
+      .gte('received_at', monthStart)
+      .order('received_at', { ascending: false, nullsFirst: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + 999)
+    if (modern.error) return c.json({ error: 'db_error', detail: modern.error.message }, 500)
+    for (const sms of modern.data ?? []) {
+      const txId = Number(sms.consumed_by_tx_id)
+      const wallet = walletAlertKey(sms.confirmed_wallet_number ?? sms.manual_wallet_from ?? sms.wallet_number ?? sms.receiver_number)
+      if (idSet.has(txId) && wallet && !smsWalletByTx.has(txId)) smsWalletByTx.set(txId, wallet)
+    }
+    if ((modern.data ?? []).length < 1_000) break
+  }
+  for (let offset = 0; ; offset += 1_000) {
+    const legacy = await db.from('sms_maven_matches')
+      .select('tx_id, receiving_wallet, received_at')
+      .gte('received_at', monthStart)
+      .order('received_at', { ascending: false, nullsFirst: false })
+      .order('tx_id', { ascending: false })
+      .range(offset, offset + 999)
+    if (legacy.error) return c.json({ error: 'db_error', detail: legacy.error.message }, 500)
+    for (const match of legacy.data ?? []) {
+      const txId = Number(match.tx_id)
+      const wallet = walletAlertKey(match.receiving_wallet)
+      if (idSet.has(txId) && wallet && !smsWalletByTx.has(txId)) smsWalletByTx.set(txId, wallet)
+    }
+    if ((legacy.data ?? []).length < 1_000) break
+  }
 
-  const totals = new Map<string, { paid_amount: number; transaction_ref: string | null; merchant: string | null }>()
+  const totals = new Map<string, { paid_amount: number; transaction_count: number; transaction_ref: string | null; merchant: string | null }>()
   for (const row of rows) {
     const smsWallet = row.tx_id == null ? undefined : smsWalletByTx.get(row.tx_id)
     if (!smsWallet) continue // no SMS evidence — do not count toward the wallet-limit alert
     if (liveWallets.size > 0 && !liveWallets.has(smsWallet)) continue // wallet is no longer a live Maven receiving number
     const amount = Number(row.amount ?? 0)
     if (!Number.isFinite(amount)) continue
-    const current = totals.get(smsWallet) ?? { paid_amount: 0, transaction_ref: null, merchant: null }
+    const current = totals.get(smsWallet) ?? { paid_amount: 0, transaction_count: 0, transaction_ref: null, merchant: null }
     current.paid_amount += amount
+    current.transaction_count += 1
     current.transaction_ref ??= row.ontarget_ref ?? (row.tx_id == null ? null : String(row.tx_id))
     current.merchant ??= row.sub_merchant ?? row.merchant ?? null
     totals.set(smsWallet, current)
   }
-  return c.json({ rows: [...totals.entries()].map(([wallet, value]) => ({ wallet, paid_amount: Math.round(value.paid_amount * 100) / 100, transaction_ref: value.transaction_ref, merchant: value.merchant })).sort((a, b) => b.paid_amount - a.paid_amount) })
+  const body = { period_start: monthStart, rows: [...totals.entries()].map(([wallet, value]) => ({ wallet, paid_amount: Math.round(value.paid_amount * 100) / 100, transaction_count: value.transaction_count, transaction_ref: value.transaction_ref, merchant: value.merchant })).sort((a, b) => b.paid_amount - a.paid_amount) }
+  walletPaidTotalsCache = { expiresAt: Date.now() + WALLET_PAID_TOTALS_CACHE_MS, body }
+  return c.json(body)
 })
 
 // Per-wallet detail: recent SMS for the wallet + transactions that landed on

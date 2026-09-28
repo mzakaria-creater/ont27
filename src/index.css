@@ -1962,6 +1962,22 @@ a.stat-card:hover { border-color: var(--accent); }
 .sms-payout-assign-row .login-input { flex: 1 1 auto; min-width: 0; }
 @keyframes sms-sheet-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 540px) { .sms-detail-sheet { padding: 10px; } .sms-detail-sheet-grid { grid-template-columns: 1fr; } }
+
+/* Live SMS drop-up: explicit same-day manual assignment and blocking. */
+.sms-detail-sheet-grid>div>span{display:flex;align-items:center;gap:5px}.sms-manual-link-card .sms-match-title{display:inline-flex;align-items:center;gap:6px}.sms-manual-link-card .cell-sub{margin:5px 0 9px}.sms-manual-link-card .sms-payout-assign-row{align-items:stretch}.sms-manual-link-card .btn-sm{display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap}.sms-detail-link-err[role="alert"]{margin:8px 0 0}
+@media(max-width:540px){.sms-manual-link-card .sms-payout-assign-row{flex-wrap:wrap}.sms-manual-link-card .login-input{flex-basis:100%}.sms-manual-link-card .btn-sm{flex:1}}
+
+/* One decision language across the app, matching Live Monitor's approved /
+   rejected treatment. These are text glyphs inside a styled icon circle, not
+   emoji, so their appearance is stable on iOS, Android and desktop. */
+.pay-status-badge{display:inline-flex;align-items:center;gap:6px}
+.pay-status-badge.st-paid::before,.pay-status-badge.st-approved::before,.pay-status-badge.st-declined::before{display:inline-grid;place-items:center;width:16px;height:16px;flex:0 0 16px;border:1.5px solid currentColor;border-radius:50%;font:900 11px/1 ui-sans-serif,system-ui;content:"✓"}
+.pay-status-badge.st-paid::before,.pay-status-badge.st-approved::before{animation:decision-approved-pop 2.4s ease-in-out infinite}
+.pay-status-badge.st-declined::before{content:"×";animation:rejected-stamp-pulse 1.4s ease-in-out infinite}
+.portal-status-emoji{display:none}.portal-status-icon.st-paid svg,.portal-status-icon.st-approved svg{animation:decision-approved-pop 2.4s ease-in-out infinite}.portal-status-icon.st-declined svg{animation:decision-rejected-pop 1.4s ease-in-out infinite}
+@keyframes decision-approved-pop{0%,100%{transform:scale(.94);filter:drop-shadow(0 0 0 transparent)}50%{transform:scale(1.08);filter:drop-shadow(0 0 5px rgba(34,197,94,.45))}}
+@keyframes decision-rejected-pop{0%,100%{transform:scale(.94);filter:drop-shadow(0 0 0 transparent)}50%{transform:scale(1.08);filter:drop-shadow(0 0 5px rgba(239,68,68,.45))}}
+@media(prefers-reduced-motion:reduce){.pay-status-badge.st-paid::before,.pay-status-badge.st-approved::before,.pay-status-badge.st-declined::before,.portal-status-icon.st-paid svg,.portal-status-icon.st-approved svg,.portal-status-icon.st-declined svg{animation:none!important}}
 .sms-balance-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--status-paid); box-shadow: 0 0 0 3px color-mix(in srgb,var(--status-paid) 18%,transparent), 0 0 10px color-mix(in srgb,var(--status-paid) 60%,transparent); }
 .sms-drawer-balance { margin: 10px 0 0; }
 .sms-provider-report{margin:14px 0;padding:14px;border:1px solid color-mix(in srgb,#4ade80 34%,var(--border));border-radius:18px;background:linear-gradient(160deg,#111713,var(--surface-raised));color:#f3f4f6;box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}

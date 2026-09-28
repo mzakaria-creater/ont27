@@ -174,6 +174,9 @@ export default function Approvals() {
 
   const depBulk = useBulk((id) => `/api/deposits/${id}/decision`, () => void load())
   const quick = async (id: number, action: 'approve' | 'decline') => {
+    const row = deposits?.find((item) => item.tx_id === id)
+    const prompt = action === 'approve' ? t('تأكيد اعتماد المعاملة', 'Approve transaction') : t('تأكيد رفض المعاملة', 'Reject transaction')
+    if (!window.confirm(`${prompt} #${row?.ontarget_ref ?? id}؟\n${t('المبلغ', 'Amount')}: ${money(row?.amount, row?.currency ?? 'EGP')}`)) return
     setRowBusy(`deposits-${id}`)
     try {
       await api(`/api/deposits/${id}/decision`, { method: 'POST', body: JSON.stringify({ action }) })

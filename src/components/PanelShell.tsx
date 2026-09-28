@@ -9,7 +9,7 @@ import { depositTime, money } from '../lib/deposits'
 import type { PagePermission } from '../lib/api'
 import { useLocale } from '../lib/locale'
 import { installNotificationAudioUnlock, playNotificationTone } from '../lib/notificationSounds'
-import { BarChart3, Bot, ChevronDown, CircleDollarSign, LayoutDashboard, Menu, MessageSquareText, Minimize2, PanelLeftClose, PanelLeftOpen, Plus, Search, Send, Settings, Users, WalletCards, X } from 'lucide-react'
+import { Ban, BarChart3, Bot, Building2, CalendarDays, ChevronDown, CircleDollarSign, Clock3, LayoutDashboard, Link2, Menu, MessageSquareText, Minimize2, PanelLeftClose, PanelLeftOpen, Plus, Search, Send, Settings, Users, WalletCards, X } from 'lucide-react'
 
 // Shared authed layout ("Live Transaction Monitor" skin): nav rail (real pages
 // first, then the role's remaining permitted modules as "قريباً" placeholders),
@@ -223,6 +223,9 @@ interface RailSms {
   sms_first_line?: string | null
   raw_sms?: string | null
   message?: string | null
+  is_blocked?: boolean | null
+  matched_sub_merchant?: string | null
+  matched_master_merchant?: string | null
 }
 
 interface RailSmsCandidate {
@@ -279,6 +282,7 @@ function TelegramRail({ onMinimize }: { onMinimize: () => void }) {
 }
 
 function SmsRail({ onMinimize }: { onMinimize: () => void }) {
+  const { can } = useAuth()
   const [rows, setRows] = useState<RailSms[]>([])
   const [devices, setDevices] = useState<RailDevice[]>([])
   const [selected, setSelected] = useState<RailSms | null>(null)
@@ -287,6 +291,8 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
   const [linkErr, setLinkErr] = useState<string | null>(null)
   const [payoutRef, setPayoutRef] = useState('')
   const [assigningPayout, setAssigningPayout] = useState(false)
+  const [manualTxRef, setManualTxRef] = useState('')
+  const [blockingSms, setBlockingSms] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -331,6 +337,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
     setCandidates([])
     setLinkErr(null)
     setPayoutRef('')
+    setManualTxRef('')
     if (!selected || selected.sms_category === 'withdrawal' || selected.matched_tx_id != null) return
     let alive = true
     api<{ candidates: RailSmsCandidate[] }>(`/api/sms/${selected.id}/candidates`)
@@ -352,6 +359,48 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
       setLinkErr('تعذّر ربط الرسالة بالمعاملة.')
     } finally {
       setLinkingTxId(null)
+    }
+  }
+
+  const linkToTypedTransaction = async () => {
+    if (!selected || !manualTxRef.trim()) return
+    const wanted = manualTxRef.trim().replace(/^#/, '')
+    setLinkErr(null)
+    try {
+      // Resolve both provider tx_id values (13...) and our references (777...)
+      // through the existing same-Cairo-day candidate endpoint. The link
+      // endpoint still receives the canonical tx_id and enforces the date.
+      const result = await api<{ candidates: RailSmsCandidate[] }>(`/api/sms/${selected.id}/candidates?q=${encodeURIComponent(wanted)}`)
+      const exact = result.candidates.find((candidate) => String(candidate.tx_id) === wanted || String(candidate.ontarget_ref ?? '') === wanted)
+      if (!exact) {
+        setCandidates(result.candidates)
+        setLinkErr('لم يتم العثور على معاملة بهذا الرقم في نفس يوم استلام الرسالة.')
+        return
+      }
+      setCandidates(result.candidates)
+      await linkToSuggestedTx(exact.tx_id)
+      setManualTxRef('')
+    } catch (error) {
+      setLinkErr(error instanceof ApiError && error.code === 'sms_transaction_date_mismatch'
+        ? 'المعاملة ليست من نفس يوم استلام الرسالة.'
+        : 'تعذّر البحث عن المعاملة أو ربطها.')
+    }
+  }
+
+  const blockSelectedSms = async () => {
+    if (!selected || !window.confirm(`حظر SMS #${selected.id} بقيمة ${money(selected.amount, 'EGP')} من المطابقة؟`)) return
+    setBlockingSms(true)
+    setLinkErr(null)
+    try {
+      await api(`/api/sms/${selected.id}/block`, { method: 'POST', body: JSON.stringify({ reason: 'Blocked from Live SMS drop-up by operator' }) })
+      setRows((current) => current.filter((row) => row.id !== selected.id))
+      setSelected(null)
+    } catch (error) {
+      setLinkErr(error instanceof ApiError && error.code === 'sms_must_be_unlinked'
+        ? 'تم ربط الرسالة بالفعل ولا يمكن حظرها.'
+        : 'تعذّر حظر الرسالة.')
+    } finally {
+      setBlockingSms(false)
     }
   }
 
@@ -448,6 +497,10 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
         const selectedBalance = selected.balance_after ?? selected.wallet_balance_after
         const selectedRaw = selected.raw_sms ?? selected.message ?? selected.sms_first_line
         const selectedLinked = selected.sms_category === 'withdrawal' ? selected.linked_wallet_number != null : selected.matched_tx_id != null
+        const received = selected.received_at ? new Date(selected.received_at) : null
+        const receivedDate = received && Number.isFinite(received.getTime()) ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(received) : '—'
+        const receivedTime = received && Number.isFinite(received.getTime()) ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(received) : '—'
+        const selectedMerchant = selected.matched_sub_merchant ?? selected.matched_master_merchant ?? 'غير محدد حتى الربط'
         return <div className="sms-detail-sheet" role="dialog" aria-modal="true" aria-label="SMS details" onClick={() => setSelected(null)}>
           <section className="sms-detail-sheet-card" onClick={(event) => event.stopPropagation()}>
             <header><div><span className="cell-sub">SMS #{selected.id}</span><h3>{selected.sms_category === 'withdrawal' ? 'تحويل خارج' : 'استلام وارد'} · {money(selected.amount, 'EGP')}</h3></div><button type="button" className="sms-widget-icon-btn" onClick={() => setSelected(null)} aria-label="Close SMS details"><X size={16} /></button></header>
@@ -458,11 +511,37 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
               <div><span>الجهاز</span><strong className="mono">{selected.device_name ?? '—'}{selected.sim_slot != null ? ` · SIM${selected.sim_slot}` : ''}</strong></div>
               <div><span>حالة الربط</span><strong>{selectedLinked ? 'مرتبطة' : 'بانتظار المطابقة'}</strong></div>
               <div><span>المعاملة</span><strong className="mono">{selected.matched_ontarget_ref ?? selected.matched_tx_id ?? '—'}</strong></div>
+              <div><span><CalendarDays size={12} /> التاريخ (القاهرة)</span><strong className="mono">{receivedDate}</strong></div>
+              <div><span><Clock3 size={12} /> الوقت</span><strong className="mono">{receivedTime}</strong></div>
+              <div><span><Building2 size={12} /> التاجر</span><strong>{selectedMerchant}</strong></div>
             </div>
             {selectedRaw && <div className="sms-detail-sheet-raw" dir="auto"><span>Raw SMS</span><p>{selectedRaw}</p></div>}
+            {!selectedLinked && selected.sms_category === 'deposit' && can('sms_live', 'can_edit') && (
+              <div className="sms-match-card sms-suggest-card sms-manual-link-card">
+                <div className="sms-match-head"><span className="sms-match-title"><Link2 size={15} /> ربط يدوي بمعاملة من نفس اليوم</span></div>
+                <p className="cell-sub">اكتب tx_id الذي يبدأ بـ 13 أو مرجع المعاملة الذي يبدأ بـ 777.</p>
+                <div className="sms-payout-assign-row">
+                  <input
+                    className="login-input mono"
+                    inputMode="numeric"
+                    placeholder="13… أو 777…"
+                    value={manualTxRef}
+                    onChange={(event) => setManualTxRef(event.target.value.replace(/[^0-9]/g, ''))}
+                    onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void linkToTypedTransaction() } }}
+                  />
+                  <button type="button" className="btn-primary btn-sm" disabled={linkingTxId != null || !manualTxRef.trim()} onClick={() => void linkToTypedTransaction()}>
+                    <Link2 size={14} /> {linkingTxId != null ? 'جارٍ الربط…' : 'ربط'}
+                  </button>
+                  <button type="button" className="btn-ghost danger btn-sm" disabled={blockingSms} onClick={() => void blockSelectedSms()}>
+                    <Ban size={14} /> {blockingSms ? 'جارٍ الحظر…' : 'حظر SMS'}
+                  </button>
+                </div>
+                {linkErr && <p className="sms-detail-link-err" role="alert">{linkErr}</p>}
+              </div>
+            )}
             {!selectedLinked && candidates.length > 0 && (
               <div className="sms-match-card sms-suggest-card">
-                <div className="sms-match-head"><span className="sms-match-title">💡 معاملات محتملة لهذه الرسالة</span></div>
+                <div className="sms-match-head"><span className="sms-match-title"><Search size={15} /> معاملات مقترحة من {receivedDate}</span></div>
                 <ul className="cand-list">
                   {candidates.map((cand) => (
                     <li key={cand.tx_id} className="cand-item">
@@ -473,6 +552,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
                           {cand.sender_name ?? cand.sender_number ?? '—'}
                           {' · '}{cand.status ?? '—'}
                           {' · '}{depositTime({ first_seen_at: cand.first_seen_at })}
+                          {' · '}{cand.merchant ?? 'تاجر غير محدد'}
                         </div>
                       </div>
                       <button

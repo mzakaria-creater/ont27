@@ -407,7 +407,10 @@ export default function Transactions() {
   const decide = async (row: TxRow, action: 'approve' | 'decline') => {
     const id = row.kind === 'deposit' ? row.tx_id : row.maven_id
     if (!id) return
-    if (!window.confirm(action === 'approve' ? t('تأكيد اعتماد المعاملة؟', 'Approve this transaction?') : t('تأكيد رفض المعاملة؟', 'Reject this transaction?'))) return
+    const prompt = action === 'approve'
+      ? t('تأكيد اعتماد المعاملة', 'Approve transaction')
+      : t('تأكيد رفض المعاملة', 'Reject transaction')
+    if (!window.confirm(`${prompt} #${row.ontarget_ref ?? id}؟\n${t('المبلغ', 'Amount')}: ${money(row.amount, row.currency ?? 'EGP')}`)) return
     const key = `${row.kind}-${id}-${action}`
     setActionBusy(key)
     setErr(null)

@@ -68,7 +68,7 @@ export default function RecoverTransactions() {
   useEffect(() => { load() }, [load])
 
   const recover = async (row: RecoverRow) => {
-    if (!window.confirm(t(`استرجاع المعاملة ${row.ontarget_ref ?? row.tx_id} واعتمادها؟`, `Recover and approve transaction ${row.ontarget_ref ?? row.tx_id}?`))) return
+    if (!window.confirm(`${t(`استرجاع المعاملة ${row.ontarget_ref ?? row.tx_id} واعتمادها؟`, `Recover and approve transaction ${row.ontarget_ref ?? row.tx_id}?`)}\n${t('المبلغ', 'Amount')}: ${money(row.amount, row.currency ?? 'EGP')}`)) return
     setBusy(row.tx_id)
     try {
       await api(`/api/deposits/${row.tx_id}/decision`, { method: 'POST', body: JSON.stringify({ action: 'approve', note: 'Recovered from Recover Transaction Review — late SMS evidence found after decline' }) })

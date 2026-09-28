@@ -272,6 +272,9 @@ export default function Deposits() {
 
   const quickDecide = async (txId: number, action: 'approve' | 'decline') => {
     if (rowBusy) return
+    const row = data?.rows.find((item) => item.tx_id === txId)
+    const prompt = action === 'approve' ? t('تأكيد اعتماد المعاملة', 'Approve transaction') : t('تأكيد رفض المعاملة', 'Reject transaction')
+    if (!window.confirm(`${prompt} #${row?.ontarget_ref ?? txId}؟\n${t('المبلغ', 'Amount')}: ${money(row?.amount, row?.currency ?? 'EGP')}`)) return
     setRowBusy({ id: txId, action })
     setErr(null)
     setNotice(null)
@@ -325,6 +328,8 @@ export default function Deposits() {
 
   const decide = async (action: 'approve' | 'decline') => {
     if (!selected) return
+    const prompt = action === 'approve' ? t('تأكيد اعتماد المعاملة', 'Approve transaction') : t('تأكيد رفض المعاملة', 'Reject transaction')
+    if (!window.confirm(`${prompt} #${selected.ontarget_ref ?? selected.tx_id}؟\n${t('المبلغ', 'Amount')}: ${money(selected.amount, selected.currency ?? 'EGP')}`)) return
     setDecisionBusy(true)
     setDecisionErr(null)
     try {

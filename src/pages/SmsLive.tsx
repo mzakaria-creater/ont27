@@ -142,7 +142,7 @@ interface SmsStats {
   review: number
 }
 
-interface WalletPaidTotal { wallet: string; paid_amount: number; transaction_ref?: string | null; merchant?: string | null }
+interface WalletPaidTotal { wallet: string; paid_amount: number; transaction_count?: number; transaction_ref?: string | null; merchant?: string | null }
 
 interface ListResponse {
   rows: SmsRow[]
@@ -677,7 +677,7 @@ export default function SmsLive() {
             <div className="wallet-limit-popup-icon">⚠</div>
           <h3 id="wallet-limit-popup-title">{t('تنبيه حد المحفظة', 'Wallet limit alert')}</h3>
             <p>{t('وصلت المحافظ التالية إلى 50,000 جنيه مدفوع. يرجى إيقاف التوجيه أو مراجعة السعة.', 'These wallets reached 50,000 EGP paid. Please stop routing or review capacity.')}</p>
-            <div className="wallet-limit-popup-list">{walletAlerts.map((row) => <div key={row.wallet}><span><span className="mono">{row.wallet}</span>{(row.transaction_ref || row.merchant) && <small>{row.transaction_ref ? `TRX ${row.transaction_ref}` : ''}{row.transaction_ref && row.merchant ? ' · ' : ''}{row.merchant ?? ''}</small>}</span><strong>{money(row.paid_amount, 'EGP')}</strong></div>)}</div>
+            <div className="wallet-limit-popup-list">{walletAlerts.map((row) => <div key={row.wallet}><span><span className="mono">{row.wallet}</span>{(row.transaction_ref || row.merchant || row.transaction_count) && <small>{row.transaction_count ? `${row.transaction_count.toLocaleString('en-US')} ${t('معاملة', 'transactions')} · ` : ''}{row.transaction_ref ? `TRX ${row.transaction_ref}` : ''}{row.transaction_ref && row.merchant ? ' · ' : ''}{row.merchant ?? ''}</small>}</span><strong>{money(row.paid_amount, 'EGP')}</strong></div>)}</div>
             <button type="button" className="btn-primary" onClick={() => setWalletAlertDismissed(true)}>{t('فهمت', 'Acknowledge')}</button>
           </section>
         </div>
@@ -1064,7 +1064,8 @@ export default function SmsLive() {
                   {selected.is_duplicate && <><dt>{t('تكرار', 'Duplicate')}</dt><dd>⚠ {t('رسالة مكررة', 'Duplicate message')}</dd></>}
                   <dt>{t('المشغّل المسؤول', 'Assigned operator')}</dt><dd>{selected.assigned_operator ?? '—'}</dd>
                   {selected.notes && <><dt>{t('ملاحظات', 'Notes')}</dt><dd>{selected.notes}</dd></>}
-                  <dt>{t('وقت الاستلام', 'Received at')}</dt><dd className="mono">{depositTime({ first_seen_at: selected.received_at })}</dd>
+                  <dt>{t('تاريخ الاستلام', 'Received date')}</dt><dd className="mono">{selected.received_at ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(selected.received_at)) : '—'}</dd>
+                  <dt>{t('وقت الاستلام', 'Received time')}</dt><dd className="mono">{selected.received_at ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(selected.received_at)) : '—'}</dd>
                 </dl>
 
                 <section className="sms-detail-timeline"><h4>{t('الخط الزمني', 'Timeline')}</h4><ol>{[
