@@ -46,6 +46,36 @@ async function notifySupport(alertType: string, message: string): Promise<{ sent
   }
 }
 
+// Transaction complaints use the dedicated formatter so Telegram receives the
+// Maven proof image, the reconciliation verdict and the decision keyboard in
+// one card. Phone-only complaints still use the plain support notification.
+async function notifyRichComplaint(
+  txId: number,
+  filedBy: string,
+  note: string | null,
+): Promise<{ sent: number; error?: string; proof_included?: boolean }> {
+  const baseUrl = process.env.SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SECRET_KEY
+  if (!baseUrl || !serviceKey) return { sent: 0, error: 'telegram_not_configured' }
+  try {
+    const response = await fetch(`${baseUrl}/functions/v1/complaint-notify`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(35_000),
+      headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
+      body: JSON.stringify({ tx_id: txId, filed_by: filedBy, note }),
+    })
+    const result = await response.json().catch(() => ({})) as Record<string, unknown>
+    if (!response.ok) return { sent: 0, error: String(result.error ?? `HTTP ${response.status}`) }
+    return {
+      sent: Number(result.sent ?? 0),
+      proof_included: result.proof_included === true,
+      ...(result.sent === 0 ? { error: String(result.error ?? 'no_complaint_chats') } : {}),
+    }
+  } catch (error) {
+    return { sent: 0, error: error instanceof Error ? error.message : 'send_failed' }
+  }
+}
+
 const esc = (v: unknown): string =>
   String(v ?? '—').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
@@ -135,14 +165,15 @@ complaintRoutes.post('/log', async (c) => {
     description: note, message_body: note, priority, opened_by: actor.username,
   })
 
-  const tg = await notifySupport('complaint_filed', [
-    '📣 <b>شكوى جديدة</b>',
-    txId ? `المعاملة: <code>${esc(txId)}</code>` : null,
-    phone ? `هاتف العميل: <code>${esc(phone)}</code>` : null,
-    amount != null ? `المبلغ: <b>${esc(amount)}</b>` : null,
-    note ? `التفاصيل: ${esc(note)}` : null,
-    `سُجِّلت بواسطة: ${esc(actor.username)}`,
-  ].filter(Boolean).join('\n'))
+  const tg = txId
+    ? await notifyRichComplaint(txId, actor.username, note)
+    : await notifySupport('complaint_filed', [
+      '📣 <b>شكوى جديدة</b>',
+      phone ? `هاتف العميل: <code>${esc(phone)}</code>` : null,
+      amount != null ? `المبلغ: <b>${esc(amount)}</b>` : null,
+      note ? `التفاصيل: ${esc(note)}` : null,
+      `سُجِّلت بواسطة: ${esc(actor.username)}`,
+    ].filter(Boolean).join('\n'))
 
   // Say plainly whether it reached anyone — never imply a send that failed.
   return c.json({ ok: true, result: data, telegram: tg })
