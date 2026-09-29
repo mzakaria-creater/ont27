@@ -35,6 +35,7 @@ const MATCH_FILTERS = [
   { key: 'linked', ar: 'مرتبطة', en: 'Linked' },
   { key: 'unmatched', ar: 'غير مرتبطة', en: 'Unlinked' },
   { key: 'review', ar: 'تحتاج مراجعة', en: 'Needs review' },
+  { key: 'blocked', ar: 'محظورة', en: 'Blocked' },
 ]
 
 // Same 5 channels + grouping MethodLogo already uses for the per-row icon —

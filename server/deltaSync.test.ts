@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 process.env.SUPABASE_URL ??= 'http://localhost:54321'
 process.env.SUPABASE_SECRET_KEY ??= 'test-service-key'
 process.env.PANEL_JWT_SECRET ??= 'test-panel-secret'
-const { buildKeysetOr, guardLegacyAmount } = await import('./deltaSync.js')
+const { buildKeysetOr, guardLegacyAmount, guardLegacyOntargetRef, recoverLegacyOntargetRefConflict } = await import('./deltaSync.js')
 
 test('keyset pagination keeps same-timestamp rows after a page boundary', () => {
   const cursor = { value: '2026-09-27T10:00:00.000Z', key: '138481892' }
@@ -64,4 +64,43 @@ test('a genuinely newer Maven amount remains authoritative', () => {
   })
 
   assert.equal(guarded.amount, 45)
+})
+
+test('a poisoned legacy ontarget_ref is omitted while the financial row survives', () => {
+  const recovered = recoverLegacyOntargetRefConflict('maven_transactions', {
+    tx_id: 138483759,
+    ontarget_ref: '777745590',
+    status: 'DECLINED',
+    amount: 500,
+  }, {
+    code: '23505',
+    message: 'duplicate key value violates unique constraint "maven_transactions_ontarget_ref_key"',
+  })
+
+  assert.deepEqual(recovered, { tx_id: 138483759, status: 'DECLINED', amount: 500 })
+})
+
+test('an existing provider reference wins before the legacy batch upsert', () => {
+  const guarded = guardLegacyOntargetRef({
+    tx_id: 138483759,
+    ontarget_ref: '777745590',
+    status: 'DECLINED',
+  }, {
+    ontarget_ref: '777020521',
+  })
+
+  assert.equal(guarded.ontarget_ref, '777020521')
+  assert.equal(guarded.status, 'DECLINED')
+})
+
+test('other write failures are never hidden by the ontarget_ref recovery', () => {
+  const recovered = recoverLegacyOntargetRefConflict('maven_transactions', {
+    tx_id: 138483759,
+    ontarget_ref: '777745590',
+  }, {
+    code: '23505',
+    message: 'duplicate key value violates unique constraint "some_other_key"',
+  })
+
+  assert.equal(recovered, null)
 })

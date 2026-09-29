@@ -157,9 +157,13 @@ function isPotentialDeposit(sms: QueueSms) {
 // cards was the reason their numbers previously looked stale/wrong.
 function applySmsFilters(query: any, filters: SmsFilterInput) {
   const { category, match, q, device, amount, from, to, provider } = filters
-  // Only approved financial inbox senders belong in Live SMS or matching.
-  // Unsupported messages are retained for audit but hidden from operations.
-  query = query.or('is_blocked.eq.false,is_blocked.is.null')
+  // Keep blocked *financial* evidence visible to operators. Previously every
+  // blocked row disappeared from SMS Live, including legitimate deposits that
+  // were merely locked after the three-hour assignment window (for example
+  // #1004413 and #1004441 on 2026-09-28). Non-financial blocked spam remains
+  // hidden by default; the explicit Blocked filter exposes it for audit.
+  if (match === 'blocked') query = query.eq('is_blocked', true)
+  else query = query.or('is_blocked.eq.false,is_blocked.is.null,and(is_blocked.eq.true,sms_category.in.(deposit,withdrawal),amount.not.is.null)')
   const categories = (category ?? '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean)
   if (categories.length) query = query.in('sms_category', categories)
   const providers = (provider ?? '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean)

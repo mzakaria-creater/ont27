@@ -112,6 +112,34 @@ let lastLegacyMavenCollectorAt = 0
 // are safe and keep new Maven transactions visible while a full scan runs.
 const activeSync: { fast: Promise<Record<string, number | string>> | null; full: Promise<Record<string, number | string>> | null; mirror: Promise<Record<string, number | string>> | null } = { fast: null, full: null, mirror: null }
 
+type DbWriteError = { code?: string | null; message?: string | null; details?: string | null; hint?: string | null }
+
+// The legacy collector has occasionally attached an ontarget_ref that already
+// belongs to a different tx_id. `ontarget_ref` is unique in V2, so retrying the
+// identical row can never succeed. Keep the provider/direct-reconcile value we
+// already hold (or NULL on a brand-new row) and mirror every other field. This
+// is deliberately narrow: no other unique violation is silently recovered.
+export function recoverLegacyOntargetRefConflict(
+  table: string,
+  row: Record<string, unknown>,
+  error: DbWriteError | null | undefined,
+): Record<string, unknown> | null {
+  const text = `${error?.message ?? ''} ${error?.details ?? ''} ${error?.hint ?? ''}`
+  if (table !== 'maven_transactions' || !/maven_transactions_ontarget_ref_key/i.test(text)) return null
+  const { ontarget_ref: _conflictingRef, ...safeRow } = row
+  return safeRow
+}
+
+export function guardLegacyOntargetRef(
+  row: Record<string, unknown>,
+  local: { ontarget_ref?: unknown } | null | undefined,
+): Record<string, unknown> {
+  const held = typeof local?.ontarget_ref === 'string' ? local.ontarget_ref.trim() : ''
+  const incoming = typeof row.ontarget_ref === 'string' ? row.ontarget_ref.trim() : ''
+  if (!held || !incoming || held === incoming) return row
+  return { ...row, ontarget_ref: held }
+}
+
 /** Stable keyset predicate for a (timestamp, primary-key) ordered feed. */
 export function buildKeysetOr(column: string, primaryKey: string, cursor: { value: string; key: string }): string {
   return `${column}.gt.${cursor.value},and(${column}.eq.${cursor.value},${primaryKey}.gt.${cursor.key})`
@@ -381,6 +409,7 @@ async function runSync(mode: 'fast' | 'full' = 'full', runPostProcessing = true)
           amount: unknown
           local_amount: unknown
           amount_confirmed_at: unknown
+          ontarget_ref: unknown
         }>()
         // A full page is 1000 ids, and PostgREST puts .in() in the query
         // string — one request would build a ~10KB URL and be rejected. It
@@ -391,7 +420,7 @@ async function runSync(mode: 'fast' | 'full' = 'full', runPostProcessing = true)
         for (let i = 0; i < ids.length; i += LOOKUP_CHUNK) {
           const { data: locals, error: localErr } = await db
             .from('maven_transactions')
-            .select('tx_id, status, last_status_change, modified_utc, modified_at_utc, amount, local_amount, amount_confirmed_at')
+            .select('tx_id, status, last_status_change, modified_utc, modified_at_utc, amount, local_amount, amount_confirmed_at, ontarget_ref')
             .in('tx_id', ids.slice(i, i + LOOKUP_CHUNK))
           if (localErr) throw new Error(`status guard lookup: ${localErr.message}`)
           for (const l of locals ?? []) {
@@ -404,11 +433,13 @@ async function runSync(mode: 'fast' | 'full' = 'full', runPostProcessing = true)
               amount: l.amount,
               local_amount: l.local_amount,
               amount_confirmed_at: l.amount_confirmed_at,
+              ontarget_ref: l.ontarget_ref,
             })
           }
         }
         payload = payload.map((sourceRow) => {
-          const r = guardLegacyAmount(sourceRow, localHold.get(sourceRow.tx_id as number))
+          const heldRow = localHold.get(sourceRow.tx_id as number)
+          const r = guardLegacyOntargetRef(guardLegacyAmount(sourceRow, heldRow), heldRow)
           const mine = localTs.get(r.tx_id as number)
           if (mine == null) return r // not held locally yet — a plain insert
           const raw = r.last_status_change
@@ -495,6 +526,21 @@ async function runSync(mode: 'fast' | 'full' = 'full', runPostProcessing = true)
         for (const row of payload) {
           const { error: rowErr } = await db.from(table).upsert([row], { onConflict: pk })
           if (rowErr) {
+            const safeRow = recoverLegacyOntargetRefConflict(table, row, rowErr)
+            if (safeRow) {
+              const { error: recoveryErr } = await db.from(table).upsert([safeRow], { onConflict: pk })
+              if (!recoveryErr) {
+                console.warn('deltaSync: recovered conflicting legacy ontarget_ref', {
+                  table,
+                  pkValue: row[pk],
+                  ignoredOntargetRef: row.ontarget_ref,
+                })
+                // Downstream approval notifications must not repeat the bad
+                // legacy reference after the database correctly ignored it.
+                delete row.ontarget_ref
+                continue
+              }
+            }
             failedRows++
             failedKeys.push(String((row as Record<string, unknown>)[pk] ?? 'unknown'))
             console.error('deltaSync: row skipped after batch upsert failure', {
