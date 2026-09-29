@@ -10,6 +10,7 @@ import MerchantLogo from "../components/MerchantLogo";
 import MethodLogo from "../components/MethodLogo";
 import { Eye, EyeOff, Image, KeyRound, Percent, Shield, ShieldCheck, UserPlus, Users, WalletCards } from "lucide-react";
 import { useIsMobile } from "../lib/useIsMobile";
+import PressToPayNav from "../components/PressToPayNav";
 
 type Tab =
   | "users"
@@ -307,6 +308,7 @@ export default function AdminPage() {
   );
   return (
     <>
+      <PressToPayNav />
       <div className="admin-page">
       <section className="admin-head">
         <span className="admin-head-icon"><ShieldCheck size={26} /></span>

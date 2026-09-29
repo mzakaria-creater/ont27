@@ -1,0 +1,135 @@
+.presstopay-workspace {
+  --presstopay-accent: #2563eb;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  margin: 0 0 16px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--presstopay-accent) 22%, var(--border));
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 0 0, color-mix(in srgb, var(--presstopay-accent) 10%, transparent), transparent 38%),
+    var(--surface-glass, var(--surface));
+  box-shadow: 0 12px 34px rgba(15, 23, 42, .07);
+  backdrop-filter: blur(18px) saturate(145%);
+}
+
+.presstopay-workspace-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 0 0 auto;
+  padding-inline: 3px 5px;
+}
+
+.presstopay-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  color: #fff;
+  background: linear-gradient(145deg, #2563eb, #3b82f6);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, .28);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.presstopay-workspace-brand > div {
+  display: grid;
+  line-height: 1.15;
+}
+
+.presstopay-workspace-brand strong { font-size: 12px; letter-spacing: -.01em; }
+.presstopay-workspace-brand small { margin-top: 3px; color: var(--text-dim); font-size: 9px; white-space: nowrap; }
+
+.presstopay-tabs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+}
+
+.presstopay-tabs::-webkit-scrollbar { display: none; }
+
+.presstopay-tabs a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 8px 11px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: color .18s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+
+.presstopay-tabs a:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--presstopay-accent) 20%, var(--border));
+  background: color-mix(in srgb, var(--presstopay-accent) 7%, var(--surface));
+}
+
+.presstopay-tabs a:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--presstopay-accent) 34%, transparent);
+  outline-offset: 2px;
+}
+
+.presstopay-tabs a.active {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  box-shadow: 0 8px 20px rgba(37, 99, 235, .22);
+}
+
+@media (max-width: 900px) {
+  .presstopay-workspace { align-items: stretch; flex-direction: column; gap: 8px; }
+  .presstopay-workspace-brand { padding-inline: 3px; }
+  .presstopay-tabs { margin-inline: -2px; padding: 2px; }
+}
+
+@media (max-width: 520px) {
+  .presstopay-workspace { margin-bottom: 12px; padding: 9px; border-radius: 16px; }
+  .presstopay-workspace-brand small { white-space: normal; }
+  .presstopay-tabs a { min-height: 42px; padding-inline: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .presstopay-tabs a { transition-duration: .01ms; }
+}
+
+.presstopay-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.presstopay-chart-card { min-width: 0; padding: 16px; }
+.presstopay-chart-card h3 { margin: 0; font-size: 14px; }
+.presstopay-chart-canvas { position: relative; height: 245px; min-width: 0; }
+.presstopay-chart-legend {
+  position: absolute;
+  inset: auto 0 0;
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  pointer-events: none;
+}
+.presstopay-chart-legend span { display: inline-flex; align-items: center; gap: 5px; color: var(--text-dim); font-size: 10px; }
+.presstopay-chart-legend i { width: 7px; height: 7px; border-radius: 999px; }
+.presstopay-chart-legend b { color: var(--text); }
+
+@media (max-width: 760px) {
+  .presstopay-chart-grid { grid-template-columns: 1fr; }
+  .presstopay-chart-canvas { height: 220px; }
+}

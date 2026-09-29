@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Activity, CheckCircle2, Clock3, Database, Download, ExternalLink, RefreshCw, Server, WalletCards, XCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useIsMobile } from '../lib/useIsMobile'
+import PressToPayNav from '../components/PressToPayNav'
 
 type Provider = { count24h: number; pending: number; lastChange: string | null; latestTransaction?: string | null; stale?: boolean }
 type Tx = { tx_id: number; ontarget_ref: string | null; status: string; amount: number | null; currency: string | null; merchant: string | null; gateway: string | null; first_seen_at: string | null }
@@ -36,6 +38,16 @@ export default function ApiDashboard() {
     return { total: rows.length, approved: rows.filter((r)=>['PAID','APPROVED'].includes(r.status)).length, pending: rows.filter((r)=>r.status==='PENDING').length, declined: rows.filter((r)=>r.status==='DECLINED').length }
   }, [data])
   const online = data?.devices.filter((d)=>d.online).length ?? 0
+  const statusChart = [
+    { name: 'Approved', value: stats.approved, color: '#22c55e' },
+    { name: 'Pending', value: stats.pending, color: '#f59e0b' },
+    { name: 'Declined', value: stats.declined, color: '#ef4444' },
+  ]
+  const providerChart = Object.entries(data?.providers ?? {}).map(([name, provider]) => ({
+    name: name === 'nagopay' ? 'NagoPay' : name.replace(/(^.|_.)/g, (value) => value.replace('_', ' ').toUpperCase()),
+    transactions: provider.count24h,
+    pending: provider.pending,
+  }))
   const exportXlsx = async () => {
     if (!data?.transactions.length) return
     const ExcelJS = await import('exceljs')
@@ -57,7 +69,8 @@ export default function ApiDashboard() {
   }
 
   return <>
-    <section className="api-dash-head"><div><span>ONTARGET · OPERATIONS API</span><h2>API Dashboard</h2><p>Live platform health, transaction flow, and operational tools in one authenticated workspace.</p></div><div className="api-dash-actions"><button className="btn-ghost btn-sm" disabled={!data?.transactions.length} onClick={()=>void exportXlsx()}><Download size={15}/>Export XLSX</button><button className="btn-primary btn-sm" disabled={loading} onClick={()=>void load()}><RefreshCw size={15} className={loading?'spin':''}/>Refresh</button></div></section>
+    <PressToPayNav />
+    <section className="api-dash-head"><div><span>ONTARGET · PRESSTOPAY</span><h2>PressToPay Operations</h2><p>One authenticated workspace using the existing OnTarget transactions, providers, merchants, settlements, reports, roles and live data.</p></div><div className="api-dash-actions"><button className="btn-ghost btn-sm" disabled={!data?.transactions.length} onClick={()=>void exportXlsx()}><Download size={15}/>Export XLSX</button><button className="btn-primary btn-sm" disabled={loading} onClick={()=>void load()}><RefreshCw size={15} className={loading?'spin':''}/>Refresh</button></div></section>
     {error&&<div className="card warn">The monitoring API could not be reached. Existing operational pages remain available.</div>}
 
     <section className="api-health-grid">
@@ -81,6 +94,38 @@ export default function ApiDashboard() {
       <article><small>Declined</small><strong className="red">{stats.declined}</strong><XCircle/></article>
     </section>
 
+    <section className="presstopay-chart-grid" aria-label="PressToPay live charts">
+      <article className="card presstopay-chart-card">
+        <div className="recent-head"><div><h3>Transaction health</h3><span className="cell-sub">Current live monitoring sample</span></div></div>
+        <div className="presstopay-chart-canvas">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={statusChart} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={54} outerRadius={82} paddingAngle={3} isAnimationActive={false}>
+                {statusChart.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+              </Pie>
+              <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12 }} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="presstopay-chart-legend">{statusChart.map((entry) => <span key={entry.name}><i style={{ background: entry.color }} />{entry.name}<b>{entry.value}</b></span>)}</div>
+        </div>
+      </article>
+      <article className="card presstopay-chart-card">
+        <div className="recent-head"><div><h3>Provider volume</h3><span className="cell-sub">Transactions and pending items in the last 24 hours</span></div></div>
+        <div className="presstopay-chart-canvas">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={providerChart} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+              <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="name" stroke="var(--text-dim)" tickLine={false} axisLine={false} fontSize={10} />
+              <YAxis stroke="var(--text-dim)" tickLine={false} axisLine={false} fontSize={10} />
+              <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12 }} />
+              <Bar dataKey="transactions" name="Transactions" fill="#2563eb" radius={[7, 7, 0, 0]} isAnimationActive={false} />
+              <Bar dataKey="pending" name="Pending" fill="#f59e0b" radius={[7, 7, 0, 0]} isAnimationActive={false} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </article>
+    </section>
+
     <div className="api-dash-layout">
       <section className="card recent-card"><div className="recent-head"><div><h3>Recent transactions</h3><span className="cell-sub">Live monitoring sample</span></div><Link className="pay-status-link" to="/transactions">Open ledger →</Link></div>
         {isMobile ? (
@@ -98,7 +143,7 @@ export default function ApiDashboard() {
       <div className="table-wrap"><table className="data-table"><thead><tr><th>Our TRX</th><th>Provider ID</th><th>Merchant</th><th>Gateway</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead><tbody>{(data?.transactions??[]).slice(0,12).map((row)=><tr key={row.tx_id}><td className="mono">{row.ontarget_ref??'—'}</td><td className="mono">{row.tx_id}</td><td>{row.merchant??'—'}</td><td>{row.gateway??'—'}</td><td className="mono">{money(row.amount,row.currency)}</td><td><span className={`pay-status-badge ${['PAID','APPROVED'].includes(row.status)?'st-paid':row.status==='DECLINED'?'st-declined':'st-pending'}`}>{row.status}</span></td><td className="mono">{when(row.first_seen_at)}</td></tr>)}{data&&data.transactions.length===0&&<tr><td colSpan={7}>No recent transactions.</td></tr>}</tbody></table></div>
         )}
       </section>
-      <aside className="card api-module-card"><div className="recent-head"><div><h3>Platform modules</h3><span className="cell-sub">Merged from the supplied API console</span></div></div><div className="api-module-list">{modules.map(([to,title,description])=><Link key={to} to={to}><div><strong>{title}</strong><span>{description}</span></div><ExternalLink size={14}/></Link>)}</div></aside>
+      <aside className="card api-module-card"><div className="recent-head"><div><h3>OnTarget modules</h3><span className="cell-sub">PressToPay opens the current production pages—no parallel app or duplicate data.</span></div></div><div className="api-module-list">{modules.map(([to,title,description])=><Link key={to} to={to}><div><strong>{title}</strong><span>{description}</span></div><ExternalLink size={14}/></Link>)}</div></aside>
     </div>
 
     <section className="card api-provider-strip"><div><span>NagoPay / NGPay</span><strong>{data?.providers.nagopay?.count24h??'—'}</strong><small>{data?.providers.nagopay?.pending??'—'} pending · 24h</small></div><div><span>PayFuture {data?.providers.payfuture?.stale ? '⚠ stale' : '● live'}</span><strong>{data?.providers.payfuture?.count24h??'—'}</strong><small>{data?.providers.payfuture?.pending??'—'} pending · 24h · last {when(data?.providers.payfuture?.latestTransaction ?? null)}</small></div><div><span>Edit requests</span><strong>{data?.queues.editRequests??'—'}</strong><small>awaiting review</small></div><div><span>Generated</span><strong className="api-generated"><Clock3 size={15}/>{when(data?.generatedAt??null)}</strong><small>auto-refresh every 15 seconds</small></div></section>

@@ -22,6 +22,7 @@ import { useIsMobile } from '../lib/useIsMobile'
 import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectFilter'
 import { exportCsv, exportXlsx, type ExportColumn } from '../lib/exportTable'
 import { Download } from 'lucide-react'
+import PressToPayNav from '../components/PressToPayNav'
 
 // All transactions — deposits + payouts merged, sorted by our ref.
 
@@ -441,6 +442,7 @@ export default function Transactions() {
 
   return (
     <>
+      <PressToPayNav />
       <section className="page-head all-transactions-head">
         <div><h2>🧾 {t('كل المعاملات', 'All transactions')}</h2>
         <p className="page-sub">{t('إيداعات وسحوبات موحّدة', 'Deposits and payouts unified')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p></div>

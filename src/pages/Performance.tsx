@@ -6,6 +6,7 @@ import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { useIsMobile } from '../lib/useIsMobile'
+import PressToPayNav from '../components/PressToPayNav'
 
 // PSP and merchant performance.
 //
@@ -183,6 +184,7 @@ export default function Performance() {
 
   return (
     <>
+      <PressToPayNav />
       <section className="page-head">
         <h2>{t('أداء المزوّدين والتجار', 'Provider & merchant performance')}</h2>
         <p className="page-sub">

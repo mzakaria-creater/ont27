@@ -6,6 +6,7 @@ import { money } from '../lib/deposits'
 import { exportCsv } from '../lib/exportTable'
 import { useLocale } from '../lib/locale'
 import { useIsMobile } from '../lib/useIsMobile'
+import PressToPayNav from '../components/PressToPayNav'
 
 // Merchants directory (view). The API never returns api_key/secret_key/
 // callback_secret — key management stays a separate super_admin flow.
@@ -168,6 +169,7 @@ export default function Merchants() {
 
   return (
     <>
+      <PressToPayNav />
       <section className="page-head admin-head">
         <span className="admin-head-icon"><Building2 size={20} /></span>
         <div className="admin-head-text">

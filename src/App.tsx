@@ -528,6 +528,7 @@ export default function App() {
             <Route path="/monitor" element={<PageGate keys={['dashboard']}><Monitor /></PageGate>} />
             <Route path="/live-monitor" element={<PageGate keys={['dashboard']}><LiveMonitorControl /></PageGate>} />
             <Route path="/api-dashboard" element={<PageGate keys={['dashboard']}><ApiDashboard /></PageGate>} />
+            <Route path="/press-to-pay" element={<PageGate keys={['dashboard']}><ApiDashboard /></PageGate>} />
             <Route path="/executive-dashboard" element={<PageGate keys={['dashboard','reports','advanced_analysis','treasury','wallets']}><ExecutiveDashboard /></PageGate>} />
             <Route path="/analytics-dashboard" element={<PageGate keys={['dashboard','reports','advanced_analysis','wallets']}><AnalyticsDashboard /></PageGate>} />
             <Route path="/system-health" element={<PageGate keys={['dashboard','automation','audit_log']}><SystemHealth /></PageGate>} />

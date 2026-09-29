@@ -7,6 +7,7 @@ import MethodLogo from '../components/MethodLogo'
 import { refreshBrandLogos } from '../lib/brandLogos'
 import { depositTime } from '../lib/deposits'
 import { useIsMobile } from '../lib/useIsMobile'
+import PressToPayNav from '../components/PressToPayNav'
 
 interface Method { id: string; method_code: string; method_name: string; channel_type: string; is_active: boolean; sort_order: number }
 interface Account {
@@ -176,6 +177,7 @@ export default function PaymentMethods() {
 
   return (
     <>
+      <PressToPayNav />
       <section className="page-head payment-page-head">
         <div><h2><CreditCard size={25}/> {t('طرق الدفع والحسابات', 'Payment methods & accounts')}</h2>
         <p className="page-sub">{t('مركز تشغيل الطرق والحسابات والتخصيص وصحة الرصيد.', 'Operations center for methods, accounts, allocation, and balance health.')}</p></div>
