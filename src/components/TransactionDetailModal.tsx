@@ -460,7 +460,7 @@ export default function TransactionDetailModal({ txRef, onClose, onChanged }: { 
                 amount={data.deposit.amount}
                 currency={data.deposit.currency}
                 gateway={data.deposit.gateway}
-                onDone={() => { void load(); onChanged?.() }}
+                onDone={async () => { await load(); await Promise.resolve(onChanged?.()) }}
               />
             )}
           </aside>

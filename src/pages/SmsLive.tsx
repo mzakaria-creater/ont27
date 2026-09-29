@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { api, ApiError } from '../lib/api'
+import { PROVIDER_SYNC_PATH } from '../lib/providerSync'
 import { depositTime, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { usePageSize } from '../lib/pageSize'
@@ -334,7 +335,7 @@ export default function SmsLive() {
     setSyncBusy(true)
     setSyncMessage(null)
     try {
-      const result = await api<{ results?: { sms_exact_matches?: number | string } }>('/api/delta-sync', { method: 'POST' })
+      const result = await api<{ results?: { sms_exact_matches?: number | string } }>(PROVIDER_SYNC_PATH, { method: 'POST' })
       const linked = result.results?.sms_exact_matches
       setSyncMessage(t(`اكتملت المطابقة الفورية${typeof linked === 'number' ? ` — تم ربط ${linked} رسالة` : ''}.`, `Live matching completed${typeof linked === 'number' ? ` — ${linked} SMS linked` : ''}.`))
       await load(true)
@@ -409,7 +410,7 @@ export default function SmsLive() {
     try {
       await api(`/api/sms/${quickLinkRow.id}/link`, { method: 'POST', body: JSON.stringify({ tx_id: txId }) })
       setQuickLinkRow(null)
-      void load(true)
+      await load(true)
     } catch (e) {
       setQuickLinkError(e instanceof ApiError && e.code === 'amount_mismatch'
         ? t('المبلغ غير مطابق — افتح التفاصيل الكاملة للتأكيد.', 'Amount mismatch — open full details to confirm.')
@@ -500,7 +501,7 @@ export default function SmsLive() {
           `تم ربط الرسالة كدليل فقط لأن مبلغ SMS (${result.sms_amount ?? '—'} جنيه) لا يطابق مبلغ المعاملة (${result.tx_amount ?? '—'} جنيه). لم يتم اعتماد المعاملة تلقائياً؛ صحّح المبلغ واعتمدها يدوياً.`,
           result.warning,
         ))
-        void load(true)
+        await load(true)
         return
       }
       if (changeDeclinedToPaid) {
@@ -524,13 +525,13 @@ export default function SmsLive() {
         } catch (e) {
           const detail = e instanceof ApiError ? apiErrorDetail(e) : 'status_change_failed'
           setLinkErr(t(`تم ربط SMS، لكن تغيير الحالة إلى PAID فشل: ${detail}`, `SMS linked, but changing status to PAID failed: ${detail}`))
-          void load(true)
+          await load(true)
           return
         }
       }
       window.dispatchEvent(new CustomEvent('ontarget:sms-assignment-success', { detail: { direction: selected.sms_category === 'withdrawal' ? 'out' : 'in', amount: selected.amount, wallet: displayWalletForRow(selected), transactionRef: String(txId) } }))
       setSelected(null)
-      void load(true)
+      await load(true)
     } catch (e) {
       if (e instanceof ApiError && e.status === 409 && e.code === 'amount_mismatch') {
         const smsAmount = Number(e.body?.sms_amount)

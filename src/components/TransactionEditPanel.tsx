@@ -14,8 +14,8 @@ import { Pencil, Save, Send, X } from 'lucide-react'
 // The panel is explicit about what actually reaches the provider, because the
 // two cases are genuinely different and confusing them is how undocumented
 // divergence gets created:
-//   · NGPay + still PENDING + target PAID/DECLINED → real execution on Maven.
-//   · anything else, and every amount change → local correction only.
+//   · NGPay provider statuses and amount corrections → real execution on Maven.
+//   · providers without an execution worker → audited local correction only.
 
 const STEWARD_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_admin', 'operator'])
 
@@ -27,7 +27,7 @@ interface Props {
   senderNumber?: string | null
   currency: string | null
   gateway: string | null
-  onDone: () => void
+  onDone: () => void | Promise<void>
 }
 
 export default function TransactionEditPanel({
@@ -54,9 +54,10 @@ export default function TransactionEditPanel({
 
   // Mirrors the server's rule exactly — this is the one thing the operator
   // must not be misled about.
-  const hitsProvider =
-    changingStatus && gateway === 'NagupayP2P' && status === 'PENDING' &&
-    (nextStatus === 'PAID' || nextStatus === 'DECLINED')
+  const normalizedGateway = String(gateway ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+  const isNgPay = normalizedGateway.includes('nagupay') || normalizedGateway.includes('nagopay')
+  const providerTarget = (changingStatus ? nextStatus : status).toUpperCase()
+  const hitsProvider = isNgPay && (changingAmount || (changingStatus && ['PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID'].includes(providerTarget)))
 
   const submit = async () => {
     setBusy(true)
@@ -76,7 +77,7 @@ export default function TransactionEditPanel({
         setDone(res.executed_on_provider
           ? t('نُفِّذ على المزوّد وتأكّد.', 'Executed on the provider and confirmed.')
           : t('تم التعديل محلياً (لم يُرسَل للمزوّد).', 'Edited locally (not sent to the provider).'))
-        onDone()
+        await onDone()
       } else {
         const res = await api<{ telegram: { sent: number; error?: string } }>(
           `/api/tx/${txId}/edit-request`, { method: 'POST', body: JSON.stringify(payload) },
@@ -118,7 +119,7 @@ export default function TransactionEditPanel({
       {!open && (
         <p className="cell-sub">
           {isSteward
-            ? t('يمكنك تعديل الحالة أو إضافة/تصحيح المبلغ مباشرة — تعديل المبلغ محلي فقط وكل تعديل يُسجَّل في سجل التدقيق.', 'You can change the status or add/correct the amount directly — amount edits are local-only and every edit is written to the audit log.')
+            ? t('يمكنك تعديل الحالة أو تصحيح المبلغ مباشرة. تعديلات NGPay تُنفَّذ على Maven وتُتحقق قبل حفظ المرآة، وكل تعديل يُسجَّل في سجل التدقيق.', 'You can change the status or correct the amount directly. NGPay edits execute on Maven and are verified before the mirror is saved; every edit is audited.')
             : t('دورك لا يسمح بالتعديل المباشر. يمكنك إرسال طلب إلى مينا وإسلام على تيليجرام.', 'Your role cannot edit directly. You can send a request to Mina and Eslam on Telegram.')}
         </p>
       )}
@@ -169,7 +170,7 @@ export default function TransactionEditPanel({
                     'تصحيح محلي فقط — لن يُرسَل للمزوّد. سيظهر في سجل التدقيق بعلامة local_only، وقد يختلف عن حالة المعاملة لدى المزوّد.',
                     'Local correction only — the provider is not told. It is written to the audit log flagged local_only, and may differ from the provider’s own status.',
                   )}
-              {changingAmount && ` ${t('تعديل المبلغ محلي دائماً.', 'Amount edits are always local.')}`}
+              {changingAmount && !hitsProvider && ` ${t('هذا المزوّد لا يملك منفّذ تعديل مبلغ؛ سيبقى التصحيح محليًا.', 'This provider has no amount-edit worker, so the correction remains local.')}`}
             </p>
           )}
 

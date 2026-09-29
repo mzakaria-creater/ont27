@@ -432,7 +432,7 @@ export default function Transactions() {
     setErr(null)
     setLoading(true)
     try {
-      await syncProviders()
+      await syncProviders({ force: true })
       await load(true)
     } catch (e) {
       setErr(e instanceof ApiError ? e.code : t('تعذّر تحديث المعاملات.', 'Unable to refresh transactions.'))
