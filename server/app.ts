@@ -35,10 +35,31 @@ import { deviceRoutes } from './devices.js'
 import { gatewayRoutes } from './gateway.js'
 import { emailNotificationRoutes } from './emailNotifications.js'
 import { whatsappRoutes, whatsappWebhookRoutes } from './whatsapp.js'
+import { db } from './db.js'
 
 export const app = new Hono().basePath('/api')
 
-app.get('/health', (c) => c.json({ ok: true }))
+// Readiness, not just process liveness: a warm Vercel function can still be
+// unable to serve login or operational data when the Supabase origin is down.
+// Keep the probe cheap and bounded so monitoring gets a truthful 503 quickly.
+app.get('/health', async (c) => {
+  const startedAt = Date.now()
+  c.header('Cache-Control', 'no-store')
+  try {
+    const { error } = await db
+      .from('panel_users')
+      .select('id')
+      .limit(1)
+      .abortSignal(AbortSignal.timeout(3_000))
+    if (error) throw error
+    return c.json({ ok: true, api: true, database: true, latency_ms: Date.now() - startedAt })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('backend health database check failed:', message.replace(/\s+/g, ' ').slice(0, 300))
+    c.header('Retry-After', '5')
+    return c.json({ ok: false, api: true, database: false, error: 'database_unavailable', latency_ms: Date.now() - startedAt }, 503)
+  }
+})
 app.route('/auth', authRoutes)
 app.route('/pay', payRoutes)
 app.route('/links', linkRoutes)
