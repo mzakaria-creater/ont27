@@ -20,7 +20,7 @@ const jsonHeaders = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "content-type, x-webhook-token, authorization",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, HEAD, POST, OPTIONS",
 };
 
 function response(body: unknown, status = 200) {
@@ -193,7 +193,6 @@ async function readPayload(req: Request): Promise<Record<string, unknown>> {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: jsonHeaders });
-  if (req.method !== "POST") return response({ error: "Only POST is allowed" }, 405);
 
   const url = new URL(req.url);
   const pathParts = url.pathname.split("/").filter(Boolean);
@@ -202,6 +201,44 @@ Deno.serve(async (req: Request) => {
   // implementation treated the function slug itself (`sms-inbound`) as the
   // device and therefore could not resolve the receiving wallet.
   const pathDevice = pathParts.findLast((part) => /^ont(?:10|[1-9])$/i.test(part));
+  const routeDevice = normalizeDevice(url.searchParams.get("device") ?? pathDevice);
+
+  // Several Android SMS-forwarder apps validate a webhook with GET or HEAD
+  // before they will save it, even though real SMS delivery uses POST. Keep
+  // those probes read-only and database-aware so the app accepts the URL
+  // without creating a fake inbound_sms row.
+  if (req.method === "GET" || req.method === "HEAD") {
+    let body: Record<string, unknown> = {
+      ok: true,
+      receiver: "sms-inbound",
+      device: routeDevice,
+    };
+    let status = 200;
+
+    if (routeDevice !== "unknown-device") {
+      const { data: registered, error: healthError } = await supabaseAdmin
+        .from("device_registry")
+        .select("device, active")
+        .eq("device", routeDevice)
+        .maybeSingle();
+
+      if (healthError) {
+        body = { ok: false, receiver: "sms-inbound", device: routeDevice, error: "database_unavailable" };
+        status = 503;
+      } else if (!registered?.active) {
+        body = { ok: false, receiver: "sms-inbound", device: routeDevice, error: "device_not_active" };
+        status = 404;
+      } else {
+        body = { ...body, database: true, registered: true };
+      }
+    }
+
+    return req.method === "HEAD"
+      ? new Response(null, { status, headers: jsonHeaders })
+      : response(body, status);
+  }
+
+  if (req.method !== "POST") return response({ error: "Only GET, HEAD, and POST are allowed" }, 405);
 
   try {
     const payload = await readPayload(req);
