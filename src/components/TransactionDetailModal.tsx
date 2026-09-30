@@ -7,7 +7,7 @@ import { api, ApiError } from '../lib/api'
 import { depositTime, isAutomaticApprovalActor, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import type { DepositDetail } from '../lib/deposits'
-import { Activity, AlertTriangle, Bot, CheckCircle2, CircleDollarSign, Clock3, Database, FileJson, History, MessageSquareText, Pencil, UserRound, Workflow } from 'lucide-react'
+import { Activity, AlertTriangle, Bot, CheckCircle2, CircleDollarSign, Clock3, Database, FileJson, History, MessageSquareText, Pencil, Unlink, UserRound, Workflow } from 'lucide-react'
 import DepositKindBadge from './DepositKindBadge'
 
 // Popup rebuild of the old standalone /transactions/:ref page. Same data
@@ -222,6 +222,25 @@ export default function TransactionDetailModal({ txRef, onClose, onChanged }: { 
     }
   }
 
+  const unlinkSms = async () => {
+    if (!data?.sms || !can('sms_live', 'can_edit')) return
+    if (!window.confirm(t('فك ربط رسالة SMS من هذه المعاملة؟', 'Unlink this SMS from the transaction?'))) return
+    setBusy(true)
+    setDecisionMsg(null)
+    try {
+      await api(`/api/sms/${data.sms.id}/unlink`, { method: 'POST' })
+      setDecisionMsg(t('تم فك ربط SMS وتسجيل العملية.', 'SMS unlinked and the action was audited.'))
+      await load()
+      onChanged?.()
+    } catch (e) {
+      setDecisionMsg(e instanceof ApiError && e.status === 403
+        ? t('لا تملك صلاحية فك ربط SMS.', 'You do not have permission to unlink SMS.')
+        : t('تعذّر فك ربط SMS — حاول مرة أخرى.', 'Could not unlink SMS — try again.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <DetailModal
       onClose={onClose}
@@ -329,6 +348,7 @@ export default function TransactionDetailModal({ txRef, onClose, onChanged }: { 
                   <span className="sms-match-title"><MessageSquareText size={17} aria-hidden="true" /> {t('بطاقة SMS المرتبطة', 'Assigned SMS proof card')}</span>
                   <span className="pay-status-badge st-paid">{t('مرتبطة 1:1', 'Assigned 1:1')}</span>
                   {data.sms.sec_diff != null && <span className="match-pct mono">{t('فارق', 'diff')} {data.sms.sec_diff}{t('ث', 's')}</span>}
+                  {can('sms_live', 'can_edit') && <button type="button" className="btn-ghost danger btn-sm" disabled={busy} onClick={() => void unlinkSms()}><Unlink size={13} aria-hidden="true" /> {t('فك الربط', 'Unlink')}</button>}
                 </div>
                 {d.status === 'DECLINED' && <div className="declined-sms-warning-line"><AlertTriangle size={13} aria-hidden="true" /> {t('تحذير: SMS مرتبطة بمعاملة مرفوضة', 'Warning: SMS is linked to a declined transaction')}</div>}
                 <div className={d.status === 'DECLINED' ? 'sms-match-text is-warning-raw' : 'sms-match-text'}>{smsFirstLine(data.sms)}</div>

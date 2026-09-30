@@ -10,7 +10,7 @@ import PageSizeSelect from '../components/PageSizeSelect'
 import ProofModal from '../components/ProofModal'
 import SenderIdentity from '../components/SenderIdentity'
 import { useAuth } from '../auth/AuthContext'
-import { AlertTriangle, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, CircleHelp, Clock3, Eye, Image, LayoutGrid, Pencil, RefreshCw, Search, SlidersHorizontal, TableProperties, X, XCircle } from 'lucide-react'
+import { AlertTriangle, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, CircleHelp, Clock3, Eye, Image, LayoutGrid, Pencil, RefreshCw, Search, SlidersHorizontal, TableProperties, Unlink, X, XCircle } from 'lucide-react'
 import TransactionEditDialog from '../components/TransactionEditDialog'
 import TransactionDetailModal from '../components/TransactionDetailModal'
 import ColumnPicker, { useVisibleColumns } from '../components/ColumnPicker'
@@ -429,6 +429,22 @@ export default function Transactions() {
     }
   }
 
+  const unlinkSms = async (row: TxRow) => {
+    if (!row.matched_sms || !can('sms_live', 'can_edit')) return
+    if (!window.confirm(t('فك ربط رسالة SMS من هذه المعاملة؟', 'Unlink this SMS from the transaction?'))) return
+    const key = `${row.kind}-${row.tx_id ?? row.maven_id ?? ''}-sms-unlink`
+    setActionBusy(key)
+    setErr(null)
+    try {
+      await api(`/api/sms/${row.matched_sms.id}/unlink`, { method: 'POST' })
+      await load(true)
+    } catch (e) {
+      setErr(e instanceof ApiError ? `${t('تعذّر فك ربط SMS', 'Could not unlink SMS')}: ${e.code}` : t('تعذّر فك ربط SMS.', 'Could not unlink SMS.'))
+    } finally {
+      setActionBusy(null)
+    }
+  }
+
   const refreshNow = async () => {
     setErr(null)
     setLoading(true)
@@ -580,7 +596,7 @@ export default function Transactions() {
                         <div><span>{t('التكرار', 'Duplicates')}</span>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First transaction')}{isDeclinedDuplicate && <span className="deposit-kind is-declined-duplicate">⚠ {t('مرفوض مكرر','Declined duplicate')}</span>}</div>
                         <div><span>{t('اعتمد بواسطة', 'Approved by')}</span><strong>{r.status === 'PENDING' ? '—' : (r.decision_actor ?? (isAutomaticApprovalActor(r.approved_by) ? t('آلي (Auto)', 'Auto') : r.approved_by))}</strong></div>
                       </div>
-                      <div className="tx-expanded-actions">{r.status === 'PENDING' && !r.is_checkout_session && r.kind === 'deposit' && can('deposits','can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r,'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.status === 'PENDING' && r.kind === 'payout' && can('payouts','can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.kind === 'deposit' && r.status === 'DECLINED' && !r.matched_sms && can('sms_live','can_edit') && <><Link className="btn-primary btn-sm" to={liveSmsHref(r)}>📨 {t('SMS مباشر', 'Live SMS')}</Link><Link className="btn-ghost btn-sm danger" to={smsAssignHref(r)}>🔗✅ {t('ربط واعتماد SMS', 'Link & approve SMS')}</Link></>}{r.is_checkout_session && <span className="cell-sub">{t('جلسة رابط دفع — بانتظار ظهور المعاملة المزوّدة', 'Payment-link session — waiting for provider transaction')}</span>}</div>
+                      <div className="tx-expanded-actions">{r.status === 'PENDING' && !r.is_checkout_session && r.kind === 'deposit' && can('deposits','can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r,'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.status === 'PENDING' && r.kind === 'payout' && can('payouts','can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.kind === 'deposit' && r.status === 'DECLINED' && !r.matched_sms && can('sms_live','can_edit') && <><Link className="btn-primary btn-sm" to={liveSmsHref(r)}>📨 {t('SMS مباشر', 'Live SMS')}</Link><Link className="btn-ghost btn-sm danger" to={smsAssignHref(r)}>🔗✅ {t('ربط واعتماد SMS', 'Link & approve SMS')}</Link></>}{r.matched_sms && can('sms_live','can_edit') && <button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void unlinkSms(r)}><Unlink size={13} aria-hidden="true"/> {t('فك ربط SMS', 'Unlink SMS')}</button>}{r.is_checkout_session && <span className="cell-sub">{t('جلسة رابط دفع — بانتظار ظهور المعاملة المزوّدة', 'Payment-link session — waiting for provider transaction')}</span>}</div>
                       <details className="tx-raw-details" onToggle={(e) => { if (e.currentTarget.open) setRawOpen((current) => current.has(rowKey) ? current : new Set(current).add(rowKey)) }}><summary>{t('عرض تفاصيل Raw', 'View raw details')}</summary>{rawOpen.has(rowKey) ? (r.raw_preview ? <pre>{JSON.stringify(r.raw_preview, null, 2)}</pre> : <p className="cell-sub">{t('لا تتوفر بيانات Raw لهذا الصف.', 'Raw data is not available for this row.')}</p>) : null}</details>
                       </div>
                       <div className="tx-expanded-sms-side">
@@ -637,6 +653,7 @@ export default function Transactions() {
                   {id && (r.kind === 'deposit' ? <TransactionEditDialog txId={Number(id)} ontargetRef={r.ontarget_ref} status={r.status} amount={r.amount} currency={r.currency} gateway={r.gateway} currentReceivingWallet={r.to_account_number ?? r.receiving_wallet} onDone={() => void load()} /> : <Link className="btn-ghost btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}&edit=1`}><Pencil size={13}/> {t('تعديل', 'Edit')}</Link>)}
                   {r.status === 'PENDING' && !r.is_checkout_session && r.kind === 'deposit' && can('deposits', 'can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r, 'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost danger btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r, 'decline')}>{t('رفض', 'Reject')}</button></>}
                   {r.kind === 'deposit' && r.status === 'DECLINED' && !r.matched_sms && can('sms_live','can_edit') && <><Link className="btn-primary btn-sm" to={liveSmsHref(r)}>📨 {t('SMS مباشر', 'Live SMS')}</Link><Link className="btn-ghost btn-sm" to={smsAssignHref(r)}>🔗✅ {t('تعيين واعتماد SMS', 'Assign & approve SMS')}</Link></>}
+                  {r.matched_sms && can('sms_live','can_edit') && <button className="btn-ghost danger btn-sm" disabled={actionBusy !== null} onClick={() => void unlinkSms(r)}><Unlink size={13} aria-hidden="true"/> {t('فك ربط SMS', 'Unlink SMS')}</button>}
                   {r.status === 'PENDING' && r.kind === 'payout' && can('payouts', 'can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost danger btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r, 'decline')}>{t('رفض', 'Reject')}</button></>}
                   {canOpenModal ? <button type="button" className="btn-ghost btn-sm" onClick={() => openDetail(r.ontarget_ref!)}>{t('التفاصيل', 'Details')}</button> : <Link className="btn-ghost btn-sm" to={details}>{t('التفاصيل', 'Details')}</Link>}
                 </div>
