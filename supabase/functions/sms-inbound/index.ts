@@ -1,4 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 if (!SUPABASE_URL) throw new Error("SUPABASE_URL is required");
@@ -10,6 +10,10 @@ if (!secretKey) throw new Error("A Supabase secret key is required");
 
 const supabaseAdmin = createClient(SUPABASE_URL, secretKey, {
   auth: { autoRefreshToken: false, persistSession: false },
+  // This webhook is retried by its callers. SDK-level retries turn one SMS
+  // into several concurrent Data API requests during a 52x incident and can
+  // prevent the database from recovering.
+  db: { retry: false },
 });
 
 const jsonHeaders = {

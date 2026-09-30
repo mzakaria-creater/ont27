@@ -91,7 +91,9 @@ authRoutes.post('/login', async (c) => {
   // can use either value shown in the admin user record.
   let rows: LoginUser[] | null = null
   try {
-    const lookup = await db.rpc('panel_get_user_for_login', { p_username: username })
+    const lookup = await db
+      .rpc('panel_get_user_for_login', { p_username: username })
+      .abortSignal(AbortSignal.timeout(6_000))
     if (lookup.error) {
       console.error('panel login lookup unavailable:', conciseError(lookup.error))
       c.header('Retry-After', '5')
