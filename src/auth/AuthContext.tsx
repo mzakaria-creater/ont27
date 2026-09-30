@@ -91,6 +91,7 @@ export function loginErrorMessage(err: unknown): string {
       return `الحساب مقفول مؤقتاً بعد محاولات فاشلة متكررة${time ? ` — حاول بعد ${time}` : ''}`
     }
     if (err.code === 'missing_credentials') return 'أدخل اسم المستخدم وكلمة المرور'
+    if (err.code === 'auth_unavailable') return 'خدمة تسجيل الدخول غير متاحة مؤقتاً — حاول مرة أخرى بعد لحظات'
   }
   return 'تعذر الاتصال بالخادم — حاول مرة أخرى'
 }

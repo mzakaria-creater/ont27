@@ -13,6 +13,28 @@ const MAX_FAILED = 5
 const LOCK_MINUTES = 15
 const isProd = process.env.NODE_ENV === 'production' || !!process.env.VERCEL
 
+type LoginUser = {
+  id: string
+  username: string
+  display_name: string
+  role: string
+  active: boolean
+  account_status: string | null
+  frozen_until: string | null
+  locked_until: string | null
+  failed_login_count: number | null
+  password_hash: string
+}
+
+function conciseError(error: unknown): string {
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === 'object' && error !== null && 'message' in error
+      ? String(error.message)
+      : String(error)
+  return message.replace(/\s+/g, ' ').slice(0, 300)
+}
+
 function clientIp(c: Context): string | null {
   const fwd = c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
   if (fwd && /^[0-9a-fA-F:.]+$/.test(fwd)) return fwd
@@ -67,9 +89,21 @@ authRoutes.post('/login', async (c) => {
   // Case-insensitive, backslash-safe lookup via SECURITY DEFINER helper.
   // The helper accepts both the login name and the account email so operators
   // can use either value shown in the admin user record.
-  const { data: rows, error: lookupError } = await db.rpc('panel_get_user_for_login', { p_username: username })
-  if (lookupError) console.error('panel login lookup failed:', lookupError.message)
-  const user = Array.isArray(rows) && rows.length === 1 ? rows[0] : null
+  let rows: LoginUser[] | null = null
+  try {
+    const lookup = await db.rpc('panel_get_user_for_login', { p_username: username })
+    if (lookup.error) {
+      console.error('panel login lookup unavailable:', conciseError(lookup.error))
+      c.header('Retry-After', '5')
+      return c.json({ error: 'auth_unavailable' }, 503)
+    }
+    rows = Array.isArray(lookup.data) ? lookup.data as LoginUser[] : null
+  } catch (error) {
+    console.error('panel login lookup unavailable:', conciseError(error))
+    c.header('Retry-After', '5')
+    return c.json({ error: 'auth_unavailable' }, 503)
+  }
+  const user = rows?.length === 1 ? rows[0] : null
 
   if (user?.account_status==='frozen'&&user.frozen_until&&new Date(user.frozen_until).getTime()<=Date.now()) {
     await db.from('panel_users').update({active:true,account_status:'active',frozen_until:null,status_reason:null}).eq('id',user.id)

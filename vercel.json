@@ -1,6 +1,8 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "installCommand": "npm install",
+  "regions": ["lhr1"],
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api" },
     { "source": "/api-dashboard", "destination": "/index.html" },
