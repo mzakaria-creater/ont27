@@ -35,6 +35,11 @@ function firstValue(payload: Record<string, unknown>, ...names: string[]) {
   return null;
 }
 
+function normalizeDevice(value: unknown): string {
+  const candidate = String(value ?? "").trim().toLowerCase();
+  return /^ont(?:10|[1-9])$/.test(candidate) ? candidate : "unknown-device";
+}
+
 // Fallback extraction straight from the raw SMS text, used only when the
 // caller did not already supply a clean field. As of 2026-09-19 the device
 // forwarder app started sending {"time": "...", "key": "<sms text>"} instead
@@ -192,10 +197,31 @@ Deno.serve(async (req: Request) => {
 
   const url = new URL(req.url);
   const pathParts = url.pathname.split("/").filter(Boolean);
-  const device = pathParts.at(-1) || "ont1";
+  // Device forwarders historically use `?device=ont8`, while newer setups
+  // may use `/sms-inbound/ont8` or include `device` in the body. The old
+  // implementation treated the function slug itself (`sms-inbound`) as the
+  // device and therefore could not resolve the receiving wallet.
+  const pathDevice = pathParts.findLast((part) => /^ont(?:10|[1-9])$/i.test(part));
 
   try {
     const payload = await readPayload(req);
+    const device = normalizeDevice(
+      url.searchParams.get("device") ?? pathDevice ?? firstValue(payload, "device", "device_name"),
+    );
+    const isConnectivityTest = req.headers.get("x-ontarget-test") === "true"
+      || payload.test === true
+      || String(payload.event ?? "").toLowerCase() === "webhook.test";
+    if (isConnectivityTest) {
+      const { data: registered, error: testError } = await supabaseAdmin
+        .from("device_registry")
+        .select("device, active")
+        .eq("device", device)
+        .maybeSingle();
+      if (testError) return response({ ok: false, test: true, device, error: "database_unavailable" }, 503);
+      if (!registered?.active) return response({ ok: false, test: true, device, error: "device_not_active" }, 404);
+      return response({ ok: true, test: true, device, database: true, registered: true }, 200);
+    }
+
     // "key"/"text" cover the device forwarder app's {time, key} envelope seen
     // in production from 2026-09-19; the rest keep older/other callers working.
     const messageValue = firstValue(payload, "message", "body", "text", "sms", "content", "msg", "key");
