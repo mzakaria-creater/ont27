@@ -285,6 +285,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
   const { can } = useAuth()
   const [rows, setRows] = useState<RailSms[]>([])
   const [devices, setDevices] = useState<RailDevice[]>([])
+  const [smsSearch, setSmsSearch] = useState('')
   const [selected, setSelected] = useState<RailSms | null>(null)
   const [candidates, setCandidates] = useState<RailSmsCandidate[]>([])
   const [linkingTxId, setLinkingTxId] = useState<number | null>(null)
@@ -293,6 +294,16 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
   const [assigningPayout, setAssigningPayout] = useState(false)
   const [manualTxRef, setManualTxRef] = useState('')
   const [blockingSms, setBlockingSms] = useState(false)
+
+  const normalizedSmsSearch = smsSearch.trim().toLowerCase()
+  const visibleRows = normalizedSmsSearch
+    ? rows.filter((row) => [
+      row.id, row.amount, row.device_name, row.sim_slot, row.sender_name,
+      row.sender_number, row.receiver_number, row.wallet_number,
+      row.confirmed_wallet_number, row.trx_id, row.matched_tx_id,
+      row.matched_ontarget_ref, row.raw_sms, row.message,
+    ].some((value) => String(value ?? '').toLowerCase().includes(normalizedSmsSearch)))
+    : rows
 
   useEffect(() => {
     let alive = true
@@ -450,9 +461,21 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
           ))}
         </div>
       )}
+      <div className="sms-rail-search">
+        <Search size={14} aria-hidden="true" />
+        <input
+          className="login-input"
+          value={smsSearch}
+          onChange={(event) => setSmsSearch(event.target.value)}
+          placeholder="بحث SMS / مبلغ / رقم / مرجع"
+          aria-label="بحث في الرسائل الواردة"
+        />
+        {smsSearch && <button type="button" className="sms-rail-search-clear" onClick={() => setSmsSearch('')} aria-label="مسح البحث"><X size={13} /></button>}
+      </div>
       <div className="sms-feed">
         {rows.length === 0 && <span className="sidebar-hint">لا توجد رسائل بعد.</span>}
-        {rows.map((r) => {
+        {rows.length > 0 && visibleRows.length === 0 && <span className="sidebar-hint">لا توجد نتائج مطابقة.</span>}
+        {visibleRows.map((r) => {
           const walletLinked = r.sms_category === 'withdrawal' && r.linked_wallet_number != null
           const linked = walletLinked || r.matched_tx_id != null
           const balance = r.balance_after ?? r.wallet_balance_after

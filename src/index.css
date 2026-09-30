@@ -1903,6 +1903,11 @@ a.stat-card:hover { border-color: var(--accent); }
 .device-chip.ok { background: var(--green-bg); color: var(--status-paid); }
 .device-chip.err { background: var(--red-bg); color: var(--status-declined); }
 .device-chip .dc { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+.sms-rail-search { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 9px; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--surface); color: var(--text-muted); }
+.sms-rail-search .login-input { min-width: 0; width: 100%; height: 32px; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.sms-rail-search .login-input:focus { outline: none; box-shadow: none; }
+.sms-rail-search-clear { display: grid; place-items: center; flex: 0 0 auto; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: var(--hover); color: var(--text-muted); cursor: pointer; }
+.sms-rail-search-clear:hover { color: var(--text); background: var(--hover-2); }
 .sms-feed { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0; padding-inline-end: 3px; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--text-muted) transparent; }
 .sms-feed::-webkit-scrollbar { width: 6px; }
 .sms-feed::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--text-muted); }
