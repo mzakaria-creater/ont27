@@ -296,13 +296,15 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
   const [blockingSms, setBlockingSms] = useState(false)
 
   const normalizedSmsSearch = smsSearch.trim().toLowerCase()
+  const numericSmsSearch = normalizedSmsSearch.replace(/[,\s](?:egp|جنيه)?/gi, '').replace(/(?:egp|جنيه)/gi, '')
+  const searchedAmount = numericSmsSearch && /^\d+(?:\.\d+)?$/.test(numericSmsSearch) ? Number(numericSmsSearch) : null
   const visibleRows = normalizedSmsSearch
     ? rows.filter((row) => [
       row.id, row.amount, row.device_name, row.sim_slot, row.sender_name,
       row.sender_number, row.receiver_number, row.wallet_number,
       row.confirmed_wallet_number, row.trx_id, row.matched_tx_id,
       row.matched_ontarget_ref, row.raw_sms, row.message,
-    ].some((value) => String(value ?? '').toLowerCase().includes(normalizedSmsSearch)))
+    ].some((value) => String(value ?? '').toLowerCase().includes(normalizedSmsSearch)) || (searchedAmount != null && row.amount != null && Number(row.amount) === searchedAmount))
     : rows
 
   useEffect(() => {
