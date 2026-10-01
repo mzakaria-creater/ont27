@@ -74,9 +74,10 @@ export default function Telegram() {
   }
 
   return <>
-    <section className="page-head">
-      <div><h2>✈️ {t('Telegram', 'Telegram')}</h2><p className="page-sub">{t('محادثة مباشرة داخل اللوحة، وتنبيهات تشغيلية تلقائية.', 'A live conversation right inside the panel, plus automatic operational alerts.')}</p></div>
-      <div className="page-actions"><button className="btn-ghost btn-sm" onClick={() => setShowSettings((v) => !v)}><Settings2 size={15}/> {t('الإعدادات', 'Settings')}</button></div>
+    <section className="page-head admin-head">
+      <span className="admin-head-icon"><Send size={20}/></span>
+      <div className="admin-head-text"><span className="admin-head-eyebrow">{t('الأتمتة والحماية', 'Automation & risk')}</span><h2>{t('Telegram', 'Telegram')}</h2><p className="page-sub">{t('محادثة مباشرة داخل اللوحة، وتنبيهات تشغيلية تلقائية.', 'A live conversation right inside the panel, plus automatic operational alerts.')}</p></div>
+      <div className="admin-head-actions"><button className="btn-ghost btn-sm" onClick={() => setShowSettings((v) => !v)}><Settings2 size={15}/> {t('الإعدادات', 'Settings')}</button></div>
     </section>
     {err && <div className="card warn">{err}</div>}
     {msg && <div className="card">{msg}</div>}

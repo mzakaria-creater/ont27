@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { useIsMobile } from '../lib/useIsMobile'
+import { Target } from 'lucide-react'
 
 // Mismatch detector — automates the anomaly hunt that was done by hand today.
 // Read-only by design: it surfaces suspects for a human to judge, it never
@@ -67,14 +68,18 @@ export default function Mismatch() {
 
   return (
     <>
-      <section className="page-head">
-        <h2>🎯 {t('كشف عدم التطابق', 'Mismatch detector')}</h2>
-        <p className="page-sub">
-          {t(
-            'يفحص أنماط الخلل التي اكتُشفت يدوياً: قرارات بلا أثر تدقيقي، رفض محتمل خاطئ برسالة مطابقة، وفروقات مزامنة. للعرض والتحقيق فقط — لا يغيّر أي معاملة.',
-            'Checks the failure patterns found by hand: decisions with no audit trail, possible wrong declines with a matching SMS, and sync gaps. Read-only — it never changes a transaction.',
-          )}
-        </p>
+      <section className="page-head admin-head">
+        <span className="admin-head-icon"><Target size={20} /></span>
+        <div className="admin-head-text">
+          <span className="admin-head-eyebrow">{t('سير العمليات', 'Operations')}</span>
+          <h2>{t('كشف عدم التطابق', 'Mismatch detector')}</h2>
+          <p className="page-sub">
+            {t(
+              'يفحص أنماط الخلل التي اكتُشفت يدوياً: قرارات بلا أثر تدقيقي، رفض محتمل خاطئ برسالة مطابقة، وفروقات مزامنة. للعرض والتحقيق فقط — لا يغيّر أي معاملة.',
+              'Checks the failure patterns found by hand: decisions with no audit trail, possible wrong declines with a matching SMS, and sync gaps. Read-only — it never changes a transaction.',
+            )}
+          </p>
+        </div>
       </section>
 
       {err && <div className="card warn">{err}</div>}

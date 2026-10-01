@@ -3,6 +3,7 @@ import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { useIsMobile } from '../lib/useIsMobile'
+import { Archive } from 'lucide-react'
 
 // Operations archive — the browser_jobs execution log (old DB, 31k+ rows).
 // Every automated/manual execution attempt: what it tried, the provider
@@ -50,8 +51,13 @@ export default function OperationsArchive() {
   const reset = (fn: () => void) => { setPage(0); fn() }
 
   return <>
-    <section className="page-head"><h2>🗄️ {t('أرشيف العمليات', 'Operations archive')}</h2>
-      <p className="page-sub">{t('سجل تنفيذ كل قرار (تلقائي/يدوي) على المزوّد — للمراجعة والتدقيق المالي.', 'Every execution attempt (auto/manual) on the provider — for review and financial audit.')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p>
+    <section className="page-head admin-head">
+      <span className="admin-head-icon"><Archive size={20} /></span>
+      <div className="admin-head-text">
+        <span className="admin-head-eyebrow">{t('سير العمليات', 'Operations')}</span>
+        <h2>{t('أرشيف العمليات', 'Operations archive')}</h2>
+        <p className="page-sub">{t('سجل تنفيذ كل قرار (تلقائي/يدوي) على المزوّد — للمراجعة والتدقيق المالي.', 'Every execution attempt (auto/manual) on the provider — for review and financial audit.')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p>
+      </div>
     </section>
 
     <div className="filter-bar">

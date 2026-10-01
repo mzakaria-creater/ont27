@@ -5,6 +5,7 @@ import { api, ApiError } from '../lib/api'
 import { depositTime } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { useIsMobile } from '../lib/useIsMobile'
+import { FileSearch } from 'lucide-react'
 
 interface Row { kind: 'deposit' | 'payout'; id: number; ref: string | null; provider_id: number | null; decision: string | null; actor_name: string | null; note: string | null; proof_url: string | null; db_status_before: string | null; executed_on_provider: boolean | null; created_at: string | null }
 
@@ -24,7 +25,7 @@ export default function Review() {
   useEffect(() => { void load(); const id = setInterval(() => void load(), 30_000); return () => clearInterval(id) }, [load])
   const rows = (data?.rows ?? []).filter((r) => filter === 'all' || filter === 'pending' || r.kind === filter)
   return <>
-    <section className="page-head"><h2>{t('مراجعة القرارات', 'Decision review')}</h2><p className="page-sub">{t('سجل قرارات الإيداع والسحب اليدوية من الجدولين، مع إبراز ما لم يُنفَّذ فعلياً على المزوّد بعد.', 'Manual deposit & payout decisions from both logs, highlighting anything not yet executed on the provider.')}</p></section>
+    <section className="page-head admin-head"><span className="admin-head-icon"><FileSearch size={20} /></span><div className="admin-head-text"><span className="admin-head-eyebrow">{t('سير العمليات', 'Operations')}</span><h2>{t('مراجعة القرارات', 'Decision review')}</h2><p className="page-sub">{t('سجل قرارات الإيداع والسحب اليدوية من الجدولين، مع إبراز ما لم يُنفَّذ فعلياً على المزوّد بعد.', 'Manual deposit & payout decisions from both logs, highlighting anything not yet executed on the provider.')}</p></div></section>
     {data !== null && data.pendingProvider > 0 && <div className="card warn">⚠️ {t(`${data.pendingProvider} قرار مسجَّل لكنه لم يُنفَّذ على بوابة المزوّد بعد — التنفيذ الفعلي يدوي.`, `${data.pendingProvider} decision(s) recorded but not yet executed on the provider portal — execution is manual.`)}</div>}
     <div className="filter-bar">
       {([['all', t('الكل', 'All')], ['pending', t('بانتظار التنفيذ على المزوّد', 'Awaiting provider execution')], ['deposit', t('إيداعات', 'Deposits')], ['payout', t('سحوبات', 'Payouts')]] as const).map(([key, label]) =>

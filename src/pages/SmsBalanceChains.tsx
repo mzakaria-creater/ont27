@@ -46,9 +46,13 @@ export default function SmsBalanceChains() {
   const reset = () => { setQuery(''); setProviders([]); setDevices([]); setFrom(''); setTo(''); setStatus('all') }
 
   return <>
-    <section className="page-head">
-      <h2><GitBranch size={22} /> SMS balance chains</h2>
-      <p className="page-sub">Trace each SMS to the previous wallet balance and detect continuity warnings.</p>
+    <section className="page-head admin-head">
+      <span className="admin-head-icon"><GitBranch size={20} /></span>
+      <div className="admin-head-text">
+        <span className="admin-head-eyebrow">Payments & wallets</span>
+        <h2>SMS balance chains</h2>
+        <p className="page-sub">Trace each SMS to the previous wallet balance and detect continuity warnings.</p>
+      </div>
     </section>
     <div className="kpi-grid">
       <div className="kpi-card"><div className="kpi-value">{data?.kpis.chains ?? '…'}</div><div className="kpi-label">Chain rows</div></div>

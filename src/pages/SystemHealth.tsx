@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useLocale } from '../lib/locale'
 import { useIsMobile } from '../lib/useIsMobile'
+import { HeartPulse } from 'lucide-react'
 
 // System health.
 //
@@ -147,14 +148,18 @@ export default function SystemHealth() {
 
   return (
     <>
-      <section className="page-head">
-        <h2>{t('حالة النظام', 'System health')}</h2>
-        <p className="page-sub">
-          {t(
-            'مقاييس محسوبة من بياناتنا الفعلية خلال 24 ساعة، تُحدَّث كل 30 ثانية. لا تُعرض مقاييس البنية التحتية (CPU/RAM/القرص) لأنها لا تتوفر لنا من داخل التطبيق.',
-            'Metrics computed from our own data over 24 hours, refreshed every 30s. Infrastructure metrics (CPU/RAM/disk) are not shown because the app has no truthful source for them.',
-          )}
-        </p>
+      <section className="page-head admin-head">
+        <span className="admin-head-icon"><HeartPulse size={20} /></span>
+        <div className="admin-head-text">
+          <span className="admin-head-eyebrow">{t('الإدارة والنظام', 'Admin & system')}</span>
+          <h2>{t('حالة النظام', 'System health')}</h2>
+          <p className="page-sub">
+            {t(
+              'مقاييس محسوبة من بياناتنا الفعلية خلال 24 ساعة، تُحدَّث كل 30 ثانية. لا تُعرض مقاييس البنية التحتية (CPU/RAM/القرص) لأنها لا تتوفر لنا من داخل التطبيق.',
+              'Metrics computed from our own data over 24 hours, refreshed every 30s. Infrastructure metrics (CPU/RAM/disk) are not shown because the app has no truthful source for them.',
+            )}
+          </p>
+        </div>
       </section>
 
       {err && <div className="card warn">{err}</div>}
