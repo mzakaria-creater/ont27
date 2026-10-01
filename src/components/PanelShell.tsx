@@ -336,8 +336,8 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
     void load()
     // Keep provider ingestion running even when the operator is on another
     // page. The sync function deduplicates this with every other open tab.
-    const pump = window.setInterval(() => { void syncProviders() }, 10_000)
-    const iv = setInterval(load, 10_000)
+    const pump = window.setInterval(() => { void syncProviders() }, 5_000)
+    const iv = setInterval(load, 5_000)
     return () => { alive = false; clearInterval(iv); window.clearInterval(pump) }
   }, [])
 

@@ -161,7 +161,7 @@ export default function Approvals() {
       .subscribe()
     const syncIv = window.setInterval(() => {
       void syncProviders().then((changed) => { if (changed) schedule() })
-    }, 10_000)
+    }, 5_000)
     const fallbackIv = window.setInterval(() => void load(), 10_000)
     return () => {
       alive = false

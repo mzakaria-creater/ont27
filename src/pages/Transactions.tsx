@@ -253,7 +253,7 @@ export default function Transactions() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'maven_transactions' }, schedule)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'maven_payout_transactions' }, schedule)
       .subscribe()
-    const syncIv = window.setInterval(() => { void syncProviders().then((changed) => { if (changed) schedule() }) }, 10_000)
+    const syncIv = window.setInterval(() => { void syncProviders().then((changed) => { if (changed) schedule() }) }, 5_000)
     return () => {
       abortRef.current?.abort()
       window.clearInterval(syncIv)
