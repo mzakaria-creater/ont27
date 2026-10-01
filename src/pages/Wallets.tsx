@@ -224,16 +224,20 @@ export default function Wallets() {
 
   return (
     <>
-      <section className="page-head">
-        <h2>{t('👛 المحافظ', '👛 Wallets')}</h2>
-        <p className="page-sub">
-          {data && (
-            <>
-              {data.wallets.length} محفظة مستقبِلة · {data.devices.length} جهاز
-              ({onlineDevices} متصل) · {data.channels.filter((c) => c.active).length} قناة إيداع نشطة
-            </>
-          )}
-        </p>
+      <section className="page-head admin-head">
+        <span className="admin-head-icon"><WalletCards size={20} /></span>
+        <div className="admin-head-text">
+          <span className="admin-head-eyebrow">{t('المدفوعات والمحافظ', 'Payments & wallets')}</span>
+          <h2>{t('المحافظ', 'Wallets')}</h2>
+          <p className="page-sub">
+            {data && (
+              <>
+                {data.wallets.length} محفظة مستقبِلة · {data.devices.length} جهاز
+                ({onlineDevices} متصل) · {data.channels.filter((c) => c.active).length} قناة إيداع نشطة
+              </>
+            )}
+          </p>
+        </div>
       </section>
 
       <section className="card recent-card allocation-engine">

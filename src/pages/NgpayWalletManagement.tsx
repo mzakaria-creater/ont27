@@ -69,9 +69,14 @@ export default function NgpayWalletManagement() {
   }
 
   return <>
-    <section className="page-head">
-      <div><h2><WalletCards size={25} /> {t('إدارة محافظ NGPay', 'NGPay wallet management')}</h2><p className="page-sub">{t('غيّر رقم الاستقبال مع معاينة وحماية من دمج الأجهزة أو فقدان سجل SMS.', 'Change receiving numbers with a guarded preview that protects device mappings and SMS history.')}</p></div>
-      <button className="btn-ghost" type="button" onClick={() => void load()} disabled={loading}><RefreshCw size={15} /> {t('تحديث', 'Refresh')}</button>
+    <section className="page-head admin-head">
+      <span className="admin-head-icon"><WalletCards size={20} /></span>
+      <div className="admin-head-text">
+        <span className="admin-head-eyebrow">{t('المدفوعات والمحافظ', 'Payments & wallets')}</span>
+        <h2>{t('إدارة محافظ NGPay', 'NGPay wallet management')}</h2>
+        <p className="page-sub">{t('غيّر رقم الاستقبال مع معاينة وحماية من دمج الأجهزة أو فقدان سجل SMS.', 'Change receiving numbers with a guarded preview that protects device mappings and SMS history.')}</p>
+      </div>
+      <div className="admin-head-actions"><button className="btn-ghost" type="button" onClick={() => void load()} disabled={loading}><RefreshCw size={15} /> {t('تحديث', 'Refresh')}</button></div>
     </section>
 
     <div className="stat-grid">

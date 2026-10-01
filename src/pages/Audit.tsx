@@ -6,6 +6,7 @@ import { useLocale } from '../lib/locale'
 import { useIsMobile } from '../lib/useIsMobile'
 import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
+import { ShieldCheck } from 'lucide-react'
 
 // Audit log viewer.
 
@@ -66,9 +67,13 @@ export default function Audit() {
 
   return (
     <>
-      <section className="page-head">
-        <h2>🕵️ {t('سجل التدقيق', 'Audit log')}</h2>
-        <p className="page-sub">{t('كل إجراء على النظام موثّق', 'Every system action is recorded')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p>
+      <section className="page-head admin-head">
+        <span className="admin-head-icon"><ShieldCheck size={20} /></span>
+        <div className="admin-head-text">
+          <span className="admin-head-eyebrow">{t('الإدارة والنظام', 'Admin & system')}</span>
+          <h2>{t('سجل التدقيق', 'Audit log')}</h2>
+          <p className="page-sub">{t('كل إجراء على النظام موثّق', 'Every system action is recorded')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p>
+        </div>
       </section>
 
       <div className="filter-bar">

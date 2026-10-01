@@ -7,6 +7,7 @@ import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
 import { useAuth } from '../auth/AuthContext'
 import { useIsMobile } from '../lib/useIsMobile'
+import { Users } from 'lucide-react'
 
 // CRM — crm_clients directory.
 
@@ -106,9 +107,13 @@ export default function Crm() {
 
   return (
     <>
-      <section className="page-head">
-        <h2>👥 {t('CRM العملاء', 'Customer CRM')}</h2>
-        <p className="page-sub">{t('ملفات المودعين المجمّعة', 'Aggregated depositor profiles')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p>
+      <section className="page-head admin-head">
+        <span className="admin-head-icon"><Users size={20} /></span>
+        <div className="admin-head-text">
+          <span className="admin-head-eyebrow">{t('التجار والعملاء', 'Merchants & customers')}</span>
+          <h2>{t('CRM العملاء', 'Customer CRM')}</h2>
+          <p className="page-sub">{t('ملفات المودعين المجمّعة', 'Aggregated depositor profiles')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p>
+        </div>
       </section>
 
       {data && <div className="kpi-grid">

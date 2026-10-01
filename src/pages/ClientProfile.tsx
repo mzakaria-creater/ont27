@@ -6,6 +6,7 @@ import { api } from '../lib/api'
 import { money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { useIsMobile } from '../lib/useIsMobile'
+import { UserSearch } from 'lucide-react'
 
 // One customer, everything we hold: profile, every wallet they have paid into,
 // full deposit and payout history, and the SMS their number produced.
@@ -80,16 +81,20 @@ export default function ClientProfile() {
 
   return (
     <>
-      <section className="page-head">
-        <h2>{t('ملف العميل', 'Client profile')}</h2>
-        <p className="page-sub">
-          {t(
-            'كل ما نحمله عن رقم واحد: المحافظ التي دفع إليها، وسجل الإيداعات والسحوبات، والرسائل الصادرة عن رقمه.',
-            'Everything held against one number: the wallets they pay into, deposit and payout history, and the SMS their number produced.',
-          )}
-        </p>
+      <section className="page-head admin-head">
+        <span className="admin-head-icon"><UserSearch size={20} /></span>
+        <div className="admin-head-text">
+          <span className="admin-head-eyebrow">{t('التجار والعملاء', 'Merchants & customers')}</span>
+          <h2>{t('ملف العميل', 'Client profile')}</h2>
+          <p className="page-sub">
+            {t(
+              'كل ما نحمله عن رقم واحد: المحافظ التي دفع إليها، وسجل الإيداعات والسحوبات، والرسائل الصادرة عن رقمه.',
+              'Everything held against one number: the wallets they pay into, deposit and payout history, and the SMS their number produced.',
+            )}
+          </p>
+        </div>
         <form
-          className="search-row"
+          className="search-row admin-head-actions"
           onSubmit={(e) => { e.preventDefault(); const p2 = new URLSearchParams(params); p2.set('phone', query.trim()); setParams(p2) }}
         >
           <input
