@@ -169,16 +169,20 @@ extraRoutes.get(
     const limit = Math.min(Number(c.req.query('limit')) || 25, MAX_PAGE)
     const offset = Math.max(Number(c.req.query('offset')) || 0, 0)
     const fetchTo = offset + limit
-    // Resolve provider merchant references first. JSONB path expressions are
-    // not consistently handled inside a large PostgREST OR clause, so feed
-    // exact Reference1 matches back into the normal tx_id filter as well.
+    // Resolve provider merchant references first. Numeric merchant references
+    // are exact identifiers, so avoid the expensive wildcard OR across the
+    // full ledger and use the indexed transaction id as the fast path.
     let providerReferenceTxIds: number[] = []
     if (q && q.length >= 3) {
-      const refLookup = await db.from('maven_transactions')
-        .select('tx_id')
-        .filter('maven_raw_row->>Reference1', 'ilike', `%${q.replaceAll('%', '')}%`)
-        .limit(200)
-      providerReferenceTxIds = (refLookup.data ?? []).map((row) => Number(row.tx_id)).filter(Number.isFinite)
+      const exact = /^\d{8,}$/.test(q)
+      const refLookups = exact
+        ? await Promise.all([
+          db.from('maven_transactions').select('tx_id').eq('merchant_tx_reference', q).limit(200),
+          db.from('maven_transactions').select('tx_id').eq('ontarget_ref', q).limit(200),
+          db.from('maven_transactions').select('tx_id').filter('maven_raw_row->>Reference1', 'eq', q).limit(200),
+        ])
+        : [await db.from('maven_transactions').select('tx_id').filter('maven_raw_row->>Reference1', 'ilike', `%${q.replaceAll('%', '')}%`).limit(200)]
+      providerReferenceTxIds = [...new Set(refLookups.flatMap((lookup) => (lookup.data ?? []).map((row) => Number(row.tx_id)).filter(Number.isFinite)))]
     }
 
     const depQuery = () => {
@@ -201,10 +205,11 @@ extraRoutes.get(
       if (q) {
         const like = `%${q.replaceAll(',', ' ')}%`
         const ors = [`ontarget_ref.ilike.${like}`, `merchant_tx_reference.ilike.${like}`, `maven_raw_row->>Reference1.ilike.${like}`, `sender_number.ilike.${like}`, `sender_name.ilike.${like}`, `maven_raw_row->>AccountNumber.ilike.${like}`, `maven_raw_row->>PhoneNo.ilike.${like}`, `maven_raw_row->>UserName.ilike.${like}`, `receiving_wallet.ilike.${like}`, `to_account_number.ilike.${like}`, `merchant.ilike.${like}`]
-        if (providerReferenceTxIds.length) ors.push(`tx_id.in.(${providerReferenceTxIds.join(',')})`)
+        if (providerReferenceTxIds.length) query = query.in('tx_id', providerReferenceTxIds)
+        else query = query.or(ors.join(','))
         if (/^\d+$/.test(q)) ors.push(`tx_id.eq.${q}`)
         if (/^\d+(\.\d{1,2})?$/.test(q)) ors.push(`amount.eq.${q}`)
-        query = query.or(ors.join(','))
+        if (!providerReferenceTxIds.length) query = query.or(ors.join(','))
       }
       return query
     }
