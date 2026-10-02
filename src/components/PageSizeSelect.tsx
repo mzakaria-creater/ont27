@@ -5,8 +5,8 @@ import { useLocale } from '../lib/locale'
 // Changing the size resets to page 1 — staying on page 9 after switching from
 // 20 to 500 rows would land past the end of most result sets.
 export default function PageSizeSelect({
-  value, onChange,
-}: { value: number; onChange: (n: number) => void }) {
+  value, onChange, options = PAGE_SIZES,
+}: { value: number; onChange: (n: number) => void; options?: readonly number[] }) {
   const { t } = useLocale()
   return (
     <label className="pager-size">
@@ -17,7 +17,7 @@ export default function PageSizeSelect({
         onChange={(e) => onChange(Number(e.target.value))}
         aria-label={t('عدد الصفوف في الصفحة', 'Rows per page')}
       >
-        {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+        {options.map((n) => <option key={n} value={n}>{n}</option>)}
       </select>
     </label>
   )

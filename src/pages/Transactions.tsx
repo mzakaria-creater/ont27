@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import MerchantLogo from '../components/MerchantLogo'
 import MethodLogo from '../components/MethodLogo'
@@ -10,7 +10,7 @@ import PageSizeSelect from '../components/PageSizeSelect'
 import ProofModal from '../components/ProofModal'
 import SenderIdentity from '../components/SenderIdentity'
 import { useAuth } from '../auth/AuthContext'
-import { AlertTriangle, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, CircleHelp, Clock3, Eye, Image, LayoutGrid, Pencil, RefreshCw, Search, SlidersHorizontal, TableProperties, Unlink, X, XCircle } from 'lucide-react'
+import { AlertTriangle, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, CircleHelp, Clock3, Eye, Image, LayoutGrid, Pencil, RefreshCw, Search, SlidersHorizontal, TableProperties, Unlink, X, XCircle } from 'lucide-react'
 import TransactionEditDialog from '../components/TransactionEditDialog'
 import TransactionDetailModal from '../components/TransactionDetailModal'
 import ColumnPicker, { useVisibleColumns } from '../components/ColumnPicker'
@@ -27,6 +27,9 @@ import PressToPayNav from '../components/PressToPayNav'
 // All transactions — deposits + payouts merged, sorted by our ref.
 
 const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
+// This table specifically wants 50/100/150 rather than the shared app-wide
+// row-count ladder (20/50/100/250/500) other pages use.
+const TRX_PAGE_SIZES = [50, 100, 150] as const
 
 const currentMonthRange = () => {
   const now = new Date()
@@ -127,8 +130,53 @@ function fingerprint(list: ListResponse): string {
   return `${list.total}|${list.rows.map((r) => `${r.kind}:${r.tx_id ?? r.maven_id ?? ''}:${r.status}:${r.modified_utc ?? r.updated_utc ?? ''}`).join(',')}`
 }
 
+// Shared with the sort accessors below so "who is this row about" stays
+// consistent between what's displayed and what's sorted on.
+const rowId = (r: TxRow) => r.kind === 'deposit' ? r.tx_id : r.maven_id
+const rowParty = (r: TxRow) => r.kind === 'deposit' ? (r.sender_name ?? r.sender_number) : (r.account_name ?? r.mobile_no)
+const rowClientPhone = (r: TxRow) => r.kind === 'deposit' ? r.sender_number : r.mobile_no
+const rowSenderAccountName = (r: TxRow) => r.kind === 'deposit' ? (r.sender_account_name ?? r.payment_method ?? rowParty(r)) : (r.account_name ?? rowParty(r))
+
+type SortValue = string | number | null | undefined
+// Sorting runs client-side over the already-loaded page window — the list
+// merges three different source tables (deposits/payouts/checkout sessions)
+// ordered server-side by created time, so a per-column DB-level sort would
+// mean re-architecting that merge. Re-ordering the current page instantly
+// covers the actual ask (let an operator sort what they're looking at).
+const SORT_ACCESSORS: Record<string, (r: TxRow) => SortValue> = {
+  tx_id: (r) => rowId(r) ?? null,
+  status: (r) => r.status,
+  type: (r) => r.kind,
+  amount: (r) => r.amount,
+  sms_link: (r) => (r.matched_sms ? 1 : 0),
+  proof: (r) => ((r.kind === 'deposit' ? r.proof_image_url : r.image_url) ? 1 : 0),
+  party: (r) => rowParty(r),
+  client_name: (r) => rowParty(r),
+  client_phone: (r) => rowClientPhone(r),
+  sender_phone_name: (r) => r.sender_phone_name ?? r.sender_name,
+  sender_phone_number: (r) => r.sender_phone_number ?? r.sender_number,
+  email: (r) => r.user_email,
+  sender_account_name: (r) => rowSenderAccountName(r),
+  sender_account_number: (r) => r.sender_account_number ?? rowClientPhone(r),
+  time: (r) => r.created_utc ?? r.first_seen_at,
+  modified_time: (r) => (r.kind === 'deposit' ? r.modified_utc : r.updated_utc),
+  to_account_name: (r) => (r.kind === 'deposit' ? r.to_account_name : null),
+  merchant: (r) => r.merchant ?? r.master_merchant,
+  gateway: (r) => r.gateway,
+  duplicates: (r) => r.client_transaction_count ?? 1,
+  approved_by: (r) => r.decision_actor ?? r.approved_by,
+  decision_reason: (r) => r.decision_reason,
+}
+const compareSortValues = (a: SortValue, b: SortValue): number => {
+  if (a == null && b == null) return 0
+  if (a == null) return 1
+  if (b == null) return -1
+  if (typeof a === 'number' && typeof b === 'number') return a - b
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' })
+}
+
 export default function Transactions() {
-  const [pageSize, setPageSize] = usePageSize('transactions')
+  const [pageSize, setPageSize] = usePageSize('transactions', TRX_PAGE_SIZES)
   const { t } = useLocale()
   const { can } = useAuth()
   const [params, setParams] = useSearchParams()
@@ -169,6 +217,23 @@ export default function Transactions() {
   // it until someone actually opens that disclosure, instead of stringifying
   // it eagerly the moment a row is expanded.
   const [rawOpen, setRawOpen] = useState<Set<string>>(() => new Set())
+  const [sortKey, setSortKey] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const toggleSort = (colId: string) => {
+    if (sortKey === colId) setSortDir((d) => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(colId); setSortDir('desc') }
+  }
+  const SortableTh = ({ colId, label }: { colId: string; label: string }) => {
+    const active = sortKey === colId
+    return (
+      <th aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+        <button type="button" className={`trx-sort-th${active ? ' is-active' : ''}`} onClick={() => toggleSort(colId)}>
+          {label}
+          {active ? (sortDir === 'asc' ? <ChevronUp size={13} aria-hidden="true" /> : <ChevronDown size={13} aria-hidden="true" />) : <ChevronsUpDown size={13} className="trx-sort-idle" aria-hidden="true" />}
+        </button>
+      </th>
+    )
+  }
 
   const ALL_COLUMNS: ColumnDef[] = [
     { id: 'status', label: t('الحالة', 'Status') },
@@ -310,6 +375,16 @@ export default function Transactions() {
   }
 
   const totalPages = data ? Math.max(Math.ceil(data.total / pageSize), 1) : 1
+
+  // Sorts only the already-loaded page window — see SORT_ACCESSORS above.
+  const sortedRows = useMemo(() => {
+    if (!data) return []
+    if (!sortKey) return data.rows
+    const accessor = SORT_ACCESSORS[sortKey]
+    if (!accessor) return data.rows
+    const sign = sortDir === 'asc' ? 1 : -1
+    return [...data.rows].sort((a, b) => sign * compareSortValues(accessor(a), accessor(b)))
+  }, [data, sortKey, sortDir])
 
   const EXPORT_COLUMNS: ExportColumn<TxRow>[] = [
     { header: 'Ref', key: 'ref', value: (r) => r.ontarget_ref ?? (r.kind === 'deposit' ? r.tx_id : r.maven_id) ?? '' },
@@ -522,12 +597,12 @@ export default function Transactions() {
                 <tr>
                   <th aria-label={t('توسيع', 'Expand')} />
                   <th>{t('الإجراء', 'Action')}</th>
-                  <th>{t('رقم المعاملة', 'Transaction ID')}</th>
-                  {shownColumns.map((c) => <th key={c.id}>{c.label}</th>)}
+                  <SortableTh colId="tx_id" label={t('رقم المعاملة', 'Transaction ID')} />
+                  {shownColumns.map((c) => <SortableTh key={c.id} colId={c.id} label={c.label} />)}
                 </tr>
               </thead>
               <tbody>
-                {data.rows.map((r) => {
+                {sortedRows.map((r) => {
                   const st = statusMeta(r.status)
                   const id = r.kind === 'deposit' ? r.tx_id : r.maven_id
                   const party = r.kind === 'deposit' ? (r.sender_name ?? r.sender_number) : (r.account_name ?? r.mobile_no)
@@ -620,7 +695,7 @@ export default function Transactions() {
         )}
         {data && data.rows.length > 0 && view === 'cards' && (
           <div className="all-tx-card-grid">
-            {data.rows.map((r) => {
+            {sortedRows.map((r) => {
               const st = statusMeta(r.status)
               const id = r.kind === 'deposit' ? r.tx_id : r.maven_id
               const party = r.kind === 'deposit' ? (r.sender_name ?? r.sender_number) : (r.account_name ?? r.mobile_no)
@@ -673,7 +748,7 @@ export default function Transactions() {
         {data && totalPages > 1 && (
           <div className="pager">
             <button className="btn-ghost btn-sm" disabled={page <= 1} onClick={() => setFilter({ page: page - 1 })}>→ {t('السابق', 'Prev')}</button>
-            <PageSizeSelect value={pageSize} onChange={(n) => { setPageSize(n); setFilter({ page: 1 }) }} />
+            <PageSizeSelect value={pageSize} onChange={(n) => { setPageSize(n); setFilter({ page: 1 }) }} options={TRX_PAGE_SIZES} />
             <span className="pager-info mono">{page} / {totalPages}</span>
             <button className="btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setFilter({ page: page + 1 })}>{t('التالي', 'Next')} ←</button>
           </div>

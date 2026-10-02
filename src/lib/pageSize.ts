@@ -14,8 +14,13 @@ export const PAGE_SIZES = [20, 50, 100, 250, 500] as const
 
 const DEFAULT = 50
 
-export function usePageSize(tableKey: string): [number, (n: number) => void] {
+// A table can offer its own row-count choices (e.g. All Transactions wants
+// 50/100/150 rather than the default ladder) by passing `options`. Every
+// existing caller that omits it keeps the original global PAGE_SIZES/50
+// behavior untouched.
+export function usePageSize(tableKey: string, options: readonly number[] = PAGE_SIZES): [number, (n: number) => void] {
   const storageKey = `ont27.pageSize.${tableKey}`
+  const fallback = options.includes(DEFAULT) ? DEFAULT : options[0]
 
   const [size, setSize] = useState<number>(() => {
     // Storage throws outright in some embedded/private contexts, so a failure
@@ -23,17 +28,17 @@ export function usePageSize(tableKey: string): [number, (n: number) => void] {
     try {
       const raw = window.localStorage.getItem(storageKey)
       const n = raw ? Number(raw) : NaN
-      return (PAGE_SIZES as readonly number[]).includes(n) ? n : DEFAULT
+      return options.includes(n) ? n : fallback
     } catch {
-      return DEFAULT
+      return fallback
     }
   })
 
   const update = useCallback((n: number) => {
-    if (!(PAGE_SIZES as readonly number[]).includes(n)) return
+    if (!options.includes(n)) return
     setSize(n)
     try { window.localStorage.setItem(storageKey, String(n)) } catch { /* not fatal */ }
-  }, [storageKey])
+  }, [storageKey, options])
 
   return [size, update]
 }

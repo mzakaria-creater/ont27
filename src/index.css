@@ -1415,6 +1415,12 @@ a.stat-card:hover { border-color: var(--accent); }
 .data-table-amount { font-size: 15px; font-weight: 800; color: var(--text); letter-spacing: -.02em; }
 .data-table thead { position: sticky; top: 0; z-index: 4; }
 .data-table thead th { position: sticky; top: 0; z-index: 4; color: var(--text-dim); font-weight: 500; border-block-end: 1px solid var(--border); background: var(--surface); }
+.trx-sort-th { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; padding: 0; margin: 0; color: inherit; font: inherit; font-weight: inherit; cursor: pointer; white-space: nowrap; }
+.trx-sort-th:hover { color: var(--text); }
+.trx-sort-th:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 4px; }
+.trx-sort-th.is-active { color: var(--accent); font-weight: 700; }
+.trx-sort-idle { opacity: .35; }
+.trx-sort-th:hover .trx-sort-idle { opacity: .7; }
 .data-table tbody tr + tr td { border-block-start: 1px solid var(--border); }
 .data-table.clickable tbody tr { cursor: pointer; }
 .data-table.clickable tbody tr:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
