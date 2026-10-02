@@ -5,6 +5,7 @@ import { applyPayoutScopes, rowAllowed } from "./accessScopes.js";
 import type { AuthEnv } from "./rbac.js";
 import { MAX_PAGE } from "./paging.js";
 import { autoLinkWithdrawalSms } from "./payoutSmsMatcher.js";
+import { notifyTransactionDecision } from "./txAlerts.js";
 
 // Payouts = maven_payout_transactions. Key column is maven_id (Maven's id);
 // ontarget_ref is OUR reference and is what the panel surfaces first.
@@ -568,6 +569,14 @@ payoutRoutes.post(
         { error: "worker_failed", worker: workerResult },
         workerResponse.status as 400 | 401 | 403 | 404 | 409 | 500,
       );
+    if (workerResult.executed_on_provider === true) {
+      await notifyTransactionDecision(
+        "payout",
+        { ...before, tx_id: mavenId },
+        decision === "APPROVED" ? "approved" : "declined",
+        actor.username,
+      );
+    }
     // Report exactly what the worker verified — never a friendlier version of it.
     return c.json(workerResult);
   },

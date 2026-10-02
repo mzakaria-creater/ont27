@@ -5,7 +5,15 @@ const VELOCITY_WINDOW_MIN = Math.max(Number(process.env.HIGH_VELOCITY_WINDOW_MIN
 const VELOCITY_THRESHOLD = Math.max(Number(process.env.HIGH_VELOCITY_TX_THRESHOLD) || 5, 2)
 const VELOCITY_COOLDOWN_MIN = 30
 
-type RiskAlertResult = { scanned: number; wrongful: number; velocity: number; sent: number; errors: string[] }
+// Wider window than the velocity check on purpose: a merchant's success
+// rate needs enough settled transactions to be meaningful, not just
+// whatever landed in the last 10 minutes.
+const MERCHANT_SUCCESS_WINDOW_MIN = Math.max(Number(process.env.MERCHANT_SUCCESS_WINDOW_MINUTES) || 60, 10)
+const MERCHANT_SUCCESS_MIN_SAMPLE = Math.max(Number(process.env.MERCHANT_SUCCESS_MIN_SAMPLE) || 10, 3)
+const MERCHANT_SUCCESS_THRESHOLD_PCT = 40
+const MERCHANT_SUCCESS_COOLDOWN_MIN = 60
+
+type RiskAlertResult = { scanned: number; wrongful: number; velocity: number; merchant_low_success: number; sent: number; errors: string[] }
 type RecentTx = { tx_id: number; ontarget_ref: string | null; status: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; merchant: string | null; first_seen_at: string | null }
 
 const esc = (value: unknown) => String(value ?? '—').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -31,7 +39,7 @@ export async function produceRiskAlerts(): Promise<RiskAlertResult> {
   const now = Date.now()
   const windowSince = new Date(now - VELOCITY_WINDOW_MIN * 60_000).toISOString()
   const cooldownSince = new Date(now - VELOCITY_COOLDOWN_MIN * 60_000).toISOString()
-  const result: RiskAlertResult = { scanned: 0, wrongful: 0, velocity: 0, sent: 0, errors: [] }
+  const result: RiskAlertResult = { scanned: 0, wrongful: 0, velocity: 0, merchant_low_success: 0, sent: 0, errors: [] }
   const { data, error } = await db.from('maven_transactions')
     .select('tx_id, ontarget_ref, status, amount, sender_name, sender_number, merchant, first_seen_at')
     .gte('first_seen_at', windowSince).order('first_seen_at', { ascending: false }).limit(1000)
@@ -86,6 +94,46 @@ export async function produceRiskAlerts(): Promise<RiskAlertResult> {
       if (delivery.sent > 0) result.sent += delivery.sent
       await record('telegram.high_velocity_sender', phone, { count: transactions.length, volume, sent: delivery.sent, ok: delivery.ok, error: delivery.error ?? null })
     } catch (e) { result.errors.push(e instanceof Error ? e.message : 'velocity_alert_failed') }
+  }
+
+  const successWindowSince = new Date(now - MERCHANT_SUCCESS_WINDOW_MIN * 60_000).toISOString()
+  const successCooldownSince = new Date(now - MERCHANT_SUCCESS_COOLDOWN_MIN * 60_000).toISOString()
+  const { data: successRows, error: successError } = await db.from('maven_transactions')
+    .select('merchant, status')
+    .gte('first_seen_at', successWindowSince)
+    .in('status', ['PAID', 'APPROVED', 'DECLINED'])
+    .not('merchant', 'is', null)
+    .limit(5000)
+  if (successError) {
+    result.errors.push(`merchant success scan: ${successError.message}`)
+  } else {
+    const byMerchant = new Map<string, { settled: number; paid: number }>()
+    for (const row of successRows ?? []) {
+      const merchant = String(row.merchant ?? '').trim()
+      if (!merchant) continue
+      const stat = byMerchant.get(merchant) ?? { settled: 0, paid: 0 }
+      stat.settled++
+      if (row.status === 'PAID' || row.status === 'APPROVED') stat.paid++
+      byMerchant.set(merchant, stat)
+    }
+    for (const [merchant, stat] of byMerchant) {
+      if (stat.settled < MERCHANT_SUCCESS_MIN_SAMPLE) continue
+      const rate = (stat.paid / stat.settled) * 100
+      if (rate >= MERCHANT_SUCCESS_THRESHOLD_PCT) continue
+      result.merchant_low_success++
+      try {
+        if (await recentlyEmitted('telegram.merchant_low_success', merchant, successCooldownSince)) continue
+        const delivery = await sendTelegramAlert('merchant_low_success', [
+          '📉 <b>تراجع نسبة نجاح التاجر</b>',
+          `التاجر: <b>${esc(merchant)}</b>`,
+          `نسبة النجاح: <b>${rate.toFixed(1)}%</b> (أقل من ${MERCHANT_SUCCESS_THRESHOLD_PCT}%)`,
+          `المعاملات المكتملة: ${stat.settled} (ناجحة: ${stat.paid})`,
+          `خلال آخر ${MERCHANT_SUCCESS_WINDOW_MIN} دقيقة`,
+        ].join('\n'))
+        if (delivery.sent > 0) result.sent += delivery.sent
+        await record('telegram.merchant_low_success', merchant, { settled: stat.settled, paid: stat.paid, rate, sent: delivery.sent, ok: delivery.ok, error: delivery.error ?? null })
+      } catch (e) { result.errors.push(e instanceof Error ? e.message : 'merchant_low_success_alert_failed') }
+    }
   }
   return result
 }

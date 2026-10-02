@@ -8,6 +8,7 @@ import type { AuthEnv } from './rbac.js'
 import { MAX_PAGE } from './paging.js'
 import { learnTrustedSmsName } from './clientIdentity.js'
 import { notifyApprovedTransaction } from './approvalEmail.js'
+import { notifyTransactionDecision } from './txAlerts.js'
 import { detectDuplicateTransactions } from './duplicateDetection.js'
 
 // Deposits = maven_transactions (ground truth for the deposit flow).
@@ -533,6 +534,7 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
         after: { status: target, note, provider_execution: 'ngpay-approve', executed_on_provider: executed, worker_ms: workerMs },
       })
       if (auditErr) console.error('deposit decision audit mirror failed', { txId, error: auditErr.message })
+      if (executed) await notifyTransactionDecision('deposit', { ...before, tx_id: txId }, action === 'approve' ? 'approved' : 'declined', actor.username)
       if (action !== 'approve' || !executed) return
       await notifyApprovedTransaction({ ...before, tx_id: txId, status: target, approved_by: actor.username, approved_at: mirrorNow, provider_confirmed: executed })
       const learnedIdentity = await learnTrustedSmsName(Number(txId))
@@ -619,5 +621,6 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
   if (action === 'approve') {
     await notifyApprovedTransaction({ ...before, tx_id: txId, status: target, approved_by: actor.username, approved_at: nowIso, provider_confirmed: oldSync === 'ok' })
   }
+  await notifyTransactionDecision('deposit', { ...before, tx_id: txId }, action === 'approve' ? 'approved' : 'declined', actor.username)
   return c.json({ ok: true, status: target, old_sync: oldSync, learned_sms_name: learnedIdentity })
 })
