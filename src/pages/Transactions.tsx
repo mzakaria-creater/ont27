@@ -28,14 +28,29 @@ import PressToPayNav from '../components/PressToPayNav'
 
 const STATUS_FILTERS = ['PENDING', 'PAID', 'APPROVED', 'DECLINED', 'EXPIRED', 'UNDERPAID']
 // This table specifically wants 50/100/150 rather than the shared app-wide
-// row-count ladder (20/50/100/250/500) other pages use.
-const TRX_PAGE_SIZES = [50, 100, 150] as const
+// row-count ladder (20/50/100/250/500) other pages use. Raised from
+// 50/100/150 on request — up to 1000 rows (also raised server-side, see
+// server/paging.ts MAX_PAGE).
+const TRX_PAGE_SIZES = [50, 100, 150, 250, 500, 1000] as const
 
+const pad2 = (value: number) => String(value).padStart(2, '0')
+const toDateStr = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+const todayRange = () => { const t = toDateStr(new Date()); return { from: t, to: t } }
+const currentWeekRange = () => {
+  const now = new Date()
+  const mondayOffset = (now.getDay() + 6) % 7 // Mon=0 … Sun=6
+  const monday = new Date(now)
+  monday.setDate(now.getDate() - mondayOffset)
+  return { from: toDateStr(monday), to: toDateStr(now) }
+}
 const currentMonthRange = () => {
   const now = new Date()
-  const pad = (value: number) => String(value).padStart(2, '0')
-  const date = (year: number, month: number, day: number) => `${year}-${pad(month)}-${pad(day)}`
-  return { from: date(now.getFullYear(), now.getMonth() + 1, 1), to: date(now.getFullYear(), now.getMonth() + 1, now.getDate()) }
+  return { from: `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-01`, to: toDateStr(now) }
+}
+const lastMonthRange = () => {
+  const now = new Date()
+  const lastOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0)
+  return { from: `${lastOfPrevMonth.getFullYear()}-${pad2(lastOfPrevMonth.getMonth() + 1)}-01`, to: toDateStr(lastOfPrevMonth) }
 }
 
 function TransactionStatusIcon({ status, label }: { status: string; label: string }) {
@@ -279,18 +294,29 @@ export default function Transactions() {
   const status = params.get('status') ?? ''
   const statusValues = splitFilterValues(status)
   const typeValues = splitFilterValues(type)
-  const monthRange = currentMonthRange()
-  const dateRange = params.get('date_range') === 'all' ? 'all' : params.get('date_range') === 'custom' ? 'custom' : 'month'
-  const from = dateRange === 'all' ? '' : params.get('from') ?? monthRange.from
-  const to = dateRange === 'all' ? '' : params.get('to') ?? monthRange.to
+  const dateRangeParam = params.get('date_range')
+  const dateRange = dateRangeParam === 'all' || dateRangeParam === 'custom' || dateRangeParam === 'week' || dateRangeParam === 'month' || dateRangeParam === 'last_month' ? dateRangeParam : 'today'
+  // Today by default — not this month. A full month's rows is real extra
+  // data to fetch/render on every load for the common case of someone just
+  // checking recent activity; today keeps the first paint fast.
+  const presetRange = dateRange === 'today' ? todayRange() : dateRange === 'week' ? currentWeekRange() : dateRange === 'month' ? currentMonthRange() : dateRange === 'last_month' ? lastMonthRange() : null
+  const from = dateRange === 'all' ? '' : params.get('from') ?? presetRange?.from ?? ''
+  const to = dateRange === 'all' ? '' : params.get('to') ?? presetRange?.to ?? ''
   const merchant = params.get('merchant') ?? ''
   const method = params.get('method') ?? ''
   const currency = params.get('currency') ?? ''
   const currencyValues = splitFilterValues(currency)
   const minAmount = params.get('min_amount') ?? ''
   const maxAmount = params.get('max_amount') ?? ''
-  const secondaryFilterCount = [from, to, merchant, method, minAmount, maxAmount].filter(Boolean).length + (currencyValues.length > 0 ? 1 : 0)
-  const [showMoreFilters, setShowMoreFilters] = useState(() => secondaryFilterCount > 0)
+  // from/to are excluded here when they're just a preset's own computed
+  // range (today/week/month/last_month) — only a deliberately customized
+  // or fully-open date counts as an active secondary filter, so the badge
+  // doesn't light up on every default page load.
+  const secondaryFilterCount = [merchant, method, minAmount, maxAmount].filter(Boolean).length + (currencyValues.length > 0 ? 1 : 0) + (dateRange === 'custom' || dateRange === 'all' ? 1 : 0)
+  // Always collapsed on load — an operator expands it when they actually
+  // need it, instead of the secondary filter row eating screen space by
+  // default on every visit.
+  const [showMoreFilters, setShowMoreFilters] = useState(false)
   const isMobile = useIsMobile()
   const viewParam = params.get('view')
   // Absent an explicit choice, a phone opens straight into cards — a data
@@ -668,7 +694,22 @@ export default function Transactions() {
         </div>
         {showMoreFilters && (
           <div className="transaction-filter-fields">
-            <label className="filter-field">{t('نطاق التاريخ', 'Date range')}<select className="filter-select" value={dateRange} onChange={(e) => { const value = e.target.value; if (value === 'all') setFilter({ date_range: 'all', from: '', to: '' }); else if (value === 'month') setFilter({ date_range: 'month', from: monthRange.from, to: monthRange.to }); else setFilter({ date_range: 'custom' }) }}><option value="month">{t('هذا الشهر', 'This month')}</option><option value="all">{t('كل التواريخ', 'All dates')}</option><option value="custom">{t('مخصص', 'Custom')}</option></select></label>
+            <label className="filter-field">{t('نطاق التاريخ', 'Date range')}<select className="filter-select" value={dateRange} onChange={(e) => {
+              const value = e.target.value
+              if (value === 'all') setFilter({ date_range: 'all', from: '', to: '' })
+              else if (value === 'custom') setFilter({ date_range: 'custom' })
+              else {
+                const range = value === 'today' ? todayRange() : value === 'week' ? currentWeekRange() : value === 'month' ? currentMonthRange() : lastMonthRange()
+                setFilter({ date_range: value, from: range.from, to: range.to })
+              }
+            }}>
+              <option value="today">{t('اليوم', 'Today')}</option>
+              <option value="week">{t('هذا الأسبوع', 'This week')}</option>
+              <option value="month">{t('هذا الشهر', 'This month')}</option>
+              <option value="last_month">{t('الشهر الماضي', 'Last month')}</option>
+              <option value="all">{t('كل التواريخ', 'All dates')}</option>
+              <option value="custom">{t('مخصص', 'Custom')}</option>
+            </select></label>
             {dateRange !== 'all' && <><label className="filter-field">{t('من', 'From')}<input className="login-input" type="date" value={from} onChange={(e) => setFilter({ date_range: 'custom', from: e.target.value })} /></label>
             <label className="filter-field">{t('إلى', 'To')}<input className="login-input" type="date" value={to} onChange={(e) => setFilter({ date_range: 'custom', to: e.target.value })} /></label></>}
             <label className="filter-field">{t('التاجر', 'Merchant')}<input className="login-input" value={merchant} onChange={(e) => setFilter({ merchant: e.target.value })} /></label>

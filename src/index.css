@@ -1837,15 +1837,26 @@ a.stat-card:hover { border-color: var(--accent); }
 /* Shell: nav rail | content | SMS rail */
 .dash-body { align-items: start; }
 /* All Transactions: dock the live SMS rail as a real third column instead
-   of a floating drop-up, so the table and the feed are visible together. */
-@media (min-width: 901px) {
+   of a floating drop-up, so the table and the feed are visible together.
+   Gated to genuinely spacious screens (not tablets, even in landscape —
+   e.g. a Galaxy Tab A7 lands around 1024-1280px — where a fixed 360px
+   rail plus the 68px nav rail would crush the table into an unusable
+   sliver) rather than the earlier 901px cutoff. */
+@media (min-width: 1280px) {
   .dash-body.sms-split .sms-rail {
-    position: static; inset: auto; align-self: stretch;
+    align-self: stretch;
     width: 360px; flex: 0 0 360px; max-width: 360px;
-    height: auto; max-height: none; margin: 0;
+    margin: 0;
     border-radius: 0; border-block: 0; border-inline-end: 0;
     border-inline-start: 1px solid var(--border);
     box-shadow: none; backdrop-filter: none; animation: none;
+    /* Same sticky-fits-the-viewport pattern as .sidebar just below: a
+       concrete bounded height (not max-height:none) is what lets the
+       inner .sms-feed list scroll in place like the table does, instead
+       of growing the whole column and leaving only the outer page scroll
+       to reach the rest of the feed. */
+    position: sticky; top: 16px; inset-inline-end: auto; bottom: auto;
+    height: auto; max-height: calc(100vh - 32px);
   }
 }
 /* Sticky rail that fits the viewport: long nav scrolls INSIDE the rail
