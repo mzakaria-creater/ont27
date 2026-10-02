@@ -1578,7 +1578,9 @@ a.stat-card:hover { border-color: var(--accent); }
 .recover-table .recover-decline-reason { max-inline-size: 200px; }
 .recover-table .tx-sms-raw { max-inline-size: 260px; }
 .recover-decline-reason { color: var(--text-dim); }
-.tx-sms-chip{display:inline-flex;align-items:center;gap:4px;margin-inline-start:8px;padding:2px 7px;border:0;border-radius:999px;background:var(--hover-2);color:var(--text-dim);font:700 9.5px/1.2 ui-monospace,monospace;cursor:pointer;vertical-align:middle}.tx-sms-chip:hover{filter:brightness(1.12)}.tx-sms-chip.is-matched{background:var(--green-bg);color:var(--status-paid)}.tx-sms-chip.is-warning{background:var(--red-bg);color:var(--status-declined)}.tx-sms-chip.is-missing{background:var(--amber-bg);color:var(--status-pending)}
+.tx-sms-chip{display:inline-flex;align-items:center;gap:4px;margin-inline-start:8px;padding:2px 7px;border:0;border-radius:999px;background:var(--hover-2);color:var(--text-dim);font:700 9.5px/1.2 ui-monospace,monospace;cursor:pointer;vertical-align:middle;max-inline-size:220px}.tx-sms-chip:hover{filter:brightness(1.12)}.tx-sms-chip.is-matched{background:var(--green-bg);color:var(--status-paid)}.tx-sms-chip.is-warning{background:var(--red-bg);color:var(--status-declined)}.tx-sms-chip.is-missing{background:var(--amber-bg);color:var(--status-pending)}
+.tx-sms-chip-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-inline-size:170px}
+.tx-sms-chip-count{flex:0 0 auto;padding:1px 5px;border-radius:999px;background:rgba(0,0,0,.18);color:inherit;font-weight:800}
 /* 2026-09-27: match Maven's P2P Deposit Tx List readability. */
 .portal-transaction-grid{width:max-content;min-width:100%;max-width:none;font-size:13px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;letter-spacing:normal}
 .portal-transaction-grid th,.portal-transaction-grid td{max-width:220px;padding:8px 10px;line-height:1.35;overflow:hidden;text-overflow:ellipsis}

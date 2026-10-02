@@ -335,10 +335,18 @@ extraRoutes.get(
     for (const item of depositHistory.data ?? []) { const key = String(item.sender_number ?? '').trim(); if (key) { clientCounts.set(key, (clientCounts.get(key) ?? 0) + 1); if (item.status === 'PAID' || item.status === 'APPROVED') { const list = approvedHistory.get(key) ?? []; list.push({ at: Date.parse(String(item.first_seen_at ?? '')), count: 1 }); approvedHistory.set(key, list) } } }
     for (const item of payoutHistory.data ?? []) { const key = String(item.mobile_no ?? '').trim(); if (key) clientCounts.set(key, (clientCounts.get(key) ?? 0) + 1) }
 
-    const smsByTx = new Map<number, Record<string, unknown>>()
+    // A transaction can have more than one linked SMS (e.g. a retry, or a
+    // balance-confirmation follow-up) — keep every one, not just the first,
+    // so the UI can show "+N" instead of silently hiding the rest. The query
+    // above already orders by received_at desc, so index 0 is the most
+    // recent and stays the one shown by default.
+    const smsByTx = new Map<number, Record<string, unknown>[]>()
     for (const sms of (linkedSms.data ?? []) as Record<string, unknown>[]) {
       const txId = Number(sms.consumed_by_tx_id ?? sms.matched_transaction_id)
-      if (Number.isFinite(txId) && !smsByTx.has(txId)) smsByTx.set(txId, sms)
+      if (!Number.isFinite(txId)) continue
+      const list = smsByTx.get(txId) ?? []
+      list.push(sms)
+      smsByTx.set(txId, list)
     }
     const decisionByTx = new Map<number, Record<string, unknown>>()
     if (depositIds.length) {
@@ -370,7 +378,8 @@ extraRoutes.get(
           reason: `Maven team status update: ${providerDecision.old_status ?? '—'} → ${providerDecision.new_status ?? row.status}`,
           actor_name: 'Maven team',
         } : manualDecision
-        const matchedSms = row.kind === 'deposit' ? smsByTx.get(Number(row.tx_id)) ?? null : null
+        const matchedSmsList = row.kind === 'deposit' ? smsByTx.get(Number(row.tx_id)) ?? null : null
+        const matchedSms = matchedSmsList?.[0] ?? null
         return {
           ...row,
           // `to_account_number` is Maven's current wallet. Keep the SMS
@@ -383,6 +392,7 @@ extraRoutes.get(
           deposit_kind: row.kind === 'deposit' ? (approved > 0 ? 'retention_deposit' : 'first_deposit') : null,
           previous_approved_deposits: approved,
           matched_sms: matchedSms,
+          matched_sms_count: matchedSmsList?.length ?? 0,
           decision_reason: decision ? (row.kind === 'deposit' ? decision.reason : decision.remark) : null,
           decision_actor: decision?.actor_name ?? null,
         }

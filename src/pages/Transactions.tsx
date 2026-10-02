@@ -107,6 +107,7 @@ interface TxRow {
   deposit_kind?: 'first_deposit' | 'retention_deposit' | null
   previous_approved_deposits?: number
   matched_sms?: { id: number; received_at: string | null; amount: number | null; balance_after?: number | null; sender_name: string | null; sender_number: string | null; receiver_number: string | null; device_name: string | null; sms_first_line: string | null; raw_sms: string | null; raw_payload?: Record<string, unknown> | null; message: string | null; sms_category: string | null; match_status: string | null; matched: boolean | null } | null
+  matched_sms_count?: number
   raw_preview?: Record<string, unknown> | null
   is_checkout_session?: boolean
   checkout_session_id?: string
@@ -551,8 +552,12 @@ export default function Transactions() {
                         </td>
                       )
                       case 'sms_link': return <td key={colId}>{r.kind === 'deposit' && r.matched_sms
-                        ? <button type="button" className={`tx-sms-chip ${r.status === 'DECLINED' ? 'is-warning' : 'is-matched'}`} onClick={() => toggleExpanded(rowKey)} title={`${r.matched_sms.sender_name ?? r.matched_sms.sender_number ?? '—'} · ${money(r.matched_sms.amount, r.currency ?? 'EGP')}`}>{r.status === 'DECLINED' ? <AlertTriangle size={11} aria-hidden="true" /> : '📨'} #{r.matched_sms.id}</button>
-                        : <button type="button" className="tx-sms-chip is-missing" onClick={() => toggleExpanded(rowKey)}>{t('غير مرتبط', 'Not linked')}</button>}</td>
+                        ? <button type="button" className={`tx-sms-chip ${r.status === 'DECLINED' ? 'is-warning' : 'is-matched'}`} onClick={() => toggleExpanded(rowKey)} title={`${r.matched_sms.sender_name ?? r.matched_sms.sender_number ?? '—'} · ${money(r.matched_sms.amount, r.currency ?? 'EGP')}`}>
+                            {r.status === 'DECLINED' ? <AlertTriangle size={11} aria-hidden="true" /> : '📨'}
+                            <span className="tx-sms-chip-text">{r.matched_sms.sender_name ?? r.matched_sms.sender_number ?? '—'} · {money(r.matched_sms.amount, r.currency ?? 'EGP')}</span>
+                            {(r.matched_sms_count ?? 1) > 1 && <span className="tx-sms-chip-count">+{(r.matched_sms_count ?? 1) - 1}</span>}
+                          </button>
+                        : <button type="button" className="tx-sms-chip is-missing" onClick={() => toggleExpanded(rowKey)}>{t('بدون SMS', 'No SMS')}</button>}</td>
                       case 'proof': return <td key={colId}>{proofUrl
                         ? <button type="button" className="tx-proof-icon" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id), onApprove: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'approve'); setProof(null) } : undefined, onDecline: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'decline'); setProof(null) } : undefined })} aria-label={t('عرض الإثبات', 'View proof')} title={t('عرض الإثبات', 'View proof')}><Image size={14}/></button>
                         : <span className="tx-proof-empty" title={t('لا يوجد إثبات', 'No proof')}>—</span>}</td>
@@ -632,7 +637,11 @@ export default function Transactions() {
                   {money(r.amount, r.currency ?? 'EGP')}
                   {r.amount_sync_status === 'mismatch' && <div className="amount-critical-warning" title={r.amount_mismatch_reason ?? 'Maven amount confirmation required'}>⚠ CRITICAL</div>}
                   {r.kind === 'deposit' && (r.matched_sms
-                    ? <span className={`tx-sms-chip ${r.status === 'DECLINED' ? 'is-warning' : 'is-matched'}`} title={`${r.matched_sms.sender_name ?? r.matched_sms.sender_number ?? '—'} · ${money(r.matched_sms.amount, r.currency ?? 'EGP')}`}>{r.status === 'DECLINED' ? <AlertTriangle size={11} aria-hidden="true" /> : '📨'} SMS</span>
+                    ? <span className={`tx-sms-chip ${r.status === 'DECLINED' ? 'is-warning' : 'is-matched'}`} title={`${r.matched_sms.sender_name ?? r.matched_sms.sender_number ?? '—'} · ${money(r.matched_sms.amount, r.currency ?? 'EGP')}`}>
+                        {r.status === 'DECLINED' ? <AlertTriangle size={11} aria-hidden="true" /> : '📨'}
+                        <span className="tx-sms-chip-text">{r.matched_sms.sender_name ?? r.matched_sms.sender_number ?? '—'} · {money(r.matched_sms.amount, r.currency ?? 'EGP')}</span>
+                        {(r.matched_sms_count ?? 1) > 1 && <span className="tx-sms-chip-count">+{(r.matched_sms_count ?? 1) - 1}</span>}
+                      </span>
                     : <span className="tx-sms-chip is-missing">{t('بدون SMS', 'No SMS')}</span>)}
                 </div>
                 {r.kind === 'deposit' && r.matched_sms?.balance_after != null && <div className="tx-live-balance mono">رصيدك الحالي {money(r.matched_sms.balance_after, r.currency ?? 'EGP')}</div>}
