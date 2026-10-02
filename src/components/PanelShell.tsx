@@ -76,6 +76,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/system-health', icon: '♥', labelAr: 'حالة النظام', labelEn: 'System Health', keys: ['dashboard', 'automation', 'audit'], group: 'admin' },
   { to: '/performance', icon: '📈', labelAr: 'أداء المزوّدين والتجار', labelEn: 'Provider & merchant performance', keys: ['reports', 'analytics', 'dashboard', 'transactions', 'merchants'], group: 'insights' },
   { to: '/revenue', icon: '◈', labelAr: 'الإيرادات والعمولات', labelEn: 'Revenue & Commission', keys: ['revenue_center'], group: 'insights' },
+  { to: '/finance-ops', icon: '💹', labelAr: 'العمليات المالية', labelEn: 'Finance Operations', keys: ['revenue_center', 'reports', 'advanced_analysis'], group: 'insights' },
   // Operations — the daily transaction workflow
   { to: '/approvals', icon: '✅', labelAr: 'طابور الموافقات', labelEn: 'Approval queue', keys: ['approvals', 'approval-queue', 'my-queue', 'my-tasks', 'assigned_to_me'], group: 'transactions' },
   { to: '/team-tasks', icon: '🗂️', labelAr: 'مهام فريق الدعم', labelEn: 'Team support tasks', keys: ['support'], group: 'transactions' },
@@ -91,6 +92,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/sms', icon: '📨', labelAr: 'SMS مباشر', labelEn: 'Live SMS', keys: ['sms_live'], group: 'payments' },
   { to: '/airdroid', icon: '📱', labelAr: 'إدارة AirDroid', labelEn: 'AirDroid devices', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/devices', icon: '📲', labelAr: 'أسطول الأجهزة', labelEn: 'Device fleet', keys: ['sms_live', 'wallets'], group: 'payments' },
+  { to: '/gateway', icon: '🏦', labelAr: 'البوابة والأرصدة', labelEn: 'Gateway & Balances', keys: ['wallets', 'deposits', 'payouts'], group: 'payments' },
   { to: '/wallet-report', icon: '📊', labelAr: 'تقرير المحافظ', labelEn: 'Wallet report', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/sms-balance-chains', icon: '🔗', labelAr: 'سلاسل أرصدة SMS', labelEn: 'SMS balance chains', keys: ['sms_live', 'wallets', 'reports'], group: 'payments' },
   { to: '/wallet-investigation', icon: '🔎', labelAr: 'تحقيق المحفظة', labelEn: 'Wallet investigation', keys: ['sms_live', 'wallets'], group: 'payments' },
@@ -492,8 +494,14 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
           // among deposits, green means a transaction is already attached and
           // yellow means it still needs an operator to assign one.
           const cardState = r.sms_category === 'withdrawal' ? 'is-withdrawal' : linked ? 'is-linked' : 'is-unlinked'
+          // A real transaction match (not a withdrawal wallet-only link) gets
+          // a clickable TRX# that opens that transaction's popup via the
+          // same ?open=<ref> mechanism Transactions.tsx already supports —
+          // the popup fetches by ref independently of whatever list happens
+          // to be loaded, so this works from any page, not just /transactions.
+          const txRef = !walletLinked && linked ? String(r.matched_ontarget_ref ?? r.matched_tx_id ?? '') : ''
           return (
-            <button key={r.id} type="button" onClick={() => setSelected(r)} className={`sms-feed-item sms-feed-button ${cardState}`} aria-label={`SMS ${r.id} details`}>
+            <div key={r.id} role="button" tabIndex={0} onClick={() => setSelected(r)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelected(r) }} className={`sms-feed-item sms-feed-button ${cardState}`} aria-label={`SMS ${r.id} details`}>
               <div className="sms-feed-head">
                 <span className="sms-feed-device">{r.device_name ?? '—'}{r.sim_slot != null && <> · SIM{r.sim_slot}</>}</span>
                 <span className="sms-feed-time mono">{depositTime({ first_seen_at: r.received_at })}</span>
@@ -505,13 +513,15 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
               </div>
               <div className="sms-feed-foot">
                 <span className="sms-feed-wallet mono"><WalletCards size={11} aria-hidden="true" />{receivingWallet ?? '—'}</span>
-                <span className={`sms-feed-pill ${linked ? 'is-linked' : r.sms_category === 'deposit' || r.sms_category === 'withdrawal' ? 'is-wait' : 'is-info'}`}>
-                  {walletLinked ? `👛 ${r.linked_wallet_number}` : linked ? `🔗 ${r.matched_ontarget_ref ?? r.matched_tx_id}` : r.sms_category === 'deposit' ? 'بانتظار مطابقة' : r.sms_category === 'withdrawal' ? 'محفظة غير معروفة' : 'غير مالية'}
-                </span>
+                {txRef
+                  ? <Link to={`/transactions?open=${encodeURIComponent(txRef)}`} onClick={(event) => event.stopPropagation()} className="sms-feed-pill is-linked sms-feed-pill-link">🔗 {txRef}</Link>
+                  : <span className={`sms-feed-pill ${linked ? 'is-linked' : r.sms_category === 'deposit' || r.sms_category === 'withdrawal' ? 'is-wait' : 'is-info'}`}>
+                    {walletLinked ? `👛 ${r.linked_wallet_number}` : r.sms_category === 'deposit' ? 'بانتظار مطابقة' : r.sms_category === 'withdrawal' ? 'محفظة غير معروفة' : 'غير مالية'}
+                  </span>}
               </div>
               {rawText && <div className="sms-feed-raw" dir="auto">{rawText}</div>}
               {balance != null && <div className="sms-feed-balance mono"><span className="sms-balance-dot" aria-hidden="true" />الرصيد {money(balance, 'EGP')}</div>}
-            </button>
+            </div>
           )
         })}
       </div>

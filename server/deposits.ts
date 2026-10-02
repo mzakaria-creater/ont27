@@ -263,6 +263,16 @@ depositRoutes.get('/by-ref/:ref', requirePerm('deposits', 'can_view'), async (c)
     data = fallback.data
     error = fallback.error
   }
+  // A caller (e.g. the SMS rail's matched-transaction link) may only have
+  // the raw tx_id on hand, not ontarget_ref/Reference1 — those are
+  // genuinely different numbers for the same row (see the 2026-10-02
+  // search-bug fix). Try it as a last resort so the link never 404s just
+  // because the caller passed the primary key instead of the display ref.
+  if (!data && !error && /^\d+$/.test(ref)) {
+    const fallback = await db.from('maven_transactions').select('tx_id').eq('tx_id', Number(ref)).maybeSingle()
+    data = fallback.data
+    error = fallback.error
+  }
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   if (!data) return c.json({ error: 'not_found' }, 404)
   return depositDetail(c, String(data.tx_id))

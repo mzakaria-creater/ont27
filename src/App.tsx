@@ -89,6 +89,8 @@ const InternalChat = lazy(() => import('./pages/InternalChat'))
 const WhatsApp = lazy(() => import('./pages/WhatsApp'))
 const IntegrationGuide = lazy(() => import('./pages/IntegrationGuide'))
 const RevenueCenter = lazy(() => import('./pages/RevenueCenter'))
+const FinanceOperations = lazy(() => import('./pages/FinanceOperations'))
+const Gateway = lazy(() => import('./pages/Gateway'))
 const Welcome = lazy(() => import('./pages/Welcome'))
 const AccountAction = lazy(() => import('./pages/AccountAction'))
 const WebhookCenter = lazy(() => import('./pages/WebhookCenter'))
@@ -534,6 +536,8 @@ export default function App() {
             <Route path="/system-health" element={<PageGate keys={['dashboard','automation','audit_log']}><SystemHealth /></PageGate>} />
             <Route path="/performance" element={<PageGate keys={['reports','analytics','dashboard','transactions','merchants']}><Performance /></PageGate>} />
             <Route path="/revenue" element={<PageGate keys={['revenue_center']}><RevenueCenter /></PageGate>} />
+            <Route path="/finance-ops" element={<PageGate keys={['revenue_center', 'reports', 'advanced_analysis']}><FinanceOperations /></PageGate>} />
+            <Route path="/gateway" element={<PageGate keys={['wallets', 'deposits', 'payouts']}><Gateway /></PageGate>} />
             <Route path="/wallet-movements" element={<PageGate keys={['wallets','treasury','reports','sms_live']}><WalletMovements /></PageGate>} />
             <Route path="/wallet-activity" element={<PageGate keys={['wallets','treasury','reports','sms_live']}><WalletActivity /></PageGate>} />
             <Route path="/walletflow" element={<Navigate to="/wallet-movements" replace />} />
