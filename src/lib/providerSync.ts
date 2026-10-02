@@ -6,7 +6,7 @@ let lastStartedAt = 0
 // sharing a single request across tabs and pages.
 // Transactions and their SMS evidence are time-sensitive. Keep one shared
 // request per second across all tabs/pages; an in-flight request is reused.
-const CLIENT_COOLDOWN_MS = 5_000
+const CLIENT_COOLDOWN_MS = 15_000
 const SHARED_KEY = 'ontarget-provider-sync-started-at'
 export const PROVIDER_SYNC_PATH = '/api/cron/delta-sync'
 

@@ -160,9 +160,9 @@ export default function Approvals() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'inbound_sms' }, schedule)
       .subscribe()
     const syncIv = window.setInterval(() => {
-      void syncProviders().then((changed) => { if (changed) schedule() })
-    }, 5_000)
-    const fallbackIv = window.setInterval(() => void load(), 10_000)
+      if (document.visibilityState === 'visible') void syncProviders().then((changed) => { if (changed) schedule() })
+    }, 15_000)
+    const fallbackIv = window.setInterval(() => { if (document.visibilityState === 'visible') void load() }, 15_000)
     return () => {
       alive = false
       window.clearInterval(syncIv)
