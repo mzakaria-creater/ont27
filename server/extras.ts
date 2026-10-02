@@ -361,6 +361,25 @@ extraRoutes.get(
     for (const history of providerHistory.data ?? []) if (!providerDecisionByTx.has(Number(history.tx_id))) providerDecisionByTx.set(Number(history.tx_id), history)
     const decisionByPayout = new Map<number, Record<string, unknown>>()
     for (const decision of payoutDecisions.data ?? []) if (!decisionByPayout.has(Number(decision.maven_id))) decisionByPayout.set(Number(decision.maven_id), decision)
+
+    // The automation worker writes decision_log.reason as a bare
+    // "rule:<uuid> scope:<scope>" reference — automation_rules_scoped has
+    // no name/description column, so that UUID is meaningless to an
+    // operator on its own. Resolve any referenced rule's own scope fields
+    // here so the UI can render a readable bilingual sentence instead of
+    // the raw ID.
+    const RULE_ID_RE = /rule:([0-9a-fA-F-]{36})/
+    const ruleIds = new Set<string>()
+    for (const d of decisionByTx.values()) { const m = RULE_ID_RE.exec(String(d.reason ?? '')); if (m) ruleIds.add(m[1]) }
+    for (const d of decisionByPayout.values()) { const m = RULE_ID_RE.exec(String(d.remark ?? '')); if (m) ruleIds.add(m[1]) }
+    const ruleById = new Map<string, Record<string, unknown>>()
+    if (ruleIds.size) {
+      const { data: ruleRows } = await db.from('automation_rules_scoped')
+        .select('id, action_type, scope_type, master_merchant, merchant, sub_merchant, min_amount, max_amount, priority, time_window_minutes, first_deposit_only, use_crm_matching, use_near_amount, use_unique_amount')
+        .in('id', [...ruleIds])
+      for (const row of ruleRows ?? []) ruleById.set(String(row.id), row)
+    }
+
     return c.json({
       rows: pageRows.map((row) => {
         const clientKey = String(row.kind === 'deposit' ? row.sender_number ?? '' : row.mobile_no ?? '').trim()
@@ -380,6 +399,8 @@ extraRoutes.get(
         } : manualDecision
         const matchedSmsList = row.kind === 'deposit' ? smsByTx.get(Number(row.tx_id)) ?? null : null
         const matchedSms = matchedSmsList?.[0] ?? null
+        const decisionReasonText = decision ? (row.kind === 'deposit' ? decision.reason : decision.remark) : null
+        const decisionRuleMatch = decisionReasonText ? RULE_ID_RE.exec(String(decisionReasonText)) : null
         return {
           ...row,
           // `to_account_number` is Maven's current wallet. Keep the SMS
@@ -393,7 +414,8 @@ extraRoutes.get(
           previous_approved_deposits: approved,
           matched_sms: matchedSms,
           matched_sms_count: matchedSmsList?.length ?? 0,
-          decision_reason: decision ? (row.kind === 'deposit' ? decision.reason : decision.remark) : null,
+          decision_reason: decisionReasonText,
+          decision_rule: decisionRuleMatch ? ruleById.get(decisionRuleMatch[1]) ?? null : null,
           decision_actor: decision?.actor_name ?? null,
         }
       }),

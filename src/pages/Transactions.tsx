@@ -101,6 +101,7 @@ interface TxRow {
   image_url?: string | null
   approved_by: string | null
   decision_reason?: string | null
+  decision_rule?: { action_type: string | null; scope_type: string | null; master_merchant: string | null; merchant: string | null; sub_merchant: string | null; min_amount: number | null; max_amount: number | null; priority: number | null; time_window_minutes: number | null; first_deposit_only: boolean | null; use_crm_matching: boolean | null; use_near_amount: boolean | null; use_unique_amount: boolean | null } | null
   decision_actor?: string | null
   first_seen_at: string | null
   created_utc: string | null
@@ -179,6 +180,94 @@ const compareSortValues = (a: SortValue, b: SortValue): number => {
   if (b == null) return -1
   if (typeof a === 'number' && typeof b === 'number') return a - b
   return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' })
+}
+
+// automation_rules_scoped has no name/description column, so the only way
+// to make "rule:<uuid> scope:X" readable is to describe the rule from its
+// own scope fields — the same fields Automation.tsx already shows per rule.
+function describeAutomationRule(rule: NonNullable<TxRow['decision_rule']>): { ar: string; en: string } {
+  const isDecline = rule.action_type === 'decline'
+  const scopeLabel = rule.sub_merchant || rule.merchant || rule.master_merchant || null
+  const min = rule.min_amount != null ? Number(rule.min_amount) : null
+  const max = rule.max_amount != null ? Number(rule.max_amount) : null
+  const tagsAr: string[] = []
+  const tagsEn: string[] = []
+  if (rule.first_deposit_only) { tagsAr.push('أول إيداع فقط'); tagsEn.push('first deposit only') }
+  if (rule.use_crm_matching) { tagsAr.push('مطابقة CRM'); tagsEn.push('CRM matching') }
+  if (rule.use_near_amount) { tagsAr.push('مبلغ تقريبي'); tagsEn.push('near-amount') }
+  if (rule.use_unique_amount) { tagsAr.push('مبلغ فريد'); tagsEn.push('unique-amount') }
+  const ar = [
+    isDecline ? 'قاعدة رفض تلقائي' : 'قاعدة موافقة تلقائية',
+    scopeLabel ? `نطاق: ${scopeLabel}` : 'نطاق عام',
+    min != null && max != null ? `${min}–${max} جنيه` : null,
+    rule.priority != null ? `أولوية ${rule.priority}` : null,
+    ...tagsAr,
+  ].filter(Boolean).join(' · ')
+  const en = [
+    isDecline ? 'Auto-decline rule' : 'Auto-approve rule',
+    scopeLabel ? `scope: ${scopeLabel}` : 'global scope',
+    min != null && max != null ? `EGP ${min}–${max}` : null,
+    rule.priority != null ? `priority ${rule.priority}` : null,
+    ...tagsEn,
+  ].filter(Boolean).join(' · ')
+  return { ar, en }
+}
+
+// The automation worker and the various decision-writing endpoints each
+// log their own free-text reason — a long tail of fixed system strings in
+// English (plus the occasional Arabic one), never a {ar, en} pair. This
+// translates the known, high-frequency, system-generated ones (confirmed
+// against the live deposit_decision_log) instead of leaving them English-
+// only; anything unrecognized — mainly one-off operator-typed notes —
+// still falls back to the raw text unchanged.
+const KNOWN_DECISION_REASONS: { test: RegExp; build: (m: RegExpExecArray) => { ar: string; en: string } }[] = [
+  { test: /^Auto-decline: sender phone is blacklisted \(amount-independent\)$/, build: () => ({ ar: 'رفض تلقائي: رقم هاتف المرسل محظور (بدون اعتبار للمبلغ)', en: 'Auto-decline: sender phone is blacklisted (amount-independent)' }) },
+  { test: /^sender_blacklisted$/, build: () => ({ ar: 'رقم المرسل محظور', en: 'Sender phone is blacklisted' }) },
+  { test: /^رقم محظور — رفض فوري$/, build: () => ({ ar: 'رقم محظور — رفض فوري', en: 'Blocked number — immediate decline' }) },
+  { test: /^Decision from All Transactions: decline$/, build: () => ({ ar: 'قرار من صفحة كل المعاملات: رفض', en: 'Decision from All Transactions: decline' }) },
+  { test: /^Decision from All Transactions: approve$/, build: () => ({ ar: 'قرار من صفحة كل المعاملات: اعتماد', en: 'Decision from All Transactions: approve' }) },
+  { test: /^Decision from TV screen: decline$/, build: () => ({ ar: 'قرار من شاشة العرض: رفض', en: 'Decision from TV screen: decline' }) },
+  { test: /^Decision from TV screen: approve$/, build: () => ({ ar: 'قرار من شاشة العرض: اعتماد', en: 'Decision from TV screen: approve' }) },
+  { test: /^Provider status correction$/, build: () => ({ ar: 'تصحيح حالة من المزوّد', en: 'Provider status correction' }) },
+  { test: /^Maven team status update: (.+?) → (.+)$/, build: (m) => ({ ar: `تحديث حالة من فريق Maven: ${m[1]} ← ${m[2]}`, en: `Maven team status update: ${m[1]} → ${m[2]}` }) },
+  { test: /^SMS verified \/ payment evidence confirmed$/, build: () => ({ ar: 'تم تأكيد SMS / إثبات الدفع', en: 'SMS verified / payment evidence confirmed' }) },
+  { test: /^Instant approval on SMS link event$/, build: () => ({ ar: 'اعتماد فوري عند ربط SMS', en: 'Instant approval on SMS link event' }) },
+  { test: /^Priority approval: linked SMS evidence present while still PENDING$/, build: () => ({ ar: 'اعتماد بالأولوية: وجود دليل SMS مرتبط أثناء الانتظار', en: 'Priority approval: linked SMS evidence present while still PENDING' }) },
+  { test: /^Manual reconciliation$/, build: () => ({ ar: 'مطابقة يدوية', en: 'Manual reconciliation' }) },
+  { test: /^Temporary approval pending SMS re-forward$/, build: () => ({ ar: 'اعتماد مؤقت بانتظار إعادة توجيه SMS', en: 'Temporary approval pending SMS re-forward' }) },
+  { test: /^Duplicate transaction resolved$/, build: () => ({ ar: 'تمت معالجة معاملة مكررة', en: 'Duplicate transaction resolved' }) },
+  { test: /^Automation skipped: Maven is already (\w+); local mirror repaired$/, build: (m) => ({ ar: `تم تجاوز الأتمتة: الحالة على Maven أصلاً ${m[1]}؛ تم تصحيح النسخة المحلية`, en: `Automation skipped: Maven is already ${m[1]}; local mirror repaired` }) },
+  { test: /^Approved immediately after SMS assignment #(\S+)$/, build: (m) => ({ ar: `تم الاعتماد فوراً بعد تعيين SMS رقم #${m[1]}`, en: `Approved immediately after SMS assignment #${m[1]}` }) },
+  { test: /^Recheck ([\d-]+): SMS verified$/, build: (m) => ({ ar: `فحص متكرر ${m[1]}: تم تأكيد SMS`, en: `Recheck ${m[1]}: SMS verified` }) },
+  { test: /^FAILED: Live provider status is (\w+), not PENDING — refusing \(no reversals through this worker\)$/, build: (m) => ({ ar: `فشل: حالة المزوّد الحالية ${m[1]} وليست قيد الانتظار — تم الرفض (لا عكس عبر هذا المنفّذ)`, en: `FAILED: live provider status is ${m[1]}, not PENDING — refusing (no reversals through this worker)` }) },
+  { test: /^FAILED: Live provider status is (\w+), not PENDING — refusing reversal$/, build: (m) => ({ ar: `فشل: حالة المزوّد الحالية ${m[1]} وليست قيد الانتظار — تم رفض التراجع`, en: `FAILED: live provider status is ${m[1]}, not PENDING — refusing reversal` }) },
+  { test: /^FAILED: GetTransactionDetails HTTP (\d+)(?:\s*\(after \d+ attempts\))?$/, build: (m) => ({ ar: `فشل: تعذّر جلب تفاصيل المعاملة من المزوّد (HTTP ${m[1]})`, en: `FAILED: could not fetch transaction details from provider (HTTP ${m[1]})` }) },
+  { test: /^LOCAL ONLY: Maven GetTransactionDetails HTTP \d+; SMS verified\. Must still be approved on Maven\.$/, build: () => ({ ar: 'محلي فقط: تعذّر الوصول إلى Maven، لكن تم تأكيد SMS — يجب الاعتماد على Maven يدوياً', en: 'Local only: Maven unreachable, but SMS verified — must still be approved on Maven.' }) },
+  { test: /^FAILED:\s*(.*)$/s, build: (m) => ({ ar: `فشل: ${m[1]}`, en: `FAILED: ${m[1]}` }) },
+]
+function matchKnownReason(text: string): { ar: string; en: string } | null {
+  for (const rule of KNOWN_DECISION_REASONS) {
+    const m = rule.test.exec(text)
+    if (m) return rule.build(m)
+  }
+  return null
+}
+// Single entry point for every "سبب القرار" / "Decision reason" render
+// site on this page. Prefers the resolved automation rule (see
+// server/extras.ts), then known fixed system strings, then falls back to
+// the raw stored text unchanged for anything unrecognized (mostly one-off
+// operator-typed notes, which can't be reliably auto-translated).
+function describeDecisionReason(r: TxRow): { ar: string; en: string } | null {
+  const raw = r.decision_reason
+  if (!raw) return null
+  if (r.decision_rule) {
+    const base = describeAutomationRule(r.decision_rule)
+    const failedSuffix = /\|\s*(FAILED:.*)$/s.exec(raw)
+    const suffix = failedSuffix ? matchKnownReason(failedSuffix[1]) : null
+    if (suffix) return { ar: `${base.ar} · ${suffix.ar}`, en: `${base.en} · ${suffix.en}` }
+    return base
+  }
+  return matchKnownReason(raw) ?? { ar: raw, en: raw }
 }
 
 export default function Transactions() {
@@ -657,7 +746,10 @@ export default function Transactions() {
                       case 'gateway': return <td key={colId} className="mono">{r.gateway ?? '—'}</td>
                       case 'duplicates': return <td key={colId}>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First transaction')}</td>
                       case 'approved_by': return <td key={colId}>{r.status === 'PENDING' ? '—' : (isAutomaticApprovalActor(rowApprovedByActor(r)) ? t('آلي (Auto)', 'Auto') : rowApprovedByActor(r))}</td>
-                      case 'decision_reason': return <td key={colId} className={`decision-reason-cell ${r.status === 'DECLINED' ? 'is-declined' : r.status === 'PAID' || r.status === 'APPROVED' ? 'is-approved' : ''}`} title={r.decision_reason ?? undefined}>{r.decision_reason ?? (r.status === 'DECLINED' ? t('مرفوض — السبب غير مسجل', 'Declined — reason not recorded') : r.status === 'PAID' || r.status === 'APPROVED' ? t('تمت الموافقة', 'Approved') : '—')}</td>
+                      case 'decision_reason': {
+                        const reason = describeDecisionReason(r)
+                        return <td key={colId} className={`decision-reason-cell ${r.status === 'DECLINED' ? 'is-declined' : r.status === 'PAID' || r.status === 'APPROVED' ? 'is-approved' : ''}`} title={reason ? t(reason.ar, reason.en) : undefined}>{reason ? t(reason.ar, reason.en) : (r.status === 'DECLINED' ? t('مرفوض — السبب غير مسجل', 'Declined — reason not recorded') : r.status === 'PAID' || r.status === 'APPROVED' ? t('تمت الموافقة', 'Approved') : '—')}</td>
+                      }
                       default: return null
                     }
                   }
