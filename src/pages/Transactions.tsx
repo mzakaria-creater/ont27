@@ -136,6 +136,12 @@ const rowId = (r: TxRow) => r.kind === 'deposit' ? r.tx_id : r.maven_id
 const rowParty = (r: TxRow) => r.kind === 'deposit' ? (r.sender_name ?? r.sender_number) : (r.account_name ?? r.mobile_no)
 const rowClientPhone = (r: TxRow) => r.kind === 'deposit' ? r.sender_number : r.mobile_no
 const rowSenderAccountName = (r: TxRow) => r.kind === 'deposit' ? (r.sender_account_name ?? r.payment_method ?? rowParty(r)) : (r.account_name ?? rowParty(r))
+// decision_actor (from deposit_decision_log/payout_decision_log, or the
+// synthetic "Maven team" reconciliation marker) takes priority over the
+// raw approved_by column, but both still need the same Auto normalization
+// — decision_actor can just as easily be a raw automation actor name
+// ("automation-engine", "automation-engine-blacklist") as a real username.
+const rowApprovedByActor = (r: TxRow): string | null => r.decision_actor ?? r.approved_by ?? null
 
 type SortValue = string | number | null | undefined
 // Sorting runs client-side over the already-loaded page window — the list
@@ -164,7 +170,7 @@ const SORT_ACCESSORS: Record<string, (r: TxRow) => SortValue> = {
   merchant: (r) => r.merchant ?? r.master_merchant,
   gateway: (r) => r.gateway,
   duplicates: (r) => r.client_transaction_count ?? 1,
-  approved_by: (r) => r.decision_actor ?? r.approved_by,
+  approved_by: (r) => rowApprovedByActor(r),
   decision_reason: (r) => r.decision_reason,
 }
 const compareSortValues = (a: SortValue, b: SortValue): number => {
@@ -399,7 +405,7 @@ export default function Transactions() {
     { header: 'Wallet', key: 'wallet', value: (r) => (r.kind === 'deposit' ? (r.to_account_number ?? r.receiving_wallet) : null) ?? '' },
     { header: 'Merchant', key: 'merchant', value: (r) => r.merchant ?? r.master_merchant ?? '' },
     { header: 'Gateway', key: 'gateway', value: (r) => r.gateway ?? '' },
-    { header: 'Approved by', key: 'approved_by', value: (r) => r.status === 'PENDING' ? '' : (r.decision_actor ?? (isAutomaticApprovalActor(r.approved_by) ? 'Auto' : r.approved_by ?? '')) },
+    { header: 'Approved by', key: 'approved_by', value: (r) => r.status === 'PENDING' ? '' : (isAutomaticApprovalActor(rowApprovedByActor(r)) ? 'Auto' : rowApprovedByActor(r) ?? '') },
     { header: 'Created (UTC)', key: 'created', value: (r) => r.created_utc ?? r.first_seen_at ?? '' },
   ]
 
@@ -650,7 +656,7 @@ export default function Transactions() {
                       case 'merchant': return <td key={colId}><MerchantLogo merchant={r.merchant ?? r.master_merchant}/></td>
                       case 'gateway': return <td key={colId} className="mono">{r.gateway ?? '—'}</td>
                       case 'duplicates': return <td key={colId}>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First transaction')}</td>
-                      case 'approved_by': return <td key={colId}>{r.status === 'PENDING' ? '—' : (r.decision_actor ?? (isAutomaticApprovalActor(r.approved_by) ? t('آلي (Auto)', 'Auto') : r.approved_by))}</td>
+                      case 'approved_by': return <td key={colId}>{r.status === 'PENDING' ? '—' : (isAutomaticApprovalActor(rowApprovedByActor(r)) ? t('آلي (Auto)', 'Auto') : rowApprovedByActor(r))}</td>
                       case 'decision_reason': return <td key={colId} className={`decision-reason-cell ${r.status === 'DECLINED' ? 'is-declined' : r.status === 'PAID' || r.status === 'APPROVED' ? 'is-approved' : ''}`} title={r.decision_reason ?? undefined}>{r.decision_reason ?? (r.status === 'DECLINED' ? t('مرفوض — السبب غير مسجل', 'Declined — reason not recorded') : r.status === 'PAID' || r.status === 'APPROVED' ? t('تمت الموافقة', 'Approved') : '—')}</td>
                       default: return null
                     }
@@ -674,7 +680,7 @@ export default function Transactions() {
                         <div><span>{t('البوابة', 'Gateway')}</span><strong>{r.gateway ?? '—'}</strong></div>
                         <div><span>{t('معرفات العملية', 'Transaction IDs')}</span><strong className="mono">{identifiers.length ? identifiers.join(' · ') : '—'}</strong></div>
                         <div><span>{t('التكرار', 'Duplicates')}</span>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First transaction')}{isDeclinedDuplicate && <span className="deposit-kind is-declined-duplicate">⚠ {t('مرفوض مكرر','Declined duplicate')}</span>}</div>
-                        <div><span>{t('اعتمد بواسطة', 'Approved by')}</span><strong>{r.status === 'PENDING' ? '—' : (r.decision_actor ?? (isAutomaticApprovalActor(r.approved_by) ? t('آلي (Auto)', 'Auto') : r.approved_by))}</strong></div>
+                        <div><span>{t('اعتمد بواسطة', 'Approved by')}</span><strong>{r.status === 'PENDING' ? '—' : (isAutomaticApprovalActor(rowApprovedByActor(r)) ? t('آلي (Auto)', 'Auto') : rowApprovedByActor(r))}</strong></div>
                       </div>
                       <div className="tx-expanded-actions">{r.status === 'PENDING' && !r.is_checkout_session && r.kind === 'deposit' && can('deposits','can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r,'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.status === 'PENDING' && r.kind === 'payout' && can('payouts','can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.kind === 'deposit' && r.status === 'DECLINED' && !r.matched_sms && can('sms_live','can_edit') && <><Link className="btn-primary btn-sm" to={liveSmsHref(r)}>📨 {t('SMS مباشر', 'Live SMS')}</Link><Link className="btn-ghost btn-sm danger" to={smsAssignHref(r)}>🔗✅ {t('ربط واعتماد SMS', 'Link & approve SMS')}</Link></>}{r.matched_sms && can('sms_live','can_edit') && <button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void unlinkSms(r)}><Unlink size={13} aria-hidden="true"/> {t('فك ربط SMS', 'Unlink SMS')}</button>}{r.is_checkout_session && <span className="cell-sub">{t('جلسة رابط دفع — بانتظار ظهور المعاملة المزوّدة', 'Payment-link session — waiting for provider transaction')}</span>}</div>
                       <details className="tx-raw-details" onToggle={(e) => { if (e.currentTarget.open) setRawOpen((current) => current.has(rowKey) ? current : new Set(current).add(rowKey)) }}><summary>{t('عرض تفاصيل Raw', 'View raw details')}</summary>{rawOpen.has(rowKey) ? (r.raw_preview ? <pre>{JSON.stringify(r.raw_preview, null, 2)}</pre> : <p className="cell-sub">{t('لا تتوفر بيانات Raw لهذا الصف.', 'Raw data is not available for this row.')}</p>) : null}</details>
@@ -730,7 +736,7 @@ export default function Transactions() {
                   <div><dt>{t('نوع الإيداع', 'Deposit type')}</dt><dd>{r.kind === 'deposit' ? <span className={`deposit-kind ${r.deposit_kind === 'retention_deposit' ? 'is-retention' : 'is-first'}`}>{r.deposit_kind === 'retention_deposit' ? `↻ ${t('Retention deposit','Retention deposit')}` : `★ ${t('First deposit','First deposit')}`}</span> : '—'}</dd></div>
                   <div><dt>{t('معرفات العملية', 'Transaction IDs')}</dt><dd className="mono">{identifiers.length ? identifiers.join(' · ') : '—'}</dd></div>
                   <div><dt>{t('التكرار', 'Duplicates')}</dt><dd>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First')}{isDeclinedDuplicate && <span className="deposit-kind is-declined-duplicate">⚠ {t('مرفوض مكرر','Declined duplicate')}</span>}</dd></div>
-                  <div><dt>{t('اعتمد بواسطة', 'Approved by')}</dt><dd>{r.status === 'PENDING' ? '—' : (r.decision_actor ?? (isAutomaticApprovalActor(r.approved_by) ? t('آلي (Auto)', 'Auto') : r.approved_by))}</dd></div>
+                  <div><dt>{t('اعتمد بواسطة', 'Approved by')}</dt><dd>{r.status === 'PENDING' ? '—' : (isAutomaticApprovalActor(rowApprovedByActor(r)) ? t('آلي (Auto)', 'Auto') : rowApprovedByActor(r))}</dd></div>
                   <div><dt>{t('الوقت', 'Time')}</dt><dd className="mono">{depositTime(r)}</dd></div>
                 </dl>
                 <div className="all-tx-card-actions">

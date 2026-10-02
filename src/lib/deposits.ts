@@ -99,7 +99,12 @@ export function statusMeta(status: string) {
 // transaction screen shows the same actor instead of a misleading human name.
 export function isAutomaticApprovalActor(name: string | null | undefined): boolean {
   const value = String(name ?? '').trim().toLowerCase()
-  return !value || value === 'manual' || value === 'auto_trigger' || value === 'auto' || value === 'automation' || value.startsWith('auto_') || value.startsWith('system')
+  // `automation` is checked as a prefix, not just an exact match, so
+  // variants like "automation-engine" and "automation-engine-blacklist"
+  // (the actual deposit_decision_log.actor_name values the automation
+  // worker writes) normalize to "Auto" instead of leaking the raw
+  // internal actor name to operators.
+  return !value || value === 'manual' || value === 'auto_trigger' || value === 'auto' || value.startsWith('automation') || value.startsWith('auto_') || value.startsWith('system')
 }
 
 export function parseUtcText(value: string | null | undefined): Date | null {
