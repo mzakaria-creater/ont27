@@ -322,12 +322,19 @@ extraRoutes.get(
     const payoutPhones = [...new Set(pageRows.filter((row) => row.kind === 'payout').map((row) => String(row.mobile_no ?? '').trim()).filter(Boolean))]
     const identityPhones = [...new Set([...depositPhones, ...payoutPhones].map(normalizePhone).filter(Boolean))]
     const depositIds = pageRows.filter((row) => row.kind === 'deposit').map((row) => Number(row.tx_id)).filter(Number.isFinite)
-    const [depositHistory, payoutHistory, linkedSms, blockedPhones, providerHistory] = await Promise.all([
+    const payoutIds = pageRows.filter((row) => row.kind === 'payout').map((row) => Number(row.maven_id)).filter(Number.isFinite)
+    // All seven lookups only need the already-resolved page window (pageRows),
+    // so they have no data dependency on each other — fetch them in one
+    // parallel round trip instead of two of them trailing in afterward as
+    // separate sequential awaits (each one a full extra network round trip).
+    const [depositHistory, payoutHistory, linkedSms, blockedPhones, providerHistory, depositDecisions, payoutDecisions] = await Promise.all([
       depositPhones.length ? db.from('maven_transactions').select('sender_number, status, first_seen_at').in('sender_number', depositPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
       payoutPhones.length ? db.from('maven_payout_transactions').select('mobile_no').in('mobile_no', payoutPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
       depositIds.length ? db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, received_at, amount, balance_after, sender_name, sender_number, receiver_number, sms_first_line, raw_sms, raw_payload, message, device_name, provider, sms_category, match_status, matched').or(`consumed_by_tx_id.in.(${depositIds.join(',')}),matched_transaction_id.in.(${depositIds.join(',')})`).order('received_at', { ascending: false, nullsFirst: false }).limit(2000) : Promise.resolve({ data: [], error: null }),
       identityPhones.length ? db.from('api_risk_blacklist').select('value').eq('type', 'phone').limit(10_000) : Promise.resolve({ data: [], error: null }),
       depositIds.length ? db.from('maven_transaction_history').select('tx_id, old_status, new_status, source, actor, provider_modified_at, created_at').in('tx_id', depositIds).eq('source', 'reconciliation').order('created_at', { ascending: false }).limit(10_000) : Promise.resolve({ data: [], error: null }),
+      depositIds.length ? db.from('deposit_decision_log').select('tx_id, decision, reason, actor_name, created_at').in('tx_id', depositIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
+      payoutIds.length ? db.from('payout_decision_log').select('maven_id, decision, remark, actor_name, created_at').in('maven_id', payoutIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     ])
     const blockedPhoneSet = new Set((blockedPhones.data ?? []).map((row) => normalizePhone(row.value)).filter(Boolean))
     const clientCounts = new Map<string, number>()
@@ -349,18 +356,11 @@ extraRoutes.get(
       smsByTx.set(txId, list)
     }
     const decisionByTx = new Map<number, Record<string, unknown>>()
-    if (depositIds.length) {
-      const { data: decisions } = await db.from('deposit_decision_log').select('tx_id, decision, reason, actor_name, created_at').in('tx_id', depositIds).order('created_at', { ascending: false })
-      for (const decision of decisions ?? []) if (!decisionByTx.has(Number(decision.tx_id))) decisionByTx.set(Number(decision.tx_id), decision)
-    }
+    for (const decision of depositDecisions.data ?? []) if (!decisionByTx.has(Number(decision.tx_id))) decisionByTx.set(Number(decision.tx_id), decision)
     const providerDecisionByTx = new Map<number, Record<string, unknown>>()
     for (const history of providerHistory.data ?? []) if (!providerDecisionByTx.has(Number(history.tx_id))) providerDecisionByTx.set(Number(history.tx_id), history)
     const decisionByPayout = new Map<number, Record<string, unknown>>()
-    const payoutIds = pageRows.filter((row) => row.kind === 'payout').map((row) => Number(row.maven_id)).filter(Number.isFinite)
-    if (payoutIds.length) {
-      const { data: decisions } = await db.from('payout_decision_log').select('maven_id, decision, remark, actor_name, created_at').in('maven_id', payoutIds).order('created_at', { ascending: false })
-      for (const decision of decisions ?? []) if (!decisionByPayout.has(Number(decision.maven_id))) decisionByPayout.set(Number(decision.maven_id), decision)
-    }
+    for (const decision of payoutDecisions.data ?? []) if (!decisionByPayout.has(Number(decision.maven_id))) decisionByPayout.set(Number(decision.maven_id), decision)
     return c.json({
       rows: pageRows.map((row) => {
         const clientKey = String(row.kind === 'deposit' ? row.sender_number ?? '' : row.mobile_no ?? '').trim()

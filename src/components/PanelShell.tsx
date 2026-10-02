@@ -318,7 +318,11 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
         // category messages (promos, OTP guides, hidden-content notifications)
         // are noise here even though they're still visible on the full /sms page.
         const [list, dev] = await Promise.all([
-          api<{ rows: RailSms[] }>(`/api/sms?from=${cairoWeekStart()}&to=${cairoToday()}&category=deposit,withdrawal&limit=5000`),
+          // The rail only ever shows the latest 200 messages (its own spec,
+          // and its header search box filters within that set) — 5000 was
+          // pure excess: a multi-MB JSON payload re-fetched on every 15s
+          // tick on every page an operator had the rail open on.
+          api<{ rows: RailSms[] }>(`/api/sms?from=${cairoWeekStart()}&to=${cairoToday()}&category=deposit,withdrawal&limit=200`),
           api<{ devices: RailDevice[] }>('/api/sms/devices'),
         ])
         if (!alive) return
@@ -326,7 +330,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
         setDevices(dev.devices)
         if (await sync) {
           const [freshList, freshDev] = await Promise.all([
-            api<{ rows: RailSms[] }>(`/api/sms?from=${cairoWeekStart()}&to=${cairoToday()}&category=deposit,withdrawal&limit=5000`),
+            api<{ rows: RailSms[] }>(`/api/sms?from=${cairoWeekStart()}&to=${cairoToday()}&category=deposit,withdrawal&limit=200`),
             api<{ devices: RailDevice[] }>('/api/sms/devices'),
           ])
           if (!alive) return
