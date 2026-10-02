@@ -205,11 +205,27 @@ extraRoutes.get(
       if (q) {
         const like = `%${q.replaceAll(',', ' ')}%`
         const ors = [`ontarget_ref.ilike.${like}`, `merchant_tx_reference.ilike.${like}`, `maven_raw_row->>Reference1.ilike.${like}`, `sender_number.ilike.${like}`, `sender_name.ilike.${like}`, `maven_raw_row->>AccountNumber.ilike.${like}`, `maven_raw_row->>PhoneNo.ilike.${like}`, `maven_raw_row->>UserName.ilike.${like}`, `receiving_wallet.ilike.${like}`, `to_account_number.ilike.${like}`, `merchant.ilike.${like}`]
-        if (providerReferenceTxIds.length) query = query.in('tx_id', providerReferenceTxIds)
-        else query = query.or(ors.join(','))
-        if (/^\d+$/.test(q)) ors.push(`tx_id.eq.${q}`)
-        if (/^\d+(\.\d{1,2})?$/.test(q)) ors.push(`amount.eq.${q}`)
-        if (!providerReferenceTxIds.length) query = query.or(ors.join(','))
+        const exact: string[] = []
+        if (/^\d+$/.test(q)) exact.push(`tx_id.eq.${q}`)
+        if (/^\d+(\.\d{1,2})?$/.test(q)) exact.push(`amount.eq.${q}`)
+        // Calling .or() twice ANDs the two OR-groups instead of extending the
+        // first — tx_id/amount pushed into `ors` after the first .or() call
+        // was silently unreachable (fixed 2026-10-02: a transaction searched
+        // by its own raw tx_id came back empty because its ontarget_ref and
+        // merchant reference are different numbers from the tx_id itself).
+        // Exactly one .or() call per branch now, built completely before use.
+        if (providerReferenceTxIds.length) {
+          // Fast path found candidates via an exact merchant/ontarget
+          // reference match — skip the expensive full-ledger ILIKE/JSON
+          // scan, but still OR in the cheap tx_id/amount equality checks
+          // (plain indexed scalar compares, not a wildcard scan) so a row
+          // matching the raw tx_id/amount directly is never excluded just
+          // because some OTHER, unrelated row matched via
+          // merchant_tx_reference/ontarget_ref/Reference1.
+          query = query.or([`tx_id.in.(${providerReferenceTxIds.join(',')})`, ...exact].join(','))
+        } else {
+          query = query.or([...ors, ...exact].join(','))
+        }
       }
       return query
     }
