@@ -1836,6 +1836,18 @@ a.stat-card:hover { border-color: var(--accent); }
 
 /* Shell: nav rail | content | SMS rail */
 .dash-body { align-items: start; }
+/* All Transactions: dock the live SMS rail as a real third column instead
+   of a floating drop-up, so the table and the feed are visible together. */
+@media (min-width: 901px) {
+  .dash-body.sms-split .sms-rail {
+    position: static; inset: auto; align-self: stretch;
+    width: 360px; flex: 0 0 360px; max-width: 360px;
+    height: auto; max-height: none; margin: 0;
+    border-radius: 0; border-block: 0; border-inline-end: 0;
+    border-inline-start: 1px solid var(--border);
+    box-shadow: none; backdrop-filter: none; animation: none;
+  }
+}
 /* Sticky rail that fits the viewport: long nav scrolls INSIDE the rail
    instead of pushing the page. */
 .sidebar {

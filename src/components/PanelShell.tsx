@@ -764,8 +764,16 @@ export default function PanelShell({ children }: { children: ReactNode }) {
     return next
   })
 
+  // All Transactions is the one workspace where operators actively
+  // cross-reference the live feed against the table underneath it — a
+  // floating drop-up card covers exactly the rows being checked. There,
+  // dock the rail as a real third column (the shell's nav|content|SMS-rail
+  // layout already anticipated this — see the "Shell:" comment in index.css)
+  // instead of overlaying it.
+  const smsSplitView = smsOpen && pathname === '/transactions'
+
   return (
-    <div className="dash-body">
+    <div className={`dash-body${smsSplitView ? ' sms-split' : ''}`}>
       <a className="skip-link" href="#main-workspace">{t('تجاوز القائمة', 'Skip navigation')}</a>
       <button className="nav-toggle" onClick={() => setNavOpen((o) => !o)} title={t('القائمة', 'Menu')} aria-label={t('القائمة', 'Menu')}>{navOpen ? <X size={20} /> : <Menu size={20} />}</button>
       {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
