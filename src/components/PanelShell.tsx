@@ -365,17 +365,44 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
     return () => { alive = false }
   }, [selected])
 
-  const linkToSuggestedTx = async (txId: number) => {
+  const linkToSuggestedTx = async (txId: number, confirmAmountMismatch = false) => {
     if (!selected) return
     setLinkingTxId(txId)
     setLinkErr(null)
     try {
-      await api(`/api/sms/${selected.id}/link`, { method: 'POST', body: JSON.stringify({ tx_id: txId }) })
+      await api(`/api/sms/${selected.id}/link`, { method: 'POST', body: JSON.stringify({ tx_id: txId, confirm_amount_mismatch: confirmAmountMismatch }) })
       setRows((prev) => prev.map((r) => r.id === selected.id ? { ...r, matched: true, match_status: 'manual', matched_tx_id: txId } : r))
       setSelected((prev) => prev && prev.id === selected.id ? { ...prev, matched: true, match_status: 'manual', matched_tx_id: txId } : prev)
       setCandidates([])
-    } catch {
-      setLinkErr('تعذّر ربط الرسالة بالمعاملة.')
+    } catch (error) {
+      // The generic "could not link" message hid exactly why — every one of
+      // these is a real, distinct reason the /link endpoint rejects a link,
+      // same codes the full /sms page already handles specifically.
+      if (error instanceof ApiError && error.status === 409 && error.code === 'amount_mismatch') {
+        const smsAmount = Number(error.body?.sms_amount)
+        const txAmount = Number(error.body?.tx_amount)
+        const confirmed = window.confirm(`مبلغ الرسالة ${money(smsAmount, 'EGP')} لا يطابق مبلغ المعاملة ${money(txAmount, 'EGP')}. المتابعة تربط الرسالة كدليل فقط دون اعتماد تلقائي — يجب تصحيح المبلغ واعتماد المعاملة يدوياً. متابعة؟`)
+        if (confirmed) await linkToSuggestedTx(txId, true)
+        else setLinkingTxId(null)
+        return
+      } else if (error instanceof ApiError && error.code === 'already_linked') {
+        setLinkErr('الرسالة مرتبطة بالفعل — أعد فتحها.')
+      } else if (error instanceof ApiError && error.code === 'transaction_already_linked') {
+        setLinkErr('هذه المعاملة مرتبطة برسالة أخرى بالفعل.')
+      } else if (error instanceof ApiError && error.code === 'sms_transaction_date_mismatch') {
+        setLinkErr('لا يمكن ربط الرسالة بمعاملة من يوم مختلف. اختر معاملة من نفس تاريخ الرسالة.')
+      } else if (error instanceof ApiError && error.code === 'assignment_window_expired') {
+        setLinkErr('مرّت أكثر من 3 ساعات على الرسالة — تم حظر التعيين تلقائياً. افتح صفحة SMS الكاملة لفك الحظر أولاً.')
+      } else if (error instanceof ApiError && error.code === 'tx_not_found') {
+        setLinkErr('لم يتم العثور على هذه المعاملة.')
+      } else if (error instanceof ApiError && error.status === 403) {
+        setLinkErr('لا تملك صلاحية الربط لهذا الدور.')
+      } else {
+        const detail = error instanceof ApiError
+          ? [error.body?.detail, error.body?.reason, error.body?.message].find((v): v is string => typeof v === 'string' && v.trim().length > 0) ?? error.code
+          : null
+        setLinkErr(detail ? `تعذّر ربط الرسالة بالمعاملة: ${detail}` : 'تعذّر ربط الرسالة بالمعاملة.')
+      }
     } finally {
       setLinkingTxId(null)
     }
