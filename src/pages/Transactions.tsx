@@ -10,7 +10,7 @@ import PageSizeSelect from '../components/PageSizeSelect'
 import ProofModal from '../components/ProofModal'
 import SenderIdentity from '../components/SenderIdentity'
 import { useAuth } from '../auth/AuthContext'
-import { AlertTriangle, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, CircleHelp, Clock3, Eye, Image, LayoutGrid, Pencil, RefreshCw, Search, SlidersHorizontal, Sparkles, TableProperties, Unlink, X, XCircle } from 'lucide-react'
+import { AlertTriangle, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, CircleHelp, Clock3, Eye, Image, LayoutGrid, Pencil, RefreshCw, Search, SlidersHorizontal, Sparkles, TableProperties, Unlink, WalletCards, X, XCircle } from 'lucide-react'
 import TransactionEditDialog from '../components/TransactionEditDialog'
 import TransactionDetailModal from '../components/TransactionDetailModal'
 import ColumnPicker, { useVisibleColumns } from '../components/ColumnPicker'
@@ -137,6 +137,20 @@ interface TxRow {
 interface ListResponse {
   rows: TxRow[]
   total: number
+}
+
+// Same shape /api/gateway-dashboard already returns (and Gateway.tsx
+// already renders in full) — reused here for a quick-glance strip instead
+// of building a second source of truth for wallet balances.
+interface ReceivingWallet {
+  id: string
+  account_number: string | null
+  label: string | null
+  account_name: string | null
+  device: string | null
+  is_active: boolean
+  balance: number | null
+  device_online: boolean | null
 }
 
 // Cheap stand-in for a deep JSON.stringify comparison — this page polls
@@ -332,6 +346,7 @@ export default function Transactions() {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [counts, setCounts] = useState<Record<string, number>>({})
+  const [wallets, setWallets] = useState<ReceivingWallet[] | null>(null)
   const [actionBusy, setActionBusy] = useState<string | null>(null)
   const [exportBusy, setExportBusy] = useState(false)
   const [proof, setProof] = useState<{ url: string; ref: string; onApprove?: () => void | Promise<void>; onDecline?: () => void | Promise<void> } | null>(null)
@@ -471,6 +486,25 @@ export default function Transactions() {
       .then((r) => setCounts(Object.fromEntries(r.counts.map((c) => [c.status, c.count]))))
       .catch(() => setCounts({}))
   }, [type, from, to, merchant, method, currency, minAmount, maxAmount])
+
+  // Quick-glance receiving-wallet strip — reuses the same data
+  // /api/gateway-dashboard already serves for the Gateway page. Permission
+  // for that endpoint (wallets/deposits/payouts) is a different scope than
+  // this page's own (transactions/all_transactions/...), so a 403 here is
+  // expected for some roles — just hide the strip, never break the page.
+  useEffect(() => {
+    api<{ balances: ReceivingWallet[] }>('/api/gateway-dashboard')
+      .then((r) => setWallets(r.balances.filter((b) => b.is_active)))
+      .catch(() => setWallets(null))
+    const iv = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        api<{ balances: ReceivingWallet[] }>('/api/gateway-dashboard')
+          .then((r) => setWallets(r.balances.filter((b) => b.is_active)))
+          .catch(() => {})
+      }
+    }, 30_000)
+    return () => window.clearInterval(iv)
+  }, [])
 
   const setFilter = (next: { type?: string; status?: string; q?: string; page?: number; from?: string; to?: string; date_range?: string; merchant?: string; method?: string; currency?: string; min_amount?: string; max_amount?: string; view?: string }) => {
     const p = new URLSearchParams(params)
@@ -687,6 +721,20 @@ export default function Transactions() {
           </div>
         </div>
       </section>
+
+      {wallets && wallets.length > 0 && (
+        <section className="card trx-wallet-strip" aria-label={t('أرقام المحافظ المستقبلة حالياً', 'Currently receiving wallet numbers')}>
+          {wallets.map((w) => (
+            <div key={w.id} className="trx-wallet-chip">
+              <WalletCards size={15} aria-hidden="true" />
+              <span className="mono trx-wallet-number">{w.account_number ?? '—'}</span>
+              <span className="cell-sub">{w.label ?? w.account_name ?? '—'}</span>
+              {w.device && <span className={`pay-status-badge ${w.device_online ? 'st-paid' : 'st-declined'}`}>{w.device_online ? t('متصل', 'Online') : t('غير متصل', 'Offline')}</span>}
+              {w.balance != null && <span className="mono trx-wallet-balance">{money(w.balance, 'EGP')}</span>}
+            </div>
+          ))}
+        </section>
+      )}
 
       <div className="filter-bar transaction-filter-toolbar">
         <div className="trx-filter-primary">

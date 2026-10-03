@@ -1869,6 +1869,11 @@ a.stat-card:hover { border-color: var(--accent); }
 .ai-gateway-actions { display: flex; align-items: center; gap: 10px; }
 .ai-gateway-error { margin: 0; }
 .ai-gateway-answer { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); line-height: 1.65; font-size: 13px; }
+/* All Transactions: quick-glance receiving-wallet strip. */
+.trx-wallet-strip { display: flex; flex-wrap: wrap; gap: 10px; margin-block-end: 14px; padding: 12px 14px; }
+.trx-wallet-chip { display: flex; align-items: center; gap: 7px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2); color: var(--text-dim); }
+.trx-wallet-number { color: var(--text); font-weight: 700; font-size: 13px; }
+.trx-wallet-balance { font-weight: 700; color: var(--status-paid); }
 /* Sticky rail that fits the viewport: long nav scrolls INSIDE the rail
    instead of pushing the page. */
 .sidebar {
