@@ -31,6 +31,7 @@ import { ticketRoutes } from './tickets.js'
 import { payoutRequestRoutes } from './payoutRequests.js'
 import { payoutLinkRoutes } from './payoutLinks.js'
 import { proofExtractRoutes } from './proofExtract.js'
+import { transactionsAiRoutes } from './transactionsAi.js'
 import { gatewayDashboardRoutes } from './gatewayDashboard.js'
 import { deviceRoutes } from './devices.js'
 import { gatewayRoutes } from './gateway.js'
@@ -69,6 +70,7 @@ app.route('/payouts', payoutRoutes)
 app.route('/payout-requests', payoutRequestRoutes)
 app.route('/payout-links', payoutLinkRoutes)
 app.route('/proof', proofExtractRoutes)
+app.route('/transactions-ai', transactionsAiRoutes)
 app.route('/gateway-dashboard', gatewayDashboardRoutes)
 app.route('/devices', deviceRoutes)
 app.route('/merchants', merchantRoutes)

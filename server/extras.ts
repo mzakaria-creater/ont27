@@ -393,7 +393,18 @@ extraRoutes.get(
           : null)
         const manualAt = manualDecision?.created_at ? Date.parse(String(manualDecision.created_at)) : 0
         const providerAt = providerDecision?.created_at ? Date.parse(String(providerDecision.created_at)) : 0
-        const decision = providerDecision && providerAt > manualAt ? {
+        // The same worker that executes an operator's manual decision then
+        // verifies it against the live provider and stamps
+        // reconciled_from_provider/modified_utc a second or two later —
+        // that's confirmation of the operator's own decision, not a
+        // separate Maven-side action. Comparing raw timestamps treated
+        // "later by any amount" as an override, so it was crediting
+        // "Maven team" for approvals/declines a real operator just made.
+        // Only let the provider-side record win when it's meaningfully
+        // later than the logged decision (or there is no logged decision
+        // at all), not merely the same action's own confirmation echo.
+        const RECONCILE_OVERRIDE_GRACE_MS = 2 * 60_000
+        const decision = providerDecision && (!manualDecision || providerAt > manualAt + RECONCILE_OVERRIDE_GRACE_MS) ? {
           reason: `Maven team status update: ${providerDecision.old_status ?? '—'} → ${providerDecision.new_status ?? row.status}`,
           actor_name: 'Maven team',
         } : manualDecision

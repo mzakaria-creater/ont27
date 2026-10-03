@@ -1859,6 +1859,16 @@ a.stat-card:hover { border-color: var(--accent); }
     height: auto; max-height: calc(100vh - 32px);
   }
 }
+/* All Transactions: AI Gateway panel. */
+.export-actions .btn-ghost[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+.ai-gateway-panel { display: flex; flex-direction: column; gap: 10px; margin-block-end: 14px; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); }
+.ai-gateway-head { display: flex; align-items: center; justify-content: space-between; }
+.ai-gateway-title { display: flex; align-items: center; gap: 7px; font-weight: 750; color: var(--accent); }
+.ai-gateway-hint { margin: 0; }
+.ai-gateway-input { width: 100%; min-height: 72px; padding: 10px 12px; resize: vertical; font: inherit; line-height: 1.5; }
+.ai-gateway-actions { display: flex; align-items: center; gap: 10px; }
+.ai-gateway-error { margin: 0; }
+.ai-gateway-answer { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); line-height: 1.65; font-size: 13px; }
 /* Sticky rail that fits the viewport: long nav scrolls INSIDE the rail
    instead of pushing the page. */
 .sidebar {

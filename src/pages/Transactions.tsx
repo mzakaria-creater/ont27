@@ -10,7 +10,7 @@ import PageSizeSelect from '../components/PageSizeSelect'
 import ProofModal from '../components/ProofModal'
 import SenderIdentity from '../components/SenderIdentity'
 import { useAuth } from '../auth/AuthContext'
-import { AlertTriangle, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, CircleHelp, Clock3, Eye, Image, LayoutGrid, Pencil, RefreshCw, Search, SlidersHorizontal, TableProperties, Unlink, X, XCircle } from 'lucide-react'
+import { AlertTriangle, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, CircleHelp, Clock3, Eye, Image, LayoutGrid, Pencil, RefreshCw, Search, SlidersHorizontal, Sparkles, TableProperties, Unlink, X, XCircle } from 'lucide-react'
 import TransactionEditDialog from '../components/TransactionEditDialog'
 import TransactionDetailModal from '../components/TransactionDetailModal'
 import ColumnPicker, { useVisibleColumns } from '../components/ColumnPicker'
@@ -23,6 +23,7 @@ import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectF
 import { exportCsv, exportXlsx, type ExportColumn } from '../lib/exportTable'
 import { Download } from 'lucide-react'
 import PressToPayNav from '../components/PressToPayNav'
+import AiGatewayPanel from '../components/AiGatewayPanel'
 
 // All transactions — deposits + payouts merged, sorted by our ref.
 
@@ -253,6 +254,7 @@ const KNOWN_DECISION_REASONS: { test: RegExp; build: (m: RegExpExecArray) => { a
   { test: /^Duplicate transaction resolved$/, build: () => ({ ar: 'تمت معالجة معاملة مكررة', en: 'Duplicate transaction resolved' }) },
   { test: /^Automation skipped: Maven is already (\w+); local mirror repaired$/, build: (m) => ({ ar: `تم تجاوز الأتمتة: الحالة على Maven أصلاً ${m[1]}؛ تم تصحيح النسخة المحلية`, en: `Automation skipped: Maven is already ${m[1]}; local mirror repaired` }) },
   { test: /^Approved immediately after SMS assignment #(\S+)$/, build: (m) => ({ ar: `تم الاعتماد فوراً بعد تعيين SMS رقم #${m[1]}`, en: `Approved immediately after SMS assignment #${m[1]}` }) },
+  { test: /^Approved automatically after verified SMS match #(\S+)$/, build: (m) => ({ ar: `اعتماد تلقائي — طابقت القواعد رسالة SMS رقم #${m[1]} وربطتها واعتمدت المعاملة`, en: `Auto-approved — rules matched SMS #${m[1]}, linked it, and approved the transaction` }) },
   { test: /^Recheck ([\d-]+): SMS verified$/, build: (m) => ({ ar: `فحص متكرر ${m[1]}: تم تأكيد SMS`, en: `Recheck ${m[1]}: SMS verified` }) },
   { test: /^FAILED: Live provider status is (\w+), not PENDING — refusing \(no reversals through this worker\)$/, build: (m) => ({ ar: `فشل: حالة المزوّد الحالية ${m[1]} وليست قيد الانتظار — تم الرفض (لا عكس عبر هذا المنفّذ)`, en: `FAILED: live provider status is ${m[1]}, not PENDING — refusing (no reversals through this worker)` }) },
   { test: /^FAILED: Live provider status is (\w+), not PENDING — refusing reversal$/, build: (m) => ({ ar: `فشل: حالة المزوّد الحالية ${m[1]} وليست قيد الانتظار — تم رفض التراجع`, en: `FAILED: live provider status is ${m[1]}, not PENDING — refusing reversal` }) },
@@ -338,6 +340,7 @@ export default function Transactions() {
   // it until someone actually opens that disclosure, instead of stringifying
   // it eagerly the moment a row is expanded.
   const [rawOpen, setRawOpen] = useState<Set<string>>(() => new Set())
+  const [aiOpen, setAiOpen] = useState(false)
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const toggleSort = (colId: string) => {
@@ -677,6 +680,7 @@ export default function Transactions() {
             <button className={view === 'cards' ? 'active' : ''} aria-pressed={view === 'cards'} onClick={() => setFilter({ view: 'cards' })}><LayoutGrid size={16} />{t('بطاقات', 'Cards')}</button>
           </div>
           <div className="export-actions">
+            <button type="button" className={`btn-ghost btn-sm${aiOpen ? ' active' : ''}`} aria-pressed={aiOpen} onClick={() => setAiOpen((v) => !v)}><Sparkles size={14}/> {t('بوابة الذكاء الاصطناعي', 'AI Gateway')}</button>
             <button type="button" className="btn-primary btn-sm" disabled={loading} onClick={() => void refreshNow()}><RefreshCw size={14} className={loading ? 'spin' : ''} /> 🔄 {loading ? t('جارٍ التحديث…', 'Refreshing…') : t('تحديث الآن', 'Refresh now')}</button>
             <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport('csv')}><Download size={14}/> 📥 CSV</button>
             <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport('xlsx')}><Download size={14}/> 📊 {exportBusy ? t('جارٍ التصدير…', 'Exporting…') : 'XLSX'}</button>
@@ -732,6 +736,8 @@ export default function Transactions() {
           </div>
         )}
       </div>
+
+      {aiOpen && <AiGatewayPanel onClose={() => setAiOpen(false)} />}
 
       {err && <div className="card warn">{err}</div>}
 
