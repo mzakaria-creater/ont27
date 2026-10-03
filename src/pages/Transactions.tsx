@@ -566,7 +566,7 @@ export default function Transactions() {
     { header: 'Party phone', key: 'phone', value: (r) => (r.kind === 'deposit' ? r.sender_number : r.mobile_no) ?? '' },
     { header: 'Sender account name', key: 'sender_account_name', value: (r) => r.sender_account_name ?? '' },
     { header: 'Sender account number', key: 'sender_account_number', value: (r) => r.sender_account_number ?? '' },
-    { header: 'Wallet', key: 'wallet', value: (r) => (r.kind === 'deposit' ? (r.to_account_number ?? r.receiving_wallet) : null) ?? '' },
+    { header: 'Wallet', key: 'wallet', value: (r) => (r.kind === 'deposit' ? (r.to_account_number ?? r.receiving_wallet) : r.mobile_no) ?? '' },
     { header: 'Merchant', key: 'merchant', value: (r) => r.merchant ?? r.master_merchant ?? '' },
     { header: 'Gateway', key: 'gateway', value: (r) => r.gateway ?? '' },
     { header: 'Approved by', key: 'approved_by', value: (r) => r.status === 'PENDING' ? '' : (isAutomaticApprovalActor(rowApprovedByActor(r)) ? 'Auto' : rowApprovedByActor(r) ?? '') },
@@ -812,7 +812,11 @@ export default function Transactions() {
                   const id = r.kind === 'deposit' ? r.tx_id : r.maven_id
                   const party = r.kind === 'deposit' ? (r.sender_name ?? r.sender_number) : (r.account_name ?? r.mobile_no)
                   const clientPhone = r.kind === 'deposit' ? r.sender_number : r.mobile_no
-                  const wallet = r.kind === 'deposit' ? (r.to_account_number ?? r.receiving_wallet) : null
+                  // Payouts have no "receiving wallet" concept the way a
+                  // deposit does, but an operator still needs to see which
+                  // number the payout was sent to in this same slot — it was
+                  // hardcoded null, so every payout row showed "—" here.
+                  const wallet = r.kind === 'deposit' ? (r.to_account_number ?? r.receiving_wallet) : r.mobile_no
                   const proofUrl = r.kind === 'deposit' ? r.proof_image_url : r.image_url
                   const rowKey = `${r.kind}-${r.checkout_session_id ?? id}`
                   const isExpanded = expanded.has(rowKey)
@@ -908,7 +912,7 @@ export default function Transactions() {
               const id = r.kind === 'deposit' ? r.tx_id : r.maven_id
               const party = r.kind === 'deposit' ? (r.sender_name ?? r.sender_number) : (r.account_name ?? r.mobile_no)
               const clientPhone = r.kind === 'deposit' ? r.sender_number : r.mobile_no
-              const wallet = r.kind === 'deposit' ? (r.to_account_number ?? r.receiving_wallet) : null
+              const wallet = r.kind === 'deposit' ? (r.to_account_number ?? r.receiving_wallet) : r.mobile_no
               const proofUrl = r.kind === 'deposit' ? r.proof_image_url : r.image_url
               const isDeclinedDuplicate = r.status === 'DECLINED' && (r.client_transaction_count ?? 1) > 1
               const identifiers = transactionIdentifiers(r)
