@@ -110,6 +110,7 @@ interface DecisionResult {
   note?: string;
   after_status?: string | null;
   provider_raw_status_was?: string | null;
+  error?: string;
 }
 interface ExecSettings {
   auto_execute_enabled: boolean;
@@ -465,7 +466,7 @@ export default function Payouts() {
         }),
       });
       if (statusChanged) {
-        await api(`/api/payouts/${selected.maven_id}/decision`, {
+        const decisionResult = await api<DecisionResult>(`/api/payouts/${selected.maven_id}/decision`, {
           method: "POST",
           body: JSON.stringify({
             decision: editForm.status,
@@ -475,6 +476,17 @@ export default function Payouts() {
             utr_number: utr.trim() || undefined,
           }),
         });
+        // The worker can return HTTP 200 with executed_on_provider:false (it
+        // deliberately did not act on NagoPay — e.g. the live status no
+        // longer matches what was expected). Treating that as success would
+        // show "saved" while NagoPay was never actually touched.
+        if (!decisionResult.executed_on_provider) {
+          setEditError(`${t("لم يتم التنفيذ على NagoPay", "Not executed on NagoPay")}: ${String(decisionResult.error ?? "")}`);
+          setEditBusy(false);
+          await openDetail(selected.maven_id);
+          void load();
+          return;
+        }
       }
       setEditing(false);
       await openDetail(selected.maven_id);
@@ -483,9 +495,11 @@ export default function Payouts() {
       setEditError(
         e instanceof ApiError && e.status === 403
           ? t("لا تملك صلاحية التعديل.", "You lack edit permission.")
-          : e instanceof ApiError
-            ? t(`تعذّر حفظ التعديلات: ${e.code}`, `Failed to save changes: ${e.code}`)
-            : t("تعذّر حفظ التعديلات.", "Failed to save changes."),
+          : e instanceof ApiError && e.code === "worker_failed"
+            ? `${t("لم يتم التنفيذ على NagoPay", "Not executed on NagoPay")}: ${String((e.body?.worker as Record<string, unknown> | undefined)?.error ?? e.code)}`
+            : e instanceof ApiError
+              ? t(`تعذّر حفظ التعديلات: ${e.code}`, `Failed to save changes: ${e.code}`)
+              : t("تعذّر حفظ التعديلات.", "Failed to save changes."),
       );
     } finally {
       setEditBusy(false);
@@ -599,13 +613,24 @@ export default function Payouts() {
     setQuickBusy(row.maven_id);
     setErr(null);
     try {
-      await api(`/api/payouts/${row.maven_id}/decision`, {
+      const result = await api<DecisionResult>(`/api/payouts/${row.maven_id}/decision`, {
         method: "POST",
         body: JSON.stringify({ decision: "DECLINED", remark: "Declined from payout queue", mode: "auto" }),
       });
+      // HTTP 200 does not guarantee NagoPay was actually touched — the
+      // worker can refuse to act (live status already changed) while still
+      // responding 200. Surface that instead of silently reloading as if
+      // the decline went through.
+      if (!result.executed_on_provider) {
+        setErr(`${t("لم يتم التنفيذ على NagoPay", "Not executed on NagoPay")}: ${String(result.error ?? "")}`);
+      }
       await load(true);
     } catch (e) {
-      setErr(e instanceof ApiError ? `${t("فشل تنفيذ القرار", "Decision failed")}: ${e.code}` : t("فشل تنفيذ القرار.", "Decision failed."));
+      setErr(
+        e instanceof ApiError && e.code === "worker_failed"
+          ? `${t("لم يتم التنفيذ على NagoPay", "Not executed on NagoPay")}: ${String((e.body?.worker as Record<string, unknown> | undefined)?.error ?? e.code)}`
+          : e instanceof ApiError ? `${t("فشل تنفيذ القرار", "Decision failed")}: ${e.code}` : t("فشل تنفيذ القرار.", "Decision failed."),
+      );
     } finally {
       setQuickBusy(null);
     }

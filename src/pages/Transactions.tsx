@@ -665,11 +665,29 @@ export default function Transactions() {
       if (row.kind === 'deposit') {
         await api(`/api/deposits/${id}/decision`, { method: 'POST', body: JSON.stringify({ action, note: `Decision from All Transactions: ${action}` }) })
       } else if (action === 'decline') {
-        await api(`/api/payouts/${id}/decision`, { method: 'POST', body: JSON.stringify({ decision: 'DECLINED', remark: 'Declined from All Transactions', mode: 'auto' }) })
+        // The payout worker can answer HTTP 200 with executed_on_provider
+        // false (it deliberately did not touch Maven) — that is not an
+        // exception, so it must be checked explicitly rather than assumed
+        // successful just because the request didn't throw.
+        const result = await api<{ executed_on_provider: boolean; error?: string }>(`/api/payouts/${id}/decision`, { method: 'POST', body: JSON.stringify({ decision: 'DECLINED', remark: 'Declined from All Transactions', mode: 'auto' }) })
+        if (!result.executed_on_provider) {
+          setErr(`${t('لم يتم التنفيذ على Maven', 'Not executed on Maven')}: ${String(result.error ?? '')}`)
+          await load(true)
+          return
+        }
       }
       await load(true)
     } catch (e) {
-      setErr(e instanceof ApiError ? `${t('فشل تنفيذ القرار', 'Decision failed')}: ${e.code}` : t('فشل تنفيذ القرار.', 'Decision failed.'))
+      // worker_failed carries the real provider-side reason (e.g. Maven
+      // already shows this DECLINED/PAID and the worker refused to reverse
+      // it) — show that instead of the bare error code, since this is the
+      // one case where the decision genuinely did not reach Maven at all.
+      const workerDetail = e instanceof ApiError && e.code === 'worker_failed'
+        ? (e.body?.worker as Record<string, unknown> | undefined)?.error
+        : null
+      setErr(typeof workerDetail === 'string'
+        ? `${t('لم يتم تنفيذ القرار على Maven', 'Decision was not executed on Maven')}: ${workerDetail}`
+        : e instanceof ApiError ? `${t('فشل تنفيذ القرار', 'Decision failed')}: ${e.code}` : t('فشل تنفيذ القرار.', 'Decision failed.'))
     } finally {
       setActionBusy(null)
     }

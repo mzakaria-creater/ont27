@@ -496,18 +496,29 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
       })
       return c.json({ error: 'worker_failed', worker: { error: message } }, 504)
     }
-    const executed = workerResponse.ok && workerResult.executed_on_provider === true
+    const executed = workerResponse.ok && workerResult.ok !== false && workerResult.executed_on_provider === true
     const workerMs = Math.round(performance.now() - workerStartedAt)
-    if (!workerResponse.ok) {
+    // workerResponse.ok is only the HTTP-level status (2xx) — the worker
+    // can (and does, in production: "Live provider status is already
+    // DECLINED/PAID/EXPIRED — refusing reversal", "GetTransactionDetails
+    // HTTP 500 after 3 attempts") return HTTP 200 with executed_on_provider
+    // false in the body when it deliberately did NOT act on Maven. Checking
+    // only workerResponse.ok let every one of those fall through to the
+    // "success" path below: it updated this mirror to PAID/DECLINED and
+    // told the operator it worked, while the real Maven transaction was
+    // never touched — exactly the "execution is local, not live on Maven"
+    // bug. Any non-executed outcome must be treated as a failure, not a
+    // silent local-only success.
+    if (!executed) {
       // Failure auditing remains in the response path so a failed provider
       // attempt can never disappear from the operational record.
       await db.from('audit_log').insert({
         actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
         action: `deposit.${action}`, entity: 'maven_transactions', entity_id: txId,
         before: { status: before.status },
-        after: { status: target, note, provider_execution: 'ngpay-approve', executed_on_provider: false, worker: workerResult, worker_ms: workerMs },
+        after: { status: target, note, provider_execution: 'ngpay-approve', executed_on_provider: false, worker: workerResult, worker_ms: workerMs, local_mirror_unchanged: true },
       })
-      return c.json({ error: 'worker_failed', worker: workerResult }, workerResponse.status as 400 | 401 | 404 | 409 | 500)
+      return c.json({ error: 'worker_failed', worker: workerResult }, workerResponse.ok ? 409 : (workerResponse.status as 400 | 401 | 404 | 409 | 500))
     }
 
     // The provider worker has already read back a successful Maven result.
