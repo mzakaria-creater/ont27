@@ -449,13 +449,25 @@ export default function Transactions() {
     }
   }, [load])
 
-  // Status summary counts (respects the deposit/payout filter, ignores search).
+  // Status summary counts — must mirror every filter the table itself
+  // applies (except search) or the badge numbers lie about what's on
+  // screen. This used to only send `type`, so the badges were an all-time
+  // count no matter what date range (or anything else) the table showed.
   useEffect(() => {
-    const qp = typeValues.length === 1 ? `?type=${typeValues[0]}` : ''
-    api<{ counts: { status: string; count: number }[] }>(`/api/transactions/status-counts${qp}`)
+    const search = new URLSearchParams()
+    if (typeValues.length === 1) search.set('type', typeValues[0])
+    if (from) search.set('from', from)
+    if (to) search.set('to', to)
+    if (merchant) search.set('merchant', merchant)
+    if (method) search.set('method', method)
+    if (currencyValues.length) search.set('currency', currencyValues.join(','))
+    if (minAmount) search.set('min_amount', minAmount)
+    if (maxAmount) search.set('max_amount', maxAmount)
+    const qs = search.toString()
+    api<{ counts: { status: string; count: number }[] }>(`/api/transactions/status-counts${qs ? `?${qs}` : ''}`)
       .then((r) => setCounts(Object.fromEntries(r.counts.map((c) => [c.status, c.count]))))
       .catch(() => setCounts({}))
-  }, [type])
+  }, [type, from, to, merchant, method, currency, minAmount, maxAmount])
 
   const setFilter = (next: { type?: string; status?: string; q?: string; page?: number; from?: string; to?: string; date_range?: string; merchant?: string; method?: string; currency?: string; min_amount?: string; max_amount?: string; view?: string }) => {
     const p = new URLSearchParams(params)

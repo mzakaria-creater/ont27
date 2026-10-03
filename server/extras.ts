@@ -565,13 +565,36 @@ extraRoutes.patch('/settlements/payments/:id', requireAnyPerm(['settlements', 's
   return c.json({ payment: data })
 })
 
-// Per-status transaction counts for the summary strip (respects type filter).
+// Per-status transaction counts for the summary strip. Respects the same
+// filters as the main /transactions list (type, date range, merchant,
+// method, currency, amount range) — deliberately excluding only `q`/search,
+// so the badges stay a stable "switch status" reference while someone
+// types. Was type-only, which made the badges an all-time count regardless
+// of date range; harmless while the list defaulted to "this month", but
+// wildly misleading once it defaults to "today" (e.g. DECLINED: 24,232
+// shown while the table holds 19 rows).
 extraRoutes.get(
   '/transactions/status-counts',
   requireAnyPerm(['transactions', 'all_transactions', 'refunds', 'reversals'], 'can_view'),
   async (c) => {
     const type = c.req.query('type') === 'payout' ? 'payout' : c.req.query('type') === 'deposit' ? 'deposit' : ''
-    const { data, error } = await db.rpc('panel_tx_status_counts', { p_type: type })
+    const from = c.req.query('from')?.trim()
+    const to = c.req.query('to')?.trim()
+    const merchant = c.req.query('merchant')?.trim()
+    const method = c.req.query('method')?.trim()
+    const currencies = [...new Set((c.req.query('currency') ?? '').split(',').map((v) => v.trim().toUpperCase()).filter(Boolean))]
+    const minAmount = Number(c.req.query('min_amount'))
+    const maxAmount = Number(c.req.query('max_amount'))
+    const { data, error } = await db.rpc('panel_tx_status_counts', {
+      p_type: type,
+      p_from: from ? `${from}T00:00:00Z` : null,
+      p_to: to ? `${to}T23:59:59.999Z` : null,
+      p_merchant: merchant || null,
+      p_method: method || null,
+      p_currencies: currencies.length ? currencies : null,
+      p_min_amount: Number.isFinite(minAmount) ? minAmount : null,
+      p_max_amount: Number.isFinite(maxAmount) ? maxAmount : null,
+    })
     if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
     return c.json({ counts: data ?? [] })
   },
