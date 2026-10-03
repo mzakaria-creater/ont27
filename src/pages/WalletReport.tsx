@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { RefreshCw, RotateCcw, Search } from 'lucide-react'
 import MultiSelectFilter from '../components/MultiSelectFilter'
 import { api, ApiError } from '../lib/api'
@@ -30,17 +30,27 @@ interface WalletDetail { wallet: string; sms: WalletSms[]; transactions: WalletT
 export default function WalletReport() {
   const { t } = useLocale()
   const isMobile = useIsMobile()
+  const location = useLocation()
   const [rows, setRows] = useState<WalletRow[] | null>(null)
   const [days, setDays] = useState(30)
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [query, setQuery] = useState('')
+  const [provider, setProvider] = useState('')
+  const [device, setDevice] = useState('')
+  const [merchant, setMerchant] = useState('')
+  const [balanceState, setBalanceState] = useState<'all' | 'with_balance' | 'missing_balance' | 'warning'>('all')
   const [activities, setActivities] = useState<string[]>([])
   const [sort, setSort] = useState('sms')
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [detail, setDetail] = useState<WalletDetail | null>(null)
   const [detailBusy, setDetailBusy] = useState(false)
+
+  useEffect(() => {
+    const wallet = new URLSearchParams(location.search).get('wallet')
+    if (wallet) setQuery(wallet)
+  }, [location.search])
 
   const openDetail = async (wallet: string) => {
     setDetailBusy(true); setDetail(null)
@@ -69,6 +79,12 @@ export default function WalletReport() {
     const needle = query.trim().toLowerCase()
     const list = (rows ?? []).filter((row) => {
       if (needle && ![row.wallet, row.device, row.merchant].some((value) => String(value ?? '').toLowerCase().includes(needle))) return false
+      if (provider && row.provider !== provider) return false
+      if (device && row.device !== device) return false
+      if (merchant && row.merchant !== merchant) return false
+      if (balanceState === 'with_balance' && row.balance == null) return false
+      if (balanceState === 'missing_balance' && row.balance != null) return false
+      if (balanceState === 'warning' && !row.limit_warning) return false
       if (activities.length > 0) {
         const matches = activities.some((activity) =>
           (activity === 'unconfirmed' && row.unconfirmed > 0)
@@ -81,7 +97,13 @@ export default function WalletReport() {
       return true
     })
     return list.sort((a, b) => sort === 'balance' ? Number(b.balance ?? 0) - Number(a.balance ?? 0) : sort === 'withdrawals' ? Number(b.withdrawals_amount ?? 0) - Number(a.withdrawals_amount ?? 0) : sort === 'unconfirmed' ? b.unconfirmed - a.unconfirmed : b.sms_count - a.sms_count)
-  }, [rows, query, activities, sort])
+  }, [rows, query, provider, device, merchant, balanceState, activities, sort])
+
+  const filterOptions = useMemo(() => ({
+    providers: [...new Set((rows ?? []).map((row) => row.provider).filter((value): value is string => Boolean(value)))].sort(),
+    devices: [...new Set((rows ?? []).map((row) => row.device).filter((value): value is string => Boolean(value)))].sort(),
+    merchants: [...new Set((rows ?? []).map((row) => row.merchant).filter((value): value is string => Boolean(value)))].sort(),
+  }), [rows])
 
   const totals = filteredRows.reduce((a, r) => ({
     wallets: a.wallets + 1,
@@ -118,11 +140,15 @@ export default function WalletReport() {
       <input className="login-input" type="date" value={from} onChange={(e)=>setFrom(e.target.value)} aria-label={t('من','From')}/>
       <input className="login-input" type="date" value={to} onChange={(e)=>setTo(e.target.value)} aria-label={t('إلى','To')}/>
       <label className="wallet-report-search"><Search size={15}/><input value={query} onChange={(e)=>setQuery(e.target.value)} placeholder={t('بحث: محفظة / جهاز / تاجر…','Search wallet / device / merchant…')}/></label>
+      <select className="login-input" value={provider} onChange={(e)=>setProvider(e.target.value)} aria-label="Provider"><option value="">{t('كل المزودين','All providers')}</option>{filterOptions.providers.map((value)=><option key={value} value={value}>{value}</option>)}</select>
+      <select className="login-input" value={device} onChange={(e)=>setDevice(e.target.value)} aria-label="Device"><option value="">{t('كل الأجهزة','All devices')}</option>{filterOptions.devices.map((value)=><option key={value} value={value}>{value}</option>)}</select>
+      <select className="login-input" value={merchant} onChange={(e)=>setMerchant(e.target.value)} aria-label="Merchant"><option value="">{t('كل التجار','All merchants')}</option>{filterOptions.merchants.map((value)=><option key={value} value={value}>{value}</option>)}</select>
+      <select className="login-input" value={balanceState} onChange={(e)=>setBalanceState(e.target.value as typeof balanceState)} aria-label="Balance state"><option value="all">{t('كل الأرصدة','All balances')}</option><option value="with_balance">{t('برصيد معروف','Known balance')}</option><option value="missing_balance">{t('بدون رصيد','Missing balance')}</option><option value="warning">{t('تحذير حد الاستخدام','Limit warning')}</option></select>
       <MultiSelectFilter label={t('نوع النشاط','Activity type')} allLabel={t('كل النشاط','All activity')} options={[{value:'unconfirmed',label:t('غير مؤكدة','Unconfirmed')},{value:'withdrawals',label:t('لديها سحوبات','Has withdrawals')},{value:'deposits',label:t('لديها إيداعات','Has deposits')},{value:'balance',label:t('لديها رصيد','Has balance')}]} value={activities} onChange={setActivities}/>
       <select className="login-input" value={sort} onChange={(e)=>setSort(e.target.value)} aria-label={t('ترتيب','Sort')}><option value="sms">{t('الأكثر SMS','Most SMS')}</option><option value="balance">{t('الأعلى رصيداً','Highest balance')}</option><option value="withdrawals">{t('الأكثر سحباً','Most withdrawals')}</option><option value="unconfirmed">{t('الأكثر غير مؤكد','Most unconfirmed')}</option></select>
       <span className="automation-filter-count">{filteredRows.length} / {rows?.length ?? 0}</span>
       <button className="btn-ghost btn-sm" disabled={loading} onClick={()=>void load()}><RefreshCw size={14} className={loading?'spin':''}/> {t('تحديث','Refresh')}</button>
-      <button className="btn-ghost btn-sm" onClick={()=>{setQuery('');setActivities([]);setSort('sms');setDays(30);setFrom('');setTo('')}}><RotateCcw size={14}/> {t('إعادة ضبط','Reset')}</button>
+      <button className="btn-ghost btn-sm" onClick={()=>{setQuery('');setProvider('');setDevice('');setMerchant('');setBalanceState('all');setActivities([]);setSort('sms');setDays(30);setFrom('');setTo('')}}><RotateCcw size={14}/> {t('إعادة ضبط','Reset')}</button>
     </div>
 
     {err && <div className="card warn">{err}</div>}

@@ -838,7 +838,7 @@ extraRoutes.get('/wallet-report', requireAnyPerm(['sms_live', 'wallets'], 'can_v
   const rangeTo = to ? cairoBoundary(to, true) : cairoBoundary(today, true)
   const [smsResult, mappings, accounts, devices, monthTxns, todayPayouts] = await Promise.all([
     db.from('inbound_sms').select('id, received_at, device_name, sim_slot, sender_name, sender_number, receiver_number, wallet_number, confirmed_wallet_number, manual_wallet_from, amount, balance_after, sms_category, matched, match_status, provider').gte('received_at', rangeFrom).lte('received_at', rangeTo).order('received_at', { ascending: true }).limit(50_000),
-    db.from('wallet_device_map').select('to_account_number, device, sim_slot, merchant, provider').limit(20_000),
+    db.from('wallet_device_map').select('to_account_number, device, sim_slot, merchant, provider, confidence, auto_inferred').limit(20_000),
     db.from('payment_accounts').select('account_number, current_balance, balance_updated_at, is_active').limit(20_000),
     db.from('device_status').select('device, sim_slot, balance, balance_at, last_seen_at').limit(20_000),
     db.from('maven_transactions').select('amount, status, receiving_wallet, to_account_number, fees, commission, first_seen_at').gte('first_seen_at', cairoBoundary(monthStart)).limit(20_000),
@@ -867,7 +867,12 @@ extraRoutes.get('/wallet-report', requireAnyPerm(['sms_live', 'wallets'], 'can_v
   type SmsRow = { id: number; received_at: string | null; device_name: string | null; sim_slot: number | null; receiver_number: string | null; wallet_number: string | null; confirmed_wallet_number: string | null; manual_wallet_from: string | null; amount: number | null; balance_after: number | null; sms_category: string | null; matched: boolean | null; match_status: string | null; provider: string | null }
   type WalletFlow = { wallet: string; sms_count: number; sms_amount: number; deposits_count: number; deposits_amount: number; withdrawals_count: number; withdrawals_amount: number; unconfirmed: number; first_balance: number | null; latest_sms_balance: number | null; latest_sms_at: string | null; first_sms_at: string | null; device: string | null; merchant: string | null; provider: string | null }
   const flows = new Map<string, WalletFlow>()
-  const smsWallet = (sms: SmsRow) => walletDigits(sms.confirmed_wallet_number || sms.manual_wallet_from || sms.wallet_number || sms.receiver_number)
+  // For withdrawals receiver_number is the customer being paid, not the
+  // wallet that sent the money. Never use it as a wallet fallback there.
+  const smsWallet = (sms: SmsRow) => {
+    const ownWallet = sms.confirmed_wallet_number || sms.manual_wallet_from || sms.wallet_number
+    return walletDigits(ownWallet || (String(sms.sms_category ?? '').toLowerCase() === 'withdrawal' ? null : sms.receiver_number))
+  }
   for (const sms of (smsResult.data ?? []) as SmsRow[]) {
     const wallet = smsWallet(sms); if (!wallet) continue
     const item = flows.get(wallet) ?? { wallet, sms_count: 0, sms_amount: 0, deposits_count: 0, deposits_amount: 0, withdrawals_count: 0, withdrawals_amount: 0, unconfirmed: 0, first_balance: null, latest_sms_balance: null, latest_sms_at: null, first_sms_at: null, device: sms.device_name, merchant: null, provider: sms.provider }
@@ -906,8 +911,17 @@ extraRoutes.get('/wallet-report', requireAnyPerm(['sms_live', 'wallets'], 'can_v
       utilization_pct: Math.round(Math.max(dailyUtilization, monthlyUtilization) * 10000) / 100, limit_warning: limitWarning,
     }
   }
-  const rows = (mappings.data ?? []).map((mapping) => buildRow(walletDigits(mapping.to_account_number), mapping, flows.get(walletDigits(mapping.to_account_number))))
-  for (const [wallet, flow] of flows) if (!(mappings.data ?? []).some((mapping) => walletDigits(mapping.to_account_number) === wallet)) rows.push(buildRow(wallet, null, flow))
+  // wallet_device_map is authoritative. De-dupe normalized values so a
+  // formatted/duplicate mapping cannot create two report rows for one wallet.
+  const mappingByWallet = new Map<string, any>()
+  for (const mapping of mappings.data ?? []) {
+    const wallet = walletDigits(mapping.to_account_number)
+    if (!wallet) continue
+    const current = mappingByWallet.get(wallet)
+    if (!current || (mapping.confidence ?? 0) > (current.confidence ?? 0) || (current.auto_inferred && !mapping.auto_inferred)) mappingByWallet.set(wallet, mapping)
+  }
+  const rows = [...mappingByWallet.entries()].map(([wallet, mapping]) => buildRow(wallet, mapping, flows.get(wallet)))
+  for (const [wallet, flow] of flows) if (!mappingByWallet.has(wallet)) rows.push(buildRow(wallet, null, flow))
   return c.json({ rows, days, from: from ?? rangeFrom.slice(0, 10), to: to ?? today, range_from: rangeFrom, range_to: rangeTo, limits: { daily: WALLET_DAILY_LIMIT, monthly: WALLET_MONTHLY_LIMIT, warning_ratio: WALLET_LIMIT_WARNING_RATIO }, as_of: new Date().toISOString(), time_zone: CAIRO_TIME_ZONE })
 })
 
@@ -1019,8 +1033,8 @@ extraRoutes.get('/wallet-report/:wallet', requireAnyPerm(['sms_live', 'wallets']
   if (!/^\d{6,}$/.test(wallet)) return c.json({ error: 'bad_wallet' }, 400)
   const [sms, txns] = await Promise.all([
     db.from('inbound_sms')
-      .select('id, sms_first_line, message, amount, sms_category, matched, match_status, balance_after, device_name, received_at')
-      .eq('receiver_number', wallet)
+      .select('id, sms_first_line, message, amount, sms_category, matched, match_status, balance_after, device_name, received_at, receiver_number, wallet_number, confirmed_wallet_number, manual_wallet_from')
+      .or(`confirmed_wallet_number.eq.${wallet},manual_wallet_from.eq.${wallet},wallet_number.eq.${wallet},and(sms_category.neq.withdrawal,receiver_number.eq.${wallet})`)
       .order('received_at', { ascending: false })
       .limit(40),
     db.from('maven_transactions')
