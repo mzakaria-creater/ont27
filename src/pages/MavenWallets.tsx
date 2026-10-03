@@ -175,27 +175,39 @@ export default function MavenWallets() {
     const targets = bankIds.filter(Boolean)
     setReplaceTarget(targets); setReplaceNewNumber(''); setReplaceResults({})
     setReplacePreview(Object.fromEntries(targets.map((id) => [id, { loading: true, current: null, error: null }])))
-    for (const bankId of targets) {
-      void api<{ current: { PhoneNumber?: string } }>('/api/wallets/live/replacement/preview', { method: 'POST', body: JSON.stringify({ bank_id: bankId }) })
-        .then((res) => setReplacePreview((prev) => ({ ...prev, [bankId]: { loading: false, current: res.current?.PhoneNumber ?? null, error: null } })))
-        .catch(() => setReplacePreview((prev) => ({ ...prev, [bankId]: { loading: false, current: null, error: t('تعذّر جلب الرقم الحالي', 'Could not fetch the current number') } })))
-    }
+    void api<{ results: Array<{ bank_id: string; ok: boolean; current?: { PhoneNumber?: string }; error?: string }> }>('/api/wallets/live/replacement/preview-bulk', {
+      method: 'POST', body: JSON.stringify({ bank_ids: targets }),
+    }).then(({ results }) => {
+      const byId = new Map(results.map((result) => [String(result.bank_id), result]))
+      setReplacePreview(Object.fromEntries(targets.map((id) => {
+        const result = byId.get(id)
+        return [id, result?.ok
+          ? { loading: false, current: result.current?.PhoneNumber ?? null, error: null }
+          : { loading: false, current: null, error: t('تعذّر جلب الرقم الحالي', 'Could not fetch the current number') }]
+      })))
+    }).catch(() => setReplacePreview(Object.fromEntries(targets.map((id) => [id, {
+      loading: false, current: null, error: t('تعذّر جلب الرقم الحالي', 'Could not fetch the current number'),
+    }]))))
   }
   const previewReady = replaceTarget?.length ? replaceTarget.every((id) => replacePreview[id] && !replacePreview[id].loading && !replacePreview[id].error) : false
   const submitReplace = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!replaceTarget || !/^\d{8,20}$/.test(replaceNewNumber)) return
     setReplaceBusy(true)
-    for (const bankId of replaceTarget) {
-      try {
-        const res = await api<{ changed_from: string; changed_to: string }>('/api/wallets/live/replacement/commit', {
-          method: 'POST', body: JSON.stringify({ bank_id: bankId, new_wallet_number: replaceNewNumber }),
-        })
-        setReplaceResults((prev) => ({ ...prev, [bankId]: { ok: true, message: t(`تم التغيير: ${res.changed_from} → ${res.changed_to}`, `Changed: ${res.changed_from} → ${res.changed_to}`) } }))
-      } catch (error) {
-        const message = error instanceof ApiError ? error.message : ''
-        setReplaceResults((prev) => ({ ...prev, [bankId]: { ok: false, message: message || t('فشل التغيير على Maven', 'Change failed on Maven') } }))
-      }
+    try {
+      const { results } = await api<{ results: Array<{ bank_id: string; ok: boolean; changed_from?: string; changed_to?: string; error?: string }> }>('/api/wallets/live/replacement/commit-bulk', {
+        method: 'POST', body: JSON.stringify({ bank_ids: replaceTarget, new_wallet_number: replaceNewNumber }),
+      })
+      const byId = new Map(results.map((result) => [String(result.bank_id), result]))
+      setReplaceResults(Object.fromEntries(replaceTarget.map((bankId) => {
+        const result = byId.get(bankId)
+        return [bankId, result?.ok
+          ? { ok: true, message: t(`تم التغيير: ${result.changed_from ?? '—'} → ${result.changed_to ?? replaceNewNumber}`, `Changed: ${result.changed_from ?? '—'} → ${result.changed_to ?? replaceNewNumber}`) }
+          : { ok: false, message: result?.error || t('فشل التغيير على Maven', 'Change failed on Maven') }]
+      })))
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : ''
+      setReplaceResults(Object.fromEntries(replaceTarget.map((bankId) => [bankId, { ok: false, message: message || t('فشل التغيير على Maven', 'Change failed on Maven') }])))
     }
     setReplaceBusy(false)
     setReplaceNotice(t('انتهى تنفيذ التغيير — راجع النتائج لكل رقم أدناه.', 'Change run finished — review each number’s result below.'))

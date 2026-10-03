@@ -333,12 +333,13 @@ extraRoutes.get(
     // so they have no data dependency on each other — fetch them in one
     // parallel round trip instead of two of them trailing in afterward as
     // separate sequential awaits (each one a full extra network round trip).
-    const [depositHistory, payoutHistory, linkedSms, blockedPhones, providerHistory, depositDecisions, payoutDecisions] = await Promise.all([
-      // Suffix ILIKE (indexed via idx_trgm_mt_sender_number), not an exact
-      // .in() match — matches every raw format a client's number has been
-      // stored under, not just whichever one happens to be on this page.
-      depositPhones.length ? db.from('maven_transactions').select('sender_number, status, first_seen_at').or(depositPhones.map((d) => `sender_number.ilike.%${d}`).join(',')).limit(10_000) : Promise.resolve({ data: [], error: null }),
-      payoutPhones.length ? db.from('maven_payout_transactions').select('mobile_no').or(payoutPhones.map((d) => `mobile_no.ilike.%${d}`).join(',')).limit(10_000) : Promise.resolve({ data: [], error: null }),
+    const [clientStats, linkedSms, blockedPhones, providerHistory, depositDecisions, payoutDecisions] = await Promise.all([
+      // Aggregate by the indexed last-10-digit phone key inside Postgres. This
+      // replaces a large OR of suffix ILIKE predicates that returned up to
+      // 10,000 history rows per page load and could starve login requests.
+      identityPhones.length
+        ? db.rpc('panel_client_history', { p_deposit_phones: depositPhones, p_payout_phones: payoutPhones })
+        : Promise.resolve({ data: [], error: null }),
       depositIds.length ? db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, received_at, amount, balance_after, sender_name, sender_number, receiver_number, sms_first_line, raw_sms, raw_payload, message, device_name, provider, sms_category, match_status, matched').or(`consumed_by_tx_id.in.(${depositIds.join(',')}),matched_transaction_id.in.(${depositIds.join(',')})`).order('received_at', { ascending: false, nullsFirst: false }).limit(2000) : Promise.resolve({ data: [], error: null }),
       identityPhones.length ? db.from('api_risk_blacklist').select('value').eq('type', 'phone').limit(10_000) : Promise.resolve({ data: [], error: null }),
       depositIds.length ? db.from('maven_transaction_history').select('tx_id, old_status, new_status, source, actor, provider_modified_at, created_at').in('tx_id', depositIds).eq('source', 'reconciliation').order('created_at', { ascending: false }).limit(10_000) : Promise.resolve({ data: [], error: null }),
@@ -348,8 +349,12 @@ extraRoutes.get(
     const blockedPhoneSet = new Set((blockedPhones.data ?? []).map((row) => normalizePhone(row.value)).filter(Boolean))
     const clientCounts = new Map<string, number>()
     const approvedHistory = new Map<string, { at: number; count: number }[]>()
-    for (const item of depositHistory.data ?? []) { const key = normalizePhone(item.sender_number); if (key) { clientCounts.set(key, (clientCounts.get(key) ?? 0) + 1); if (item.status === 'PAID' || item.status === 'APPROVED') { const list = approvedHistory.get(key) ?? []; list.push({ at: Date.parse(String(item.first_seen_at ?? '')), count: 1 }); approvedHistory.set(key, list) } } }
-    for (const item of payoutHistory.data ?? []) { const key = normalizePhone(item.mobile_no); if (key) clientCounts.set(key, (clientCounts.get(key) ?? 0) + 1) }
+    for (const item of clientStats.data ?? []) {
+      const key = normalizePhone(item.phone)
+      if (!key) continue
+      clientCounts.set(key, Number(item.deposit_count ?? 0) + Number(item.payout_count ?? 0))
+      approvedHistory.set(key, (item.approved_at ?? []).map((at: string) => ({ at: Date.parse(at), count: 1 })))
+    }
 
     // A transaction can have more than one linked SMS (e.g. a retry, or a
     // balance-confirmation follow-up) — keep every one, not just the first,

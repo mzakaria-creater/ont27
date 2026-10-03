@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { db } from './db.js'
-import { requireAnyPerm } from './rbac.js'
+import { requireAnyPerm, requireAuth } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 
 // AI Gateway (All Transactions page): an operator describes a transaction
@@ -10,6 +10,7 @@ import type { AuthEnv } from './rbac.js'
 // never reaches the browser.
 
 export const transactionsAiRoutes = new Hono<AuthEnv>()
+transactionsAiRoutes.use('*', requireAuth)
 transactionsAiRoutes.use('*', requireAnyPerm(['transactions', 'all_transactions'], 'can_view'))
 
 const SYSTEM_PROMPT = `You are a troubleshooting assistant embedded in OnTarget's payment operations panel, on the All Transactions page. An operator describes a transaction symptom or error pattern in free text (Arabic or English, often mixed); you answer with the most likely causes and concrete next steps, grounded in how this platform actually works:

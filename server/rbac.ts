@@ -47,6 +47,10 @@ async function effectivePerms(userId: string, role: string, pageKeys: string[]):
 export function requirePerm(pageKey: string, action: PermAction) {
   return createMiddleware<AuthEnv>(async (c, next) => {
     const actor = c.get('actor')
+    // Permission middleware may be mounted incorrectly on a future router.
+    // Fail closed with a normal auth response instead of throwing on actor.sub
+    // and turning one missing requireAuth into a server-wide 500 storm.
+    if (!actor) return c.json({ error: 'unauthenticated' }, 401)
     const perms = await effectivePerms(actor.sub, actor.role, [pageKey])
     if (!perms[pageKey]?.[action]) {
       return c.json({ error: 'forbidden', page: pageKey, action }, 403)
@@ -60,6 +64,7 @@ export function requirePerm(pageKey: string, action: PermAction) {
 export function requireAnyPerm(pageKeys: string[], action: PermAction) {
   return createMiddleware<AuthEnv>(async (c, next) => {
     const actor = c.get('actor')
+    if (!actor) return c.json({ error: 'unauthenticated' }, 401)
     const perms = await effectivePerms(actor.sub, actor.role, pageKeys)
     if (!Object.values(perms).some((p) => p[action])) {
       return c.json({ error: 'forbidden', pages: pageKeys, action }, 403)

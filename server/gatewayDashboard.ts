@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { db } from './db.js'
-import { requireAnyPerm } from './rbac.js'
+import { requireAnyPerm, requireAuth } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 
 // Internal operator dashboard: live gateway/wallet balances, pending
@@ -10,6 +10,7 @@ import type { AuthEnv } from './rbac.js'
 // same real tables every other panel page already uses).
 
 export const gatewayDashboardRoutes = new Hono<AuthEnv>()
+gatewayDashboardRoutes.use('*', requireAuth)
 gatewayDashboardRoutes.use('*', requireAnyPerm(['wallets', 'deposits', 'payouts'], 'can_view'))
 
 const num = (v: unknown): number => { const n = Number(v); return Number.isFinite(n) ? n : 0 }

@@ -31,13 +31,17 @@ walletRoutes.get('/live', requirePerm('wallets', 'can_view'), async (c) => {
 // it can break silently if Maven changes that site, and a wrong bank_id or
 // number changes real live routing immediately. Always preview before commit.
 const MAVEN_WALLET_SWITCH_URL = 'https://yvwppyoaksyhycimvgtw.supabase.co/functions/v1/maven-wallet-switch'
-async function callMavenWalletSwitch(body: Record<string, unknown>): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
+async function callMavenWalletSwitch(body: Record<string, unknown>, timeoutMs = 20_000): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
+  const serviceKey = process.env.OLD_SERVICE_KEY
+  if (!serviceKey) return { ok: false, status: 0, body: { error: 'maven_switch_not_configured' } }
   try {
     const res = await fetch(MAVEN_WALLET_SWITCH_URL, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      // The edge function performs real Maven writes. Authenticate every
+      // server-to-server call instead of leaving confirm:true publicly usable.
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(timeoutMs),
     })
     const json = await res.json().catch(() => ({})) as Record<string, unknown>
     return { ok: res.ok, status: res.status, body: json }
@@ -45,6 +49,19 @@ async function callMavenWalletSwitch(body: Record<string, unknown>): Promise<{ o
     return { ok: false, status: 0, body: { error: (e as Error).message } }
   }
 }
+
+walletRoutes.post('/live/replacement/preview-bulk', requirePerm('wallets', 'can_edit'), async (c) => {
+  const body = await c.req.json<{ bank_ids?: unknown }>().catch(() => null)
+  const bankIds = Array.isArray(body?.bank_ids)
+    ? [...new Set(body.bank_ids.map((value) => String(value ?? '').trim()).filter(Boolean))].slice(0, 150)
+    : []
+  if (!bankIds.length) return c.json({ error: 'bank_ids_required' }, 400)
+  const result = await callMavenWalletSwitch({ bank_ids: bankIds, mode: 'bulk_read' }, 60_000)
+  if (!result.ok || result.body.ok !== true || !Array.isArray(result.body.results)) {
+    return c.json({ error: 'maven_read_failed', detail: result.body }, 502)
+  }
+  return c.json({ ok: true, results: result.body.results })
+})
 
 walletRoutes.post('/live/replacement/preview', requirePerm('wallets', 'can_edit'), async (c) => {
   const body = await c.req.json<{ bank_id?: unknown }>().catch(() => null)
@@ -71,6 +88,30 @@ walletRoutes.post('/live/replacement/commit', requirePerm('wallets', 'can_edit')
   })
   if (!applied) return c.json({ error: 'maven_change_failed', detail: result.body }, 502)
   return c.json({ ok: true, bank_id: bankId, changed_from: result.body.changed_from, changed_to: result.body.changed_to })
+})
+
+walletRoutes.post('/live/replacement/commit-bulk', requirePerm('wallets', 'can_edit'), async (c) => {
+  const body = await c.req.json<{ bank_ids?: unknown; new_wallet_number?: unknown }>().catch(() => null)
+  const bankIds = Array.isArray(body?.bank_ids)
+    ? [...new Set(body.bank_ids.map((value) => String(value ?? '').trim()).filter(Boolean))].slice(0, 150)
+    : []
+  const newNumber = String(body?.new_wallet_number ?? '').replace(/\D/g, '')
+  if (!bankIds.length || !/^\d{8,20}$/.test(newNumber)) return c.json({ error: 'invalid_replacement_request' }, 400)
+
+  const actor = c.get('actor')
+  const result = await callMavenWalletSwitch({ bank_ids: bankIds, mode: 'bulk_edit', new_number: newNumber, confirm: true }, 120_000)
+  const results = Array.isArray(result.body.results) ? result.body.results as Array<Record<string, unknown>> : []
+  if (!result.ok || result.body.ok !== true || !results.length) {
+    return c.json({ error: 'maven_change_failed', detail: result.body }, 502)
+  }
+
+  await db.from('audit_log').insert(results.map((item) => ({
+    actor_type: 'panel_user', actor_id: actor.sub, actor_name: actor.username,
+    action: item.ok === true ? 'live_wallet_replaced' : 'live_wallet_replace_failed',
+    entity: 'maven_live_wallet', entity_id: String(item.bank_id ?? ''),
+    after: { bank_id: item.bank_id, requested_new_wallet_number: newNumber, maven_response: item },
+  })))
+  return c.json({ ok: true, results })
 })
 
 // Maven's admin back office has no pure "add a brand new wallet" action —
