@@ -318,9 +318,15 @@ extraRoutes.get(
     )
 
     const pageRows = rows.slice(offset, offset + limit)
-    const depositPhones = [...new Set(pageRows.filter((row) => row.kind === 'deposit').map((row) => String(row.sender_number ?? '').trim()).filter(Boolean))]
-    const payoutPhones = [...new Set(pageRows.filter((row) => row.kind === 'payout').map((row) => String(row.mobile_no ?? '').trim()).filter(Boolean))]
-    const identityPhones = [...new Set([...depositPhones, ...payoutPhones].map(normalizePhone).filter(Boolean))]
+    // Normalized (last-10-digit) phones, not raw strings — the same real
+    // client's sender_number has been seen in more than one raw format
+    // (e.g. "201227360808" vs "2001227360808", confirmed in production),
+    // and an exact-string match silently treats those as two different
+    // clients: retention/first-deposit and the duplicate-count badge both
+    // depend on this grouping being right.
+    const depositPhones = [...new Set(pageRows.filter((row) => row.kind === 'deposit').map((row) => normalizePhone(row.sender_number)).filter(Boolean))]
+    const payoutPhones = [...new Set(pageRows.filter((row) => row.kind === 'payout').map((row) => normalizePhone(row.mobile_no)).filter(Boolean))]
+    const identityPhones = [...new Set([...depositPhones, ...payoutPhones])]
     const depositIds = pageRows.filter((row) => row.kind === 'deposit').map((row) => Number(row.tx_id)).filter(Number.isFinite)
     const payoutIds = pageRows.filter((row) => row.kind === 'payout').map((row) => Number(row.maven_id)).filter(Number.isFinite)
     // All seven lookups only need the already-resolved page window (pageRows),
@@ -328,8 +334,11 @@ extraRoutes.get(
     // parallel round trip instead of two of them trailing in afterward as
     // separate sequential awaits (each one a full extra network round trip).
     const [depositHistory, payoutHistory, linkedSms, blockedPhones, providerHistory, depositDecisions, payoutDecisions] = await Promise.all([
-      depositPhones.length ? db.from('maven_transactions').select('sender_number, status, first_seen_at').in('sender_number', depositPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
-      payoutPhones.length ? db.from('maven_payout_transactions').select('mobile_no').in('mobile_no', payoutPhones).limit(10_000) : Promise.resolve({ data: [], error: null }),
+      // Suffix ILIKE (indexed via idx_trgm_mt_sender_number), not an exact
+      // .in() match — matches every raw format a client's number has been
+      // stored under, not just whichever one happens to be on this page.
+      depositPhones.length ? db.from('maven_transactions').select('sender_number, status, first_seen_at').or(depositPhones.map((d) => `sender_number.ilike.%${d}`).join(',')).limit(10_000) : Promise.resolve({ data: [], error: null }),
+      payoutPhones.length ? db.from('maven_payout_transactions').select('mobile_no').or(payoutPhones.map((d) => `mobile_no.ilike.%${d}`).join(',')).limit(10_000) : Promise.resolve({ data: [], error: null }),
       depositIds.length ? db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, received_at, amount, balance_after, sender_name, sender_number, receiver_number, sms_first_line, raw_sms, raw_payload, message, device_name, provider, sms_category, match_status, matched').or(`consumed_by_tx_id.in.(${depositIds.join(',')}),matched_transaction_id.in.(${depositIds.join(',')})`).order('received_at', { ascending: false, nullsFirst: false }).limit(2000) : Promise.resolve({ data: [], error: null }),
       identityPhones.length ? db.from('api_risk_blacklist').select('value').eq('type', 'phone').limit(10_000) : Promise.resolve({ data: [], error: null }),
       depositIds.length ? db.from('maven_transaction_history').select('tx_id, old_status, new_status, source, actor, provider_modified_at, created_at').in('tx_id', depositIds).eq('source', 'reconciliation').order('created_at', { ascending: false }).limit(10_000) : Promise.resolve({ data: [], error: null }),
@@ -339,8 +348,8 @@ extraRoutes.get(
     const blockedPhoneSet = new Set((blockedPhones.data ?? []).map((row) => normalizePhone(row.value)).filter(Boolean))
     const clientCounts = new Map<string, number>()
     const approvedHistory = new Map<string, { at: number; count: number }[]>()
-    for (const item of depositHistory.data ?? []) { const key = String(item.sender_number ?? '').trim(); if (key) { clientCounts.set(key, (clientCounts.get(key) ?? 0) + 1); if (item.status === 'PAID' || item.status === 'APPROVED') { const list = approvedHistory.get(key) ?? []; list.push({ at: Date.parse(String(item.first_seen_at ?? '')), count: 1 }); approvedHistory.set(key, list) } } }
-    for (const item of payoutHistory.data ?? []) { const key = String(item.mobile_no ?? '').trim(); if (key) clientCounts.set(key, (clientCounts.get(key) ?? 0) + 1) }
+    for (const item of depositHistory.data ?? []) { const key = normalizePhone(item.sender_number); if (key) { clientCounts.set(key, (clientCounts.get(key) ?? 0) + 1); if (item.status === 'PAID' || item.status === 'APPROVED') { const list = approvedHistory.get(key) ?? []; list.push({ at: Date.parse(String(item.first_seen_at ?? '')), count: 1 }); approvedHistory.set(key, list) } } }
+    for (const item of payoutHistory.data ?? []) { const key = normalizePhone(item.mobile_no); if (key) clientCounts.set(key, (clientCounts.get(key) ?? 0) + 1) }
 
     // A transaction can have more than one linked SMS (e.g. a retry, or a
     // balance-confirmation follow-up) — keep every one, not just the first,
@@ -382,7 +391,7 @@ extraRoutes.get(
 
     return c.json({
       rows: pageRows.map((row) => {
-        const clientKey = String(row.kind === 'deposit' ? row.sender_number ?? '' : row.mobile_no ?? '').trim()
+        const clientKey = normalizePhone(row.kind === 'deposit' ? row.sender_number : row.mobile_no)
         const rowAt = Date.parse(String(row.first_seen_at ?? row.created_utc ?? ''))
         const approved = row.kind === 'deposit' ? (approvedHistory.get(clientKey) ?? []).filter((item) => !Number.isFinite(rowAt) || !Number.isFinite(item.at) || item.at < rowAt).length : 0
         const phone = normalizePhone(row.kind === 'deposit' ? row.sender_number : row.mobile_no)

@@ -6,7 +6,7 @@ import { requireAuth, requirePerm } from './rbac.js'
 import { applyDepositScopes, rowAllowed } from './accessScopes.js'
 import type { AuthEnv } from './rbac.js'
 import { MAX_PAGE } from './paging.js'
-import { learnTrustedSmsName } from './clientIdentity.js'
+import { learnTrustedSmsName, recordClientWalletUsage } from './clientIdentity.js'
 import { notifyApprovedTransaction } from './approvalEmail.js'
 import { notifyTransactionDecision } from './txAlerts.js'
 import { detectDuplicateTransactions } from './duplicateDetection.js'
@@ -537,6 +537,7 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
       if (executed) await notifyTransactionDecision('deposit', { ...before, tx_id: txId }, action === 'approve' ? 'approved' : 'declined', actor.username)
       if (action !== 'approve' || !executed) return
       await notifyApprovedTransaction({ ...before, tx_id: txId, status: target, approved_by: actor.username, approved_at: mirrorNow, provider_confirmed: executed })
+      await recordClientWalletUsage(Number(txId)).catch((error) => console.error('wallet usage recording failed', { txId, error }))
       const learnedIdentity = await learnTrustedSmsName(Number(txId))
       if (learnedIdentity.learned) await db.from('audit_log').insert({
         actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username,
@@ -610,6 +611,7 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
     return c.json({ ok: true, status: target, old_sync: oldSync, audit_error: auditErr.message })
   }
 
+  if (action === 'approve') await recordClientWalletUsage(Number(txId)).catch((error) => console.error('wallet usage recording failed', { txId, error }))
   const learnedIdentity = action === 'approve'
     ? await learnTrustedSmsName(Number(txId))
     : { learned: false, reason: 'not_an_approval' }

@@ -8,6 +8,33 @@ const cleanName = (value: unknown) => {
   return name
 }
 
+// Appends the wallet a deposit was approved into onto the client's known
+// wallet history (crm_clients.wallets_used) — same append-dedup shape as
+// sms_names above, written to both this project's mirror and the old
+// project's authoritative crm_clients (the live automation engine's
+// use_crm_matching reads the old one). This builds the data an operator
+// or a future rule can use to recognize "this client always deposits into
+// wallet X" — it does not itself change what use_crm_matching evaluates,
+// since that matching logic lives in the old project's own engine, not
+// this codebase.
+export async function recordClientWalletUsage(txId: number): Promise<void> {
+  const { data: tx } = await db.from('maven_transactions').select('tx_id, sender_number, to_account_number, receiving_wallet').eq('tx_id', txId).maybeSingle()
+  const key = phoneKey(tx?.sender_number)
+  const wallet = String(tx?.to_account_number ?? tx?.receiving_wallet ?? '').trim()
+  if (!key || !wallet) return
+
+  const variants = [key, `0${key}`, `20${key}`]
+  const old = oldDb()
+  for (const database of old ? [db, old] : [db]) {
+    const { data: clients } = await database.from('crm_clients').select('id, wallets_used').in('normalized_phone', variants)
+    for (const client of clients ?? []) {
+      const known = client.wallets_used ?? []
+      if (known.includes(wallet)) continue
+      await database.from('crm_clients').update({ wallets_used: [...known, wallet], updated_at: new Date().toISOString() }).eq('id', client.id)
+    }
+  }
+}
+
 // Learn a bank-provided SMS name only after a human/verified approval tied
 // the SMS to a client number. The SMS itself may omit the sender number; the
 // transaction number remains the CRM identity. Ambiguous names are rejected.

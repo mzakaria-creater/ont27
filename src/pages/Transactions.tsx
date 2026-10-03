@@ -704,6 +704,9 @@ export default function Transactions() {
 
   return (
     <>
+    {/* Zoomed out slightly so more rows are visible without scrolling —
+        modals below stay at normal scale, they're a separate concern. */}
+    <div className="trx-zoom-out">
       <PressToPayNav />
       <section className="page-head all-transactions-head">
         <div><h2>🧾 {t('كل المعاملات', 'All transactions')}</h2>
@@ -959,6 +962,7 @@ export default function Transactions() {
           </div>
         )}
       </section>
+    </div>
       {proof && <ProofModal url={proof.url} title={`${t('إثبات الدفع', 'Payment proof')} · ${proof.ref}`} onClose={() => setProof(null)} actionBusy={actionBusy !== null} onApprove={proof.onApprove} onDecline={proof.onDecline} />}
       {openRef && <TransactionDetailModal txRef={openRef} onClose={closeDetail} onChanged={() => void load(true)} />}
     </>

@@ -1,5 +1,12 @@
 const DUPLICATE_WINDOW_MS = 5 * 60_000
 
+// Same convention as server/extras.ts's normalizePhone — the same client's
+// sender_number has been observed stored under more than one raw format
+// (e.g. "201227360808" vs "2001227360808"), so an exact-string key split
+// what should have been one duplicate cluster into two separate, each
+// too short to trip the >= 2 threshold below.
+const normalizePhone = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
+
 export interface DuplicateCandidateRow {
   tx_id: number
   sender_number: string | null
@@ -16,7 +23,7 @@ function clusterBySenderAmount<T extends { sender_number: string | null; amount:
 ): T[][] {
   const groups = new Map<string, T[]>()
   for (const row of rows) {
-    const sender = row.sender_number?.trim()
+    const sender = normalizePhone(row.sender_number)
     if (!sender || row.amount == null || !row.first_seen_at) continue
     const key = `${sender}|${row.amount}`
     const list = groups.get(key)
