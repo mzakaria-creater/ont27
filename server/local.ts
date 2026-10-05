@@ -3,13 +3,24 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-const envFiles = ['../.env', '../.env.local']
+// .env.development.local is what `vercel env pull` writes by default — the
+// real SUPABASE_URL/SUPABASE_SECRET_KEY etc. for this project live there,
+// not in .env/.env.local (which this repo keeps empty of secrets). Without
+// it, `npm run dev:api` always failed with "Missing SUPABASE_URL /
+// SUPABASE_SECRET_KEY (server env)" even though the credentials were right
+// there on disk.
+const envFiles = ['../.env', '../.env.local', '../.env.development.local']
 for (const envFile of envFiles) {
   const envPath = resolve(import.meta.dirname, envFile)
   if (!existsSync(envPath)) continue
   for (const line of readFileSync(envPath, 'utf8').split('\n')) {
     const match = line.match(/^([A-Z0-9_]+)=(.*)$/)
-    if (match && process.env[match[1]] === undefined) process.env[match[1]] = match[2]
+    if (!match || process.env[match[1]] !== undefined) continue
+    // vercel env pull wraps every value in double quotes; a literal quote
+    // character left in, say, SUPABASE_URL breaks every fetch() call that
+    // uses it.
+    const value = match[2]
+    process.env[match[1]] = /^".*"$/.test(value) ? value.slice(1, -1) : value
   }
 }
 
