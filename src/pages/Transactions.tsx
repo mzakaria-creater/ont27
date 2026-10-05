@@ -10,7 +10,7 @@ import PageSizeSelect from '../components/PageSizeSelect'
 import ProofModal from '../components/ProofModal'
 import SenderIdentity from '../components/SenderIdentity'
 import { useAuth } from '../auth/AuthContext'
-import { AlertTriangle, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, CircleHelp, Clock3, Eye, Image, LayoutGrid, Pencil, RefreshCw, Search, SlidersHorizontal, Sparkles, TableProperties, Unlink, WalletCards, X, XCircle } from 'lucide-react'
+import { AlertTriangle, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, CircleHelp, Clock3, Eye, Image, LayoutGrid, MessageSquareText, Pencil, RefreshCw, Search, SlidersHorizontal, Sparkles, TableProperties, Unlink, Users, WalletCards, X, XCircle } from 'lucide-react'
 import TransactionEditDialog from '../components/TransactionEditDialog'
 import TransactionDetailModal from '../components/TransactionDetailModal'
 import ColumnPicker, { useVisibleColumns } from '../components/ColumnPicker'
@@ -151,6 +151,17 @@ interface ReceivingWallet {
   is_active: boolean
   balance: number | null
   device_online: boolean | null
+}
+
+// /api/transactions/activity-summary — a day-by-day count trend, SMS-match
+// coverage, and new-vs-returning client split, scoped to the same filters as
+// the table and the status-count badges above it.
+interface ActivitySummary {
+  daily: { date: string; count: number }[]
+  sms_matched: number
+  sms_total: number
+  new_clients: number
+  returning_clients: number
 }
 
 // Cheap stand-in for a deep JSON.stringify comparison — this page polls
@@ -346,6 +357,7 @@ export default function Transactions() {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [counts, setCounts] = useState<Record<string, number>>({})
+  const [activity, setActivity] = useState<ActivitySummary | null>(null)
   const [wallets, setWallets] = useState<ReceivingWallet[] | null>(null)
   const [actionBusy, setActionBusy] = useState<string | null>(null)
   const [exportBusy, setExportBusy] = useState(false)
@@ -485,6 +497,11 @@ export default function Transactions() {
     api<{ counts: { status: string; count: number }[] }>(`/api/transactions/status-counts${qs ? `?${qs}` : ''}`)
       .then((r) => setCounts(Object.fromEntries(r.counts.map((c) => [c.status, c.count]))))
       .catch(() => setCounts({}))
+    // Same filters, same request wave — the activity/retention strip below
+    // the wallet strip must mirror the table exactly like the badges above.
+    api<ActivitySummary>(`/api/transactions/activity-summary${qs ? `?${qs}` : ''}`)
+      .then(setActivity)
+      .catch(() => setActivity(null))
   }, [type, from, to, merchant, method, currency, minAmount, maxAmount])
 
   // Quick-glance receiving-wallet strip — reuses the same data
@@ -754,6 +771,35 @@ export default function Transactions() {
               {w.balance != null && <span className="mono trx-wallet-balance">{money(w.balance, 'EGP')}</span>}
             </div>
           ))}
+        </section>
+      )}
+
+      {activity && (activity.daily.length > 0 || activity.sms_total > 0) && (
+        <section className="card trx-activity-insights" aria-label={t('نشاط المعاملات والاحتفاظ بالعملاء', 'Transaction activity & client retention')}>
+          <div className="trx-activity-chart">
+            {activity.daily.map((d) => {
+              const max = Math.max(...activity.daily.map((x) => x.count), 1)
+              return (
+                <button type="button" key={d.date} className="trx-activity-bar" onClick={() => setFilter({ from: d.date, to: d.date, date_range: 'custom' })} title={`${d.date}: ${d.count}`}>
+                  <span className="bar-track trx-activity-track"><span className="bar-fill" style={{ height: `${Math.max((d.count / max) * 100, 4)}%` }} /></span>
+                  <span className="cell-sub">{d.date.slice(5)}</span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="trx-activity-stats">
+            <div className="kpi-card trx-activity-stat">
+              <MessageSquareText size={15} aria-hidden="true" />
+              <span>{t('رسائل مطابقة', 'SMS matched')}</span>
+              <strong>{activity.sms_matched}/{activity.sms_total}</strong>
+              <span className="cell-sub">{activity.sms_total > 0 ? `${Math.round((activity.sms_matched / activity.sms_total) * 100)}%` : '—'}</span>
+            </div>
+            <div className="kpi-card trx-activity-stat">
+              <Users size={15} aria-hidden="true" />
+              <span>{t('عملاء جدد / عائدون', 'New / returning clients')}</span>
+              <strong>{activity.new_clients} / {activity.returning_clients}</strong>
+            </div>
+          </div>
         </section>
       )}
 

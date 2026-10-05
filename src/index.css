@@ -1874,6 +1874,22 @@ a.stat-card:hover { border-color: var(--accent); }
 .trx-wallet-chip { display: flex; align-items: center; gap: 7px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2); color: var(--text-dim); }
 .trx-wallet-number { color: var(--text); font-weight: 700; font-size: 13px; }
 .trx-wallet-balance { font-weight: 700; color: var(--status-paid); }
+
+/* Activity & retention insights strip (All Transactions): a per-day count
+   trend plus SMS-match / new-vs-returning stat tiles. The bar chart is its
+   own small vertical layout (not .bar-track/.bar-fill, which is a fixed
+   22px-tall horizontal fill meant for ranked-list breakdowns on Reports). */
+.trx-activity-insights { display: flex; flex-wrap: wrap; gap: 16px; margin-block-end: 14px; padding: 14px 16px; align-items: flex-end; }
+.trx-activity-chart { display: flex; align-items: flex-end; gap: 6px; flex: 1 1 260px; min-width: 0; }
+.trx-activity-bar { display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: none; cursor: pointer; padding: 0; flex: 1 1 auto; min-width: 0; }
+.trx-activity-track { position: relative; width: 100%; max-width: 28px; height: 56px; background: var(--hover); border-radius: 5px; overflow: hidden; display: flex; align-items: flex-end; }
+.trx-activity-track .bar-fill { position: static; width: 100%; inset: auto; border-radius: 5px 5px 0 0; background: linear-gradient(180deg, var(--accent), var(--amber-bg)); opacity: 0.85; }
+.trx-activity-bar:hover .trx-activity-track { outline: 2px solid var(--accent); outline-offset: 1px; }
+.trx-activity-stats { display: flex; flex-wrap: wrap; gap: 10px; }
+.trx-activity-stat { display: flex; flex-direction: column; gap: 3px; min-width: 150px; }
+.trx-activity-stat svg { color: var(--text-dim); }
+.trx-activity-stat strong { font-size: 16px; }
+@media (max-width: 720px) { .trx-activity-insights { flex-direction: column; align-items: stretch; } }
 /* Slightly denser view so more rows fit without scrolling. `zoom` (not
    `transform: scale`) so the layout box shrinks with it instead of
    leaving dead space around a visually-smaller page — supported in every
