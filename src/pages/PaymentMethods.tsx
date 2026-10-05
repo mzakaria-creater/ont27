@@ -5,7 +5,7 @@ import { useLocale } from '../lib/locale'
 import { Building2, CreditCard, Globe2, LayoutGrid, Plus, Power, Search, Sparkles, TableProperties, Upload, UsersRound, WalletCards, X } from 'lucide-react'
 import MethodLogo from '../components/MethodLogo'
 import { refreshBrandLogos } from '../lib/brandLogos'
-import { depositTime } from '../lib/deposits'
+import { depositTime, money } from '../lib/deposits'
 import { useIsMobile } from '../lib/useIsMobile'
 import PressToPayNav from '../components/PressToPayNav'
 
@@ -14,7 +14,12 @@ interface Account {
   id: string; payment_method_id: string; payment_pool_id: string | null; account_number: string
   account_name: string | null; iban: string | null; bank_name: string | null; currency: string | null
   country_code: string | null; device_name: string | null; label: string | null; is_active: boolean
+  priority: number; notes: string | null; account_type: 'deposit' | 'withdrawal' | 'both'
   current_balance: number | null; balance_updated_at: string | null
+  daily_limit: number; daily_used: number
+}
+const ACCOUNT_TYPE_LABELS: Record<Account['account_type'], [string, string]> = {
+  deposit: ['إيداع', 'Deposit'], withdrawal: ['سحب', 'Withdrawal'], both: ['الاثنان', 'Both'],
 }
 interface Pool { id: string; master_merchant_id: string; pool_name: string; pool_code: string; is_active: boolean; notes: string | null; rotation_enabled: boolean; rotation_interval_minutes: number; allocation_strategy: 'next_wallet' | 'least_loaded' | 'highest_balance'; next_rotation_at: string | null }
 interface PoolMember { id: string; payment_pool_id: string; merchant_hierarchy_id: number; is_active: boolean }
@@ -25,7 +30,7 @@ interface CountryMerchant { id: string; method_country_id: string; merchant_hier
 interface WalletOption { to_account_number: string; provider: string | null; device: string | null; merchant: string | null }
 type Data = { methods: Method[]; accounts: Account[]; pools: Pool[]; poolMembers: PoolMember[]; hierarchy: HierarchyRow[]; masters: Master[]; methodCountries: MethodCountry[]; countryMerchants: CountryMerchant[]; wallets: WalletOption[] }
 
-const emptyAccount = { account_number: '', label: '', device_name: '', bank_name: '' }
+const emptyAccount = { account_number: '', label: '', device_name: '', bank_name: '', priority: 1, account_type: 'both' as const }
 const emptyPool = { pool_name: '', pool_code: '', master_merchant_id: '' }
 const countryPresets = [{ code: 'EG', name: 'Egypt', currency: 'EGP' }, { code: 'AE', name: 'United Arab Emirates', currency: 'AED' }, { code: 'SA', name: 'Saudi Arabia', currency: 'SAR' }, { code: 'KW', name: 'Kuwait', currency: 'KWD' }, { code: 'QA', name: 'Qatar', currency: 'QAR' }, { code: 'BH', name: 'Bahrain', currency: 'BHD' }, { code: 'OM', name: 'Oman', currency: 'OMR' }, { code: 'GB', name: 'United Kingdom', currency: 'GBP' }, { code: 'US', name: 'United States', currency: 'USD' }, { code: 'EU', name: 'European Union', currency: 'EUR' }]
 const emptyGenerator = { method_code: '', method_name: '', channel_type: 'sms_device', country_code: 'EG', currency_code: 'EGP', merchant_hierarchy_ids: [] as number[], account_number: '', account_name: '', bank_name: '', device_name: '', label: '' }
@@ -75,7 +80,7 @@ export default function PaymentMethods() {
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<'methods' | 'countries' | 'accounts'>('methods')
   const [open, setOpen] = useState<string | null>(null)
-  const [account, setAccount] = useState(emptyAccount)
+  const [account, setAccount] = useState<Omit<typeof emptyAccount, 'account_type'> & { account_type: Account['account_type'] }>(emptyAccount)
   const [newMethod, setNewMethod] = useState({ method_code: '', method_name: '', channel_type: 'sms_device' })
   const [newPool, setNewPool] = useState(emptyPool)
   const [assign, setAssign] = useState<Record<string, string>>({})
@@ -97,6 +102,9 @@ export default function PaymentMethods() {
   const [bulkPoolId, setBulkPoolId] = useState('')
   const editable = can('payment_methods', 'can_edit')
   const create = can('payment_methods', 'can_create')
+  // Separate, stricter permission from payment_methods:can_edit — same gate
+  // the Admin > Wallet capacity tab already enforces on this same endpoint.
+  const canEditCapacity = can('wallet_capacity', 'can_edit')
   const canUploadLogo = ['owner', 'admin', 'super_admin'].includes(user?.role ?? '') && can('settings', 'can_edit')
 
   const load = useCallback(async () => {
@@ -117,6 +125,13 @@ export default function PaymentMethods() {
   const addAccount = async (e: React.FormEvent) => { e.preventDefault(); if (!open) return; try { await api(`/api/payment-methods/${open}/accounts`, { method: 'POST', body: JSON.stringify(account) }); setAccount(emptyAccount); setOpen(null); await load() } catch { setError(t('تعذر إضافة الحساب.', 'Unable to add account.')) } }
   const toggleAccount = async (r: Account) => { try { await api(`/api/payment-methods/accounts/${r.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !r.is_active }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
   const setAccountPool = async (r: Account, poolId: string) => { try { await api(`/api/payment-methods/accounts/${r.id}`, { method: 'PATCH', body: JSON.stringify({ payment_pool_id: poolId || null }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
+  const setAccountPriority = async (r: Account, priority: number) => { try { await api(`/api/payment-methods/accounts/${r.id}`, { method: 'PATCH', body: JSON.stringify({ priority }) }); await load() } catch { setError(t('تعذر حفظ الأولوية.', 'Unable to save priority.')) } }
+  const setAccountType = async (r: Account, account_type: Account['account_type']) => { try { await api(`/api/payment-methods/accounts/${r.id}`, { method: 'PATCH', body: JSON.stringify({ account_type }) }); await load() } catch { setError(t('تعذر حفظ النوع.', 'Unable to save type.')) } }
+  const setAccountNotes = async (r: Account, notes: string) => { try { await api(`/api/payment-methods/accounts/${r.id}`, { method: 'PATCH', body: JSON.stringify({ notes }) }); await load() } catch { setError(t('تعذر حفظ الملاحظات.', 'Unable to save notes.')) } }
+  // Same endpoint the Admin > Wallet capacity tab already uses — editing it
+  // here just saves a trip to a different page; it is the one real source
+  // of truth either way.
+  const setAccountDailyLimit = async (r: Account, dailyLimit: number) => { try { await api(`/api/admin/capacity/${r.id}`, { method: 'PUT', body: JSON.stringify({ daily_limit: dailyLimit }) }); await load() } catch { setError(t('تعذر حفظ الحد اليومي.', 'Unable to save daily limit.')) } }
   const addPool = async (e: React.FormEvent) => { e.preventDefault(); try { await api('/api/payment-methods/pools', { method: 'POST', body: JSON.stringify(newPool) }); setNewPool(emptyPool); await load() } catch { setError(t('تعذر إنشاء الـ pool.', 'Unable to create pool.')) } }
   const assignMerchant = async (poolId: string) => { const mh = assign[poolId]; if (!mh) return; try { await api(`/api/payment-methods/pools/${poolId}/merchants`, { method: 'POST', body: JSON.stringify({ merchant_hierarchy_id: Number(mh) }) }); setAssign({ ...assign, [poolId]: '' }); await load() } catch { setError(t('تعذر إسناد التاجر.', 'Unable to assign merchant.')) } }
   const assignMerchants = async (poolId: string) => { const ids = (merchantMultiAssign[poolId] ?? []).map(Number).filter(Number.isInteger); if (!ids.length) return; try { await api(`/api/payment-methods/pools/${poolId}/merchants/bulk`, { method: 'POST', body: JSON.stringify({ merchant_hierarchy_ids: ids }) }); setMerchantMultiAssign({ ...merchantMultiAssign, [poolId]: [] }); await load() } catch { setError(t('تعذر إسناد التجار.', 'Unable to assign merchants.')) } }
@@ -280,6 +295,10 @@ export default function PaymentMethods() {
                           </select>
                           <input className="login-input" placeholder={t('تسمية', 'Label')} value={account.label} onChange={(e) => setAccount({ ...account, label: e.target.value })} />
                           <input className="login-input" placeholder={t('الجهاز', 'Device')} value={account.device_name} onChange={(e) => setAccount({ ...account, device_name: e.target.value })} />
+                          <select className="login-input" value={account.account_type} onChange={(e) => setAccount({ ...account, account_type: e.target.value as Account['account_type'] })}>
+                            {(['deposit', 'withdrawal', 'both'] as const).map((v) => <option key={v} value={v}>{t(...ACCOUNT_TYPE_LABELS[v])}</option>)}
+                          </select>
+                          <input type="number" min={1} className="login-input" style={{ width: 70 }} title={t('الأولوية', 'Priority')} placeholder={t('الأولوية', 'Priority')} value={account.priority} onChange={(e) => setAccount({ ...account, priority: Number(e.target.value) || 1 })} />
                           <button className="btn-primary btn-sm">{t('حفظ', 'Save')}</button>
                         </form>
                       )}
@@ -314,6 +333,10 @@ export default function PaymentMethods() {
                     </select>
                     <input className="login-input" placeholder={t('تسمية', 'Label')} value={account.label} onChange={(e) => setAccount({ ...account, label: e.target.value })} />
                     <input className="login-input" placeholder={t('الجهاز', 'Device')} value={account.device_name} onChange={(e) => setAccount({ ...account, device_name: e.target.value })} />
+                    <select className="login-input" value={account.account_type} onChange={(e) => setAccount({ ...account, account_type: e.target.value as Account['account_type'] })}>
+                      {(['deposit', 'withdrawal', 'both'] as const).map((v) => <option key={v} value={v}>{t(...ACCOUNT_TYPE_LABELS[v])}</option>)}
+                    </select>
+                    <input type="number" min={1} className="login-input" style={{ width: 70 }} title={t('الأولوية', 'Priority')} placeholder={t('الأولوية', 'Priority')} value={account.priority} onChange={(e) => setAccount({ ...account, priority: Number(e.target.value) || 1 })} />
                     <button className="btn-primary btn-sm">{t('حفظ', 'Save')}</button>
                   </form></td></tr>
                 )}
@@ -377,6 +400,9 @@ export default function PaymentMethods() {
                   <th>{t('التاجر الرئيسي', 'Master merchant')}</th>
                   <th>{t('التجار الفرعيون', 'Sub-merchants')}</th>
                   <th>{t('التجمّع', 'Pool')}</th>
+                  <th>{t('النوع', 'Type')}</th>
+                  <th>{t('الأولوية', 'Priority')}</th>
+                  <th>{t('الحد اليومي', 'Daily limit')}</th>
                   <th>{t('الحالة', 'Status')}</th>
                   <th />
                 </tr>
@@ -387,6 +413,7 @@ export default function PaymentMethods() {
                   const master = masterOf(r)
                   const subs = subsOf(r)
                   const age = balanceAge(r.balance_updated_at, t)
+                  const utilizationPct = r.daily_limit > 0 ? Math.min(100, (r.daily_used / r.daily_limit) * 100) : 0
                   return (
                     <tr key={r.id}>
                       <td><input type="checkbox" checked={selectedAccounts.includes(r.id)} onChange={()=>toggleAccountSelection(r.id)} aria-label={t(`تحديد الحساب ${r.account_number}`, `Select account ${r.account_number}`)} /></td>
@@ -413,17 +440,81 @@ export default function PaymentMethods() {
                             </select>
                           : (data.pools.find((p) => p.id === r.payment_pool_id)?.pool_name ?? '—')}
                       </td>
+                      <td>
+                        {editable
+                          ? <select className="login-input" aria-label={t(`نوع الحساب ${r.account_number}`, `Account type for ${r.account_number}`)} value={r.account_type} onChange={(e) => void setAccountType(r, e.target.value as Account['account_type'])}>
+                              {(['deposit', 'withdrawal', 'both'] as const).map((v) => <option key={v} value={v}>{t(...ACCOUNT_TYPE_LABELS[v])}</option>)}
+                            </select>
+                          : t(...ACCOUNT_TYPE_LABELS[r.account_type])}
+                      </td>
+                      <td>
+                        {editable
+                          ? <input type="number" min={1} className="login-input mono" style={{ width: 60 }} value={r.priority} onChange={(e) => void setAccountPriority(r, Number(e.target.value) || 1)} />
+                          : <span className="mono">{r.priority}</span>}
+                      </td>
+                      <td>
+                        <div className="mono">{money(r.daily_used, r.currency ?? 'EGP')} / {editable
+                          ? <input type="number" min={0} className="login-input mono" style={{ width: 90, display: 'inline-block' }} defaultValue={r.daily_limit} onBlur={(e) => { const next = Number(e.target.value); if (Number.isFinite(next) && next > 0 && next !== r.daily_limit) void setAccountDailyLimit(r, next) }} disabled={!canEditCapacity} title={canEditCapacity ? t('اضغط Tab أو انقر خارج الحقل للحفظ', 'Click away or Tab to save') : t('صلاحية سعة المحافظ غير متاحة', 'Wallet capacity permission not granted')} />
+                          : money(r.daily_limit, r.currency ?? 'EGP')}</div>
+                        <div className={`wallet-limit-meter${utilizationPct >= 100 ? ' limit_reached' : utilizationPct >= 80 ? ' limit_soon' : ''}`}><i style={{ width: `${utilizationPct}%` }} /></div>
+                      </td>
                       <td><span className={`pay-status-badge ${r.is_active ? 'st-paid' : 'st-dim'}`}>{r.is_active ? t('نشط', 'Active') : t('موقوف', 'Disabled')}</span></td>
                       <td>{editable && <button className="btn-ghost btn-sm" onClick={() => void toggleAccount(r)}>{r.is_active ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>}</td>
                     </tr>
                   )
                 })}
-                {filteredAccounts.length === 0 && <tr><td colSpan={10} className="sidebar-hint">{t('لا توجد حسابات مطابقة.', 'No matching accounts.')}</td></tr>}
+                {filteredAccounts.length === 0 && <tr><td colSpan={13} className="sidebar-hint">{t('لا توجد حسابات مطابقة.', 'No matching accounts.')}</td></tr>}
               </tbody>
             </table>
           </div>
           )}
-          {accountView === 'cards' && <div className="payment-account-grid">{filteredAccounts.map((r)=>{const method=data.methods.find((m)=>m.id===r.payment_method_id);const master=masterOf(r);const subs=subsOf(r);const age=balanceAge(r.balance_updated_at,t);return <article className="payment-account-card" key={r.id}><div className="payment-account-card-head"><MethodLogo method={method?.method_name}/><span className={`pay-status-badge ${r.is_active?'st-paid':'st-dim'}`}>{r.is_active?t('نشط','Active'):t('موقوف','Disabled')}</span></div><strong className="mono">{r.account_number}</strong><span className="cell-sub">{r.label??r.device_name??'—'}</span><div className="payment-account-balance"><small>{t('الرصيد الحالي','Current balance')}</small><b className="mono">{r.current_balance==null?'—':Number(r.current_balance).toLocaleString('en-US',{minimumFractionDigits:2})} {r.currency??''}</b>{age&&<span className={age.stale?'warn-text':''}>{age.stale?t(`قديم — ${age.text}`,`Stale — ${age.text}`):age.text}</span>}</div><dl><div><dt>{t('الجهاز','Device')}</dt><dd>{r.device_name??'—'}</dd></div><div><dt>Master</dt><dd>{master?.name??'—'}</dd></div><div><dt>{t('التجار','Merchants')}</dt><dd>{subs.join('، ')||'—'}</dd></div></dl>{editable&&<><select className="login-input" value={r.payment_pool_id??''} onChange={(e)=>void setAccountPool(r,e.target.value)}><option value="">{t('بدون Pool','No pool')}</option>{data.pools.map((p)=><option key={p.id} value={p.id}>{p.pool_name}</option>)}</select><button className="btn-ghost btn-sm" onClick={()=>void toggleAccount(r)}>{r.is_active?t('إيقاف الحساب','Disable account'):t('تفعيل الحساب','Enable account')}</button></>}</article>})}</div>}
+          {accountView === 'cards' && <div className="payment-account-grid">{filteredAccounts.map((r) => {
+            const method = data.methods.find((m) => m.id === r.payment_method_id)
+            const master = masterOf(r)
+            const subs = subsOf(r)
+            const age = balanceAge(r.balance_updated_at, t)
+            const utilizationPct = r.daily_limit > 0 ? Math.min(100, (r.daily_used / r.daily_limit) * 100) : 0
+            return (
+              <article className="payment-account-card" key={r.id}>
+                <div className="payment-account-card-head">
+                  <MethodLogo method={method?.method_name}/>
+                  <span className={`pay-status-badge ${r.is_active ? 'st-paid' : 'st-dim'}`}>{r.is_active ? t('نشط', 'Active') : t('موقوف', 'Disabled')}</span>
+                </div>
+                <strong className="mono">{r.account_number}</strong>
+                <span className="cell-sub">{r.label ?? r.device_name ?? '—'}</span>
+                <div className="payment-account-balance">
+                  <small>{t('الرصيد الحالي', 'Current balance')}</small>
+                  <b className="mono">{r.current_balance == null ? '—' : Number(r.current_balance).toLocaleString('en-US', { minimumFractionDigits: 2 })} {r.currency ?? ''}</b>
+                  {age && <span className={age.stale ? 'warn-text' : ''}>{age.stale ? t(`قديم — ${age.text}`, `Stale — ${age.text}`) : age.text}</span>}
+                </div>
+                <div className="payment-account-balance">
+                  <small>{t('الاستخدام اليومي', 'Daily usage')}</small>
+                  <b className="mono">{money(r.daily_used, r.currency ?? 'EGP')} / {money(r.daily_limit, r.currency ?? 'EGP')}</b>
+                  <div className={`wallet-limit-meter${utilizationPct >= 100 ? ' limit_reached' : utilizationPct >= 80 ? ' limit_soon' : ''}`}><i style={{ width: `${utilizationPct}%` }} /></div>
+                  {editable && canEditCapacity && <input type="number" min={0} className="login-input mono" defaultValue={r.daily_limit} onBlur={(e) => { const next = Number(e.target.value); if (Number.isFinite(next) && next > 0 && next !== r.daily_limit) void setAccountDailyLimit(r, next) }} title={t('الحد اليومي — انقر خارج الحقل للحفظ', 'Daily limit — click away to save')} />}
+                </div>
+                <dl>
+                  <div><dt>{t('الجهاز', 'Device')}</dt><dd>{r.device_name ?? '—'}</dd></div>
+                  <div><dt>Master</dt><dd>{master?.name ?? '—'}</dd></div>
+                  <div><dt>{t('التجار', 'Merchants')}</dt><dd>{subs.join('، ') || '—'}</dd></div>
+                </dl>
+                {editable && <>
+                  <select className="login-input" value={r.payment_pool_id ?? ''} onChange={(e) => void setAccountPool(r, e.target.value)}>
+                    <option value="">{t('بدون Pool', 'No pool')}</option>
+                    {data.pools.map((p) => <option key={p.id} value={p.id}>{p.pool_name}</option>)}
+                  </select>
+                  <div className="control-row">
+                    <select className="login-input" value={r.account_type} onChange={(e) => void setAccountType(r, e.target.value as Account['account_type'])}>
+                      {(['deposit', 'withdrawal', 'both'] as const).map((v) => <option key={v} value={v}>{t(...ACCOUNT_TYPE_LABELS[v])}</option>)}
+                    </select>
+                    <input type="number" min={1} className="login-input mono" style={{ width: 70 }} title={t('الأولوية', 'Priority')} value={r.priority} onChange={(e) => void setAccountPriority(r, Number(e.target.value) || 1)} />
+                  </div>
+                  <textarea className="login-input" rows={2} placeholder={t('ملاحظات', 'Notes')} defaultValue={r.notes ?? ''} onBlur={(e) => { if (e.target.value !== (r.notes ?? '')) void setAccountNotes(r, e.target.value) }} />
+                  <button className="btn-ghost btn-sm" onClick={() => void toggleAccount(r)}>{r.is_active ? t('إيقاف الحساب', 'Disable account') : t('تفعيل الحساب', 'Enable account')}</button>
+                </>}
+              </article>
+            )
+          })}</div>}
         </section>
       )}
       </section>

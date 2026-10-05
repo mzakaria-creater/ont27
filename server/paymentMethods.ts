@@ -7,7 +7,31 @@ export const paymentMethodRoutes = new Hono<AuthEnv>()
 paymentMethodRoutes.use('*', requireAuth)
 
 const methodColumns = 'id, method_code, method_name, channel_type, is_active, sort_order, created_at'
-const accountColumns = 'id, payment_method_id, payment_pool_id, account_number, account_name, iban, bank_name, currency, country_code, device_name, label, is_active, current_balance, balance_updated_at, created_at'
+const accountColumns = 'id, payment_method_id, payment_pool_id, account_number, account_name, iban, bank_name, currency, country_code, device_name, label, is_active, priority, notes, account_type, current_balance, balance_updated_at, created_at'
+
+// Same Cairo-day-boundary and digit-normalization helpers already used by
+// server/extras.ts's wallet report — duplicated locally (they are not
+// exported there) rather than widening that file's exports for two small
+// date/string functions.
+const CAIRO_TIME_ZONE = 'Africa/Cairo'
+function cairoToday() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: CAIRO_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+}
+function cairoOffset(date: string) {
+  const guess = new Date(`${date}T00:00:00Z`)
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: CAIRO_TIME_ZONE, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(guess)
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  const localAsUtc = Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day), Number(values.hour) % 24, Number(values.minute))
+  const minutes = Math.round((localAsUtc - guess.getTime()) / 60000)
+  const sign = minutes >= 0 ? '+' : '-'; const absolute = Math.abs(minutes)
+  return `${sign}${String(Math.floor(absolute / 60)).padStart(2, '0')}:${String(absolute % 60).padStart(2, '0')}`
+}
+function cairoBoundary(date: string) {
+  return `${date}T00:00:00${cairoOffset(date)}`
+}
+function walletDigits(value: unknown) {
+  return String(value ?? '').replace(/\D/g, '')
+}
 const poolColumns = 'id, master_merchant_id, pool_name, pool_code, is_active, notes, rotation_enabled, rotation_interval_minutes, allocation_strategy, next_rotation_at, created_at'
 const countryColumns = 'id, payment_method_id, country_code, currency_code, is_active, created_at, updated_at'
 const countryMerchantColumns = 'id, method_country_id, merchant_hierarchy_id, is_active, created_at, updated_at'
@@ -17,7 +41,8 @@ function text(value: unknown, max = 120): string | null {
 }
 
 paymentMethodRoutes.get('/', requirePerm('payment_methods', 'can_view'), async (c) => {
-  const [methods, accounts, pools, poolMembers, hierarchy, masters, methodCountries, countryMerchants, wallets] = await Promise.all([
+  const today = cairoToday()
+  const [methods, accounts, pools, poolMembers, hierarchy, masters, methodCountries, countryMerchants, wallets, capacities, todayDeposits] = await Promise.all([
     db.from('payment_methods').select(methodColumns).order('sort_order').order('method_name'),
     db.from('payment_accounts').select(accountColumns).order('created_at'),
     db.from('payment_pools').select(poolColumns).order('pool_name'),
@@ -27,12 +52,35 @@ paymentMethodRoutes.get('/', requirePerm('payment_methods', 'can_view'), async (
     db.from('payment_method_countries').select(countryColumns).order('country_code'),
     db.from('payment_method_country_merchants').select(countryMerchantColumns).order('created_at'),
     db.from('wallet_device_map').select('to_account_number, provider, device, merchant').order('to_account_number'),
+    // Real per-account daily cap, same table/endpoint the Admin "Wallet
+    // capacity" tab already edits (PUT /api/admin/capacity/:accountId) —
+    // not duplicated here, just read so this page can show it too.
+    db.from('wallet_capacity_limits').select('payment_account_id, daily_limit'),
+    // Real daily usage: same deposit-status set and Cairo-day-boundary logic
+    // already used by /api/wallet-report, scoped to today only (this page
+    // does not need the monthly figure, which is a global constant there).
+    db.from('maven_transactions').select('amount, status, receiving_wallet, to_account_number, first_seen_at').gte('first_seen_at', cairoBoundary(today)).limit(20_000),
   ])
-  const firstError = methods.error ?? accounts.error ?? pools.error ?? poolMembers.error ?? hierarchy.error ?? masters.error ?? methodCountries.error ?? countryMerchants.error ?? wallets.error
+  const firstError = methods.error ?? accounts.error ?? pools.error ?? poolMembers.error ?? hierarchy.error ?? masters.error ?? methodCountries.error ?? countryMerchants.error ?? wallets.error ?? capacities.error ?? todayDeposits.error
   if (firstError) return c.json({ error: 'db_error', detail: firstError.message }, 500)
+
+  const dailyUsedByWallet = new Map<string, number>()
+  for (const tx of todayDeposits.data ?? []) {
+    if (!['PENDING', 'PAID', 'APPROVED', 'SUCCESS', 'COMPLETED'].includes(String(tx.status ?? '').toUpperCase())) continue
+    const wallet = walletDigits(tx.receiving_wallet || tx.to_account_number)
+    if (!wallet) continue
+    dailyUsedByWallet.set(wallet, (dailyUsedByWallet.get(wallet) ?? 0) + Number(tx.amount ?? 0))
+  }
+  const capacityByAccountId = new Map((capacities.data ?? []).map((row) => [row.payment_account_id, Number(row.daily_limit)]))
+  const accountsWithCapacity = (accounts.data ?? []).map((account) => ({
+    ...account,
+    daily_limit: capacityByAccountId.get(account.id) ?? 10_000,
+    daily_used: dailyUsedByWallet.get(walletDigits(account.account_number)) ?? 0,
+  }))
+
   return c.json({
     methods: methods.data ?? [],
-    accounts: accounts.data ?? [],
+    accounts: accountsWithCapacity,
     pools: pools.data ?? [],
     poolMembers: poolMembers.data ?? [],
     hierarchy: hierarchy.data ?? [],
@@ -259,15 +307,20 @@ paymentMethodRoutes.patch('/:id', requirePerm('payment_methods', 'can_edit'), as
   return c.json({ method: data })
 })
 
+const ACCOUNT_TYPES = new Set(['deposit', 'withdrawal', 'both'])
+
 paymentMethodRoutes.post('/:id/accounts', requirePerm('payment_methods', 'can_create'), async (c) => {
   const body = await c.req.json().catch(() => null)
   const account_number = text(body?.account_number, 100)
   if (!account_number) return c.json({ error: 'invalid_account_number' }, 400)
+  const priority = Number.isInteger(Number(body?.priority)) ? Number(body.priority) : 1
+  const account_type = ACCOUNT_TYPES.has(body?.account_type) ? body.account_type : 'both'
   const { data, error } = await db.from('payment_accounts').insert({
     payment_method_id: c.req.param('id'), account_number,
     account_name: text(body?.account_name), iban: text(body?.iban, 120), bank_name: text(body?.bank_name),
     currency: text(body?.currency, 10) ?? 'EGP', country_code: text(body?.country_code, 4) ?? 'EG',
     device_name: text(body?.device_name, 80), label: text(body?.label), is_active: body?.is_active !== false,
+    priority, notes: text(body?.notes, 2000), account_type,
   }).select(accountColumns).single()
   if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
   return c.json({ account: data }, 201)
@@ -312,6 +365,16 @@ paymentMethodRoutes.patch('/accounts/:id', requirePerm('payment_methods', 'can_e
     if (body.payment_pool_id === null) update.payment_pool_id = null
     else if (typeof body.payment_pool_id === 'string' && /^[0-9a-f-]{36}$/i.test(body.payment_pool_id)) update.payment_pool_id = body.payment_pool_id
     else return c.json({ error: 'invalid_payment_pool_id' }, 400)
+  }
+  if (body?.priority !== undefined) {
+    const priority = Number(body.priority)
+    if (!Number.isInteger(priority)) return c.json({ error: 'invalid_priority' }, 400)
+    update.priority = priority
+  }
+  if (body?.notes !== undefined) update.notes = text(body.notes, 2000)
+  if (body?.account_type !== undefined) {
+    if (!ACCOUNT_TYPES.has(body.account_type)) return c.json({ error: 'invalid_account_type' }, 400)
+    update.account_type = body.account_type
   }
   if (!Object.keys(update).length) return c.json({ error: 'nothing_to_update' }, 400)
   const { data, error } = await db.from('payment_accounts').update(update).eq('id', c.req.param('id')).select(accountColumns).maybeSingle()
