@@ -431,6 +431,28 @@ export default function SmsLive() {
     return detail ? `${detail} (${error.code})` : error.code
   }
 
+  // The link endpoint can trigger an immediate live approval on Maven for a
+  // pending NGPay deposit, but can also silently skip that for several
+  // distinct reasons — without this, linking always looked the same to the
+  // operator whether the deposit was approved live or just recorded as
+  // evidence and left pending.
+  const providerApprovalNote = (approval?: { attempted?: boolean; queued?: boolean; skipped?: string }) => {
+    if (!approval) return null
+    if (approval.queued) return t('تم الربط، وجارٍ تنفيذ الاعتماد الفوري على Maven في الخلفية — تحقّق من الحالة بعد لحظات.', 'Linked — live approval on Maven is running in the background now; check the status in a moment.')
+    switch (approval.skipped) {
+      case 'wallet_or_sender_not_confirmed':
+        return t('تم الربط كدليل، لكن لم يتم الاعتماد الفوري لأن رقم المرسل أو المحفظة لا يطابقان المعاملة بدقة — لا تزال المعاملة PENDING وتحتاج اعتماداً يدوياً.', "Linked as evidence, but not auto-approved — the sender's phone or wallet didn't exactly match the transaction. It is still PENDING and needs manual approval.")
+      case 'blacklisted_exact_sms_manual_review_15m':
+        return t('تم الربط، لكن المرسل على القائمة السوداء — محجوزة للمراجعة اليدوية (مراجعة تلقائية بعد 15 دقيقة).', 'Linked, but the sender is blacklisted — held for manual review (auto-review after 15 minutes).')
+      case 'walid_company_ltd_manual_only':
+        return t('تم الربط، لكن طريقة الدفع هذه تتطلب اعتماداً يدوياً فقط ولا يتم اعتمادها تلقائياً.', 'Linked, but this payment method requires manual approval only and is never auto-approved.')
+      case 'gateway_not_eligible_for_immediate_approval':
+        return t('تم الربط كدليل؛ هذه البوابة لا تدعم الاعتماد الفوري بعد الربط — اعتمد المعاملة يدوياً.', 'Linked as evidence; this gateway does not support immediate post-link approval — approve the transaction manually.')
+      default:
+        return null
+    }
+  }
+
   const openDetail = async (id: number) => {
     setDetailLoading(true)
     setLinkErr(null)
@@ -481,7 +503,7 @@ export default function SmsLive() {
     setLinkBusy(true)
     setLinkErr(null)
     try {
-      const result = await api<{ warning?: string; amount_mismatch?: boolean; sms_amount?: number; tx_amount?: number }>(`/api/sms/${selected.id}/link`, {
+      const result = await api<{ warning?: string; amount_mismatch?: boolean; sms_amount?: number; tx_amount?: number; provider_approval?: { attempted?: boolean; queued?: boolean; skipped?: string } }>(`/api/sms/${selected.id}/link`, {
         method: 'POST',
         body: JSON.stringify({ tx_id: txId, confirm_amount_mismatch: confirmAmountMismatch }),
       })
@@ -530,7 +552,25 @@ export default function SmsLive() {
         }
       }
       window.dispatchEvent(new CustomEvent('ontarget:sms-assignment-success', { detail: { direction: selected.sms_category === 'withdrawal' ? 'out' : 'in', amount: selected.amount, wallet: displayWalletForRow(selected), transactionRef: String(txId) } }))
-      setSelected(null)
+      const note = providerApprovalNote(result.provider_approval)
+      setLinkErr(note)
+      // Keep the detail panel open when there is something to tell the
+      // operator about (same pattern as the amount-mismatch warning above) —
+      // closing immediately via setSelected(null) would unmount the panel
+      // that renders linkErr before anyone could read it.
+      if (note) {
+        setSelected((current) => current ? {
+          ...current,
+          matched: true,
+          match_status: 'manual',
+          matched_transaction_id: txId,
+          maven_transaction_id: String(txId),
+          consumed_by_tx_id: txId,
+          matched_tx_id: txId,
+        } : current)
+      } else {
+        setSelected(null)
+      }
       await load(true)
     } catch (e) {
       if (e instanceof ApiError && e.status === 409 && e.code === 'amount_mismatch') {

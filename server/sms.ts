@@ -779,7 +779,8 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
     ? { attempted: false, skipped: 'amount_mismatch' }
     : { attempted: false }
   const gateway = String(tx.gateway ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase()
-  if (!amountMismatch && senderConfirmed && walletConfirmed && !blacklistedSender && !isWalidCompanyMethod(tx.payment_method) && tx.status === 'PENDING' && (gateway === 'nagupayp2p' || gateway === 'nagopay')) {
+  const gatewayEligible = gateway === 'nagupayp2p' || gateway === 'nagopay'
+  if (!amountMismatch && senderConfirmed && walletConfirmed && !blacklistedSender && !isWalidCompanyMethod(tx.payment_method) && tx.status === 'PENDING' && gatewayEligible) {
     // Do not hold the SMS assignment request open while Maven performs its
     // browser action. The link is already committed; the provider action runs
     // in the platform background and updates the mirror when confirmed.
@@ -804,7 +805,17 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
         const executed = response.ok && result.executed_on_provider === true
         if (executed) {
           const now = new Date().toISOString()
-          await db.from('maven_transactions').update({ status: 'PAID', approved_by: actor.username, last_status_change: now, updated_at: now }).eq('tx_id', txId).eq('status', 'PENDING')
+          // Maven already executed PAID at this point — this write only
+          // mirrors that locally. Re-checking status='PENDING' guards
+          // against a race with something else touching this row between
+          // the read above and now; .select() + a row-count check makes
+          // that race loud (an audit entry) instead of a silent no-op that
+          // would leave the mirror diverged from the provider it just agreed
+          // with.
+          const { data: mirrored } = await db.from('maven_transactions').update({ status: 'PAID', approved_by: actor.username, last_status_change: now, updated_at: now }).eq('tx_id', txId).eq('status', 'PENDING').select('tx_id')
+          if (!mirrored || mirrored.length === 0) {
+            await db.from('audit_log').insert({ actor_type: 'system', actor_name: 'sms-link-worker', action: 'sms.link_immediate_provider_approval_mirror_skipped', entity: 'maven_transactions', entity_id: String(txId), after: { sms_id: Number(id), reason: 'local status changed before mirror update; provider already executed PAID' } })
+          }
           await db.from('audit_log').insert({ actor_type: 'manual_panel', actor_id: actor.sub, actor_name: actor.username, action: 'sms.link_immediate_provider_approval', entity: 'maven_transactions', entity_id: String(txId), after: { sms_id: Number(id), status: 'PAID', provider_execution: true } })
         } else {
           await db.from('audit_log').insert({ actor_type: 'system', actor_name: 'sms-link-worker', action: 'sms.link_immediate_provider_approval_failed', entity: 'maven_transactions', entity_id: String(txId), after: { sms_id: Number(id), status: response.status, result } })
@@ -820,6 +831,13 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
   } else if (blacklistedSender && exactSmsMatch && tx.status === 'PENDING') {
     providerApproval = { attempted: false, skipped: 'blacklisted_exact_sms_manual_review_15m' }
     await db.from('audit_log').insert({ actor_type: 'system', actor_name: 'sms-link-worker', action: 'sms.link_blacklist_manual_review', entity: 'maven_transactions', entity_id: String(txId), after: { sms_id: Number(id), match_score: 100, review_minutes: 15 } })
+  } else if (!amountMismatch && tx.status === 'PENDING' && !gatewayEligible) {
+    // Was falling into the identity-mismatch branch below even when sender
+    // and wallet were both confirmed, mislabeling every non-NGPay-gateway
+    // pending deposit's audit entry (and the operator-facing reason) as
+    // "wallet or sender not confirmed" when the real reason was the gateway.
+    providerApproval = { attempted: false, skipped: 'gateway_not_eligible_for_immediate_approval' }
+    await db.from('audit_log').insert({ actor_type: 'system', actor_name: 'sms-link-worker', action: 'sms.link_auto_approval_skipped_gateway', entity: 'maven_transactions', entity_id: String(txId), after: { sms_id: Number(id), gateway: tx.gateway ?? null } })
   } else if (!amountMismatch && tx.status === 'PENDING') {
     providerApproval = { attempted: false, skipped: 'wallet_or_sender_not_confirmed' }
     await db.from('audit_log').insert({ actor_type: 'system', actor_name: 'sms-link-worker', action: 'sms.link_auto_approval_skipped_identity', entity: 'maven_transactions', entity_id: String(txId), after: { sms_id: Number(id), sender_confirmed: senderConfirmed, wallet_confirmed: walletConfirmed, sms_wallet: receivingWallet, tx_wallet: tx.to_account_number ?? null } })
