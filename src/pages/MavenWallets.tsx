@@ -102,7 +102,21 @@ export default function MavenWallets() {
       setError(null)
       // Local wallet/device data is enough to paint and search the page. Do
       // not hold it behind the slower legacy Maven RPC.
-      const base = await api<WalletsResponse>('/api/wallets?include_live=false')
+      // One retry after a short pause: a bare deploy swap (the old serverless
+      // function torn down a beat before the new one is reachable) or any
+      // other one-off network blip otherwise surfaces immediately as "Unable
+      // to load Maven wallets" on this auto-refreshing page, even though the
+      // very next poll would have worked. A 403 is never retried — the
+      // permission problem would be identical both times.
+      let base: WalletsResponse
+      try {
+        base = await api<WalletsResponse>('/api/wallets?include_live=false')
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 403) throw e
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+        if (sequence !== refreshSequence.current) return
+        base = await api<WalletsResponse>('/api/wallets?include_live=false')
+      }
       if (sequence !== refreshSequence.current) return
       setData((current) => ({ ...base, live: current?.live ?? [] }))
       setLastRefresh(new Date())
