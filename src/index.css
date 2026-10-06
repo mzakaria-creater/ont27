@@ -4585,3 +4585,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Sheet component (src/components/Sheet.tsx): side modifiers on the existing
+   .drawer-backdrop/.drawer classes. side="start" (no modifier class) is
+   unchanged — every existing hand-rolled drawer keeps looking exactly as it
+   does today. */
+.drawer-backdrop.sheet-side-end { justify-content: flex-end; }
+.drawer-backdrop.sheet-side-top { justify-content: center; align-items: flex-start; }
+.drawer-backdrop.sheet-side-bottom { justify-content: center; align-items: flex-end; }
+.drawer.sheet-side-end { border-inline-end: none; border-inline-start: 1px solid var(--border); }
+.drawer.sheet-side-top, .drawer.sheet-side-bottom { inline-size: 100%; block-size: min(480px, 92vh); border-inline-end: none; }
+.drawer.sheet-side-top { border-block-end: 1px solid var(--border); }
+.drawer.sheet-side-bottom { border-block-start: 1px solid var(--border); }
+@keyframes sheet-slide-in { from { opacity: .3; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.drawer.sheet-panel { animation: sheet-slide-in .18s ease-out; }
+@media (prefers-reduced-motion: reduce) { .drawer.sheet-panel { animation: none; } }
