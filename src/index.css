@@ -4638,3 +4638,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .maven-rotation-scope { display: inline-flex; align-items: center; gap: 6px; }
 .maven-rotation-scope select { min-width: 150px; }
+
+/* Alert component (src/components/Alert.tsx) */
+.alert-box { position: relative; display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); color: var(--text); font-size: 13px; }
+.alert-box.alert-destructive { border-color: color-mix(in srgb, var(--status-danger) 48%, var(--border)); background: color-mix(in srgb, var(--status-danger) 8%, var(--surface)); color: var(--status-danger); }
+.alert-icon { flex: none; margin-top: 1px; }
+.alert-body { min-width: 0; flex: 1; }
+.alert-title { margin: 0 0 3px; font-size: 13px; font-weight: 700; line-height: 1.3; }
+.alert-description { font-size: 13px; line-height: 1.6; color: inherit; }
+.alert-description p { margin: 0; line-height: 1.6; }
