@@ -4635,3 +4635,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @keyframes sheet-slide-in { from { opacity: .3; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .drawer.sheet-panel { animation: sheet-slide-in .18s ease-out; }
 @media (prefers-reduced-motion: reduce) { .drawer.sheet-panel { animation: none; } }
+
+.maven-rotation-scope { display: inline-flex; align-items: center; gap: 6px; }
+.maven-rotation-scope select { min-width: 150px; }

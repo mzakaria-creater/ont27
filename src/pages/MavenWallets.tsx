@@ -323,6 +323,23 @@ export default function MavenWallets() {
     ? current.filter((number) => !visibleWalletNumbers.includes(number))
     : [...new Set([...current, ...visibleWalletNumbers])])
 
+  // Quick scope for rotation-rule setup: pick "this merchant's wallets" or
+  // "all wallets" instead of hand-checking each one — a rotation group is
+  // still just a list of wallet numbers, so this only pre-fills the
+  // selection, same checkboxes, same create flow.
+  const merchantOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const wallet of data?.wallets ?? []) if (wallet.merchant) set.add(wallet.merchant)
+    return [...set].sort()
+  }, [data])
+  const [rotationScope, setRotationScope] = useState('')
+  const selectWalletsByScope = () => {
+    if (!rotationScope) return
+    const pool = data?.wallets ?? []
+    const matches = rotationScope === '__all__' ? pool : pool.filter((wallet) => wallet.merchant === rotationScope)
+    setSelectedWallets(matches.map((wallet) => wallet.to_account_number))
+  }
+
   const addWallet = async (event: React.FormEvent) => {
     event.preventDefault(); setAddWalletBusy(true); setAddWalletError(null)
     try {
@@ -431,6 +448,16 @@ export default function MavenWallets() {
       </section>
       <section className="card maven-wallet-table-card">
         <div className="recent-head"><div><h3>{t('أرقام الاستقبال — محافظ Maven', 'Maven receiving wallets')}</h3><p className="cell-sub">{rows.length.toLocaleString()} {t('محفظة مطابقة للفلاتر', 'wallets match the filters')} · {t('مزامنة تلقائية كل 60 ثانية', 'Auto-sync every 60 seconds')}</p></div><div className="maven-wallet-table-actions">
+          {canManageRotation && (
+            <span className="maven-rotation-scope">
+              <select className="login-input" value={rotationScope} onChange={(e) => setRotationScope(e.target.value)} aria-label={t('نطاق تحديد المحافظ', 'Wallet selection scope')}>
+                <option value="">{t('اختر نطاقاً للتحديد السريع', 'Pick a quick-select scope')}</option>
+                <option value="__all__">{t('كل المحافظ', 'All wallets')}</option>
+                {merchantOptions.map((merchant) => <option key={merchant} value={merchant}>{merchant}</option>)}
+              </select>
+              <button className="btn-ghost btn-sm" type="button" disabled={!rotationScope} onClick={selectWalletsByScope}>{t('تحديد', 'Select')}</button>
+            </span>
+          )}
           {selectedWallets.length > 0 && <span className="cell-sub">{selectedWallets.length} {t('محددة', 'selected')}</span>}
           {canManageRotation && <button className="btn-ghost btn-sm" type="button" disabled={selectedWallets.length < 2} onClick={() => setRotationModalOpen(true)}><RotateCw size={14} /> {t('إنشاء ترتيب دوران للمحدد', 'Create rotation rule for selected')}</button>}
           {canCreateWallet && <button className="btn-ghost btn-sm" type="button" onClick={() => setAddWalletOpen(true)}><Plus size={14} /> {t('إضافة محفظة جديدة', 'Add new wallet')}</button>}
