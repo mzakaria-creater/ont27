@@ -51,6 +51,43 @@ function isNgPayGateway(row: Record<string, unknown>): boolean {
 
 const APPROVED_STATUSES = new Set(['PAID', 'APPROVED'])
 const phoneKey = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
+// Same last-10-digit convention as phoneKey, applied to a wallet/account
+// number — required because the same wallet is stored under more than one
+// raw format in production (with/without country code), a real bug already
+// found and fixed elsewhere this session (server/extras.ts). Comparing full
+// digit strings instead would silently fail to match.
+const accountKey = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
+
+interface MatchedDepositMethod { fee_mode: 'fixed' | 'percent' | 'both'; deposit_fee: number; min_amount: number | null; max_amount: number | null; method_name: string }
+
+// There is no FK from maven_transactions to payment_accounts/payment_methods
+// — this is the only way to know "this deposit used payment method X", and
+// it can fail to match (e.g. an InstaPay link/email stored as the account
+// number instead of digits). A miss returns null and the caller must treat
+// that as "nothing to enforce or compute", never as a guess.
+async function matchDepositPaymentMethod(wallet: unknown): Promise<MatchedDepositMethod | null> {
+  const key = accountKey(wallet)
+  if (!key) return null
+  const { data: accounts } = await db.from('payment_accounts').select('account_number, payment_method_id').not('payment_method_id', 'is', null)
+  const account = (accounts ?? []).find((row) => accountKey(row.account_number) === key)
+  if (!account?.payment_method_id) return null
+  const { data: method } = await db.from('payment_methods')
+    .select('method_name, fee_mode, deposit_fee, min_amount, max_amount')
+    .eq('id', account.payment_method_id).maybeSingle()
+  if (!method) return null
+  return { fee_mode: method.fee_mode, deposit_fee: Number(method.deposit_fee ?? 0), min_amount: method.min_amount == null ? null : Number(method.min_amount), max_amount: method.max_amount == null ? null : Number(method.max_amount), method_name: method.method_name }
+}
+
+// fee_mode 'both' has only one deposit_fee number to work with (the ported
+// schema has no separate fixed/percent components) — applying it as both a
+// flat add-on and a percentage simultaneously is a documented, deterministic
+// choice, not a silent guess; see the column comment in the migration.
+function computeMethodFee(amount: number, method: MatchedDepositMethod): number {
+  const percentPart = (amount * method.deposit_fee) / 100
+  if (method.fee_mode === 'fixed') return method.deposit_fee
+  if (method.fee_mode === 'percent') return percentPart
+  return method.deposit_fee + percentPart
+}
 const txTime = (row: Record<string, unknown>) => {
   const raw = String(row.created_utc ?? row.first_seen_at ?? '')
   const parsed = Date.parse(raw.includes('T') ? raw : `${raw.replace(' ', 'T')}Z`)
@@ -439,14 +476,14 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
 
   let { data: before, error: readErr } = await db
     .from('maven_transactions')
-    .select('tx_id, status, amount, currency, ontarget_ref, merchant, master_merchant, gateway, country, payment_method, request_type')
+    .select('tx_id, status, amount, currency, ontarget_ref, merchant, master_merchant, gateway, country, payment_method, request_type, to_account_number, receiving_wallet')
     .eq('tx_id', requestedId)
     .maybeSingle()
   // Operators often copy the merchant reference shown in the portal. Accept
   // that identifier too, but always continue with the canonical tx_id.
   if (!before && !readErr) {
     const resolved = await db.from('maven_transactions')
-      .select('tx_id, status, amount, currency, ontarget_ref, merchant, master_merchant, gateway, country, payment_method, request_type')
+      .select('tx_id, status, amount, currency, ontarget_ref, merchant, master_merchant, gateway, country, payment_method, request_type, to_account_number, receiving_wallet')
       .eq('ontarget_ref', requestedId).maybeSingle()
     before = resolved.data
     readErr = resolved.error
@@ -460,6 +497,22 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
   }
 
   const actor = c.get('actor')
+
+  // Payment-method limits are a hard block checked BEFORE any live-execution
+  // attempt — a match failure (no linked payment_accounts row) never blocks,
+  // only a confirmed match outside the configured range does.
+  let matchedMethod: MatchedDepositMethod | null = null
+  if (action === 'approve') {
+    matchedMethod = await matchDepositPaymentMethod(before.to_account_number ?? before.receiving_wallet)
+    if (matchedMethod) {
+      const amount = Number(before.amount)
+      const { min_amount, max_amount } = matchedMethod
+      if ((min_amount != null && amount < min_amount) || (max_amount != null && amount > max_amount)) {
+        return c.json({ error: 'amount_outside_method_limits', amount, min_amount, max_amount, method_name: matchedMethod.method_name }, 409)
+      }
+    }
+  }
+  const methodFeeAmount = matchedMethod ? computeMethodFee(Number(before.amount), matchedMethod) : null
 
   // NGPay deposits execute FOR REAL through the panel-v2 ngpay-approve worker
   // (2026-08-08 decision: own worker, not the old project's browser_jobs
@@ -531,6 +584,7 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
       approved_by: actor.username,
       last_status_change: mirrorNow,
       updated_at: mirrorNow,
+      ...(methodFeeAmount != null ? { method_fee_amount: methodFeeAmount } : {}),
     }).eq('tx_id', Number(txId)).eq('status', 'PENDING')
     if (mirrorErr) console.error('provider decision mirror update failed', { txId, error: mirrorErr.message })
 
@@ -573,6 +627,7 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
       approved_by: actor.username,
       last_status_change: nowIso,
       updated_at: nowIso,
+      ...(methodFeeAmount != null ? { method_fee_amount: methodFeeAmount } : {}),
     })
     .eq('tx_id', txId)
     .eq('status', 'PENDING')

@@ -2,14 +2,22 @@ import { Fragment, useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
 import { useLocale } from '../lib/locale'
-import { Building2, CreditCard, Globe2, LayoutGrid, Plus, Power, Search, Sparkles, TableProperties, Upload, UsersRound, WalletCards, X } from 'lucide-react'
+import { BadgePercent, Building2, CreditCard, Globe2, LayoutGrid, Plus, Power, Search, Sparkles, TableProperties, Upload, UsersRound, WalletCards, X } from 'lucide-react'
 import MethodLogo from '../components/MethodLogo'
 import { refreshBrandLogos } from '../lib/brandLogos'
 import { depositTime, money } from '../lib/deposits'
 import { useIsMobile } from '../lib/useIsMobile'
 import PressToPayNav from '../components/PressToPayNav'
 
-interface Method { id: string; method_code: string; method_name: string; channel_type: string; is_active: boolean; sort_order: number }
+interface Method {
+  id: string; method_code: string; method_name: string; channel_type: string; is_active: boolean; sort_order: number
+  name_ar: string | null; name_en: string | null; icon: string | null
+  fee_mode: 'fixed' | 'percent' | 'both'; deposit_fee: number; withdrawal_fee: number
+  min_amount: number | null; max_amount: number | null
+}
+const FEE_MODE_LABELS: Record<Method['fee_mode'], [string, string]> = {
+  fixed: ['ثابت', 'Fixed'], percent: ['نسبة', 'Percent'], both: ['ثابت + نسبة', 'Fixed + percent'],
+}
 interface Account {
   id: string; payment_method_id: string; payment_pool_id: string | null; account_number: string
   account_name: string | null; iban: string | null; bank_name: string | null; currency: string | null
@@ -67,6 +75,16 @@ function balanceAge(iso: string | null, t: (ar: string, en: string) => string): 
   return { text, stale }
 }
 
+function feeSummary(m: Method, t: (ar: string, en: string) => string): string {
+  const feeText = m.fee_mode === 'fixed' ? `${m.deposit_fee}`
+    : m.fee_mode === 'percent' ? `${m.deposit_fee}%`
+    : `${m.deposit_fee} + ${m.deposit_fee}%`
+  const limits = m.min_amount != null || m.max_amount != null
+    ? ` · ${m.min_amount ?? '—'}–${m.max_amount ?? '—'}`
+    : ''
+  return `${t('رسوم', 'Fee')} ${feeText}${limits}`
+}
+
 function masterCls(code: string | undefined): string {
   if (code === 'ngpay') return 'ngpay'
   if (code === 'payfuture') return 'payfuture'
@@ -82,6 +100,8 @@ export default function PaymentMethods() {
   const [open, setOpen] = useState<string | null>(null)
   const [account, setAccount] = useState<Omit<typeof emptyAccount, 'account_type'> & { account_type: Account['account_type'] }>(emptyAccount)
   const [newMethod, setNewMethod] = useState({ method_code: '', method_name: '', channel_type: 'sms_device' })
+  const [feeEdit, setFeeEdit] = useState<string | null>(null)
+  const [feeForm, setFeeForm] = useState<Pick<Method, 'name_ar' | 'name_en' | 'icon' | 'fee_mode' | 'deposit_fee' | 'withdrawal_fee' | 'min_amount' | 'max_amount'>>({ name_ar: '', name_en: '', icon: '', fee_mode: 'percent', deposit_fee: 0, withdrawal_fee: 0, min_amount: null, max_amount: null })
   const [newPool, setNewPool] = useState(emptyPool)
   const [assign, setAssign] = useState<Record<string, string>>({})
   const [merchantMultiAssign, setMerchantMultiAssign] = useState<Record<string, string[]>>({})
@@ -118,6 +138,12 @@ export default function PaymentMethods() {
 
   const toggle = async (m: Method) => { try { await api(`/api/payment-methods/${m.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !m.is_active }) }); await load() } catch { setError(t('تعذر الحفظ.', 'Unable to save.')) } }
   const addMethod = async (e: React.FormEvent) => { e.preventDefault(); try { await api('/api/payment-methods', { method: 'POST', body: JSON.stringify(newMethod) }); setNewMethod({ method_code: '', method_name: '', channel_type: 'sms_device' }); await load() } catch { setError(t('تعذر إضافة الطريقة.', 'Unable to add method.')) } }
+  const openFeeEdit = (m: Method) => { setFeeEdit(feeEdit === m.id ? null : m.id); setFeeForm({ name_ar: m.name_ar ?? '', name_en: m.name_en ?? '', icon: m.icon ?? '', fee_mode: m.fee_mode, deposit_fee: m.deposit_fee, withdrawal_fee: m.withdrawal_fee, min_amount: m.min_amount, max_amount: m.max_amount }) }
+  const saveFee = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!feeEdit) return
+    try { await api(`/api/payment-methods/${feeEdit}`, { method: 'PATCH', body: JSON.stringify(feeForm) }); setFeeEdit(null); await load() } catch { setError(t('تعذر حفظ الرسوم والحدود.', 'Unable to save fees and limits.')) }
+  }
   const useMethodPreset = (code: string) => {
     const preset = methodPresets.find((item) => item.code === code)
     if (preset) setNewMethod({ method_code: preset.code, method_name: preset.name, channel_type: preset.channel })
@@ -279,14 +305,31 @@ export default function PaymentMethods() {
                   const rows = data.accounts.filter((r) => r.payment_method_id === method.id)
                   return (
                     <div key={method.id} className="risk-row-card">
-                      <div className="risk-row-card-head"><span><MethodLogo method={method.method_name}/> <strong>{method.method_name}</strong></span><span className={`pay-status-badge ${method.is_active ? 'st-paid' : 'st-declined'}`}>{method.is_active ? t('نشط', 'Active') : t('موقوف', 'Inactive')}</span></div>
+                      <div className="risk-row-card-head"><span>{method.icon || <MethodLogo method={method.method_name}/>} <strong>{method.method_name}</strong></span><span className={`pay-status-badge ${method.is_active ? 'st-paid' : 'st-declined'}`}>{method.is_active ? t('نشط', 'Active') : t('موقوف', 'Inactive')}</span></div>
                       <div className="cell-sub mono">{method.method_code} · {method.channel_type.replaceAll('_', ' ')}</div>
+                      <div className="cell-sub">{feeSummary(method, t)}</div>
                       <div className="cell-sub">{rows.length} {t('حسابات مُسندة', 'assigned accounts')}</div>
                       <div className="payment-method-actions">
                         {canUploadLogo && <label title={t('رفع شعار','Upload logo')} className={`icon-action method-logo-upload${logoBusy===method.id?' disabled':''}`}><Upload size={15}/><input type="file" hidden disabled={logoBusy!==null} accept="image/png,image/jpeg,image/webp" onChange={(e)=>{void uploadMethodLogo(method,e.target.files?.[0]??null);e.currentTarget.value='' }}/></label>}
                         {editable && <button title={method.is_active?t('إيقاف','Disable'):t('تفعيل','Enable')} className={`icon-action ${method.is_active?'danger':'success'}`} onClick={() => void toggle(method)}><Power size={15}/></button>}
+                        {editable && <button title={t('الرسوم والحدود','Fees & limits')} className="icon-action" onClick={() => openFeeEdit(method)}><BadgePercent size={15}/></button>}
                         {create && <button title={t('إسناد حساب','Assign account')} className="icon-action primary" onClick={() => setOpen(open === method.id ? null : method.id)}><Plus size={16}/></button>}
                       </div>
+                      {feeEdit === method.id && (
+                        <form className="control-row" onSubmit={saveFee}>
+                          <input className="login-input" placeholder={t('الاسم بالعربية', 'Arabic name')} value={feeForm.name_ar ?? ''} onChange={(e) => setFeeForm({ ...feeForm, name_ar: e.target.value })} />
+                          <input className="login-input" dir="ltr" placeholder={t('الاسم بالإنجليزية', 'English name')} value={feeForm.name_en ?? ''} onChange={(e) => setFeeForm({ ...feeForm, name_en: e.target.value })} />
+                          <input className="login-input" style={{ width: 60 }} placeholder="💳" value={feeForm.icon ?? ''} onChange={(e) => setFeeForm({ ...feeForm, icon: e.target.value })} />
+                          <select className="login-input" value={feeForm.fee_mode} onChange={(e) => setFeeForm({ ...feeForm, fee_mode: e.target.value as Method['fee_mode'] })}>
+                            {(['fixed', 'percent', 'both'] as const).map((v) => <option key={v} value={v}>{t(...FEE_MODE_LABELS[v])}</option>)}
+                          </select>
+                          <input type="number" step="0.01" min={0} className="login-input" title={t('رسوم الإيداع', 'Deposit fee')} placeholder={t('رسوم الإيداع', 'Deposit fee')} value={feeForm.deposit_fee} onChange={(e) => setFeeForm({ ...feeForm, deposit_fee: Number(e.target.value) || 0 })} />
+                          <input type="number" step="0.01" min={0} className="login-input" title={t('رسوم السحب', 'Withdrawal fee')} placeholder={t('رسوم السحب', 'Withdrawal fee')} value={feeForm.withdrawal_fee} onChange={(e) => setFeeForm({ ...feeForm, withdrawal_fee: Number(e.target.value) || 0 })} />
+                          <input type="number" min={0} className="login-input" title={t('أقل مبلغ', 'Min amount')} placeholder={t('أقل مبلغ', 'Min amount')} value={feeForm.min_amount ?? ''} onChange={(e) => setFeeForm({ ...feeForm, min_amount: e.target.value === '' ? null : Number(e.target.value) })} />
+                          <input type="number" min={0} className="login-input" title={t('أقصى مبلغ', 'Max amount')} placeholder={t('أقصى مبلغ', 'Max amount')} value={feeForm.max_amount ?? ''} onChange={(e) => setFeeForm({ ...feeForm, max_amount: e.target.value === '' ? null : Number(e.target.value) })} />
+                          <button className="btn-primary btn-sm">{t('حفظ', 'Save')}</button>
+                        </form>
+                      )}
                       {open === method.id && (
                         <form className="control-row" onSubmit={addAccount}>
                           <select required className="login-input" value={account.account_number} onChange={(e) => setAccount({ ...account, account_number: e.target.value })}>
@@ -315,16 +358,32 @@ export default function PaymentMethods() {
             return (<Fragment key={method.id}>
               <tr>
                 <td><MethodLogo method={method.method_name}/></td>
-                <td><strong>{method.method_name}</strong><div className="cell-sub mono">{method.method_code}</div></td>
+                <td><strong>{method.icon ? `${method.icon} ` : ''}{method.method_name}</strong><div className="cell-sub mono">{method.method_code}</div><div className="cell-sub">{feeSummary(method, t)}</div></td>
                 <td><span className="pay-status-badge st-dim">{method.channel_type.replaceAll('_', ' ')}</span></td>
                 <td><strong className="mono">{rows.length}</strong><div className="cell-sub">{t('حسابات مُسندة', 'assigned accounts')}</div></td>
                 <td><span className={`pay-status-badge ${method.is_active ? 'st-paid' : 'st-declined'}`}>{method.is_active ? t('نشط', 'Active') : t('موقوف', 'Inactive')}</span></td>
                 <td><div className="payment-method-actions">
                   {canUploadLogo && <label title={t('رفع شعار','Upload logo')} className={`icon-action method-logo-upload${logoBusy===method.id?' disabled':''}`}><Upload size={15}/><input type="file" hidden disabled={logoBusy!==null} accept="image/png,image/jpeg,image/webp" onChange={(e)=>{void uploadMethodLogo(method,e.target.files?.[0]??null);e.currentTarget.value='' }}/></label>}
                   {editable && <button title={method.is_active?t('إيقاف','Disable'):t('تفعيل','Enable')} className={`icon-action ${method.is_active?'danger':'success'}`} onClick={() => void toggle(method)}><Power size={15}/></button>}
+                  {editable && <button title={t('الرسوم والحدود','Fees & limits')} className="icon-action" onClick={() => openFeeEdit(method)}><BadgePercent size={15}/></button>}
                   {create && <button title={t('إسناد حساب','Assign account')} className="icon-action primary" onClick={() => setOpen(open === method.id ? null : method.id)}><Plus size={16}/></button>}
                 </div></td>
               </tr>
+                {feeEdit === method.id && (
+                  <tr className="payment-method-inline-row"><td colSpan={6}><form className="control-row" onSubmit={saveFee}>
+                    <input className="login-input" placeholder={t('الاسم بالعربية', 'Arabic name')} value={feeForm.name_ar ?? ''} onChange={(e) => setFeeForm({ ...feeForm, name_ar: e.target.value })} />
+                    <input className="login-input" dir="ltr" placeholder={t('الاسم بالإنجليزية', 'English name')} value={feeForm.name_en ?? ''} onChange={(e) => setFeeForm({ ...feeForm, name_en: e.target.value })} />
+                    <input className="login-input" style={{ width: 60 }} placeholder="💳" value={feeForm.icon ?? ''} onChange={(e) => setFeeForm({ ...feeForm, icon: e.target.value })} />
+                    <select className="login-input" value={feeForm.fee_mode} onChange={(e) => setFeeForm({ ...feeForm, fee_mode: e.target.value as Method['fee_mode'] })}>
+                      {(['fixed', 'percent', 'both'] as const).map((v) => <option key={v} value={v}>{t(...FEE_MODE_LABELS[v])}</option>)}
+                    </select>
+                    <input type="number" step="0.01" min={0} className="login-input" title={t('رسوم الإيداع', 'Deposit fee')} placeholder={t('رسوم الإيداع', 'Deposit fee')} value={feeForm.deposit_fee} onChange={(e) => setFeeForm({ ...feeForm, deposit_fee: Number(e.target.value) || 0 })} />
+                    <input type="number" step="0.01" min={0} className="login-input" title={t('رسوم السحب', 'Withdrawal fee')} placeholder={t('رسوم السحب', 'Withdrawal fee')} value={feeForm.withdrawal_fee} onChange={(e) => setFeeForm({ ...feeForm, withdrawal_fee: Number(e.target.value) || 0 })} />
+                    <input type="number" min={0} className="login-input" title={t('أقل مبلغ', 'Min amount')} placeholder={t('أقل مبلغ', 'Min amount')} value={feeForm.min_amount ?? ''} onChange={(e) => setFeeForm({ ...feeForm, min_amount: e.target.value === '' ? null : Number(e.target.value) })} />
+                    <input type="number" min={0} className="login-input" title={t('أقصى مبلغ', 'Max amount')} placeholder={t('أقصى مبلغ', 'Max amount')} value={feeForm.max_amount ?? ''} onChange={(e) => setFeeForm({ ...feeForm, max_amount: e.target.value === '' ? null : Number(e.target.value) })} />
+                    <button className="btn-primary btn-sm">{t('حفظ', 'Save')}</button>
+                  </form></td></tr>
+                )}
                 {open === method.id && (
                   <tr className="payment-method-inline-row"><td colSpan={6}><form className="control-row" onSubmit={addAccount}>
                     <select required className="login-input" value={account.account_number} onChange={(e) => setAccount({ ...account, account_number: e.target.value })}>

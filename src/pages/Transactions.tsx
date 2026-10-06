@@ -702,7 +702,13 @@ export default function Transactions() {
       const workerDetail = e instanceof ApiError && e.code === 'worker_failed'
         ? (e.body?.worker as Record<string, unknown> | undefined)?.error
         : null
-      setErr(typeof workerDetail === 'string'
+      if (e instanceof ApiError && e.code === 'amount_outside_method_limits') {
+        const { amount, min_amount, max_amount, method_name } = e.body ?? {}
+        setErr(t(
+          `المبلغ ${amount} خارج حدود طريقة الدفع "${method_name}" (${min_amount ?? '—'}–${max_amount ?? '—'}).`,
+          `Amount ${amount} is outside "${method_name}"'s configured limits (${min_amount ?? '—'}–${max_amount ?? '—'}).`,
+        ))
+      } else setErr(typeof workerDetail === 'string'
         ? `${t('لم يتم تنفيذ القرار على Maven', 'Decision was not executed on Maven')}: ${workerDetail}`
         : e instanceof ApiError ? `${t('فشل تنفيذ القرار', 'Decision failed')}: ${e.code}` : t('فشل تنفيذ القرار.', 'Decision failed.'))
     } finally {

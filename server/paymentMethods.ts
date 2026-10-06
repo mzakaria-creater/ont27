@@ -6,7 +6,8 @@ import type { AuthEnv } from './rbac.js'
 export const paymentMethodRoutes = new Hono<AuthEnv>()
 paymentMethodRoutes.use('*', requireAuth)
 
-const methodColumns = 'id, method_code, method_name, channel_type, is_active, sort_order, created_at'
+const methodColumns = 'id, method_code, method_name, name_ar, name_en, icon, channel_type, is_active, sort_order, fee_mode, deposit_fee, withdrawal_fee, min_amount, max_amount, created_at'
+const FEE_MODES = new Set(['fixed', 'percent', 'both'])
 const accountColumns = 'id, payment_method_id, payment_pool_id, account_number, account_name, iban, bank_name, currency, country_code, device_name, label, is_active, priority, notes, account_type, current_balance, balance_updated_at, created_at'
 
 // Same Cairo-day-boundary and digit-normalization helpers already used by
@@ -274,9 +275,16 @@ paymentMethodRoutes.post('/', requirePerm('payment_methods', 'can_create'), asyn
   const method_name = text(body?.method_name)
   const channel_type = text(body?.channel_type, 60)
   if (!method_code || !method_name || !channel_type) return c.json({ error: 'invalid_method' }, 400)
+  const fee_mode = FEE_MODES.has(body?.fee_mode) ? body.fee_mode : 'percent'
   const { data, error } = await db.from('payment_methods').insert({
     method_code, method_name, channel_type, is_active: body?.is_active !== false,
     sort_order: Number.isFinite(Number(body?.sort_order)) ? Number(body.sort_order) : 999,
+    name_ar: text(body?.name_ar), name_en: text(body?.name_en), icon: text(body?.icon, 8),
+    fee_mode,
+    deposit_fee: Number.isFinite(Number(body?.deposit_fee)) ? Number(body.deposit_fee) : 0,
+    withdrawal_fee: Number.isFinite(Number(body?.withdrawal_fee)) ? Number(body.withdrawal_fee) : 0,
+    min_amount: body?.min_amount != null && Number.isFinite(Number(body.min_amount)) ? Number(body.min_amount) : null,
+    max_amount: body?.max_amount != null && Number.isFinite(Number(body.max_amount)) ? Number(body.max_amount) : null,
   }).select(methodColumns).single()
   if (error) return c.json({ error: 'db_error', detail: error.message }, 400)
   return c.json({ method: data }, 201)
@@ -299,6 +307,27 @@ paymentMethodRoutes.patch('/:id', requirePerm('payment_methods', 'can_edit'), as
   if (body?.sort_order !== undefined) {
     if (!Number.isFinite(Number(body.sort_order))) return c.json({ error: 'invalid_sort_order' }, 400)
     update.sort_order = Number(body.sort_order)
+  }
+  for (const key of ['name_ar', 'name_en'] as const) {
+    if (body?.[key] !== undefined) update[key] = text(body[key])
+  }
+  if (body?.icon !== undefined) update.icon = text(body.icon, 8)
+  if (body?.fee_mode !== undefined) {
+    if (!FEE_MODES.has(body.fee_mode)) return c.json({ error: 'invalid_fee_mode' }, 400)
+    update.fee_mode = body.fee_mode
+  }
+  for (const key of ['deposit_fee', 'withdrawal_fee'] as const) {
+    if (body?.[key] !== undefined) {
+      if (!Number.isFinite(Number(body[key]))) return c.json({ error: `invalid_${key}` }, 400)
+      update[key] = Number(body[key])
+    }
+  }
+  for (const key of ['min_amount', 'max_amount'] as const) {
+    if (body?.[key] !== undefined) {
+      if (body[key] === null) { update[key] = null; continue }
+      if (!Number.isFinite(Number(body[key]))) return c.json({ error: `invalid_${key}` }, 400)
+      update[key] = Number(body[key])
+    }
   }
   if (!Object.keys(update).length) return c.json({ error: 'nothing_to_update' }, 400)
   const { data, error } = await db.from('payment_methods').update(update).eq('id', c.req.param('id')).select(methodColumns).maybeSingle()
