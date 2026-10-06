@@ -626,9 +626,11 @@ walletRoutes.get(
   requireAnyPerm(['wallets', 'treasury', 'reports', 'sms_live'], 'can_view'),
   async (c) => {
     const days = Math.min(Math.max(Number(c.req.query('days')) || 7, 0.5), 90)
-    const old = oldDb()
-    if (!old) return c.json({ error: 'old_db_not_configured' }, 503)
-    const { data, error } = await old.rpc('wallet_movements', { p_days: days })
+    // 2026-10-05: this used to read the OLD project, which stopped receiving inbound_sms on
+    // 2026-09-19 once SMS ingestion moved to this project, so the page showed stale numbers.
+    // The v2 wallet_movements() (same JSON shape) also looks at confirmed_wallet_number, which
+    // the old one ignored (it missed e.g. 51,778 EGP of outgoing transfers on 2026-09-27).
+    const { data, error } = await db.rpc('wallet_movements', { p_days: days })
     if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
     return c.json(data)
   },

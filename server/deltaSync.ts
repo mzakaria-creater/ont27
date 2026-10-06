@@ -79,7 +79,7 @@ const PAGE = 1000
 // the fast path as a fail-safe so a provider list outage cannot freeze the
 // panel at its last transaction. The status/timestamp guard below prevents an
 // older collector row from undoing a newer local/provider decision.
-const LEGACY_MIRROR_TABLES = new Set(['maven_transactions', 'inbound_sms', 'crm_clients', 'api_risk_blacklist', 'wallet_device_map'])
+const LEGACY_MIRROR_TABLES = new Set(['maven_transactions', 'maven_payout_transactions', 'inbound_sms', 'crm_clients', 'api_risk_blacklist', 'wallet_device_map'])
 const FAST_TABLES = new Set(['maven_transactions', 'inbound_sms'])
 
 // Two cadences, because the two passes cost very different amounts.

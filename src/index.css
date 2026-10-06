@@ -4657,3 +4657,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .bulk-result-card.ok { border-color: var(--status-paid); }
 .bulk-result-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 600; }
 .bulk-result-failures { margin: 8px 0 0; padding-inline-start: 18px; font-size: 12.5px; color: var(--text-dim); display: flex; flex-direction: column; gap: 3px; }
+/* Late SMS match popup (2026-10-03): evidence grid + Yes/No/Open actions. */
+.late-match-popup{max-width:560px}
+.late-match-details{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 14px;margin:6px 0 2px;width:100%;font-size:13px}
+.late-match-details dt{color:var(--text-dim)}
+.late-match-details dd{margin:0;color:var(--text);overflow-wrap:anywhere}
+.late-match-warn{color:#d97706;font-weight:600}
+.late-match-error{color:#dc2626;font-weight:600;overflow-wrap:anywhere}
+.late-match-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.late-match-actions button{display:inline-flex;align-items:center;gap:6px}
+.late-match-actions button:disabled{opacity:.6;cursor:progress}

@@ -7,6 +7,7 @@ import { payoutRoutes } from './payouts.js'
 import { merchantRoutes } from './merchants.js'
 import { walletRoutes } from './wallets.js'
 import { smsRoutes } from './sms.js'
+import { lateSmsMatchRoutes } from './lateSmsMatches.js'
 import { deltaSyncRoutes } from './deltaSync.js'
 import { extraRoutes } from './extras.js'
 import { controlRoutes } from './control.js'
@@ -76,6 +77,7 @@ app.route('/devices', deviceRoutes)
 app.route('/merchants', merchantRoutes)
 app.route('/wallets', walletRoutes)
 app.route('/sms', smsRoutes)
+app.route('/late-matches', lateSmsMatchRoutes)
 app.route('/cron', deltaSyncRoutes)
 app.route('/control', controlRoutes)
 app.route('/complaints', complaintRoutes)

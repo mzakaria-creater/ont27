@@ -11,6 +11,7 @@ import { SUPABASE_URL, SUPABASE_KEY } from './lib/supabase'
 import { LocaleProvider, useLocale } from './lib/locale'
 import { installNotificationAudioUnlock, playNotificationTone } from './lib/notificationSounds'
 import WrongfulDeclineRealtimePopup from './components/WrongfulDeclineRealtimePopup'
+import LateSmsMatchPopup from './components/LateSmsMatchPopup'
 import SmsFreezeRealtimePopup from './components/SmsFreezeRealtimePopup'
 import AppErrorBoundary from './components/AppErrorBoundary'
 import PanelShell from './components/PanelShell'
@@ -486,6 +487,7 @@ function AppShell({ children }: { children: ReactNode }) {
     <div className="shell">
       <Topbar />
       <WrongfulDeclineRealtimePopup />
+      <LateSmsMatchPopup />
       <SmsFreezeRealtimePopup />
       {children}
     </div>
