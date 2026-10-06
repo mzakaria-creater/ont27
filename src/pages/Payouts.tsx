@@ -231,8 +231,8 @@ export default function Payouts() {
       enabled &&
       !window.confirm(
         t(
-          `تفعيل تنفيذ موافقات السحب على NGPay حتى ${cap.toLocaleString("en-US")} EGP لكل عملية؟`,
-          `Enable payout approval processing on NGPay up to ${cap.toLocaleString("en-US")} EGP per payout?`,
+          `تفعيل التنفيذ الآلي غير المراقب على NGPay حتى ${cap.toLocaleString("en-US")} EGP لكل عملية؟`,
+          `Enable unattended payout execution on NGPay up to ${cap.toLocaleString("en-US")} EGP per payout?`,
         ),
       )
     )
@@ -254,10 +254,13 @@ export default function Payouts() {
       setSettingsMessage(
         enabled
           ? t(
-              "تم تفعيل التنفيذ على NGPay ضمن الحد.",
-              "NGPay processing enabled within the cap.",
+              "تم تفعيل التنفيذ الآلي على NGPay ضمن الحد.",
+              "Automatic NGPay execution enabled within the cap.",
             )
-          : t("تم إيقاف التنفيذ على NGPay.", "NGPay processing disabled."),
+          : t(
+              "تم إيقاف التنفيذ الآلي؛ التنفيذ اليدوي ما زال يعمل.",
+              "Automatic execution disabled; manual execution remains available.",
+            ),
       );
     } catch (e) {
       setSettingsMessage(
@@ -475,7 +478,7 @@ export default function Payouts() {
             decision: editForm.status,
             proof_url: editForm.image_url || undefined,
             remark: editForm.remark,
-            mode: "auto",
+            mode: "manual",
             utr_number: utr.trim() || undefined,
           }),
         });
@@ -569,7 +572,7 @@ export default function Payouts() {
               ? undefined
               : proofUrl,
             remark,
-            mode: "auto",
+            mode: "manual",
             utr_number: utr.trim() || undefined,
           }),
         },
@@ -618,7 +621,7 @@ export default function Payouts() {
     try {
       const result = await api<DecisionResult>(`/api/payouts/${row.maven_id}/decision`, {
         method: "POST",
-        body: JSON.stringify({ decision: "DECLINED", remark: "Declined from payout queue", mode: "auto" }),
+        body: JSON.stringify({ decision: "DECLINED", remark: "Declined from payout queue", mode: "manual" }),
       });
       // HTTP 200 does not guarantee NagoPay was actually touched — the
       // worker can refuse to act (live status already changed) while still
@@ -702,7 +705,7 @@ export default function Payouts() {
     if (decision === "APPROVED") {
       const incomplete = rows.filter(
         (row) =>
-          !row.image_url ||
+          (!row.image_url && !(row.linked_sms && Number(row.linked_sms.amount) === Number(row.amount))) ||
           !(row.utr_number || row.linked_sms?.trx_id || row.linked_sms?.trx_reference),
       );
       if (incomplete.length) {
@@ -737,7 +740,7 @@ export default function Payouts() {
                 ? row.utr_number || row.linked_sms?.trx_id || row.linked_sms?.trx_reference
                 : undefined,
             remark: `Bulk ${decision} from ONT27`,
-            mode: "auto",
+            mode: "manual",
           }),
         });
         if (result.executed_on_provider) succeeded.push(row.maven_id);
@@ -821,14 +824,14 @@ export default function Payouts() {
           <div>
             <strong>
               {t(
-                "تنفيذ موافقات السحب على NGPay",
-                "Process payout approvals on NGPay",
+                "التنفيذ الآلي للسحب على NGPay",
+                "Automatic payout execution on NGPay",
               )}
             </strong>
             <p className="page-sub">
               {t(
-                "كل موافقة تتطلب إثباتاً وUTR وتأكيداً بشرياً، ولا تتجاوز الحد لكل عملية.",
-                "Every approval requires proof, UTR, and human confirmation, and cannot exceed the per-payout cap.",
+                "هذا المفتاح والحد يخصان التنفيذ غير المراقب فقط. اعتماد أو رفض الموظف ينفذ مباشرة بعد التحقق مثل Pay-in.",
+                "This switch and cap apply only to unattended execution. Staff approve/decline actions execute live after verification, like pay-in.",
               )}
             </p>
           </div>
@@ -851,21 +854,21 @@ export default function Payouts() {
               disabled={settingsBusy || execSettings?.auto_execute_enabled}
               onClick={() => void saveExecutionSettings(true)}
             >
-              {t("تفعيل التنفيذ", "Enable processing")}
+              {t("تفعيل الآلي", "Enable automatic")}
             </button>
             <button
               className="btn-ghost btn-sm danger"
               disabled={settingsBusy || !execSettings?.auto_execute_enabled}
               onClick={() => void saveExecutionSettings(false)}
             >
-              {t("إيقاف", "Disable")}
+              {t("إيقاف الآلي", "Disable automatic")}
             </button>
             <span
               className={`pay-status-badge ${execSettings?.auto_execute_enabled ? "st-paid" : "st-dim"}`}
             >
               {execSettings?.auto_execute_enabled
-                ? t("NGPay مفعّل", "NGPay enabled")
-                : t("متوقف", "Disabled")}
+                ? t("الآلي مفعّل", "Automatic enabled")
+                : t("الآلي متوقف", "Automatic disabled")}
             </span>
           </div>
           {settingsMessage && <p className="drawer-note">{settingsMessage}</p>}
@@ -1395,45 +1398,39 @@ export default function Payouts() {
                         onChange={(e) => setRemark(e.target.value)}
                         placeholder={t("ملاحظة اختيارية", "Optional note")}
                       />
-                      {execSettings?.auto_execute_enabled && (
-                        <>
-                          <label className="field-label">
-                            {t(
-                              "رقم التحويل UTR (إلزامي)",
-                              "Transfer reference / UTR (required)",
-                            )}
-                          </label>
-                          <input
-                            className="login-input"
-                            dir="ltr"
-                            value={utr}
-                            onChange={(e) => setUtr(e.target.value)}
-                            placeholder={t(
-                              "رقم التحويل الفعلي",
-                              "The real transfer reference",
-                            )}
-                          />
-                          {selected.linked_sms && Number(selected.linked_sms.amount) === Number(selected.amount) && utr && (
-                            <span className="payout-auto-utr-note">✓ {t(`UTR تلقائي من SMS سحب مطابقة للمبلغ ${money(selected.amount, 'EGP')}`, `UTR auto-filled from withdrawal SMS matching ${money(selected.amount, 'EGP')}`)}</span>
-                          )}
-                        </>
+                      <label className="field-label">
+                        {t(
+                          "رقم التحويل UTR (إلزامي)",
+                          "Transfer reference / UTR (required)",
+                        )}
+                      </label>
+                      <input
+                        className="login-input"
+                        dir="ltr"
+                        value={utr}
+                        onChange={(e) => setUtr(e.target.value)}
+                        placeholder={t(
+                          "رقم التحويل الفعلي",
+                          "The real transfer reference",
+                        )}
+                      />
+                      {selected.linked_sms && Number(selected.linked_sms.amount) === Number(selected.amount) && utr && (
+                        <span className="payout-auto-utr-note">✓ {t(`UTR تلقائي من SMS سحب مطابقة للمبلغ ${money(selected.amount, 'EGP')}`, `UTR auto-filled from withdrawal SMS matching ${money(selected.amount, 'EGP')}`)}</span>
+                      )}
+                      {!(selected.linked_sms && Number(selected.linked_sms.amount) === Number(selected.amount)) && utr && utr === String(selected.amount) && (
+                        <span className="payout-auto-utr-note warn-text">⚠ {t('لا يوجد رقم UTR حقيقي — هذا مبلغ المعاملة كقيمة مبدئية فقط؛ صحّحه قبل الاعتماد إن توفّر الرقم الفعلي.', 'No real UTR available — this is the transaction amount as a placeholder only; correct it before approving if the real reference is known.')}</span>
                       )}
                       <p className="drawer-note">
-                        {execSettings?.auto_execute_enabled
-                          ? t(
-                              "سيُرسل Screenshot وUTR إلى NagoPay ويضع السحب PAID، ثم يعيد قراءة حالة المزوّد قبل تسجيل النجاح.",
-                              "This sends the screenshot and UTR to NagoPay, marks the payout PAID, then reads the provider status back before recording success.",
-                            )
-                          : t(
-                              "إجراءات NagoPay المباشرة متوقفة. فعّل التنفيذ المباشر أولاً؛ لن يسجّل هذا النموذج قراراً يدوياً مضللاً.",
-                              "Live NagoPay actions are disabled. Enable live execution first; this form will not record a misleading manual decision.",
-                            )}
+                        {t(
+                          "سيُرسل Screenshot وUTR إلى NagoPay، ثم يعيد قراءة حالة المزوّد قبل تسجيل النجاح. لن تتغير الحالة محلياً إذا لم يؤكد NagoPay التنفيذ.",
+                          "This sends the screenshot and UTR to NagoPay, then reads the provider status back before recording success. Local status stays unchanged unless NagoPay confirms execution.",
+                        )}
                       </p>
                       {!execSettings?.auto_execute_enabled && (
                         <p className="cell-sub">
                           {t(
-                            "التنفيذ الآلي مُطفأ حالياً.",
-                            "Automatic execution is currently switched off.",
+                            "التنفيذ الآلي مُطفأ؛ التنفيذ اليدوي المصرّح به يعمل مباشرة.",
+                            "Automatic execution is off; authorized manual execution still runs live.",
                           )}
                         </p>
                       )}
@@ -1443,7 +1440,6 @@ export default function Payouts() {
                           decisionBusy ||
                           uploading ||
                           (!proofUrl && !(selected.linked_sms && Number(selected.linked_sms.amount) === Number(selected.amount))) ||
-                          !execSettings?.auto_execute_enabled ||
                           !utr.trim()
                         }
                         onClick={() => void decide("APPROVED")}
@@ -1456,8 +1452,7 @@ export default function Payouts() {
                         className="btn-ghost danger"
                         disabled={
                           decisionBusy ||
-                          uploading ||
-                          !execSettings?.auto_execute_enabled
+                          uploading
                         }
                         onClick={() => {
                           if (

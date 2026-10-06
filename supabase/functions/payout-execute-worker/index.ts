@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+import { isAmbiguousProviderError } from "../_shared/ngpayExecution.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -35,6 +36,11 @@ function json(body: unknown, status = 200) {
 // ============================================================================
 
 const DEFAULT_BASE = "https://bo.maven-consulting.co/Supplier";
+const DEFAULT_OPERATOR_BASE = "https://bo.maven-consulting.co/Supplieroperator";
+const RETRY_ATTEMPTS = 2;
+const RETRY_DELAY_MS = 300;
+const PROVIDER_FETCH_TIMEOUT_MS = 10_000;
+const VERIFY_DELAY_MS = 2_500;
 const STATUS_MAP: Record<string, string> = {
   APPROVED: "PAID",
   DECLINED: "DECLINED",
@@ -61,17 +67,83 @@ function pc(v: string | null): string {
     .join("; ");
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function login(u: string, p: string, base: string): Promise<string> {
   const lp = await fetch(`${base}/Login/PostV2`, {
+    signal: AbortSignal.timeout(PROVIDER_FETCH_TIMEOUT_MS),
     method: "POST",
     redirect: "manual",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ Username: u, Password: p }),
   });
   const cookie = pc(lp.headers.get("set-cookie"));
+  const location = lp.headers.get("location") ?? "";
   if (!cookie || lp.status >= 400)
     throw new Error(`provider login failed (${lp.status})`);
+  if (/resetpassword/i.test(location))
+    throw new Error("provider login blocked: password reset required");
+  if (lp.status !== 302 || /\/login|\/error/i.test(location))
+    throw new Error(
+      `provider login rejected (${lp.status} -> ${location || "no redirect"})`,
+    );
   return cookie;
+}
+
+type Session = {
+  cookie: string;
+  base: string;
+  account: "collector" | "operator";
+  fallback_reason?: string;
+};
+
+async function openSession(config: Map<string, string>): Promise<Session> {
+  const collectorUser =
+    config.get("MAVEN_COLLECTOR_USERNAME") || config.get("MAVEN_USERNAME");
+  const collectorPassword =
+    config.get("MAVEN_COLLECTOR_PASSWORD") || config.get("MAVEN_PASSWORD");
+  const collectorBase = config.get("MAVEN_COLLECTOR_BASE") || DEFAULT_BASE;
+  const operatorUser = config.get("MAVEN_OPERATOR_USERNAME");
+  const operatorPassword = config.get("MAVEN_OPERATOR_PASSWORD");
+  const operatorBase = config.get("MAVEN_OPERATOR_BASE") || DEFAULT_OPERATOR_BASE;
+  let firstError = "";
+
+  if (collectorUser && collectorPassword) {
+    try {
+      return {
+        cookie: await login(collectorUser, collectorPassword, collectorBase),
+        base: collectorBase,
+        account: "collector",
+      };
+    } catch (error) {
+      firstError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  if (operatorUser && operatorPassword) {
+    return {
+      cookie: await login(operatorUser, operatorPassword, operatorBase),
+      base: operatorBase,
+      account: "operator",
+      fallback_reason: firstError || "collector credentials missing",
+    };
+  }
+  throw new Error(firstError || "Missing provider credentials in maven_runtime_config");
+}
+
+async function openOperatorSession(config: Map<string, string>): Promise<Session> {
+  const username = config.get("MAVEN_OPERATOR_USERNAME");
+  const password = config.get("MAVEN_OPERATOR_PASSWORD");
+  const base = config.get("MAVEN_OPERATOR_BASE") || DEFAULT_OPERATOR_BASE;
+  if (!username || !password)
+    throw new Error("Operator fallback credentials are not configured");
+  return {
+    cookie: await login(username, password, base),
+    base,
+    account: "operator",
+    fallback_reason: "collector payout list failed after retry",
+  };
 }
 
 // The payout list is the only working read for a single payout's status.
@@ -113,6 +185,7 @@ async function readPayoutStatus(
     EndCreatedDate: fmt(endDate, "23:59:59"),
   }).toString();
   const r = await fetch(`${base}/Transactions/GetP2PPayoutTransactions`, {
+    signal: AbortSignal.timeout(PROVIDER_FETCH_TIMEOUT_MS),
     method: "POST",
     headers: {
       cookie,
@@ -130,10 +203,99 @@ async function readPayoutStatus(
   return row ? String(row.Status ?? "") : null;
 }
 
+async function readPayoutStatusWithRetry(
+  cookie: string,
+  base: string,
+  mavenId: number,
+  firstSeenAt?: string | null,
+): Promise<string | null> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await readPayoutStatus(cookie, base, mavenId, firstSeenAt);
+    } catch (error) {
+      lastError = error;
+      if (!isAmbiguousProviderError(error) || attempt === RETRY_ATTEMPTS) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          attempt > 1 ? `${message} (after ${attempt} attempts)` : message,
+        );
+      }
+      await sleep(RETRY_DELAY_MS);
+    }
+  }
+  throw lastError;
+}
+
+async function submitPayoutUpdate(
+  session: Session,
+  mavenId: number,
+  target: string,
+  utrNumber: string | undefined,
+  remark: string | undefined,
+  proofUrl: string | undefined,
+) {
+  const form = new FormData();
+  form.append("Id", String(mavenId));
+  form.append("status", target);
+  form.append("utrNumbder", utrNumber?.trim() ?? ""); // Maven's spelling.
+  form.append("remark", remark ?? "");
+  form.append("chkTestTxn", "false");
+  if (proofUrl) {
+    try {
+      const image = await fetch(proofUrl, {
+        signal: AbortSignal.timeout(PROVIDER_FETCH_TIMEOUT_MS),
+      });
+      if (image.ok) {
+        const blob = await image.blob();
+        form.append("ImageUpload", blob, `proof-${mavenId}.jpg`);
+      }
+    } catch {
+      // The provider requires UTR; a proof-fetch failure is still recorded by
+      // the caller and does not justify a second provider write.
+    }
+  }
+
+  const response = await fetch(
+    `${session.base}/Transactions/UpdateP2PPayoutTransaction`,
+    {
+      signal: AbortSignal.timeout(PROVIDER_FETCH_TIMEOUT_MS),
+      method: "POST",
+      headers: {
+        cookie: session.cookie,
+        "X-Requested-With": "XMLHttpRequest",
+        referer: `${session.base}/Transactions/GetP2PPayoutTransactionList`,
+        origin: "https://bo.maven-consulting.co",
+      },
+      body: form,
+    },
+  );
+  const text = await response.text();
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    parsed = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    // Maven sometimes returns an empty success body.
+  }
+  if (!response.ok)
+    throw new Error(
+      `UpdateP2PPayoutTransaction HTTP ${response.status}: ${text.slice(0, 200)}`,
+    );
+  if (parsed?.success === false)
+    throw new Error(
+      `UpdateP2PPayoutTransaction rejected: ${String(parsed.message ?? text.slice(0, 200))}`,
+    );
+  if (typeof parsed?.redirect === "string")
+    throw new Error(
+      `UpdateP2PPayoutTransaction not authenticated (redirect ${parsed.redirect})`,
+    );
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS")
     return new Response("ok", { headers: corsHeaders });
 
+  const requestStartedAt = performance.now();
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -142,12 +304,35 @@ Deno.serve(async (req) => {
     const token = (req.headers.get("authorization") ?? "")
       .replace(/^Bearer\s+/i, "")
       .trim();
-    if (!token) return json({ error: "unauthorized" }, 401);
-    const probe = createClient(supabaseUrl, token, {
-      auth: { persistSession: false },
-    });
-    if ((await probe.from("panel_users").select("id").limit(1)).error)
+    if (!token || token !== serviceKey)
       return json({ error: "unauthorized" }, 401);
+
+    const configNames = [
+      "MAVEN_COLLECTOR_USERNAME",
+      "MAVEN_USERNAME",
+      "MAVEN_COLLECTOR_PASSWORD",
+      "MAVEN_PASSWORD",
+      "MAVEN_COLLECTOR_BASE",
+      "MAVEN_OPERATOR_USERNAME",
+      "MAVEN_OPERATOR_PASSWORD",
+      "MAVEN_OPERATOR_BASE",
+    ];
+    const { data: configRows, error: configError } = await sb
+      .from("maven_runtime_config")
+      .select("name,value")
+      .eq("owner_name", "global")
+      .in("name", configNames);
+    if (configError)
+      return json(
+        { error: `Provider configuration read failed: ${configError.message}` },
+        500,
+      );
+    const config = new Map(
+      (configRows ?? []).map((row: { name: string; value: string }) => [
+        row.name,
+        row.value,
+      ]),
+    );
 
     const body = await req.json().catch(() => ({}));
     const {
@@ -269,33 +454,33 @@ Deno.serve(async (req) => {
       );
     }
 
-    const g = async (n: string, owner = "global") =>
-      (
-        await sb
-          .from("maven_runtime_config")
-          .select("value")
-          .eq("name", n)
-          .eq("owner_name", owner)
-          .maybeSingle()
-      ).data?.value;
-    const username =
-      (await g("MAVEN_COLLECTOR_USERNAME")) || (await g("MAVEN_USERNAME"));
-    const password =
-      (await g("MAVEN_COLLECTOR_PASSWORD")) || (await g("MAVEN_PASSWORD"));
-    const base = (await g("MAVEN_COLLECTOR_BASE")) || DEFAULT_BASE;
-    if (!username || !password)
-      return await fail(
-        "Missing provider credentials in maven_runtime_config",
-        500,
-      );
-
     let beforeStatus: string | null = null;
     let afterStatus: string | null = null;
+    let session: Session | null = null;
     try {
-      const cookie = await login(username, password, base);
+      session = await openSession(config);
 
       // Refuse to touch anything the provider does not still show as pending.
-      beforeStatus = await readPayoutStatus(cookie, base, Number(maven_id), payout.first_seen_at);
+      try {
+        beforeStatus = await readPayoutStatusWithRetry(
+          session.cookie,
+          session.base,
+          Number(maven_id),
+          payout.first_seen_at,
+        );
+      } catch (firstError) {
+        if (
+          session.account !== "collector" ||
+          !isAmbiguousProviderError(firstError)
+        ) throw firstError;
+        session = await openOperatorSession(config);
+        beforeStatus = await readPayoutStatusWithRetry(
+          session.cookie,
+          session.base,
+          Number(maven_id),
+          payout.first_seen_at,
+        );
+      }
       await sb
         .from("payout_decision_log")
         .update({ provider_raw_status_at_decision: beforeStatus })
@@ -314,48 +499,56 @@ Deno.serve(async (req) => {
           409,
         );
       } else {
-        const form = new FormData();
-        form.append("Id", String(maven_id));
-        form.append("status", target);
-        form.append("utrNumbder", utr_number?.trim() ?? ""); // the portal's own spelling
-        form.append("remark", remark ?? "");
-        form.append("chkTestTxn", "false");
-        if (proof_url) {
-          try {
-            const img = await fetch(proof_url);
-            if (img.ok) {
-              const blob = await img.blob();
-              form.append("ImageUpload", blob, `proof-${maven_id}.jpg`);
-            }
-          } catch {
-            /* the proof is a nice-to-have; the UTR is what the portal requires */
-          }
+        let submitError: unknown = null;
+        try {
+          await submitPayoutUpdate(
+            session,
+            Number(maven_id),
+            target,
+            utr_number,
+            remark,
+            proof_url,
+          );
+        } catch (error) {
+          // A lost timeout/5xx response may happen after Maven commits. Match
+          // pay-in: read back once and never issue a blind duplicate payout.
+          if (!isAmbiguousProviderError(error)) throw error;
+          submitError = error;
         }
 
-        const r = await fetch(
-          `${base}/Transactions/UpdateP2PPayoutTransaction`,
-          {
-            method: "POST",
-            headers: {
-              cookie,
-              "X-Requested-With": "XMLHttpRequest",
-              referer: `${base}/Transactions/GetP2PPayoutTransactionList`,
-              origin: "https://bo.maven-consulting.co",
-            },
-            body: form,
-          },
-        );
-        const text = await r.text();
-        if (!r.ok)
-          return await fail(
-            `UpdateP2PPayoutTransaction HTTP ${r.status}: ${text.slice(0, 200)}`,
-            502,
-          );
-
         // 4. Verify against the provider's own view before claiming anything.
-        await new Promise((res) => setTimeout(res, 2500));
-        afterStatus = await readPayoutStatus(cookie, base, Number(maven_id), payout.first_seen_at);
+        await sleep(VERIFY_DELAY_MS);
+        try {
+          afterStatus = await readPayoutStatusWithRetry(
+            session.cookie,
+            session.base,
+            Number(maven_id),
+            payout.first_seen_at,
+          );
+        } catch (readBackError) {
+          if (submitError) {
+            const submitMessage = submitError instanceof Error
+              ? submitError.message
+              : String(submitError);
+            const readMessage = readBackError instanceof Error
+              ? readBackError.message
+              : String(readBackError);
+            throw new Error(
+              `${submitMessage}; provider read-back also failed: ${readMessage}`,
+            );
+          }
+          throw readBackError;
+        }
         if (!afterStatus || normalizedProviderStatus(afterStatus) !== target) {
+          if (submitError) {
+            const message = submitError instanceof Error
+              ? submitError.message
+              : String(submitError);
+            return await fail(
+              `${message}; read-back did not confirm the requested state (expected ${target}, provider says ${afterStatus ?? "unknown"})`,
+              502,
+            );
+          }
           return await fail(
             `Update sent but verify failed: expected ${target}, provider says ${afterStatus ?? "unknown"}`,
             502,
@@ -386,6 +579,7 @@ Deno.serve(async (req) => {
       // caught up, otherwise a stale PENDING sync immediately reverts the UI.
       .update({
         status: decision,
+        approved_by: actor_name,
         updated_utc: nowIso,
         manual_status_override: true,
         manual_reopened_at: null,
@@ -395,13 +589,16 @@ Deno.serve(async (req) => {
 
     return json({
       ok: true,
-      mode: "auto",
+      mode: oneTimeBatchDecline ? "batch_decline" : wantAuto ? "auto" : "manual",
       maven_id,
       decision,
       before_status: beforeStatus,
       after_status: afterStatus,
       audit_log_id: logRow.id,
       executed_on_provider: true,
+      account: session?.account,
+      fallback_reason: session?.fallback_reason ?? null,
+      execution_ms: Math.round(performance.now() - requestStartedAt),
       warning: updErr
         ? `provider execution succeeded but local row update failed: ${updErr.message}`
         : undefined,

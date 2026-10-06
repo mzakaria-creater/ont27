@@ -457,6 +457,7 @@ payoutRoutes.post(
   "/:mavenId/decision",
   requirePerm("payouts", "can_approve"),
   async (c) => {
+    const requestStartedAt = performance.now();
     const mavenId = c.req.param("mavenId");
     if (!/^\d+$/.test(mavenId)) return c.json({ error: "bad_id" }, 400);
 
@@ -519,65 +520,174 @@ payoutRoutes.post(
       return c.json({ error: "utr_required" }, 400);
 
     const actor = c.get("actor");
-    const serviceKey = process.env.SUPABASE_SECRET_KEY;
+    const serviceKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
     if (!baseUrl || !serviceKey)
       return c.json({ error: "worker_not_configured" }, 500);
     const workerUrl = `${baseUrl}/functions/v1/payout-execute-worker`;
-    const workerResponse = await fetch(workerUrl, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${serviceKey}`,
-        apikey: serviceKey,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        maven_id: Number(mavenId),
-        decision,
+    const workerStartedAt = performance.now();
+    let workerResponse: Response;
+    let workerResult: Record<string, unknown>;
+    try {
+      workerResponse = await fetch(workerUrl, {
+        method: "POST",
+        signal: AbortSignal.timeout(75_000),
+        headers: {
+          authorization: `Bearer ${serviceKey}`,
+          apikey: serviceKey,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          maven_id: Number(mavenId),
+          decision,
+          actor_name: actor.username,
+          proof_url: proofUrl,
+          remark,
+          mode,
+          utr_number: utrNumber || undefined,
+        }),
+      });
+      workerResult = (await workerResponse
+        .json()
+        .catch(() => ({ error: "worker_invalid_response" }))) as Record<
+        string,
+        unknown
+      >;
+    } catch (error) {
+      const message = error instanceof Error && error.name === "TimeoutError"
+        ? "Provider execution timed out — no confirmed decision was returned. Check Maven before retrying."
+        : error instanceof Error
+          ? error.message
+          : "Provider worker request failed";
+      await db.from("audit_log").insert({
+        actor_type: "manual_panel",
+        actor_id: actor.sub,
         actor_name: actor.username,
-        proof_url: proofUrl,
-        remark,
-        mode,
-        utr_number: utrNumber || undefined,
-      }),
-    });
-    const workerResult = (await workerResponse
-      .json()
-      .catch(() => ({ error: "worker_invalid_response" }))) as Record<
-      string,
-      unknown
-    >;
+        action: `payout.${decision.toLowerCase()}`,
+        entity: "maven_payout_transactions",
+        entity_id: mavenId,
+        before: { status: before.status, amount: before.amount },
+        after: {
+          decision,
+          mode,
+          remark,
+          executed_on_provider: false,
+          local_mirror_unchanged: true,
+          worker: { error: message },
+        },
+      });
+      return c.json({ error: "worker_failed", worker: { error: message } }, 504);
+    }
 
-    await db.from("audit_log").insert({
-      actor_type: "manual_panel",
-      actor_id: actor.sub,
-      actor_name: actor.username,
-      action: `payout.${decision.toLowerCase()}`,
-      entity: "maven_payout_transactions",
-      entity_id: mavenId,
-      before: { status: before.status, amount: before.amount },
-      after: {
-        decision,
-        mode,
-        remark,
-        executed_on_provider: workerResult.executed_on_provider === true,
-        provider_status_after: workerResult.after_status ?? null,
-      },
-    });
-
-    if (!workerResponse.ok)
+    const workerMs = Math.round(performance.now() - workerStartedAt);
+    const executed =
+      workerResponse.ok &&
+      workerResult.ok !== false &&
+      workerResult.executed_on_provider === true;
+    if (!executed) {
+      await db.from("audit_log").insert({
+        actor_type: "manual_panel",
+        actor_id: actor.sub,
+        actor_name: actor.username,
+        action: `payout.${decision.toLowerCase()}`,
+        entity: "maven_payout_transactions",
+        entity_id: mavenId,
+        before: { status: before.status, amount: before.amount },
+        after: {
+          decision,
+          mode,
+          remark,
+          executed_on_provider: false,
+          provider_status_after: workerResult.after_status ?? null,
+          local_mirror_unchanged: true,
+          worker: workerResult,
+          worker_ms: workerMs,
+        },
+      });
+      const status = workerResponse.ok
+        ? 409
+        : ([400, 401, 403, 404, 409, 500, 502, 504].includes(
+              workerResponse.status,
+            )
+          ? workerResponse.status
+          : 502);
       return c.json(
         { error: "worker_failed", worker: workerResult },
-        workerResponse.status as 400 | 401 | 403 | 404 | 409 | 500,
+        status as 400 | 401 | 403 | 404 | 409 | 500 | 502 | 504,
       );
-    if (workerResult.executed_on_provider === true) {
+    }
+
+    // Match pay-in's confirmed-provider path: repaint the local queue now,
+    // but only from PENDING so a concurrent operator decision cannot be lost.
+    const mirrorNow = new Date().toISOString();
+    const { error: mirrorError } = await db
+      .from("maven_payout_transactions")
+      .update({
+        status: decision,
+        approved_by: actor.username,
+        updated_utc: mirrorNow,
+        manual_status_override: true,
+        manual_reopened_at: null,
+        manual_reopened_by: null,
+      })
+      .eq("maven_id", Number(mavenId))
+      .eq("status", "PENDING");
+    if (mirrorError)
+      console.error("provider payout mirror update failed", {
+        mavenId,
+        error: mirrorError.message,
+      });
+
+    const postProcessing = (async () => {
+      const { error: auditError } = await db.from("audit_log").insert({
+        actor_type: "manual_panel",
+        actor_id: actor.sub,
+        actor_name: actor.username,
+        action: `payout.${decision.toLowerCase()}`,
+        entity: "maven_payout_transactions",
+        entity_id: mavenId,
+        before: { status: before.status, amount: before.amount },
+        after: {
+          decision,
+          mode,
+          remark,
+          executed_on_provider: true,
+          provider_status_after: workerResult.after_status ?? null,
+          worker_ms: workerMs,
+        },
+      });
+      if (auditError)
+        console.error("payout decision audit mirror failed", {
+          mavenId,
+          error: auditError.message,
+        });
       await notifyTransactionDecision(
         "payout",
         { ...before, tx_id: mavenId },
         decision === "APPROVED" ? "approved" : "declined",
         actor.username,
       );
+    })();
+    postProcessing.catch((error) =>
+      console.error("payout decision post-processing failed", {
+        mavenId,
+        error,
+      }),
+    );
+    try {
+      c.executionCtx.waitUntil(postProcessing);
+    } catch {
+      // Node/Railway keeps active promises alive itself.
     }
-    // Report exactly what the worker verified — never a friendlier version of it.
-    return c.json(workerResult);
+
+    const totalMs = Math.round(performance.now() - requestStartedAt);
+    c.header("Server-Timing", `provider;dur=${workerMs}, total;dur=${totalMs}`);
+    return c.json({
+      ...workerResult,
+      ok: true,
+      executed_on_provider: true,
+      post_processing: "scheduled",
+      timings_ms: { provider: workerMs, total: totalMs },
+    });
   },
 );
