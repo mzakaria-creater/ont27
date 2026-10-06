@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, CheckCircle2, CircleDollarSign, Download, Filter, Pencil, Plus, RefreshCw, RotateCw, Search, ShieldAlert, Smartphone, Target, Trash2, WalletCards, Wifi, WifiOff, X } from 'lucide-react'
+import { Activity, CheckCircle2, CircleDollarSign, Download, Filter, Pencil, Plus, RefreshCw, RotateCw, Search, ShieldAlert, Smartphone, Trash2, WalletCards, Wifi, WifiOff, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
@@ -44,6 +44,7 @@ interface RotationGroup {
 }
 const providers = ['Orange Money', 'Vodafone Cash', 'Etisalat Cash', 'WE Pay', 'InstaPay']
 const emptyNewWallet = { wallet_number: '', provider: 'Orange Money', merchant: '', daily_limit: '' }
+const batches = <T,>(items: T[], size: number) => Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size))
 
 export default function MavenWallets() {
   const { t } = useLocale()
@@ -55,12 +56,12 @@ export default function MavenWallets() {
   const [status, setStatus] = useState('all')
   const [selectedLive, setSelectedLive] = useState<string[]>([])
   const [livePage, setLivePage] = useState(1)
-  const [replacementThreshold, setReplacementThreshold] = useState('85')
   const [replaceTarget, setReplaceTarget] = useState<string[] | null>(null)
   const [replaceNewNumber, setReplaceNewNumber] = useState('')
   const [replacePreview, setReplacePreview] = useState<Record<string, { loading: boolean; current: string | null; error: string | null }>>({})
   const [replaceResults, setReplaceResults] = useState<Record<string, { ok: boolean; message: string }>>({})
   const [replaceBusy, setReplaceBusy] = useState(false)
+  const [replaceProgress, setReplaceProgress] = useState<{ phase: 'preview' | 'change'; completed: number; total: number } | null>(null)
   const [replaceNotice, setReplaceNotice] = useState<string | null>(null)
 
   const [addNewTarget, setAddNewTarget] = useState<string | null>(null)
@@ -171,45 +172,72 @@ export default function MavenWallets() {
 
   // Real change against Maven's admin back office — always preview (read-only,
   // shows the current number) before the operator can confirm a commit.
-  const openReplace = (bankIds: string[]) => {
-    const targets = bankIds.filter(Boolean)
+  const openReplace = async (bankIds: string[]) => {
+    const targets = [...new Set(bankIds.filter(Boolean))]
     setReplaceTarget(targets); setReplaceNewNumber(''); setReplaceResults({})
     setReplacePreview(Object.fromEntries(targets.map((id) => [id, { loading: true, current: null, error: null }])))
-    void api<{ results: Array<{ bank_id: string; ok: boolean; current?: { PhoneNumber?: string }; error?: string }> }>('/api/wallets/live/replacement/preview-bulk', {
-      method: 'POST', body: JSON.stringify({ bank_ids: targets }),
-    }).then(({ results }) => {
-      const byId = new Map(results.map((result) => [String(result.bank_id), result]))
-      setReplacePreview(Object.fromEntries(targets.map((id) => {
-        const result = byId.get(id)
-        return [id, result?.ok
-          ? { loading: false, current: result.current?.PhoneNumber ?? null, error: null }
-          : { loading: false, current: null, error: t('تعذّر جلب الرقم الحالي', 'Could not fetch the current number') }]
-      })))
-    }).catch(() => setReplacePreview(Object.fromEntries(targets.map((id) => [id, {
-      loading: false, current: null, error: t('تعذّر جلب الرقم الحالي', 'Could not fetch the current number'),
-    }]))))
+    setReplaceProgress({ phase: 'preview', completed: 0, total: targets.length })
+    let completed = 0
+    for (const group of batches(targets, 24)) {
+      try {
+        const { results } = await api<{ results: Array<{ bank_id: string; ok: boolean; current?: { PhoneNumber?: string }; error?: string }> }>('/api/wallets/live/replacement/preview-bulk', {
+          method: 'POST', body: JSON.stringify({ bank_ids: group }),
+        })
+        const byId = new Map(results.map((result) => [String(result.bank_id), result]))
+        setReplacePreview((previous) => ({ ...previous, ...Object.fromEntries(group.map((id) => {
+          const result = byId.get(id)
+          return [id, result?.ok
+            ? { loading: false, current: result.current?.PhoneNumber ?? null, error: null }
+            : { loading: false, current: null, error: result?.error || t('تعذّر جلب الرقم الحالي', 'Could not fetch the current number') }]
+        })) }))
+      } catch (error) {
+        const message = error instanceof ApiError ? error.code : t('تعذّر جلب الرقم الحالي', 'Could not fetch the current number')
+        setReplacePreview((previous) => ({ ...previous, ...Object.fromEntries(group.map((id) => [id, { loading: false, current: null, error: message }])) }))
+      }
+      completed += group.length
+      setReplaceProgress({ phase: 'preview', completed, total: targets.length })
+    }
+    setReplaceProgress(null)
   }
-  const previewReady = replaceTarget?.length ? replaceTarget.every((id) => replacePreview[id] && !replacePreview[id].loading && !replacePreview[id].error) : false
+  const replaceReadyTargets = (replaceTarget ?? []).filter((id) => replacePreview[id] && !replacePreview[id].loading && !replacePreview[id].error)
+  const replaceLoadingCount = (replaceTarget ?? []).filter((id) => replacePreview[id]?.loading).length
+  const replaceSkippedCount = (replaceTarget?.length ?? 0) - replaceReadyTargets.length - replaceLoadingCount
+  const replaceCommitTargets = replaceReadyTargets.filter((id) => replacePreview[id]?.current?.replace(/\D/g, '') !== replaceNewNumber)
+  const replaceNoopCount = replaceReadyTargets.length - replaceCommitTargets.length
   const submitReplace = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (!replaceTarget || !/^\d{8,20}$/.test(replaceNewNumber)) return
+    if (!replaceCommitTargets.length || !/^\d{8,20}$/.test(replaceNewNumber)) return
     setReplaceBusy(true)
-    try {
-      const { results } = await api<{ results: Array<{ bank_id: string; ok: boolean; changed_from?: string; changed_to?: string; error?: string }> }>('/api/wallets/live/replacement/commit-bulk', {
-        method: 'POST', body: JSON.stringify({ bank_ids: replaceTarget, new_wallet_number: replaceNewNumber }),
-      })
-      const byId = new Map(results.map((result) => [String(result.bank_id), result]))
-      setReplaceResults(Object.fromEntries(replaceTarget.map((bankId) => {
-        const result = byId.get(bankId)
-        return [bankId, result?.ok
-          ? { ok: true, message: t(`تم التغيير: ${result.changed_from ?? '—'} → ${result.changed_to ?? replaceNewNumber}`, `Changed: ${result.changed_from ?? '—'} → ${result.changed_to ?? replaceNewNumber}`) }
-          : { ok: false, message: result?.error || t('فشل التغيير على Maven', 'Change failed on Maven') }]
-      })))
-    } catch (error) {
-      const message = error instanceof ApiError ? error.message : ''
-      setReplaceResults(Object.fromEntries(replaceTarget.map((bankId) => [bankId, { ok: false, message: message || t('فشل التغيير على Maven', 'Change failed on Maven') }])))
+    setReplaceProgress({ phase: 'change', completed: 0, total: replaceCommitTargets.length })
+    const finalResults: Record<string, { ok: boolean; message: string }> = {}
+    for (const bankId of replaceTarget ?? []) {
+      if (replacePreview[bankId]?.error) finalResults[bankId] = { ok: false, message: t('تم التخطي: تعذّرت المعاينة', 'Skipped: preview failed') }
+      else if (replacePreview[bankId]?.current?.replace(/\D/g, '') === replaceNewNumber) finalResults[bankId] = { ok: true, message: t('لا تغيير: الرقم مطابق بالفعل', 'No change: number already matches') }
     }
+    let completed = 0
+    for (const group of batches(replaceCommitTargets, 12)) {
+      try {
+        const { results } = await api<{ results: Array<{ bank_id: string; ok: boolean; changed_from?: string; changed_to?: string; error?: string }> }>('/api/wallets/live/replacement/commit-bulk', {
+          method: 'POST', body: JSON.stringify({ bank_ids: group, new_wallet_number: replaceNewNumber }),
+        })
+        const byId = new Map(results.map((result) => [String(result.bank_id), result]))
+        for (const bankId of group) {
+          const result = byId.get(bankId)
+          finalResults[bankId] = result?.ok
+            ? { ok: true, message: t(`تم التغيير: ${result.changed_from ?? '—'} → ${result.changed_to ?? replaceNewNumber}`, `Changed: ${result.changed_from ?? '—'} → ${result.changed_to ?? replaceNewNumber}`) }
+            : { ok: false, message: result?.error || t('فشل التغيير على Maven', 'Change failed on Maven') }
+        }
+      } catch (error) {
+        const message = error instanceof ApiError ? error.code : t('فشل التغيير على Maven', 'Change failed on Maven')
+        for (const bankId of group) finalResults[bankId] = { ok: false, message }
+      }
+      completed += group.length
+      setReplaceResults({ ...finalResults })
+      setReplaceProgress({ phase: 'change', completed, total: replaceCommitTargets.length })
+    }
+    setReplaceResults(finalResults)
     setReplaceBusy(false)
+    setReplaceProgress(null)
     setReplaceNotice(t('انتهى تنفيذ التغيير — راجع النتائج لكل رقم أدناه.', 'Change run finished — review each number’s result below.'))
     void refresh()
   }
@@ -323,10 +351,10 @@ export default function MavenWallets() {
       {replaceNotice && <div className="card">{replaceNotice} <button type="button" className="btn-ghost btn-sm" onClick={() => setReplaceNotice(null)}>{t('إغلاق', 'Dismiss')}</button></div>}
       <section className="card maven-live-accounts">
         <div className="recent-head"><div><h3>{t('أرقام الاستقبال الحية', 'Live receiving numbers')}</h3><p className="cell-sub">{t('البيانات القادمة من Maven — اختر عدة أرقام لإدارة الاستبدال.', 'Maven source data — select multiple numbers for replacement management.')}</p></div><button className="btn-ghost btn-sm" type="button" onClick={() => void refresh()}><RefreshCw size={15} /> {t('تحديث', 'Refresh')}</button></div>
-        <div className="maven-live-toolbar"><label className="maven-select-all"><input type="checkbox" checked={allLiveSelected} onChange={toggleAllLive} /> {t('تحديد الكل', 'Select all')} <span className="cell-sub">({liveRows.length})</span></label><span>{selectedLive.length} {t('محدد', 'selected')}</span><button className="btn-ghost btn-sm" type="button" disabled={!selectedLive.length} onClick={() => openReplace(selectedLive)}><Pencil size={14} /> {t('غيّر المحدد لرقم واحد', 'Change selected to one number')}</button><button className="btn-ghost btn-sm" type="button" disabled={!liveRows.length} onClick={changeAllLive}><Pencil size={14} /> {t('غيّر كل المحافظ', 'Change all wallets')}</button><label className="maven-threshold"><Target size={14} /> {t('الاستبدال التلقائي عند', 'Auto replacement at')} <select value={replacementThreshold} onChange={(event) => setReplacementThreshold(event.target.value)}><option value="80">80%</option><option value="85">85%</option><option value="90">90%</option></select></label></div>
-        <div className="table-wrap maven-table-wrap"><table className="data-table maven-live-table"><thead><tr><th></th><th>{t('البنك', 'Bank')}</th><th>{t('النوع / التاجر', 'Type / merchant')}</th><th>{t('الرقم الحالي', 'Current number')}</th><th>{t('آخر فحص', 'Last checked')}</th><th>{t('إجراء', 'Action')}</th></tr></thead><tbody>
-          {visibleLiveRows.map((row) => { const id = liveBankId(row); const phone = livePhone(row); return <tr key={`${id}-${phone ?? ''}`}><td><input type="checkbox" checked={selectedLive.includes(id)} onChange={() => toggleLive(id)} aria-label={`${t('تحديد', 'Select')} ${id}`} disabled={!id} /></td><td className="mono">{id || '—'}</td><td><strong>{livePaymentType(row) ?? '—'}</strong><div className="cell-sub">{liveAccountName(row) ?? t('غير محدد', 'Not specified')}</div></td><td className="mono">{phone ?? '—'}</td><td className="cell-sub">{depositTime({ first_seen_at: row.last_checked ?? row.updated_at })}</td><td className="maven-live-row-actions"><button className="btn-ghost btn-sm maven-change-btn" type="button" disabled={!id} onClick={() => openReplace([id])}><Pencil size={14} /> {t('غيّر', 'Change')}</button><button className="btn-ghost btn-sm" type="button" disabled={!id} onClick={() => openAddNew(id)}><Plus size={14} /> {t('استبدال بجديد', 'Replace w/ new')}</button></td></tr> })}
-          {!visibleLiveRows.length && <tr><td colSpan={6} className="maven-empty">{t('لا توجد أرقام حية من Maven حالياً.', 'No live Maven receiving numbers currently available.')}</td></tr>}
+        <div className="maven-live-toolbar">{canManageRotation ? <><label className="maven-select-all"><input type="checkbox" checked={allLiveSelected} onChange={toggleAllLive} /> {t('تحديد الكل', 'Select all')} <span className="cell-sub">({liveRows.length})</span></label><span>{selectedLive.length} {t('محدد', 'selected')}</span><button className="btn-ghost btn-sm" type="button" disabled={!selectedLive.length} onClick={() => void openReplace(selectedLive)}><Pencil size={14} /> {t('غيّر المحدد لرقم واحد', 'Change selected to one number')}</button><button className="btn-ghost btn-sm" type="button" disabled={!liveRows.length} onClick={changeAllLive}><Pencil size={14} /> {t('غيّر كل المحافظ', 'Change all wallets')}</button></>:<span>{t('عرض فقط — تحتاج صلاحية تعديل المحافظ لتغيير أرقام Maven.','View only — wallet edit permission is required to change Maven numbers.')}</span>}</div>
+        <div className="table-wrap maven-table-wrap"><table className="data-table maven-live-table"><thead><tr>{canManageRotation && <th className="maven-select-cell"></th>}<th>{t('البنك', 'Bank')}</th><th>{t('النوع / التاجر', 'Type / merchant')}</th><th>{t('الرقم الحالي', 'Current number')}</th><th>{t('آخر فحص', 'Last checked')}</th>{canManageRotation && <th>{t('إجراء', 'Action')}</th>}</tr></thead><tbody>
+          {visibleLiveRows.map((row) => { const id = liveBankId(row); const phone = livePhone(row); return <tr key={`${id}-${phone ?? ''}`}>{canManageRotation && <td className="maven-select-cell"><input type="checkbox" checked={selectedLive.includes(id)} onChange={() => toggleLive(id)} aria-label={`${t('تحديد', 'Select')} ${id}`} disabled={!id} /></td>}<td className="mono">{id || '—'}</td><td><strong>{livePaymentType(row) ?? '—'}</strong><div className="cell-sub">{liveAccountName(row) ?? t('غير محدد', 'Not specified')}</div></td><td className="mono">{phone ?? '—'}</td><td className="cell-sub">{depositTime({ first_seen_at: row.last_checked ?? row.updated_at })}</td>{canManageRotation && <td className="maven-live-row-actions"><button className="btn-ghost btn-sm maven-change-btn" type="button" disabled={!id} onClick={() => void openReplace([id])}><Pencil size={14} /> {t('غيّر', 'Change')}</button><button className="btn-ghost btn-sm" type="button" disabled={!id || !canCreateWallet} onClick={() => openAddNew(id)}><Plus size={14} /> {t('استبدال بجديد', 'Replace w/ new')}</button></td>}</tr> })}
+          {!visibleLiveRows.length && <tr><td colSpan={canManageRotation ? 6 : 4} className="maven-empty">{t('لا توجد أرقام حية من Maven حالياً.', 'No live Maven receiving numbers currently available.')}</td></tr>}
         </tbody></table></div>
         <div className="maven-pagination"><span>{liveRows.length ? `${(livePage - 1) * livePageSize + 1}-${Math.min(livePage * livePageSize, liveRows.length)} / ${liveRows.length}` : '0 / 0'}</span><button className="btn-ghost btn-sm" type="button" disabled={livePage <= 1} onClick={() => setLivePage((page) => page - 1)}>{t('السابق', 'Previous')}</button><strong>{livePage} / {livePageCount}</strong><button className="btn-ghost btn-sm" type="button" disabled={livePage >= livePageCount} onClick={() => setLivePage((page) => page + 1)}>{t('التالي', 'Next')}</button></div>
       </section>
@@ -418,11 +446,13 @@ export default function MavenWallets() {
       )}
 
       {replaceTarget && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !replaceBusy) setReplaceTarget(null) }}>
-          <section className="card" style={{ maxWidth: 520 }} role="dialog" aria-modal="true" aria-labelledby="replace-title">
-            <div className="recent-head"><h3 id="replace-title"><Pencil size={17} /> {t('استبدال رقم الاستقبال', 'Change receiving number')}</h3><button type="button" className="icon-action" disabled={replaceBusy} onClick={() => setReplaceTarget(null)} aria-label={t('إغلاق', 'Close')}><X size={17} /></button></div>
+        <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !replaceBusy && !replaceProgress) setReplaceTarget(null) }}>
+          <section className="card maven-replace-modal" role="dialog" aria-modal="true" aria-labelledby="replace-title">
+            <div className="recent-head"><h3 id="replace-title"><Pencil size={17} /> {replaceTarget.length > 1 ? t(`تغيير ${replaceTarget.length} محفظة`, `Change ${replaceTarget.length} wallets`) : t('استبدال رقم الاستقبال', 'Change receiving number')}</h3><button type="button" className="icon-action" disabled={replaceBusy || Boolean(replaceProgress)} onClick={() => setReplaceTarget(null)} aria-label={t('إغلاق', 'Close')}><X size={17} /></button></div>
             <div className="card warn">{t('هذا تغيير حقيقي على لوحة تحكم Maven مباشرة — وليس محاكاة. راجع الأرقام الحالية بعناية قبل التأكيد.', 'This is a real change on Maven’s admin back office, not a simulation — review the current numbers carefully before confirming.')}</div>
-            <div className="table-wrap">
+            <div className="maven-replace-summary" aria-live="polite"><span><strong>{replaceReadyTargets.length}</strong>{t('جاهزة','ready')}</span><span><strong>{replaceLoadingCount}</strong>{t('قيد الفحص','checking')}</span><span className={replaceSkippedCount ? 'has-error' : ''}><strong>{replaceSkippedCount}</strong>{t('سيتم تخطيها','skipped')}</span>{replaceNoopCount > 0 && <span><strong>{replaceNoopCount}</strong>{t('مطابقة بالفعل','already matching')}</span>}</div>
+            {replaceProgress && <div className="maven-replace-progress" role="status"><span>{replaceProgress.phase === 'preview' ? t('فحص محافظ Maven…','Checking Maven wallets…') : t('تطبيق التغيير على دفعات آمنة…','Applying changes in safe batches…')}</span><strong>{replaceProgress.completed} / {replaceProgress.total}</strong><progress max={replaceProgress.total} value={replaceProgress.completed}/></div>}
+            <div className="table-wrap maven-replace-table">
               <table className="data-table">
                 <thead><tr><th>Bank ID</th><th>{t('الرقم الحالي', 'Current number')}</th><th>{t('النتيجة', 'Result')}</th></tr></thead>
                 <tbody>
@@ -432,15 +462,15 @@ export default function MavenWallets() {
                     return <tr key={bankId}>
                       <td className="mono">{bankId}</td>
                       <td className="mono">{preview?.loading ? '…' : preview?.error ? <span className="danger-text">{preview.error}</span> : (preview?.current ?? '—')}</td>
-                      <td>{result ? <span style={{ color: result.ok ? 'var(--status-paid)' : 'var(--status-declined)' }}>{result.message}</span> : '—'}</td>
+                      <td>{result ? <span className={`maven-replace-result ${result.ok ? 'ok' : 'failed'}`}>{result.ok ? <CheckCircle2 size={13}/> : <ShieldAlert size={13}/>} {result.message}</span> : '—'}</td>
                     </tr>
                   })}
                 </tbody>
               </table>
             </div>
-            <form className="control-row" onSubmit={submitReplace}>
-              <input className="login-input" required inputMode="tel" placeholder={t('رقم المحفظة الجديد لكل ما سبق', 'New wallet number for all rows above')} value={replaceNewNumber} onChange={(e) => setReplaceNewNumber(e.target.value.replace(/\D/g, ''))} />
-              <button className="btn-primary btn-sm" disabled={replaceBusy || !previewReady || !/^\d{8,20}$/.test(replaceNewNumber)}>{replaceBusy ? t('جارٍ التنفيذ على Maven…', 'Applying on Maven…') : t('تأكيد التغيير الفعلي', 'Confirm real change')}</button>
+            <form className="maven-replace-form" onSubmit={submitReplace}>
+              <label className="maven-replace-field"><span>{t('رقم المحفظة الجديد لكل المحافظ الجاهزة','New wallet number for every ready wallet')}</span><input className="login-input" required inputMode="tel" placeholder="01XXXXXXXXX" value={replaceNewNumber} onChange={(e) => setReplaceNewNumber(e.target.value.replace(/\D/g, ''))} /><small>{t('سيتم تخطي المحافظ التي فشلت معاينتها أو تحمل الرقم نفسه بالفعل.','Preview failures and wallets already using this number will be skipped.')}</small></label>
+              <button className="btn-primary" disabled={replaceBusy || Boolean(replaceProgress) || !replaceCommitTargets.length || !/^\d{8,20}$/.test(replaceNewNumber)}>{replaceBusy ? `${t('جارٍ التنفيذ على Maven','Applying on Maven')} ${replaceProgress?.completed ?? 0}/${replaceProgress?.total ?? replaceCommitTargets.length}` : t(`تغيير ${replaceCommitTargets.length} محفظة جاهزة`, `Change ${replaceCommitTargets.length} ready wallets`)}</button>
             </form>
           </section>
         </div>

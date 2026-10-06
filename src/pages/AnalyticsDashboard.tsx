@@ -9,9 +9,9 @@ import { RotateCcw, Search } from 'lucide-react'
 import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectFilter'
 import { useIsMobile } from '../lib/useIsMobile'
 
-type Tab = 'overview' | 'transactions' | 'wallets' | 'merchants' | 'reports'
-interface WindowStats { depositCount: number; depositVolume: number; payoutCount: number; payoutVolume: number; declined: number; attempts: number }
-interface ExecutiveData { generatedAt: string; windows?: { day: WindowStats; week: WindowStats; month: WindowStats }; summary?: WindowStats; queues?: { pendingDeposits: number; pendingPayouts: number; smsReview: number }; devices?: { total: number; online: number }; topMerchants?: { merchant: string; volume: number; count: number }[]; pivot?: { merchant: string; paidVolume: number; paidCount: number }[]; daily?: { date: string; incoming: number; outgoing: number }[] }
+type Tab = 'overview' | 'cashflow' | 'transactions' | 'wallets' | 'merchants' | 'risks' | 'pivot' | 'reports'
+interface WindowStats { depositCount: number; depositVolume: number; payoutCount: number; payoutVolume: number; declined: number; attempts: number; pending?: number; fees?: number }
+interface ExecutiveData { generatedAt: string; windows?: { day: WindowStats; week: WindowStats; month: WindowStats }; summary?: WindowStats; queues?: { pendingDeposits: number; pendingPayouts: number; smsReview: number }; devices?: { total: number; online: number }; topMerchants?: { merchant: string; volume: number; count: number }[]; pivot?: { merchant: string; method: string; paidVolume: number; paidCount: number; pendingVolume: number; pendingCount: number; declinedVolume: number; declinedCount: number; totalVolume: number; totalCount: number }[]; daily?: { date: string; incoming: number; outgoing: number }[] }
 interface Transaction { tx_id?: number; maven_id?: number; ontarget_ref: string | null; amount: number | null; status: string | null; payment_method?: string | null; pay_by?: string | null; merchant: string | null; sender_name?: string | null; sender_number?: string | null; account_name?: string | null; mobile_no?: string | null; first_seen_at: string | null; kind: 'deposit' | 'payout' }
 interface Wallet { to_account_number: string; provider: string | null; device: string | null; sim_slot: number | null; daily_limit: number | null; merchant: string | null }
 interface WalletData { wallets: Wallet[]; devices: { device: string; sim_slot: number | null; online: boolean | null; balance: number | null }[] }
@@ -37,20 +37,27 @@ export default function AnalyticsDashboard() {
 
   const load = useCallback(async () => {
     try {
-      const now = new Date(); const to = now.toISOString().slice(0, 10); const fromDate = new Date(now)
+      const now = new Date(); const today = now.toISOString().slice(0, 10); const fromDate = new Date(now)
       fromDate.setDate(fromDate.getDate() - (period === 'day' ? 0 : period === 'week' ? 6 : 29))
-      const range = `from=${fromDate.toISOString().slice(0, 10)}&to=${to}`
-      const [exec, today, tx, wallet, report] = await Promise.all([
-        api<ExecutiveData>(`/api/executive-dashboard?${range}`),
-        period === 'day' ? Promise.resolve(null) : api<ExecutiveData>(`/api/executive-dashboard?from=${to}&to=${to}`),
+      const query = new URLSearchParams({ from: filters.from || fromDate.toISOString().slice(0, 10), to: filters.to || today })
+      if (filters.merchant) query.set('merchant', filters.merchant)
+      if (filters.method) query.set('method', filters.method)
+      if (filters.status) query.set('status', filters.status)
+      const todayQuery = new URLSearchParams({ from: today, to: today })
+      if (filters.merchant) todayQuery.set('merchant', filters.merchant)
+      if (filters.method) todayQuery.set('method', filters.method)
+      if (filters.status) todayQuery.set('status', filters.status)
+      const [exec, todayData, tx, wallet, report] = await Promise.all([
+        api<ExecutiveData>(`/api/executive-dashboard?${query}`),
+        query.get('from') === today && query.get('to') === today ? Promise.resolve(null) : api<ExecutiveData>(`/api/executive-dashboard?${todayQuery}`),
         api<{ rows: Transaction[] }>(`/api/transactions?${new URLSearchParams({
           limit: '50',
           ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value)),
         })}`),
         api<WalletData>('/api/wallets'),
-        api<Reports>('/api/reports'),
+        api<Reports>(`/api/reports?${query}`),
       ])
-      setExecutive(exec); setTodayExecutive(today ?? exec); setTransactions((current) => JSON.stringify(current) === JSON.stringify(tx.rows ?? []) ? current : tx.rows ?? []); setWallets(wallet); setReports(report); setError(false)
+      setExecutive(exec); setTodayExecutive(todayData ?? exec); setTransactions((current) => JSON.stringify(current) === JSON.stringify(tx.rows ?? []) ? current : tx.rows ?? []); setWallets(wallet); setReports(report); setError(false)
     } catch { setError(true) } finally { setLoading(false) }
   }, [period, filters])
 
@@ -85,7 +92,7 @@ export default function AnalyticsDashboard() {
   }, [reports])
   const maxDaily = useMemo(() => Math.max(1, ...(executive?.daily ?? []).map((row) => Math.max(row.incoming, row.outgoing))), [executive])
   const tabs: { id: Tab; ar: string; en: string }[] = [
-    { id: 'overview', ar: 'نظرة عامة', en: 'Overview' }, { id: 'transactions', ar: 'المعاملات', en: 'Transactions' }, { id: 'wallets', ar: 'المحافظ', en: 'Wallets' }, { id: 'merchants', ar: 'التجار', en: 'Merchants' }, { id: 'reports', ar: 'التقارير', en: 'Reports' },
+    { id: 'overview', ar: 'نظرة عامة', en: 'Overview' }, { id: 'cashflow', ar: 'التدفق النقدي', en: 'Cash flow' }, { id: 'merchants', ar: 'التجار', en: 'Merchants' }, { id: 'risks', ar: 'المخاطر', en: 'Risks' }, { id: 'pivot', ar: 'المحوري', en: 'Pivot' }, { id: 'transactions', ar: 'المعاملات', en: 'Transactions' }, { id: 'wallets', ar: 'المحافظ', en: 'Wallets' }, { id: 'reports', ar: 'التقارير', en: 'Reports' },
   ]
 
   return <>
@@ -99,7 +106,7 @@ export default function AnalyticsDashboard() {
     </section>
     {error && <div className="card warn">{t('تعذّر تحميل بعض البيانات الحية.', 'Unable to load some live data.')}</div>}
 
-    <form className="filter-bar analytics-filter-bar" onSubmit={(event) => { event.preventDefault(); setFilters(filterDraft); setTab('transactions') }}>
+    <form className="filter-bar analytics-filter-bar" onSubmit={(event) => { event.preventDefault(); setFilters(filterDraft) }}>
       <label className="analytics-filter-search">
         <Search size={16} aria-hidden="true" />
         <input value={filterDraft.q} onChange={(event) => setFilterDraft({ ...filterDraft, q: event.target.value })} placeholder={t('مرجع، اسم، هاتف أو تاجر…', 'Reference, name, phone, or merchant…')} aria-label={t('بحث المعاملات', 'Search transactions')} />
@@ -175,6 +182,15 @@ export default function AnalyticsDashboard() {
         <section className="card recent-card"><div className="recent-head"><h3>{t('توزيع الحالات', 'Status distribution')}</h3></div><div className="source-list"><div><span>{t('معتمدة', 'Approved')}</span><b>{stats?.depositCount ?? 0}</b></div><div><span>{t('مرفوضة', 'Declined')}</span><b>{stats?.declined ?? 0}</b></div><div><span>{t('قيد المراجعة', 'Pending review')}</span><b>{pendingReview}</b></div></div></section>
       </div>
     </>}
+
+    {tab === 'cashflow' && <>
+      <div className="kpi-grid"><div className="kpi-card"><div className="kpi-value">{money(stats?.depositVolume ?? 0,'EGP')}</div><div className="kpi-label">{t('الوارد المعتمد','Approved incoming')}</div><div className="cell-sub">{stats?.depositCount ?? 0} {t('معاملة','transactions')}</div></div><div className="kpi-card"><div className="kpi-value">{money(stats?.payoutVolume ?? 0,'EGP')}</div><div className="kpi-label">{t('الصادر المعتمد','Approved outgoing')}</div><div className="cell-sub">{stats?.payoutCount ?? 0} {t('معاملة','transactions')}</div></div><div className="kpi-card"><div className="kpi-value">{money(net,'EGP')}</div><div className="kpi-label">{t('صافي التدفق','Net cash flow')}</div><div className="cell-sub">{t('الوارد ناقص الصادر','incoming less outgoing')}</div></div><div className="kpi-card"><div className="kpi-value">{money((stats?.depositVolume ?? 0)+(stats?.payoutVolume ?? 0),'EGP')}</div><div className="kpi-label">{t('إجمالي الحركة','Total movement')}</div><div className="cell-sub">{t('ضمن الفلاتر الحالية','within current filters')}</div></div></div>
+      <section className="card recent-card"><div className="recent-head"><h3>{t('التدفق النقدي حسب التاريخ','Cash flow by date')}</h3><span className="cell-sub">{executive?.daily?.length ?? 0} {t('يوم','days')}</span></div>{isMobile?<div className="risk-card-list">{(executive?.daily ?? []).map((row)=><div key={row.date} className="risk-row-card"><div className="risk-row-card-head"><span className="mono">{row.date}</span><span className="mono">{money(row.incoming-row.outgoing,'EGP')}</span></div><div className="cell-sub mono">{t('وارد','In')} {money(row.incoming,'EGP')} · {t('صادر','Out')} {money(row.outgoing,'EGP')}</div><div className="analytics-bar"><i style={{width:`${row.incoming/maxDaily*100}%`}}/></div><div className="analytics-bar analytics-bar-out"><i style={{width:`${row.outgoing/maxDaily*100}%`}}/></div></div>)}</div>:<div className="table-wrap"><table className="data-table"><thead><tr><th>{t('التاريخ','Date')}</th><th>{t('الوارد','Incoming')}</th><th>{t('الصادر','Outgoing')}</th><th>{t('الصافي','Net')}</th></tr></thead><tbody>{(executive?.daily ?? []).map((row)=><tr key={row.date}><td className="mono">{row.date}</td><td className="mono positive-text">{money(row.incoming,'EGP')}</td><td className="mono negative-text">{money(row.outgoing,'EGP')}</td><td className="mono">{money(row.incoming-row.outgoing,'EGP')}</td></tr>)}</tbody></table></div>}</section>
+    </>}
+
+    {tab === 'risks' && <><div className="kpi-grid"><div className="kpi-card"><div className="kpi-value">{stats?.declined ?? 0}</div><div className="kpi-label">{t('مرفوضة','Declined')}</div><div className="cell-sub">{t('ضمن الفترة والفلاتر','within range and filters')}</div></div><div className="kpi-card"><div className="kpi-value">{stats?.pending ?? 0}</div><div className="kpi-label">{t('معلقة','Pending')}</div><div className="cell-sub">{t('تحتاج قراراً','awaiting decision')}</div></div><div className="kpi-card"><div className="kpi-value">{executive?.queues?.smsReview ?? 0}</div><div className="kpi-label">{t('SMS للمراجعة','SMS review')}</div><div className="cell-sub">{t('رسائل مالية غير مطابقة','unmatched financial messages')}</div></div><div className="kpi-card"><div className="kpi-value">{executive?.devices ? executive.devices.total-executive.devices.online : '—'}</div><div className="kpi-label">{t('أجهزة غير متصلة','Offline devices')}</div><div className="cell-sub">{executive?.devices ? `${executive.devices.online}/${executive.devices.total} ${t('متصل','online')}` : '—'}</div></div></div><section className="card recent-card"><div className="recent-head"><h3>{t('الحالات التي تحتاج متابعة','Statuses requiring attention')}</h3><Link className="pay-status-link" to="/risk">{t('فتح مركز المخاطر','Open Risk Center')} ←</Link></div><div className="source-list"><div><span>DECLINED</span><b>{stats?.declined ?? 0}</b></div><div><span>PENDING</span><b>{stats?.pending ?? 0}</b></div><div><span>{t('إيداعات معلقة حالياً','Current pending deposits')}</span><b>{executive?.queues?.pendingDeposits ?? 0}</b></div><div><span>{t('سحوبات معلقة حالياً','Current pending payouts')}</span><b>{executive?.queues?.pendingPayouts ?? 0}</b></div></div></section></>}
+
+    {tab === 'pivot' && <section className="card recent-card executive-pivot"><div className="recent-head"><div><h3>{t('الجدول المحوري','Pivot table')}</h3><span className="cell-sub">{t('التاجر × طريقة الدفع × الحالة من نفس نطاق المعاملات.','Merchant × payment method × status from the same transaction scope.')}</span></div><span className="cell-sub">{executive?.pivot?.length ?? 0} {t('صف','rows')}</span></div>{isMobile?<div className="risk-card-list">{(executive?.pivot ?? []).map((row)=><div key={`${row.merchant}-${row.method}`} className="risk-row-card"><div className="risk-row-card-head"><strong>{row.merchant}</strong><span className="mono">{money(row.totalVolume ?? 0,'EGP')}</span></div><div className="cell-sub">{row.method} · {row.totalCount ?? 0} {t('معاملة','transactions')}</div><div className="risk-row-card-foot"><span>{row.paidCount ?? 0} {t('مدفوعة','paid')}</span><span>{row.pendingCount ?? 0} {t('معلقة','pending')}</span><span>{row.declinedCount ?? 0} {t('مرفوضة','declined')}</span></div></div>)}</div>:<div className="table-wrap"><table className="data-table"><thead><tr><th>{t('التاجر','Merchant')}</th><th>{t('الطريقة','Method')}</th><th>{t('مدفوعة','Paid')}</th><th>{t('معلقة','Pending')}</th><th>{t('مرفوضة','Declined')}</th><th>{t('الإجمالي','Total')}</th></tr></thead><tbody>{(executive?.pivot ?? []).map((row)=><tr key={`${row.merchant}-${row.method}`}><td><MerchantLogo merchant={row.merchant}/></td><td><MethodLogo method={row.method}/></td><td className="mono positive-text">{row.paidCount ?? 0}<div className="cell-sub">{money(row.paidVolume ?? 0,'EGP')}</div></td><td className="mono">{row.pendingCount ?? 0}<div className="cell-sub">{money(row.pendingVolume ?? 0,'EGP')}</div></td><td className="mono negative-text">{row.declinedCount ?? 0}<div className="cell-sub">{money(row.declinedVolume ?? 0,'EGP')}</div></td><td className="mono">{row.totalCount ?? 0}<div className="cell-sub">{money(row.totalVolume ?? 0,'EGP')}</div></td></tr>)}</tbody></table></div>}</section>}
 
     {tab === 'transactions' && <section className="card recent-card"><div className="recent-head"><h3>{t('المعاملات الحية', 'Live transactions')}</h3><span className="cell-sub">{loading ? t('جارٍ التحميل…', 'Loading…') : transactions.length}</span></div>
       {isMobile ? (

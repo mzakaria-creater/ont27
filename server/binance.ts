@@ -8,6 +8,10 @@ export const binanceRoutes = new Hono<AuthEnv>()
 binanceRoutes.use('*', requireAuth)
 const VIEW_KEYS = ['binance_p2p', 'treasury']
 const CFG_COLS = 'id, p2p_enabled, p2p_asset, p2p_fiat, max_p2p_order_amount, max_p2p_24h_amount, api_key_secret_id, api_secret_secret_id, updated_at'
+const MARKET_BASE = 'https://data-api.binance.vision/api/v3'
+const MARKET_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'] as const
+const MARKET_INTERVALS = ['15m', '1h', '4h', '1d'] as const
+const marketCache = new Map<string, { expires: number; body: unknown }>()
 
 function publicConfig(row: Record<string, unknown> | null) {
   if (!row) return null
@@ -132,15 +136,57 @@ function normalizeC2cOrder(row: Record<string, unknown>, side: 'BUY' | 'SELL') {
 }
 
 binanceRoutes.get('/market', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) => {
-  const requested = (c.req.query('symbols') ?? 'BTCUSDT,ETHUSDT,BNBUSDT')
-    .split(',').map((symbol) => symbol.trim().toUpperCase()).filter((symbol) => /^[A-Z0-9]{5,20}$/.test(symbol)).slice(0, 10)
-  if (!requested.length) return c.json({ error: 'invalid_symbols' }, 400)
-  const query = new URLSearchParams({ symbols: JSON.stringify(requested) })
-  const response = await fetch(`https://data-api.binance.vision/api/v3/ticker/price?${query}`, { signal: AbortSignal.timeout(8_000) }).catch(() => null)
-  if (!response) return c.json({ error: 'binance_unreachable' }, 502)
-  const result = await response.json().catch(() => ({ msg: 'invalid_response' }))
-  if (!response.ok) return c.json({ error: 'binance_error', provider_status: response.status, provider: result }, 502)
-  return c.json({ prices: result, source: 'Binance Spot public market data', at: new Date().toISOString() })
+  const requestedSymbol = String(c.req.query('symbol') ?? 'BTCUSDT').toUpperCase()
+  const requestedInterval = String(c.req.query('interval') ?? '1h')
+  if (!MARKET_SYMBOLS.includes(requestedSymbol as typeof MARKET_SYMBOLS[number])) return c.json({ error: 'invalid_symbol' }, 400)
+  if (!MARKET_INTERVALS.includes(requestedInterval as typeof MARKET_INTERVALS[number])) return c.json({ error: 'invalid_interval' }, 400)
+  const cacheKey = `${requestedSymbol}:${requestedInterval}`
+  const cached = marketCache.get(cacheKey)
+  if (cached && cached.expires > Date.now()) return c.json(cached.body)
+
+  const tickerQuery = new URLSearchParams({ symbols: JSON.stringify(MARKET_SYMBOLS) })
+  const candleQuery = new URLSearchParams({ symbol: requestedSymbol, interval: requestedInterval, limit: '96' })
+  const [tickerResponse, candleResponse] = await Promise.all([
+    fetch(`${MARKET_BASE}/ticker/24hr?${tickerQuery}`, { signal: AbortSignal.timeout(8_000) }).catch(() => null),
+    fetch(`${MARKET_BASE}/klines?${candleQuery}`, { signal: AbortSignal.timeout(8_000) }).catch(() => null),
+  ])
+  if (!tickerResponse || !candleResponse) return c.json({ error: 'binance_unreachable' }, 502)
+  const [tickerResult, candleResult] = await Promise.all([
+    tickerResponse.json().catch(() => ({ msg: 'invalid_response' })),
+    candleResponse.json().catch(() => ({ msg: 'invalid_response' })),
+  ])
+  if (!tickerResponse.ok || !candleResponse.ok) {
+    const failed = !tickerResponse.ok ? tickerResponse : candleResponse
+    return c.json({ error: 'binance_error', provider_status: failed.status, provider: !tickerResponse.ok ? tickerResult : candleResult }, 502)
+  }
+  if (!Array.isArray(tickerResult) || !Array.isArray(candleResult)) return c.json({ error: 'binance_invalid_response' }, 502)
+  const tickers = tickerResult.map((entry) => {
+    const ticker = entry as Record<string, unknown>
+    return {
+      symbol: String(ticker.symbol ?? ''),
+      price: Number(ticker.lastPrice),
+      change: Number(ticker.priceChangePercent),
+      high: Number(ticker.highPrice),
+      low: Number(ticker.lowPrice),
+      volume: Number(ticker.volume),
+      quoteVolume: Number(ticker.quoteVolume),
+    }
+  }).filter((ticker) => MARKET_SYMBOLS.includes(ticker.symbol as typeof MARKET_SYMBOLS[number]) && Number.isFinite(ticker.price))
+  const candles = candleResult.map((entry) => {
+    const candle = entry as unknown[]
+    return { t: Number(candle[0]), close: Number(candle[4]), volume: Number(candle[5]) }
+  }).filter((candle) => Number.isFinite(candle.t) && Number.isFinite(candle.close) && Number.isFinite(candle.volume))
+  const body = {
+    symbol: requestedSymbol,
+    interval: requestedInterval,
+    tickers,
+    candles,
+    prices: tickers.map((ticker) => ({ symbol: ticker.symbol, price: String(ticker.price) })),
+    source: 'Binance Spot public market data',
+    at: new Date().toISOString(),
+  }
+  marketCache.set(cacheKey, { expires: Date.now() + 15_000, body })
+  return c.json(body)
 })
 
 // A lightweight, account-authorized health check. It never returns credentials

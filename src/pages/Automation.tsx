@@ -3,7 +3,7 @@ import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { useAuth } from '../auth/AuthContext'
-import { Archive, CircleDollarSign, Filter, GitBranch, Landmark, Power, Search, SlidersHorizontal, X } from 'lucide-react'
+import { Archive, BarChart3, Bot, CircleDollarSign, Filter, GitBranch, Landmark, LoaderCircle, Power, RadioTower, ScanSearch, Search, ShieldCheck, SlidersHorizontal, X, Zap } from 'lucide-react'
 import MultiSelectFilter from '../components/MultiSelectFilter'
 import { useIsMobile } from '../lib/useIsMobile'
 
@@ -54,30 +54,54 @@ interface BalanceRow { account_id: string | null; total_balance: number | null; 
 interface RateRow { currency_pair: string | null; rate: number | null; fetched_at: string | null }
 interface TurboAuditRow { id: number; actor_name: string | null; action: string; before: Record<string, unknown> | null; after: Record<string, unknown> | null; created_at: string }
 
-const FLAG_LABELS: Record<string, string> = {
-  automation_enabled: 'الأتمتة مفعّلة',
-  auto_decline_enabled: 'الرفض التلقائي للمعاملات',
-  ngpay_enabled: 'NGPay',
-  // maven_enabled is the old stack's back-office worker channel; the literal
-  // provider name must never surface in the UI (naming rule).
-  maven_enabled: 'قناة المزوّد (back-office)',
-  payfuture_enabled: 'PayFuture',
-  balance_check_enabled: 'فحص الرصيد',
-  above_limit_to_manual: 'فوق الحد → يدوي',
-  security_rules_enabled: 'قواعد الأمان',
-  wallet_switch_auto_enabled: 'تبديل المحافظ تلقائياً',
-  use_crm_name_matching: 'مطابقة أسماء CRM',
-  use_near_amount_matching: 'مطابقة مبلغ تقريبي',
-  use_unique_amount_matching: 'مطابقة مبلغ فريد',
-  use_trxid_matching: 'مطابقة رقم العملية',
-  use_balance_timing_matching: 'مطابقة رصيد/توقيت',
-  use_wallet_verify_ocr: 'تحقق محفظة OCR',
-  use_direct_field_matching: 'مطابقة حقول مباشرة',
-  use_nameonly_ocr_matching: 'مطابقة اسم OCR',
-  use_account_number_matching: 'مطابقة رقم حساب',
-  turbo_mode: 'وضع Turbo',
-  sms_feed_circuit_breaker_enabled: 'قاطع تغذية SMS',
+type SettingGroup = {
+  id: 'providers' | 'safety' | 'matching'
+  title: [string, string]
+  description: [string, string]
+  settings: { key: string; label: [string, string]; description: [string, string] }[]
 }
+
+const SETTING_GROUPS: SettingGroup[] = [
+  {
+    id: 'providers',
+    title: ['قنوات التنفيذ', 'Execution channels'],
+    description: ['المزوّدون المسموح للمحرّك باستخدامهم.', 'Providers the engine may use.'],
+    settings: [
+      { key: 'ngpay_enabled', label: ['NGPay', 'NGPay'], description: ['تشغيل قناة NGPay الحيّة.', 'Enable the live NGPay channel.'] },
+      // maven_enabled is the old stack's back-office worker channel; the
+      // literal provider name must never surface in the UI (naming rule).
+      { key: 'maven_enabled', label: ['قناة المزوّد الخلفية', 'Back-office provider'], description: ['تشغيل قناة المعالجة الخلفية.', 'Enable the back-office processing channel.'] },
+      { key: 'payfuture_enabled', label: ['PayFuture', 'PayFuture'], description: ['السماح بمسارات PayFuture.', 'Allow PayFuture routes.'] },
+    ],
+  },
+  {
+    id: 'safety',
+    title: ['الحماية والتوجيه', 'Safety & routing'],
+    description: ['حواجز الأمان وكيفية توجيه الحالات الاستثنائية.', 'Guardrails and exception routing.'],
+    settings: [
+      { key: 'balance_check_enabled', label: ['فحص الرصيد', 'Balance check'], description: ['التحقق من الرصيد قبل التنفيذ.', 'Verify balance before execution.'] },
+      { key: 'above_limit_to_manual', label: ['فوق الحد إلى يدوي', 'Above limit to manual'], description: ['إرسال المبالغ الأعلى من الحد للمراجعة.', 'Send amounts above the limit to review.'] },
+      { key: 'security_rules_enabled', label: ['قواعد الأمان', 'Security rules'], description: ['تطبيق ضوابط الأمان على القرارات.', 'Apply security controls to decisions.'] },
+      { key: 'wallet_switch_auto_enabled', label: ['تبديل المحافظ تلقائياً', 'Automatic wallet switching'], description: ['اختيار محفظة بديلة عند الحاجة.', 'Choose an alternate wallet when needed.'] },
+    ],
+  },
+  {
+    id: 'matching',
+    title: ['إشارات المطابقة', 'Matching signals'],
+    description: ['البيانات التي تدخل في قرار المطابقة.', 'Signals used by the matching decision.'],
+    settings: [
+      { key: 'use_trxid_matching', label: ['رقم العملية', 'Transaction ID'], description: ['مطابقة معرّف العملية.', 'Match the transaction identifier.'] },
+      { key: 'use_crm_name_matching', label: ['اسم CRM', 'CRM name'], description: ['مطابقة اسم العميل في CRM.', 'Match the customer name in CRM.'] },
+      { key: 'use_near_amount_matching', label: ['المبلغ التقريبي', 'Near amount'], description: ['السماح بهامش في قيمة المبلغ.', 'Allow a tolerance around the amount.'] },
+      { key: 'use_unique_amount_matching', label: ['المبلغ الفريد', 'Unique amount'], description: ['استخدام تفرّد المبلغ كإشارة.', 'Use amount uniqueness as a signal.'] },
+      { key: 'use_balance_timing_matching', label: ['الرصيد والتوقيت', 'Balance timing'], description: ['ربط تغير الرصيد بوقت العملية.', 'Correlate balance changes with timing.'] },
+      { key: 'use_account_number_matching', label: ['رقم الحساب', 'Account number'], description: ['مطابقة رقم الحساب المستلم.', 'Match the receiving account number.'] },
+      { key: 'use_direct_field_matching', label: ['الحقول المباشرة', 'Direct fields'], description: ['مطابقة الحقول المتاحة مباشرة.', 'Match directly available fields.'] },
+      { key: 'use_wallet_verify_ocr', label: ['تحقق المحفظة OCR', 'Wallet OCR'], description: ['قراءة بيانات المحفظة من الإثبات.', 'Read wallet details from proof.'] },
+      { key: 'use_nameonly_ocr_matching', label: ['الاسم عبر OCR', 'Name-only OCR'], description: ['استخدام الاسم المستخرج من الإثبات.', 'Use the name extracted from proof.'] },
+    ],
+  },
+]
 
 interface PayAccount {
   id: string
@@ -135,6 +159,7 @@ export default function Automation() {
   const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set())
   const ruleBuilderRef = useRef<HTMLElement | null>(null)
   const [settingsBusy, setSettingsBusy] = useState<string | null>(null)
+  const [settingsNotice, setSettingsNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [popupSettingsOpen, setPopupSettingsOpen] = useState(false)
   const [popupThreshold, setPopupThreshold] = useState('5000')
   const [popupSettingsBusy, setPopupSettingsBusy] = useState(false)
@@ -240,12 +265,15 @@ export default function Automation() {
   }
 
   const toggleGlobalSetting = async (key: string, value: boolean) => {
+    if (settingsBusy) return
     setSettingsBusy(key)
+    setSettingsNotice(null)
     try {
       await api('/api/automation/settings', { method: 'PATCH', body: JSON.stringify({ [key]: value }) })
-      reloadAutomation()
+      await reloadAutomation()
+      setSettingsNotice({ type: 'success', text: t('تم حفظ الإعداد.', 'Setting saved.') })
     } catch {
-      setRuleMsg(t('تعذّر تحديث الإعداد.', 'Unable to update the setting.'))
+      setSettingsNotice({ type: 'error', text: t('تعذّر تحديث الإعداد. حاول مرة أخرى.', 'Unable to update the setting. Try again.') })
     } finally {
       setSettingsBusy(null)
     }
@@ -442,7 +470,7 @@ export default function Automation() {
   return (
     <>
       <section className="page-head">
-        <h2>🤖 الأتمتة والتكامل</h2>
+        <h2 className="automation-page-title"><Bot size={24} aria-hidden="true" /> {t('الأتمتة والتكامل', 'Automation & integrations')}</h2>
         <p className="page-sub">{t('محرّك القواعد الحي على هذا المشروع (قابل للتعديل) + إعدادات المحرّك ومهام الـ workers.', 'The live rule engine on this project (editable) + engine settings and worker jobs.')}</p>
       </section>
 
@@ -456,10 +484,21 @@ export default function Automation() {
         <button type="button" role="tab" aria-selected={tab === 'legacy'} className={tab === 'legacy' ? 'active' : ''} onClick={() => setTab('legacy')}><Archive size={15} /> {t('أرشيف قديم', 'Legacy')}</button>
       </div>
 
+      {tab === 'control' && settingsNotice && (
+        <div
+          className={`automation-settings-notice is-${settingsNotice.type}`}
+          role={settingsNotice.type === 'error' ? 'alert' : 'status'}
+          aria-live="polite"
+        >
+          {settingsNotice.type === 'success' ? <ShieldCheck size={17} aria-hidden="true" /> : <X size={17} aria-hidden="true" />}
+          <span>{settingsNotice.text}</span>
+        </div>
+      )}
+
       {tab === 'control' && settings && (
         <section className="card recent-card">
           <div className="recent-head">
-            <h3>🚦 {t('المفتاح العام للأتمتة الحيّة', 'Live automation master switch')}</h3>
+            <h3 className="automation-section-title"><Power size={18} aria-hidden="true" /> {t('المفتاح العام للأتمتة الحيّة', 'Live automation master switch')}</h3>
           </div>
           <p className="page-sub">
             {t('هذا هو المحرّك الحقيقي على هذا المشروع — يُقيّم كل معاملة NGPay معلّقة كل دقيقة (cron) وينفّذ القرار فعلياً عبر ngpay-approve. المشروع القديم أدناه لم يعد يُستخدَم.', 'This is the real engine on this project — it evaluates every pending NGPay transaction every minute (cron) and executes decisions for real through ngpay-approve. The old-project section below is no longer used.')}
@@ -470,17 +509,18 @@ export default function Automation() {
               className={`automation-master-toggle ${settings.automation_enabled ? 'is-on' : 'is-off'}`}
               role="switch"
               aria-checked={settings.automation_enabled === true}
-              disabled={!canControl || settingsBusy === 'automation_enabled'}
+              aria-busy={settingsBusy === 'automation_enabled'}
+              disabled={!canControl || settingsBusy !== null}
               onClick={() => void toggleGlobalSetting('automation_enabled', settings.automation_enabled !== true)}
             >
               <span className="automation-toggle-track"><span className="automation-toggle-thumb" /></span>
               <span><strong>{t('الأتمتة: موافق / إيقاف', 'Automation: ON / OFF')}</strong><small>{settings.automation_enabled ? t('ON — القرارات التلقائية مفعّلة', 'ON — automated decisions enabled') : t('OFF — مراجعة يدوية فقط', 'OFF — manual review only')}</small></span>
-              <b>{settings.automation_enabled ? 'ON' : 'OFF'}</b>
+              <b>{settingsBusy === 'automation_enabled' ? <LoaderCircle className="automation-spin" size={16} aria-label={t('جارٍ الحفظ', 'Saving')} /> : settings.automation_enabled ? 'ON' : 'OFF'}</b>
             </button>
           </div>
           <div className="control-row">
             <label className="login-remember" style={{ margin: 0 }}>
-              <input type="checkbox" checked={settings.sms_feed_circuit_breaker_enabled !== true} disabled={!canControl || settingsBusy === 'sms_feed_circuit_breaker_enabled'} onChange={(e) => void toggleGlobalSetting('sms_feed_circuit_breaker_enabled', !e.target.checked)} />
+              <input type="checkbox" checked={settings.sms_feed_circuit_breaker_enabled !== true} disabled={!canControl || settingsBusy !== null} onChange={(e) => void toggleGlobalSetting('sms_feed_circuit_breaker_enabled', !e.target.checked)} />
               <strong>{t('مطابقة SMS مستمرة', 'SMS matching keeps running')}</strong>
             </label>
             <span className="cell-sub">{t('مستقلة تماماً عن مفتاح الموافقة أعلاه — إيقاف الموافقة لا يوقف استلام/مطابقة SMS.', 'Fully independent of the switch above — turning approval off does not stop SMS ingestion/matching.')}</span>
@@ -491,12 +531,13 @@ export default function Automation() {
               className={`automation-master-toggle ${settings.auto_decline_enabled === true ? 'is-on' : 'is-off'}`}
               role="switch"
               aria-checked={settings.auto_decline_enabled === true}
-              disabled={!canControl || settingsBusy === 'auto_decline_enabled'}
+              aria-busy={settingsBusy === 'auto_decline_enabled'}
+              disabled={!canControl || settingsBusy !== null}
               onClick={() => void toggleGlobalSetting('auto_decline_enabled', settings.auto_decline_enabled !== true)}
             >
               <span className="automation-toggle-track"><span className="automation-toggle-thumb" /></span>
               <span><strong>{t('الرفض التلقائي للمعاملات', 'Auto-decline transactions')}</strong><small>{settings.auto_decline_enabled === true ? t('ON — رفض المعاملات غير المطابقة بعد المهلة', 'ON — decline stale unmatched transactions') : t('OFF — تظل المعاملات غير المطابقة PENDING', 'OFF — stale unmatched transactions stay PENDING')}</small></span>
-              <b>{settings.auto_decline_enabled === true ? 'ON' : 'OFF'}</b>
+              <b>{settingsBusy === 'auto_decline_enabled' ? <LoaderCircle className="automation-spin" size={16} aria-label={t('جارٍ الحفظ', 'Saving')} /> : settings.auto_decline_enabled === true ? 'ON' : 'OFF'}</b>
             </button>
           </div>
           {settings.auto_decline_enabled === true && canRuleCreate && <button type="button" className="btn-ghost btn-sm automation-create-flow-button" onClick={() => startNewFlow({ action_type: 'decline', max_amount: '5000', time_window_minutes: '5' })}>{t('إنشاء تدفق رفض', 'Create decline flow')}</button>}
@@ -514,7 +555,7 @@ export default function Automation() {
           </div>
           <div className={`automation-turbo-card ${settings.turbo_mode ? 'is-on' : ''}`}>
             <div>
-              <strong>⚡ {t('Turbo Mode — جلسة سريعة', 'Turbo Mode — quick session')}</strong>
+              <strong className="automation-inline-title"><Zap size={16} aria-hidden="true" /> {t('Turbo Mode — جلسة سريعة', 'Turbo Mode — quick session')}</strong>
               <p>{t('يشغّل المعالجة السريعة لمدة دقيقتين فقط، ثم يعود تلقائياً إلى الوضع المتوازن.', 'Runs the faster processing posture for exactly two minutes, then returns to Balanced automatically.')}</p>
               {turboUntil && <small>{t('ينتهي عند', 'Ends at')} {new Date(turboUntil).toLocaleTimeString()}</small>}
             </div>
@@ -523,7 +564,7 @@ export default function Automation() {
             </button>
           </div>
           {(data?.turbo_history?.length ?? 0) > 0 && <div className="automation-turbo-report">
-            <div className="automation-turbo-report-head"><strong>📊 {t('تقرير جلسات Turbo', 'Turbo activity report')}</strong><span>{t('آخر 30 تغييرًا', 'Last 30 changes')}</span></div>
+            <div className="automation-turbo-report-head"><strong className="automation-inline-title"><BarChart3 size={16} aria-hidden="true" /> {t('تقرير جلسات Turbo', 'Turbo activity report')}</strong><span>{t('آخر 30 تغييرًا', 'Last 30 changes')}</span></div>
             {isMobile ? (
               <div className="risk-card-list">
                 {(data?.turbo_history ?? []).map((row) => {
@@ -531,7 +572,7 @@ export default function Automation() {
                   const template = typeof after.template === 'string' ? after.template : null
                   const turbo = template ? template === 'turbo' : after.turbo_mode === true
                   return <div key={row.id} className="risk-row-card">
-                    <div className="risk-row-card-head"><span className={`pay-status-badge ${turbo ? 'st-paid' : 'st-dim'}`}>{turbo ? '⚡ Turbo ON' : 'Balanced / Turbo OFF'}</span><span>{row.actor_name ?? 'system'}</span></div>
+                    <div className="risk-row-card-head"><span className={`pay-status-badge ${turbo ? 'st-paid' : 'st-dim'}`}>{turbo ? 'Turbo ON' : 'Balanced / Turbo OFF'}</span><span>{row.actor_name ?? 'system'}</span></div>
                     <div className="cell-sub">{template ? template : `${after.max_auto_amount ?? '—'} EGP · ${after.decline_grace_minutes ?? '—'}m · ${after.wallet_switch_auto_enabled ? 'wallet switch' : 'fixed wallet'}`}</div>
                     <div className="risk-row-card-foot"><span className="mono muted">{new Date(row.created_at).toLocaleString()}</span></div>
                   </div>
@@ -543,7 +584,7 @@ export default function Automation() {
                 const after = row.after ?? {}
                 const template = typeof after.template === 'string' ? after.template : null
                 const turbo = template ? template === 'turbo' : after.turbo_mode === true
-                return <tr key={row.id}><td className="mono">{new Date(row.created_at).toLocaleString()}</td><td><span className={`pay-status-badge ${turbo ? 'st-paid' : 'st-dim'}`}>{turbo ? '⚡ Turbo ON' : 'Balanced / Turbo OFF'}</span></td><td>{row.actor_name ?? 'system'}</td><td className="cell-sub">{template ? template : `${after.max_auto_amount ?? '—'} EGP · ${after.decline_grace_minutes ?? '—'}m · ${after.wallet_switch_auto_enabled ? 'wallet switch' : 'fixed wallet'}`}</td></tr>
+                return <tr key={row.id}><td className="mono">{new Date(row.created_at).toLocaleString()}</td><td><span className={`pay-status-badge ${turbo ? 'st-paid' : 'st-dim'}`}>{turbo ? 'Turbo ON' : 'Balanced / Turbo OFF'}</span></td><td>{row.actor_name ?? 'system'}</td><td className="cell-sub">{template ? template : `${after.max_auto_amount ?? '—'} EGP · ${after.decline_grace_minutes ?? '—'}m · ${after.wallet_switch_auto_enabled ? 'wallet switch' : 'fixed wallet'}`}</td></tr>
               })}
             </tbody></table></div>
             )}
@@ -763,26 +804,54 @@ export default function Automation() {
       {tab === 'control' && settings && (
         <section className="card recent-card">
           <div className="recent-head">
-            <h3>⚙️ إعدادات المحرّك</h3>
+            <h3 className="automation-section-title"><SlidersHorizontal size={18} aria-hidden="true" /> {t('إعدادات المحرّك', 'Engine settings')}</h3>
             <span className="mono cell-sub">
-              حد تلقائي: {money(Number(settings.max_auto_amount ?? 0), 'EGP')} · عتبة: {String(settings.score_threshold ?? '—')}
+              {t('الحد التلقائي', 'Auto limit')}: {money(Number(settings.max_auto_amount ?? 0), 'EGP')} · {t('العتبة', 'Threshold')}: {String(settings.score_threshold ?? '—')}
             </span>
           </div>
-          <div className="flag-grid">
-            {Object.entries(FLAG_LABELS).map(([key, label]) => {
-              const v = settings[key]
-              if (v === undefined || v === null) return null
+          <p className="page-sub">{t('الإعدادات الحرجة موجودة في لوحة التحكم أعلاه. الخيارات التالية تضبط القنوات وحواجز الأمان وإشارات المطابقة.', 'Critical controls live in the panel above. These options configure channels, guardrails, and matching signals.')}</p>
+          <div className="automation-setting-groups">
+            {SETTING_GROUPS.map((group) => {
+              const GroupIcon = group.id === 'providers' ? RadioTower : group.id === 'safety' ? ShieldCheck : ScanSearch
+              const visibleSettings = group.settings.filter(({ key }) => settings[key] !== undefined && settings[key] !== null)
+              if (visibleSettings.length === 0) return null
               return (
-                <button
-                  key={key}
-                  type="button"
-                  className={`pay-status-badge flag-toggle ${v ? 'st-paid' : 'st-dim'}`}
-                  disabled={!canControl || settingsBusy === key}
-                  aria-pressed={v === true}
-                  onClick={() => void toggleGlobalSetting(key, v !== true)}
-                >
-                  {settingsBusy === key ? '…' : v ? '●' : '○'} {label}
-                </button>
+                <section key={group.id} className="automation-setting-group" aria-labelledby={`automation-settings-${group.id}`}>
+                  <header>
+                    <span className="automation-setting-group-icon" aria-hidden="true"><GroupIcon size={18} /></span>
+                    <span>
+                      <strong id={`automation-settings-${group.id}`}>{group.title[li]}</strong>
+                      <small>{group.description[li]}</small>
+                    </span>
+                  </header>
+                  <div className="automation-setting-list">
+                    {visibleSettings.map((item) => {
+                      const enabled = settings[item.key] === true
+                      const busy = settingsBusy === item.key
+                      return (
+                        <button
+                          key={item.key}
+                          type="button"
+                          className={`automation-setting-row ${enabled ? 'is-on' : 'is-off'}`}
+                          role="switch"
+                          aria-checked={enabled}
+                          aria-busy={busy}
+                          disabled={!canControl || settingsBusy !== null}
+                          onClick={() => void toggleGlobalSetting(item.key, !enabled)}
+                        >
+                          <span className="automation-setting-copy">
+                            <strong>{item.label[li]}</strong>
+                            <small>{item.description[li]}</small>
+                          </span>
+                          <span className="automation-toggle-track" aria-hidden="true"><span className="automation-toggle-thumb" /></span>
+                          <span className="automation-setting-state">
+                            {busy ? <LoaderCircle className="automation-spin" size={15} aria-hidden="true" /> : enabled ? 'ON' : 'OFF'}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </section>
               )
             })}
           </div>

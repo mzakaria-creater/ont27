@@ -33,7 +33,8 @@ const rangeFor = (preset: Exclude<Preset, 'custom'>) => {
   if (preset === 'this_week' || preset === 'last_week') {
     const mondayOffset = (now.getDay() + 6) % 7
     start.setDate(now.getDate() - mondayOffset - (preset === 'last_week' ? 7 : 0))
-    end.setDate(start.getDate() + (preset === 'last_week' ? 6 : mondayOffset))
+    if (preset === 'last_week') { end.setTime(start.getTime()); end.setDate(end.getDate() + 6) }
+    else end.setTime(now.getTime())
   } else if (preset === 'this_month') start.setDate(1)
   else if (preset === 'last_month') { start.setMonth(now.getMonth() - 1, 1); end.setDate(0) }
   return { from: iso(start), to: iso(end) }

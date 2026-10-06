@@ -176,7 +176,7 @@ async function buildReport(c: any) {
     fetchAll<{ id: number; amount: number | null; sms_category: string | null; consumed_by_tx_id: number | null; received_at: string | null }>((() => { let q = db.from('inbound_sms').select('id, amount, sms_category, consumed_by_tx_id, received_at').order('received_at', { ascending: true, nullsFirst: false }); if (from) q = q.gte('received_at', cairoBoundary(from)); if (to) q = q.lte('received_at', cairoBoundary(to, true)); return q })()),
   ])
   const linkedIds = new Set(smsRows.filter((row) => row.consumed_by_tx_id != null).map((row) => Number(row.consumed_by_tx_id)))
-  const methodRows = methodFilters.length ? rawDeposits.filter((row) => methodFilters.includes(paymentRail(row).key)) : rawDeposits
+  const methodRows = methodFilters.length ? rawDeposits.filter((row) => { const rail = paymentRail(row); return methodFilters.includes(rail.key) || methodFilters.includes(rail.label) }) : rawDeposits
   const depRows = smsFilters.length === 1 && smsFilters[0] === 'linked' ? methodRows.filter((row) => linkedIds.has(row.tx_id)) : smsFilters.length === 1 && smsFilters[0] === 'unlinked' ? methodRows.filter((row) => !linkedIds.has(row.tx_id)) : methodRows
   const empty = (statuses: string[]) => Object.fromEntries(statuses.map((status) => [status, { count: 0, amount: 0 }]))
   const depositStatuses = empty(DEPOSIT_STATUSES)
@@ -185,6 +185,7 @@ async function buildReport(c: any) {
   const byMaster = new Map<string, CompanyBucket>()
   const byReceiver = new Map<string, { receiver: string; count: number; amount: number; merchants: Set<string>; methods: Set<string> }>()
   const byMethod = new Map<string, { key: string; method: string; family: string; readiness: string; master: string; count: number; amount: number; paid_count: number; paid_amount: number }>()
+  const pivot = new Map<string, { date: string; merchant: string; master: string; method: string; status: string; count: number; amount: number; paid_count: number; paid_amount: number }>()
   const daily = new Map<string, { date: string; deposits: number; payouts: number; count: number }>()
   let includesPayFuture = false
   let ngpayPaid = 0
@@ -226,6 +227,12 @@ async function buildReport(c: any) {
     if (isPaid) { methodBucket.paid_count += 1; methodBucket.paid_amount += amount }
     byMethod.set(key, methodBucket)
     const date = row.first_seen_at?.slice(0, 10)
+    const pivotDate = date ?? 'Unknown date'
+    const pivotKey = `${pivotDate}\u0000${merchantName}\u0000${master}\u0000${rail.label}\u0000${status}`
+    const pivotBucket = pivot.get(pivotKey) ?? { date: pivotDate, merchant: merchantName, master, method: rail.label, status, count: 0, amount: 0, paid_count: 0, paid_amount: 0 }
+    pivotBucket.count += 1; pivotBucket.amount += amount
+    if (isPaid) { pivotBucket.paid_count += 1; pivotBucket.paid_amount += amount }
+    pivot.set(pivotKey, pivotBucket)
     if (date) { const bucket = daily.get(date) ?? { date, deposits: 0, payouts: 0, count: 0 }; bucket.deposits += amount; bucket.count += 1; daily.set(date, bucket) }
   }
   let approvedPayouts = 0
@@ -296,7 +303,7 @@ async function buildReport(c: any) {
   const knownRailKeys = new Set<string>(PAYMENT_RAILS.map((rail) => rail.key))
   const otherRails = [...new Map(observedMethods.filter((row) => !knownRailKeys.has(row.key)).map((row) => [row.key, { key: row.key, label: row.method, family: row.family, readiness: row.readiness }])).values()]
   const paymentRails = [...PAYMENT_RAILS.map(summarizeRail), ...otherRails.map(summarizeRail)]
-  return { from, to, merchant: merchantFilters, master: masterFilters, status: statusFilters, sms: smsFilters, method: methodFilters, merchants: [...merchants].sort(), masters: companyRows.map((row) => row.master).sort(), methodOptions: paymentRails.map(({ key, label, family, readiness }) => ({ key, label, family, readiness })), hero, live, unassigned, depositStatuses, payoutStatuses, byMaster: companyRows, byReceiver: receiverRows, byMethod: observedMethods, paymentRails, daily: [...daily.values()].sort((a, b) => b.date.localeCompare(a.date)), includesPayFuture }
+  return { from, to, merchant: merchantFilters, master: masterFilters, status: statusFilters, sms: smsFilters, method: methodFilters, merchants: [...merchants].sort(), masters: companyRows.map((row) => row.master).sort(), methodOptions: paymentRails.map(({ key, label, family, readiness }) => ({ key, label, family, readiness })), hero, live, unassigned, depositStatuses, payoutStatuses, byMaster: companyRows, byReceiver: receiverRows, byMethod: observedMethods, paymentRails, pivot: [...pivot.values()].sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount), daily: [...daily.values()].sort((a, b) => b.date.localeCompare(a.date)), includesPayFuture }
 }
 const esc = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`
 

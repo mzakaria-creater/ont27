@@ -2095,6 +2095,17 @@ extraRoutes.get(
 )
 
 // ---- Executive dashboard: management-level, live operating indicators ----
+async function fetchExecutiveRows<T>(query: any): Promise<T[]> {
+  const rows: T[] = []
+  for (let offset = 0; offset < 100_000; offset += 1_000) {
+    const { data, error } = await query.range(offset, offset + 999)
+    if (error) throw new Error(error.message)
+    rows.push(...(data ?? []))
+    if ((data ?? []).length < 1_000) break
+  }
+  return rows
+}
+
 extraRoutes.get(
   '/executive-dashboard',
   requireAnyPerm(['dashboard', 'reports', 'advanced_analysis', 'treasury', 'wallets'], 'can_view'),
@@ -2108,20 +2119,18 @@ extraRoutes.get(
     const since = `${from}T00:00:00+03:00`
     const until = `${to}T23:59:59.999+03:00`
     const day = new Date(Date.now() - 24 * 86_400_000).toISOString()
-    const [deposits, payouts, pendingDeposits, pendingPayouts, devices, sms] = await Promise.all([
-      db.from('maven_transactions').select('amount, status, merchant, master_merchant, payment_method, gateway, fees, commission, first_seen_at').gte('first_seen_at', since).lte('first_seen_at', until).order('first_seen_at', { ascending: true, nullsFirst: false }).limit(20_000),
-      db.from('maven_payout_transactions').select('amount, status, merchant, first_seen_at').gte('first_seen_at', since).lte('first_seen_at', until).order('first_seen_at', { ascending: true, nullsFirst: false }).limit(20_000),
+    const [rawDeposits, rawPayouts, pendingDeposits, pendingPayouts, devices, sms] = await Promise.all([
+      fetchExecutiveRows<any>(db.from('maven_transactions').select('amount, status, merchant, master_merchant, payment_method, gateway, fees, commission, first_seen_at').gte('first_seen_at', since).lte('first_seen_at', until).order('first_seen_at', { ascending: true, nullsFirst: false })),
+      fetchExecutiveRows<any>(db.from('maven_payout_transactions').select('amount, status, merchant, first_seen_at').gte('first_seen_at', since).lte('first_seen_at', until).order('first_seen_at', { ascending: true, nullsFirst: false })),
       db.from('maven_transactions').select('tx_id', { count: 'exact', head: true }).eq('status', 'PENDING'),
       db.from('maven_payout_transactions').select('maven_id', { count: 'exact', head: true }).eq('status', 'PENDING'),
       db.from('device_status').select('device, sim_slot, online, battery, last_seen_at').order('device').limit(500),
       db.from('inbound_sms').select('id, matched, sms_category, received_at').gte('received_at', day).order('received_at', { ascending: false, nullsFirst: false }).limit(1_000),
     ])
-    for (const result of [deposits, payouts, pendingDeposits, pendingPayouts, devices, sms]) {
+    for (const result of [pendingDeposits, pendingPayouts, devices, sms]) {
       if (result.error) return c.json({ error: 'db_error', detail: result.error.message }, 500)
     }
 
-    const rawDeposits = deposits.data ?? []
-    const rawPayouts = payouts.data ?? []
     const options = {
       merchants: [...new Set(rawDeposits.map((row) => row.master_merchant ?? row.merchant ?? 'Unassigned'))].sort(),
       methods: [...new Set(rawDeposits.map((row) => row.payment_method ?? row.gateway ?? 'Unspecified'))].sort(),

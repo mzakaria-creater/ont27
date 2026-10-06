@@ -35,8 +35,14 @@ financeOpsRoutes.get('/', requirePerm('revenue_center', 'can_view'), async (c) =
       if (r.error) throw new Error(r.error.message)
     }
 
-    const USD_EGP = 47.5
-    const USDT_EGP = 54.45
+    const latestRate = (pair: 'USD/EGP' | 'USDT/EGP', fallback: number) => {
+      const row = (rateRes.data ?? []).find((value) => value.currency_pair === pair && Number(value.rate) > 0)
+      return { value: row ? Number(row.rate) : fallback, fetchedAt: row?.fetched_at ?? null, live: Boolean(row) }
+    }
+    const usdRate = latestRate('USD/EGP', 47.5)
+    const usdtRate = latestRate('USDT/EGP', 54.45)
+    const USD_EGP = usdRate.value
+    const USDT_EGP = usdtRate.value
 
     const payOutByMerchant = new Map<string, { count:number; amount:number; commission:number }>()
     for (const row of payoutRes.data ?? []) {
@@ -123,7 +129,7 @@ financeOpsRoutes.get('/', requirePerm('revenue_center', 'can_view'), async (c) =
     const latestRates = rateRes.data ?? []
     return c.json({
       generatedAt:new Date().toISOString(), range:{from,to},
-      settings:{ usdEgp:USD_EGP, usdtEgp:USDT_EGP, usdtSource:'EZInvest settlement', usdtAsOf:'2026-07-18', liveRates:latestRates },
+      settings:{ usdEgp:USD_EGP, usdtEgp:USDT_EGP, usdtSource:usdtRate.live?'exchange_rates':'fallback', usdtAsOf:usdtRate.fetchedAt, usdSource:usdRate.live?'exchange_rates':'fallback', usdAsOf:usdRate.fetchedAt, liveRates:latestRates },
       daily, wallets, merchants, commissions:daily.map((r)=>({merchant:r.merchant,gross:r.gross,fees:r.fees,commission:r.commission,providerCommission:r.providerCommission,totalCommission:r.totalCommission,commissionRate:r.commissionRate,usdt:r.totalCommission/USDT_EGP,usd:r.totalCommission/USD_EGP})),
       debts, monthly:[...monthlyMap.values()].sort((a,b)=>b.month.localeCompare(a.month)),
     })
