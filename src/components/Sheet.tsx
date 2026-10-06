@@ -14,21 +14,24 @@ interface SheetProps {
   onClose: () => void
   side?: 'start' | 'end' | 'top' | 'bottom'
   ariaLabel?: string
+  // Disables both Escape-to-close and backdrop-click-to-close — e.g. while a
+  // decision/save is in flight and closing mid-request would be wrong.
+  busy?: boolean
   children: ReactNode
 }
 
-export function Sheet({ open, onClose, side = 'start', ariaLabel, children }: SheetProps) {
+export function Sheet({ open, onClose, side = 'start', ariaLabel, busy = false, children }: SheetProps) {
   useEffect(() => {
     if (!open) return
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && !busy) onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+  }, [open, busy, onClose])
 
   if (!open) return null
   const sideClass = side === 'start' ? '' : ` sheet-side-${side}`
   return (
-    <div className={`drawer-backdrop${sideClass}`} onClick={onClose}>
+    <div className={`drawer-backdrop${sideClass}`} onClick={() => !busy && onClose()}>
       <aside className={`drawer sheet-panel${sideClass}`} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={ariaLabel}>
         {children}
       </aside>
@@ -36,12 +39,15 @@ export function Sheet({ open, onClose, side = 'start', ariaLabel, children }: Sh
   )
 }
 
-export function SheetHeader({ title, onClose, children }: { title: ReactNode; onClose?: () => void; children?: ReactNode }) {
+export function SheetHeader({ title, subtitle, onClose, busy = false, children }: { title: ReactNode; subtitle?: ReactNode; onClose?: () => void; busy?: boolean; children?: ReactNode }) {
   return (
     <div className="drawer-head">
-      <h3>{title}</h3>
+      <div>
+        <h3>{title}</h3>
+        {subtitle && <p className="cell-sub">{subtitle}</p>}
+      </div>
       {children}
-      {onClose && <button type="button" className="btn-ghost btn-sm" onClick={onClose} aria-label="Close">✕</button>}
+      {onClose && <button type="button" className="btn-ghost btn-sm" onClick={onClose} disabled={busy} aria-label="Close">✕</button>}
     </div>
   )
 }

@@ -86,6 +86,15 @@ export default function MavenWallets() {
   const [rotationThreshold, setRotationThreshold] = useState('10000')
   const [rotationBusy, setRotationBusy] = useState(false)
   const [rotationError, setRotationError] = useState<string | null>(null)
+  // Quick SIM1/SIM2 setup: the table-multi-select flow above works for any
+  // number of wallets, but the common case an agent actually wants is just
+  // two — type both numbers directly instead of hunting them down in the
+  // (possibly long) wallet table first.
+  const [quickSim1, setQuickSim1] = useState('')
+  const [quickSim2, setQuickSim2] = useState('')
+  const [quickThreshold, setQuickThreshold] = useState('50000')
+  const [quickBusy, setQuickBusy] = useState(false)
+  const [quickError, setQuickError] = useState<string | null>(null)
 
   const canManageRotation = can('wallets', 'can_edit')
   const canCreateWallet = can('wallets', 'can_create')
@@ -120,21 +129,35 @@ export default function MavenWallets() {
       if (sequence !== refreshSequence.current) return
       setData((current) => ({ ...base, live: current?.live ?? [] }))
       setLastRefresh(new Date())
-      void api<{ live: LiveWallet[] }>('/api/wallets/live').then(({ live }) => {
-        if (sequence !== refreshSequence.current) return
-        setData((current) => current ? { ...current, live } : current)
-      }).catch(() => { /* Local mirror stays usable when the legacy source is slow. */ })
     } catch (e) {
       if (sequence !== refreshSequence.current) return
       setError(e instanceof ApiError && e.status === 403 ? t('لا تملك صلاحية عرض المحافظ.', 'You do not have permission to view wallets.') : t('تعذّر تحميل محافظ Maven.', 'Unable to load Maven wallets.'))
     }
   }, [t])
 
+  // The legacy live list comes from the OLD project (occasionally slow/
+  // timing out — see the retry above) and barely changes between checks.
+  // Refetching it on every 60s local-data cycle was extra load on a fragile
+  // upstream for data that doesn't need it; its own 5-minute cadence is
+  // plenty, and a failure here never blocks the fast local data above.
+  const refreshLive = useCallback(async () => {
+    try {
+      const { live } = await api<{ live: LiveWallet[] }>('/api/wallets/live')
+      setData((current) => current ? { ...current, live } : current)
+    } catch { /* Local mirror stays usable when the legacy source is slow. */ }
+  }, [])
+
   useEffect(() => {
     void refresh()
     const timer = window.setInterval(() => void refresh(), 60_000)
     return () => { window.clearInterval(timer); refreshSequence.current++ }
   }, [refresh])
+
+  useEffect(() => {
+    void refreshLive()
+    const timer = window.setInterval(() => void refreshLive(), 300_000)
+    return () => window.clearInterval(timer)
+  }, [refreshLive])
 
   const deviceMap = useMemo(() => {
     const map = new Map<string, DeviceRow>()
@@ -179,6 +202,16 @@ export default function MavenWallets() {
   const allLiveSelected = liveRows.length > 0 && liveRows.every((row) => selectedLive.includes(liveBankId(row)))
   const toggleLive = (bankId: string) => setSelectedLive((current) => current.includes(bankId) ? current.filter((item) => item !== bankId) : [...current, bankId])
   const toggleAllLive = () => setSelectedLive(allLiveSelected ? [] : [...new Set(liveRows.map(liveBankId).filter(Boolean))])
+  // O(1) per-row lookup instead of a liveRows.find(...) scan inside
+  // rows.map(...) below (same pattern as deviceMap above).
+  const liveByPhone = useMemo(() => {
+    const map = new Map<string, LiveWallet>()
+    for (const row of liveRows) {
+      const phone = livePhone(row)?.replace(/\D/g, '')
+      if (phone && liveBankId(row)) map.set(phone, row)
+    }
+    return map
+  }, [liveRows])
   const changeAllLive = () => {
     const bankIds = [...new Set(liveRows.map(liveBankId).filter(Boolean))]
     if (bankIds.length) openReplace(bankIds)
@@ -322,6 +355,30 @@ export default function MavenWallets() {
     } finally { setRotationBusy(false) }
   }
 
+  const createQuickSimRotation = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const sim1 = quickSim1.replace(/\D/g, '')
+    const sim2 = quickSim2.replace(/\D/g, '')
+    const threshold = Number(quickThreshold)
+    if (!sim1 || !sim2 || sim1 === sim2 || !Number.isFinite(threshold) || threshold <= 0) {
+      setQuickError(t('أدخل رقمي محفظة مختلفين ومبلغاً صحيحاً.', 'Enter two different wallet numbers and a valid amount.'))
+      return
+    }
+    setQuickBusy(true); setQuickError(null)
+    try {
+      await api('/api/wallets/rotation-groups', {
+        method: 'POST',
+        body: JSON.stringify({ wallet_numbers: [sim1, sim2], mode: 'amount', amount_threshold: threshold }),
+      })
+      setQuickSim1(''); setQuickSim2(''); await loadRotationGroups()
+    } catch (e) {
+      const missing = e instanceof ApiError && e.code === 'unknown_wallets' ? (e.body?.missing as string[] | undefined) : undefined
+      setQuickError(missing?.length
+        ? t(`الرقم غير موجود في جدول المحافظ أعلاه: ${missing.join('، ')}`, `Not in the wallet table above: ${missing.join(', ')}`)
+        : t('تعذّر إنشاء القاعدة.', 'Unable to create the rule.'))
+    } finally { setQuickBusy(false) }
+  }
+
   const toggleRotationGroupActive = async (group: RotationGroup) => {
     try { await api(`/api/wallets/rotation-groups/${group.id}`, { method: 'PATCH', body: JSON.stringify({ active: !group.active }) }); await loadRotationGroups() }
     catch { setRotationError(t('تعذّر تحديث قاعدة الدوران.', 'Unable to update the rotation rule.')) }
@@ -383,7 +440,7 @@ export default function MavenWallets() {
           {rows.map((wallet, index) => {
             const device = wallet.device ? deviceMap.get(`${wallet.device}#${wallet.sim_slot ?? 0}`) ?? deviceMap.get(`${wallet.device}#0`) : undefined
             const online = device?.online === true
-            const matchingLive = liveRows.find((live) => livePhone(live)?.replace(/\D/g, '') === wallet.to_account_number.replace(/\D/g, '') && liveBankId(live))
+            const matchingLive = liveByPhone.get(wallet.to_account_number.replace(/\D/g, ''))
             return <tr key={`${wallet.to_account_number}-${wallet.sim_slot ?? 0}`}>{canManageRotation && <td><input type="checkbox" checked={selectedWallets.includes(wallet.to_account_number)} onChange={() => toggleWallet(wallet.to_account_number)} aria-label={`${t('تحديد', 'Select')} ${wallet.to_account_number}`} /></td>}<td><span className="maven-row-number">{index + 1}</span></td><td><strong className="mono">{wallet.to_account_number}</strong><div className="cell-sub">{wallet.payment_type ?? t('استقبال', 'Receiving')}</div></td><td><span className="maven-provider">{wallet.provider ?? '—'}</span></td><td>{device ? <><strong className="mono">{device.device}</strong><div className="cell-sub">SIM {device.sim_slot ?? 0}{device.sim_number ? ` · ${device.sim_number}` : ''}</div></> : <span className="cell-sub"><Smartphone size={14} /> {t('غير مربوط', 'Unassigned')}</span>}</td><td><strong className="maven-balance">{device?.balance != null ? money(device.balance, 'EGP') : '—'}</strong>{device?.balance_at && <div className="cell-sub">{depositTime({ first_seen_at: device.balance_at })}</div>}</td><td><span className={`maven-status ${online ? 'online' : device ? 'offline' : 'unknown'}`}>{online ? <CheckCircle2 size={14} /> : device ? <WifiOff size={14} /> : <ShieldAlert size={14} />}{online ? t('متصل', 'Online') : device ? t('غير متصل', 'Offline') : t('غير معروف', 'Unknown')}</span>{device?.battery != null && <div className="cell-sub">🔋 {device.battery}%</div>}</td><td className="mono">{money(wallet.daily_limit ?? 60_000, 'EGP')}</td><td>{wallet.merchant ?? <span className="cell-sub">{t('عام', 'General')}</span>}</td><td className="cell-sub mono">{depositTime({ first_seen_at: device?.last_seen_at ?? wallet.updated_at })}</td>{can('wallets', 'can_edit') && <td className="row-actions">{matchingLive ? <button className="btn-ghost btn-sm" type="button" onClick={() => openReplace([liveBankId(matchingLive)])}><Pencil size={14} /> {t('غيّر الرقم', 'Change number')}</button> : <span className="cell-sub">{t('غير ظاهر في Maven', 'Not in Maven live list')}</span>}</td>}</tr>
           })}
           {rows.length === 0 && <tr><td colSpan={(canManageRotation ? 10 : 9) + (can('wallets', 'can_edit') ? 1 : 0)} className="maven-empty">{t('لا توجد محافظ مطابقة للفلاتر.', 'No wallets match the current filters.')}</td></tr>}
@@ -395,16 +452,26 @@ export default function MavenWallets() {
           <div className="recent-head">
             <div><h3><RotateCw size={17} /> {t('قواعد دوران الأولوية', 'Priority rotation rules')}</h3><p className="cell-sub">{t('محاكاة داخلية فقط — لا تغيّر الرقم الذي يستقبل فلوس العملاء فعلياً؛ Maven هو من يحدد ذلك ولم يوفّر endpoint لتغييره بعد.', 'Internal simulation only — it never changes the number that actually receives customer funds; Maven controls that and has not exposed an endpoint to change it yet.')}</p></div>
           </div>
+          {canManageRotation && (
+            <form className="control-row" onSubmit={createQuickSimRotation} aria-label={t('إعداد سريع SIM1/SIM2', 'Quick SIM1/SIM2 setup')}>
+              <label className="filter-field">SIM1<input className="login-input mono" inputMode="tel" placeholder="01XXXXXXXXX" value={quickSim1} onChange={(e) => setQuickSim1(e.target.value)} /></label>
+              <label className="filter-field">SIM2<input className="login-input mono" inputMode="tel" placeholder="01XXXXXXXXX" value={quickSim2} onChange={(e) => setQuickSim2(e.target.value)} /></label>
+              <label className="filter-field">{t('بعد استقبال (EGP)', 'After receiving (EGP)')}<input className="login-input" type="number" min="1" value={quickThreshold} onChange={(e) => setQuickThreshold(e.target.value)} /></label>
+              <button className="btn-primary btn-sm" disabled={quickBusy}>{quickBusy ? t('جارٍ الإنشاء…', 'Creating…') : t('إنشاء SIM1→SIM2', 'Create SIM1→SIM2')}</button>
+            </form>
+          )}
+          {quickError && <div className="card warn">{quickError}</div>}
           {rotationError && <div className="card warn">{rotationError}</div>}
-          {rotationGroups.length === 0 && <p className="sidebar-hint">{t('لا توجد قواعد دوران. حدد محفظتين أو أكتر من الجدول فوق وأنشئ قاعدة.', 'No rotation rules yet. Select two or more wallets in the table above to create one.')}</p>}
+          {rotationGroups.length === 0 && <p className="sidebar-hint">{t('لا توجد قواعد دوران. اكتب SIM1/SIM2 أعلاه، أو حدد محفظتين أو أكتر من الجدول فوق وأنشئ قاعدة.', 'No rotation rules yet. Type SIM1/SIM2 above, or select two or more wallets in the table above to create one.')}</p>}
           {rotationGroups.length > 0 && (
             <div className="table-wrap">
               <table className="data-table">
-                <thead><tr><th>{t('المحافظ', 'Wallets')}</th><th>{t('النمط', 'Mode')}</th><th>{t('آخر دوران', 'Last rotated')}</th><th>{t('الحالة', 'Status')}</th><th /></tr></thead>
+                <thead><tr><th>{t('المحافظ', 'Wallets')}</th><th>{t('النشط حالياً', 'Currently active')}</th><th>{t('النمط', 'Mode')}</th><th>{t('آخر دوران', 'Last rotated')}</th><th>{t('الحالة', 'Status')}</th><th /></tr></thead>
                 <tbody>
                   {rotationGroups.map((group) => (
                     <tr key={group.id}>
                       <td className="mono">{group.wallet_numbers.join('، ')}</td>
+                      <td className="mono">{group.wallet_numbers[group.current_index] ?? '—'}</td>
                       <td>{group.mode === 'time' ? `${t('كل', 'every')} ${group.interval_minutes} ${t('دقيقة', 'min')}` : `${t('بعد استقبال', 'after receiving')} ${money(group.amount_threshold, 'EGP')} (${money(group.amount_received_since_rotation, 'EGP')})`}</td>
                       <td className="cell-sub mono">{group.last_rotated_at ? depositTime({ first_seen_at: group.last_rotated_at }) : t('لم يحدث بعد', 'Not yet')}</td>
                       <td><span className={`pay-status-badge ${group.active ? 'st-paid' : 'st-dim'}`}>{group.active ? t('نشط', 'Active') : t('موقوف', 'Paused')}</span></td>

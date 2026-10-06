@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import MerchantLogo from '../components/MerchantLogo'
 import MethodLogo from '../components/MethodLogo'
 import { api, ApiError } from '../lib/api'
-import { depositTime, isAutomaticApprovalActor, money, statusMeta } from '../lib/deposits'
+import { depositTime, isAutomaticApprovalActor, maskWallet, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
@@ -582,8 +582,8 @@ export default function Transactions() {
     { header: 'Party', key: 'party', value: (r) => (r.kind === 'deposit' ? (r.sender_name ?? r.sender_number) : (r.account_name ?? r.mobile_no)) ?? '' },
     { header: 'Party phone', key: 'phone', value: (r) => (r.kind === 'deposit' ? r.sender_number : r.mobile_no) ?? '' },
     { header: 'Sender account name', key: 'sender_account_name', value: (r) => r.sender_account_name ?? '' },
-    { header: 'Sender account number', key: 'sender_account_number', value: (r) => r.sender_account_number ?? '' },
-    { header: 'Wallet', key: 'wallet', value: (r) => (r.kind === 'deposit' ? (r.to_account_number ?? r.receiving_wallet) : r.mobile_no) ?? '' },
+    { header: 'Sender account number', key: 'sender_account_number', value: (r) => maskWallet(r.sender_account_number) },
+    { header: 'Wallet', key: 'wallet', value: (r) => maskWallet((r.kind === 'deposit' ? (r.to_account_number ?? r.receiving_wallet) : r.mobile_no) ?? null) },
     { header: 'Merchant', key: 'merchant', value: (r) => r.merchant ?? r.master_merchant ?? '' },
     { header: 'Gateway', key: 'gateway', value: (r) => r.gateway ?? '' },
     { header: 'Approved by', key: 'approved_by', value: (r) => r.status === 'PENDING' ? '' : (isAutomaticApprovalActor(rowApprovedByActor(r)) ? 'Auto' : rowApprovedByActor(r) ?? '') },
@@ -922,7 +922,7 @@ export default function Transactions() {
                       case 'sender_phone_number': return <td key={colId} className="mono">{r.sender_phone_number ?? r.sender_number ?? '—'}</td>
                       case 'email': return <td key={colId}>{r.user_email ? <a href={`mailto:${r.user_email}`} className="transaction-cell-link">{r.user_email}</a> : '—'}</td>
                       case 'sender_account_name': return <td key={colId}>{senderAccountName ?? '—'}</td>
-                      case 'sender_account_number': return <td key={colId} className="mono"><Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(r.sender_account_number ?? clientPhone ?? '')}`}>{r.sender_account_number ?? clientPhone ?? '—'}</Link></td>
+                      case 'sender_account_number': return <td key={colId} className="mono"><Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(r.sender_account_number ?? clientPhone ?? '')}`}>{r.sender_account_number ? maskWallet(r.sender_account_number) : (clientPhone ?? '—')}</Link></td>
                       case 'time': return <td key={colId} className="mono">{depositTime(r)}</td>
                       case 'modified_time': return <td key={colId} className="mono">{depositTime({ created_utc: r.kind === 'deposit' ? r.modified_utc : r.updated_utc })}</td>
                       case 'to_account_name': return <td key={colId}>{(r.kind === 'deposit' ? r.to_account_name : null) ?? '—'}</td>
@@ -950,8 +950,8 @@ export default function Transactions() {
                       <div className="tx-expanded-grid">
                         <div><span>{t('بريد المستخدم', 'User email')}</span>{r.user_email ? <a href={`mailto:${r.user_email}`} className="transaction-cell-link">{r.user_email}</a> : '—'}</div>
                         <div><span>{t('اسم حساب المرسل', 'Sender account name')}</span>{senderAccountName ?? '—'}</div>
-                        <div><span>{t('رقم حساب المرسل', 'Sender account number')}</span><Link className="mono transaction-cell-link" to={`/transactions?q=${encodeURIComponent(r.sender_account_number ?? clientPhone ?? '')}`}>{r.sender_account_number ?? clientPhone ?? '—'}</Link></div>
-                        <div><span>{t('المحفظة المستلمة', 'Receiving wallet')}</span>{wallet ? <Link className="mono transaction-cell-link" to={`/transactions?type=deposit&q=${encodeURIComponent(wallet)}`}>{wallet}</Link> : '—'}</div>
+                        <div><span>{t('رقم حساب المرسل', 'Sender account number')}</span><Link className="mono transaction-cell-link" to={`/transactions?q=${encodeURIComponent(r.sender_account_number ?? clientPhone ?? '')}`}>{r.sender_account_number ? maskWallet(r.sender_account_number) : (clientPhone ?? '—')}</Link></div>
+                        <div><span>{t('المحفظة المستلمة', 'Receiving wallet')}</span>{wallet ? <Link className="mono transaction-cell-link" to={`/transactions?type=deposit&q=${encodeURIComponent(wallet)}`}>{maskWallet(wallet)}</Link> : '—'}</div>
                         <div><span>{t('التاجر', 'Merchant')}</span><MerchantLogo merchant={r.merchant ?? r.master_merchant}/></div>
                         <div><span>{t('البوابة', 'Gateway')}</span><strong>{r.gateway ?? '—'}</strong></div>
                         <div><span>{t('معرفات العملية', 'Transaction IDs')}</span><strong className="mono">{identifiers.length ? identifiers.join(' · ') : '—'}</strong></div>
@@ -1007,8 +1007,8 @@ export default function Transactions() {
                 <dl>
                   <div><dt>{t('النوع', 'Type')}</dt><dd>{r.kind === 'deposit' ? t('إيداع', 'Deposit') : t('سحب', 'Payout')}</dd></div>
                   <div><dt>{t('الطرف', 'Party')}</dt><dd><SenderIdentity name={party} phone={clientPhone} nameHref={party ? `/transactions?q=${encodeURIComponent(party)}` : undefined} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined} /></dd></div>
-                  <div><dt>{t('حساب المرسل', 'Sender account')}</dt><dd className="mono">{r.kind === 'deposit' ? (r.sender_account_number ?? r.sender_number ?? '—') : '—'}</dd></div>
-                  <div><dt>{t('المحفظة', 'Wallet')}</dt><dd className="mono">{wallet ?? '—'}</dd></div>
+                  <div><dt>{t('حساب المرسل', 'Sender account')}</dt><dd className="mono">{r.kind === 'deposit' ? (r.sender_account_number ? maskWallet(r.sender_account_number) : (r.sender_number ?? '—')) : '—'}</dd></div>
+                  <div><dt>{t('المحفظة', 'Wallet')}</dt><dd className="mono">{maskWallet(wallet)}</dd></div>
                   <div><dt>{t('نوع الإيداع', 'Deposit type')}</dt><dd>{r.kind === 'deposit' ? <span className={`deposit-kind ${r.deposit_kind === 'retention_deposit' ? 'is-retention' : 'is-first'}`}>{r.deposit_kind === 'retention_deposit' ? `↻ ${t('Retention deposit','Retention deposit')}` : `★ ${t('First deposit','First deposit')}`}</span> : '—'}</dd></div>
                   <div><dt>{t('معرفات العملية', 'Transaction IDs')}</dt><dd className="mono">{identifiers.length ? identifiers.join(' · ') : '—'}</dd></div>
                   <div><dt>{t('التكرار', 'Duplicates')}</dt><dd>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First')}{isDeclinedDuplicate && <span className="deposit-kind is-declined-duplicate">⚠ {t('مرفوض مكرر','Declined duplicate')}</span>}</dd></div>

@@ -146,6 +146,17 @@ export function money(amount: number | null | undefined, currency?: string | nul
   return `${moneyFmt.format(Number(amount))} ${currency ?? ''}`.trim()
 }
 
+// Card-style masking for a wallet/receiving-account number: only the last 4
+// digits are real, the rest is dots — same convention as showing a bank
+// card number. Deliberately NOT applied to phone/sender-identity fields,
+// which this app's search relies on showing in full.
+export function maskWallet(value: string | null | undefined): string {
+  if (!value) return '—'
+  const digits = value.replace(/\D/g, '')
+  if (digits.length <= 4) return value
+  return `${'•'.repeat(digits.length - 4)}${digits.slice(-4)}`
+}
+
 // Master-merchant chip colour. NGPay is the live channel and PayFuture is
 // still test-only, so they must stay visually distinct wherever both appear.
 export function merchantChipCls(master: string | null | undefined): string {

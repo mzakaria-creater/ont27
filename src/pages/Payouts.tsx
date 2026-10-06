@@ -411,8 +411,11 @@ export default function Payouts() {
         image_url: payout.image_url ?? "",
       });
       setEditing(startEditing && can("payouts", "can_edit"));
+      // No real UTR to auto-fill from a matching withdrawal SMS: fall back to
+      // the transaction amount as a placeholder value (never a real bank
+      // reference) rather than leaving the field empty, per explicit request.
       setUtr(
-        payout.linked_sms?.trx_id ?? payout.linked_sms?.trx_reference ?? "",
+        payout.linked_sms?.trx_id ?? payout.linked_sms?.trx_reference ?? (payout.amount != null ? String(payout.amount) : ""),
       );
     } catch {
       setErr(t("تعذّر تحميل تفاصيل السحب.", "Failed to load payout details."));
