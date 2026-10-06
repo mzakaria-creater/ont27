@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { api, ApiError } from '../lib/api'
 import { useLocale } from '../lib/locale'
+import { Sheet, SheetHeader, SheetFooter } from './Sheet'
 
 // Edit one user: details, role, active flag, password, and per-user permission
 // overrides.
@@ -140,12 +141,8 @@ export default function UserEditor({ user, roles, rolePermissions, overrides, pa
   }
 
   return (
-    <div className="drawer-backdrop" onClick={() => !busy && onClose()}>
-      <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head">
-          <h3>{user.display_name || user.username}<div className="cell-sub mono">{user.username}</div></h3>
-          <button className="btn-ghost btn-sm" onClick={onClose}>✕</button>
-        </div>
+    <Sheet open onClose={() => !busy && onClose()} ariaLabel={user.display_name || user.username}>
+        <SheetHeader title={<>{user.display_name || user.username}<div className="cell-sub mono">{user.username}</div></>} onClose={onClose} />
 
         {isSelf && (
           <div className="card warn">
@@ -182,12 +179,12 @@ export default function UserEditor({ user, roles, rolePermissions, overrides, pa
         {err && <div className="card warn">{err}</div>}
         {done && <div className="card">{done}</div>}
 
-        <div className="drawer-actions">
+        <SheetFooter>
           <button className="btn-primary" disabled={busy} onClick={() => void save()}>
             {busy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ', 'Save')}
           </button>
           <button className="btn-ghost" disabled={busy} onClick={onClose}>{t('إغلاق', 'Close')}</button>
-        </div>
+        </SheetFooter>
 
         <div className="section-label">{t('نطاق البيانات والفريق','Data scope & team')}</div>
         <p className="drawer-note">{t('اترك كل النطاقات فارغة للسماح بكل البيانات داخل الصفحات الممنوحة. عند إضافة قيم، يُقصر المستخدم على القيم المعيّنة. افصل القيم بفاصلة.','Leave every scope empty for unrestricted data inside granted pages. Adding values restricts the user to those assignments. Separate values with commas.')}</p>
@@ -247,7 +244,6 @@ export default function UserEditor({ user, roles, rolePermissions, overrides, pa
             </tbody>
           </table>
         </div>
-      </aside>
-    </div>
+    </Sheet>
   )
 }

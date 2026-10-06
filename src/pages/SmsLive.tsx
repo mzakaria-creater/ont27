@@ -9,6 +9,7 @@ import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
 import { LayoutGrid, TableProperties, X } from 'lucide-react'
 import MethodLogo from '../components/MethodLogo'
+import { Sheet, SheetHeader, SheetFooter } from '../components/Sheet'
 import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectFilter'
 
 // SMS Live — the inbound_sms queue with its Maven links, auto-refreshing.
@@ -1028,15 +1029,11 @@ export default function SmsLive() {
       </section>
 
       {(selected || detailLoading) && (
-        <div className="drawer-backdrop" onClick={closeDetail}>
-          <aside className="drawer" onClick={(e) => e.stopPropagation()}>
+        <Sheet open onClose={closeDetail} ariaLabel={selected ? `SMS #${selected.id}` : undefined}>
             {detailLoading && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
             {selected && (
               <>
-                <div className="drawer-head">
-                  <h3 className="mono">SMS #{selected.id}</h3>
-                  <button className="btn-ghost btn-sm" onClick={closeDetail}>✕</button>
-                </div>
+                <SheetHeader title={<span className="mono">SMS #{selected.id}</span>} onClose={closeDetail} />
 
                 <div className="drawer-amount">
                   <span className="mono">{money(selected.amount, 'EGP')}</span>
@@ -1136,11 +1133,11 @@ export default function SmsLive() {
                 )}
 
                 {selected.is_blocked && selected.matched_tx_id == null && selected.consumed_by_tx_id == null && can('sms_live', 'can_edit') && (
-                  <div className="drawer-actions">
+                  <SheetFooter>
                     <button className="btn-primary btn-sm" disabled={linkBusy} onClick={() => void unblockSms()}>
                       🔓 {t('فك الحظر والسماح بالتعيين', 'Unblock and allow assignment')}
                     </button>
-                  </div>
+                  </SheetFooter>
                 )}
 
                 {selected.sms_category === 'withdrawal' && can('sms_live', 'can_edit') && (
@@ -1165,11 +1162,11 @@ export default function SmsLive() {
                 {linkErr && <div className="card warn">{linkErr}</div>}
 
                 {selected.sms_category !== 'withdrawal' && selected.matched_tx_id != null && can('sms_live', 'can_edit') && (
-                  <div className="drawer-actions">
+                  <SheetFooter>
                     <button className="btn-ghost danger" disabled={linkBusy} onClick={() => void unlink()}>
                       🔗 {t('فك الربط عن المعاملة', 'Unlink from transaction')}
                     </button>
-                  </div>
+                  </SheetFooter>
                 )}
 
                 {selected.sms_category !== 'withdrawal' && selected.matched_tx_id == null && !selected.is_blocked && can('sms_live', 'can_edit') && (
@@ -1244,16 +1241,15 @@ export default function SmsLive() {
                 )}
 
                 {selected.sms_category !== 'withdrawal' && selected.matched_tx_id == null && selected.consumed_by_tx_id == null && !selected.is_blocked && can('sms_live', 'can_edit') && (
-                  <div className="drawer-actions">
+                  <SheetFooter>
                     <button className="btn-ghost danger" disabled={linkBusy} onClick={() => void blockSms()}>
                       🚫 {t('حظر SMS غير المرتبطة', 'Block unlinked SMS')}
                     </button>
-                  </div>
+                  </SheetFooter>
                 )}
               </>
             )}
-          </aside>
-        </div>
+        </Sheet>
       )}
     </>
   )

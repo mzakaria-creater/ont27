@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import TransactionEditDialog from '../components/TransactionEditDialog'
+import { Sheet, SheetHeader, SheetFooter } from '../components/Sheet'
 import { useIsMobile } from '../lib/useIsMobile'
 
 // الشكاوى — tx_complaints on the old prod DB, with the control room's
@@ -337,12 +338,8 @@ export default function Complaints() {
       </section>
 
       {selected && (
-        <div className="drawer-backdrop" onClick={() => !busy && setSelected(null)}>
-          <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-            <div className="drawer-head">
-              <h3>{t('شكوى', 'Complaint')} #{selected.id}</h3>
-              <button className="btn-ghost btn-sm" onClick={() => setSelected(null)}>✕</button>
-            </div>
+        <Sheet open onClose={() => !busy && setSelected(null)} ariaLabel={`Complaint #${selected.id}`}>
+            <SheetHeader title={<>{t('شكوى', 'Complaint')} #{selected.id}</>} onClose={() => setSelected(null)} />
             <dl className="detail-grid">
               <dt>tx</dt><dd className="mono">{selected.tx_id ?? '—'}</dd>
               <dt>{t('الهاتف', 'Phone')}</dt><dd className="mono">{selected.customer_phone ?? '—'}</dd>
@@ -367,7 +364,7 @@ export default function Complaints() {
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
-            <div className="drawer-actions">
+            <SheetFooter>
               <button className="btn-primary" disabled={busy || !selected.tx_id} onClick={() => void decide('approve')}>
                 ✅ {t('قبول (PAID)', 'Approve (PAID)')}
               </button>
@@ -378,9 +375,8 @@ export default function Complaints() {
                 🔒 {t('إغلاق', 'Close')}
               </button>
               {selected.tx_id && <TransactionEditDialog txId={selected.tx_id} status={selected.tx_status ?? 'PENDING'} amount={selected.amount} currency="EGP" gateway={selected.tx_gateway} currentReceivingWallet={selected.receiving_wallet ?? selected.to_account_number} onDone={() => { void load(); setSelected(null) }} />}
-            </div>
-          </aside>
-        </div>
+            </SheetFooter>
+        </Sheet>
       )}
       {ticketModal && <div className="ticket-modal-backdrop" onClick={()=>!ticketBusy&&setTicketModal(null)}><section className="ticket-modal" onClick={e=>e.stopPropagation()}>
         <div className="drawer-head"><div><span className="guide-eyebrow">SUPPORT WORK ITEM</span><h3>{ticketModal.ticket_no || `TKT-${ticketModal.id}`}</h3></div><button className="btn-ghost btn-sm" onClick={()=>setTicketModal(null)}>✕</button></div>

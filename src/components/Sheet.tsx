@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect } from 'react'
+import { type CSSProperties, type ReactNode, useEffect } from 'react'
 import { X } from 'lucide-react'
 
 // A reusable slide-in panel. Every page that needed this (SmsLive, Deposits,
@@ -50,8 +50,8 @@ export function SheetDescription({ children }: { children: ReactNode }) {
   return <p className="drawer-note">{children}</p>
 }
 
-export function SheetFooter({ children }: { children: ReactNode }) {
-  return <div className="drawer-actions">{children}</div>
+export function SheetFooter({ children, style }: { children: ReactNode; style?: CSSProperties }) {
+  return <div className="drawer-actions" style={style}>{children}</div>
 }
 
 // Exported for parity with the ported component's API and for a consumer

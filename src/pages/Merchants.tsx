@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Building2, CheckCircle2, Download, Layers, RefreshCw, ShieldAlert, XCircle } from 'lucide-react'
 import MultiSelectFilter from '../components/MultiSelectFilter'
+import { Sheet, SheetHeader } from '../components/Sheet'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { exportCsv } from '../lib/exportTable'
@@ -280,12 +281,8 @@ export default function Merchants() {
       </section>
 
       {selected && (
-        <div className="drawer-backdrop" onClick={() => setSelected(null)}>
-          <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-            <div className="drawer-head">
-              <h3><Building2 size={16}/> {selected.name ?? selected.code ?? '—'}</h3>
-              <button className="btn-ghost btn-sm" onClick={() => setSelected(null)}>✕</button>
-            </div>
+        <Sheet open onClose={() => setSelected(null)} ariaLabel={selected.name ?? selected.code ?? undefined}>
+            <SheetHeader title={<><Building2 size={16}/> {selected.name ?? selected.code ?? '—'}</>} onClose={() => setSelected(null)} />
 
             <dl className="detail-grid">
               <dt>{t('الكود', 'Code')}</dt><dd className="mono">{selected.code ?? '—'}</dd>
@@ -311,8 +308,7 @@ export default function Merchants() {
               {t('مفاتيح الـ API والأسرار لا تُعرض في اللوحة — إدارتها تتم من تدفق منفصل لدور', 'API keys and secrets are never shown in the panel — managed via a separate flow for the')}
               <span className="mono"> super_admin</span>{t(' فقط.', ' role.')}
             </p>
-          </aside>
-        </div>
+        </Sheet>
       )}
     </>
   )

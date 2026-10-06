@@ -3,6 +3,7 @@ import { Pencil, Save, Send, X } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { STATUS_META, money, statusMeta } from '../lib/deposits'
 import { useAuth } from '../auth/AuthContext'
+import { SheetFooter } from './Sheet'
 
 // Keep the role aliases used by older operator accounts. These roles may apply
 // a direct audited edit from the unified transactions table.
@@ -56,7 +57,7 @@ export default function TransactionEditDialog({ txId, ontargetRef, status, amoun
       <label className="field-label">Reason for change (required)</label><select className="login-input" value={reasonChoice} onChange={e => { setReasonChoice(e.target.value); if (e.target.value !== 'custom') setReason(CHANGE_REASONS.find(([key]) => key === e.target.value)?.[1] ?? '') }} disabled={busy}><option value="">Select reason…</option>{CHANGE_REASONS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>{reasonChoice === 'custom' && <input className="login-input" value={reason} onChange={e => setReason(e.target.value)} disabled={busy} placeholder="Enter the reason" />}
       {changing && <p className={`drawer-note${provider ? '' : ' warn-text'}`}>{provider ? 'This will execute on the provider and be audited.' : 'Local correction or approval request; every action is audited.'}</p>}
       {error && <div className="card warn">{error}</div>}{done && <div className="card">{done}</div>}
-      <div className="drawer-actions"><button className="btn-primary" disabled={!changing || !reason.trim() || busy} onClick={() => void submit()}>{steward ? <Save size={14}/> : <Send size={14}/>} {busy ? 'Working…' : steward ? (changingWallet && !nextStatus && !nextAmount && !nextSenderNumber ? 'Apply wallet change' : 'Apply change') : 'Request change'}</button><button className="btn-ghost" onClick={() => setOpen(false)} disabled={busy}>Cancel</button></div>
+      <SheetFooter><button className="btn-primary" disabled={!changing || !reason.trim() || busy} onClick={() => void submit()}>{steward ? <Save size={14}/> : <Send size={14}/>} {busy ? 'Working…' : steward ? (changingWallet && !nextStatus && !nextAmount && !nextSenderNumber ? 'Apply wallet change' : 'Apply change') : 'Request change'}</button><button className="btn-ghost" onClick={() => setOpen(false)} disabled={busy}>Cancel</button></SheetFooter>
     </div></div>}
   </>
 }

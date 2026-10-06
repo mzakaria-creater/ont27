@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api'
 import { STATUS_META, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { Pencil, Save, Send, X } from 'lucide-react'
+import { SheetFooter } from './Sheet'
 
 // Edit a transaction's status or amount.
 //
@@ -177,7 +178,7 @@ export default function TransactionEditPanel({
           {err && <div className="card warn" style={{ marginTop: 10 }}>{err}</div>}
           {done && <div className="card" style={{ marginTop: 10 }}>{done}</div>}
 
-          <div className="drawer-actions" style={{ marginTop: 12 }}>
+          <SheetFooter style={{ marginTop: 12 }}>
             <button className="btn-primary" disabled={!canSubmit} onClick={() => void submit()}>
               {isSteward ? <Save size={15} aria-hidden="true" /> : <Send size={15} aria-hidden="true" />}
               {busy
@@ -185,7 +186,7 @@ export default function TransactionEditPanel({
                 : isSteward ? t('طبّق التعديل', 'Apply edit') : t('أرسل الطلب', 'Send request')}
             </button>
             <button className="btn-ghost" disabled={busy} onClick={() => setOpen(false)}><X size={15} aria-hidden="true" /> {t('إلغاء', 'Cancel')}</button>
-          </div>
+          </SheetFooter>
           <p className="cell-sub" style={{ marginTop: 8 }}>
             {t('المرجع', 'Ref')}: <span className="mono">{ontargetRef ?? txId}</span>
           </p>

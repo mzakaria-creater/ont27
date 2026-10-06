@@ -5,6 +5,7 @@ import ProofModal from '../components/ProofModal'
 import ProofIconButton from '../components/ProofIconButton'
 import DepositCard from '../components/DepositCard'
 import type { CardAction } from '../components/DepositCard'
+import { Sheet, SheetHeader, SheetFooter } from '../components/Sheet'
 import { api, ApiError } from '../lib/api'
 import { useBulk } from '../lib/useBulk'
 import { useLocale } from '../lib/locale'
@@ -662,22 +663,17 @@ export default function Deposits() {
       )}
 
       {(selected || detailLoading) && (
-        <div className="drawer-backdrop" onClick={() => !decisionBusy && setSelected(null)}>
-          <aside className="drawer" onClick={(e) => e.stopPropagation()}>
+        <Sheet open onClose={() => !decisionBusy && setSelected(null)} ariaLabel={selected?.ontarget_ref ?? undefined}>
             {detailLoading && <p className="sidebar-hint">جارٍ التحميل…</p>}
             {selected && (
               <>
-                <div className="drawer-head">
-                  <h3 className="mono">{selected.ontarget_ref ?? `tx ${selected.tx_id}`}</h3>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                <SheetHeader title={<span className="mono">{selected.ontarget_ref ?? `tx ${selected.tx_id}`}</span>} onClose={() => setSelected(null)}>
                     {selected.ontarget_ref && (
                       <a className="btn-ghost btn-sm" href={`/transactions/${encodeURIComponent(selected.ontarget_ref)}`}>
                         ↗ صفحة كاملة
                       </a>
                     )}
-                    <button className="btn-ghost btn-sm" onClick={() => setSelected(null)}>✕</button>
-                  </div>
-                </div>
+                </SheetHeader>
 
                 <div className="drawer-amount">
                   <span className="mono">{money(selected.amount, selected.currency)}</span>
@@ -826,14 +822,14 @@ export default function Deposits() {
                 {decisionErr && <div className="card warn">{decisionErr}{retryLocked && <div className="cell-sub">{' '}({t('انتظر قليلاً قبل إعادة المحاولة', 'wait a moment before retrying')})</div>}</div>}
 
                 {selected.status === 'PENDING' && can('deposits', 'can_approve') && (
-                  <div className="drawer-actions">
+                  <SheetFooter>
                     <button className="btn-primary" disabled={decisionBusy || retryLocked} onClick={() => void decide('approve')}>
                       ✅ اعتماد (PAID)
                     </button>
                     <button className="btn-ghost danger" disabled={decisionBusy || retryLocked} onClick={() => void decide('decline')}>
                       ❌ رفض
                     </button>
-                  </div>
+                  </SheetFooter>
                 )}
                 {selected.status === 'PENDING' && !can('deposits', 'can_approve') && (
                   <p className="drawer-note">
@@ -843,8 +839,7 @@ export default function Deposits() {
                 )}
               </>
             )}
-          </aside>
-        </div>
+        </Sheet>
       )}
     </>
   )
