@@ -193,15 +193,35 @@ export default function MavenWallets() {
   const livePhone = (row: LiveWallet) => row.phone_number ?? row.PhoneNumber ?? null
   const liveAccountName = (row: LiveWallet) => row.account_name ?? row.AccountName ?? null
   const livePaymentType = (row: LiveWallet) => row.payment_type ?? row.PaymentType ?? null
+  // Maven's live feed is one row per bank_id, not per phone — one physical
+  // number is routinely registered under a dozen+ bank_ids (one per payment
+  // type: InstaPay, VodafoneCash, Orange Money, ...), so the raw feed can
+  // show 100+ rows for a literal handful of actual phones/wallets. Group by
+  // phone for display; "Change" on a group still replaces every bank_id
+  // under it in one bulk commit (the endpoint already supports a list).
+  const liveGroups = useMemo(() => {
+    const map = new Map<string, { phone: string | null; rows: LiveWallet[] }>()
+    for (const row of liveRows) {
+      const phone = livePhone(row)
+      const key = phone?.replace(/\D/g, '') || `__bank_${liveBankId(row)}`
+      const group = map.get(key)
+      if (group) group.rows.push(row)
+      else map.set(key, { phone, rows: [row] })
+    }
+    return [...map.values()]
+  }, [liveRows])
   const livePageSize = 10
-  const livePageCount = Math.max(1, Math.ceil(liveRows.length / livePageSize))
-  const visibleLiveRows = liveRows.slice((livePage - 1) * livePageSize, livePage * livePageSize)
+  const livePageCount = Math.max(1, Math.ceil(liveGroups.length / livePageSize))
+  const visibleLiveGroups = liveGroups.slice((livePage - 1) * livePageSize, livePage * livePageSize)
   // "Select all" covers every live wallet across all pages, not just the
   // page currently on screen — an operator picking a bulk action expects
-  // "all" to mean all 106, not the 10 they can see.
+  // "all" to mean every account, not just what's on the visible page.
   const allLiveSelected = liveRows.length > 0 && liveRows.every((row) => selectedLive.includes(liveBankId(row)))
-  const toggleLive = (bankId: string) => setSelectedLive((current) => current.includes(bankId) ? current.filter((item) => item !== bankId) : [...current, bankId])
   const toggleAllLive = () => setSelectedLive(allLiveSelected ? [] : [...new Set(liveRows.map(liveBankId).filter(Boolean))])
+  const toggleLiveGroup = (bankIds: string[]) => setSelectedLive((current) => {
+    const allIn = bankIds.every((id) => current.includes(id))
+    return allIn ? current.filter((id) => !bankIds.includes(id)) : [...new Set([...current, ...bankIds])]
+  })
   // O(1) per-row lookup instead of a liveRows.find(...) scan inside
   // rows.map(...) below (same pattern as deviceMap above).
   const liveByPhone = useMemo(() => {
@@ -439,12 +459,28 @@ export default function MavenWallets() {
       {replaceNotice && <div className="card">{replaceNotice} <button type="button" className="btn-ghost btn-sm" onClick={() => setReplaceNotice(null)}>{t('إغلاق', 'Dismiss')}</button></div>}
       <section className="card maven-live-accounts">
         <div className="recent-head"><div><h3>{t('أرقام الاستقبال الحية', 'Live receiving numbers')}</h3><p className="cell-sub">{t('البيانات القادمة من Maven — اختر عدة أرقام لإدارة الاستبدال.', 'Maven source data — select multiple numbers for replacement management.')}</p></div><button className="btn-ghost btn-sm" type="button" onClick={() => void refresh()}><RefreshCw size={15} /> {t('تحديث', 'Refresh')}</button></div>
-        <div className="maven-live-toolbar">{canManageRotation ? <><label className="maven-select-all"><input type="checkbox" checked={allLiveSelected} onChange={toggleAllLive} /> {t('تحديد الكل', 'Select all')} <span className="cell-sub">({liveRows.length})</span></label><span>{selectedLive.length} {t('محدد', 'selected')}</span><button className="btn-ghost btn-sm" type="button" disabled={!selectedLive.length} onClick={() => void openReplace(selectedLive)}><Pencil size={14} /> {t('غيّر المحدد لرقم واحد', 'Change selected to one number')}</button><button className="btn-ghost btn-sm" type="button" disabled={!liveRows.length} onClick={changeAllLive}><Pencil size={14} /> {t('غيّر كل المحافظ', 'Change all wallets')}</button></>:<span>{t('عرض فقط — تحتاج صلاحية تعديل المحافظ لتغيير أرقام Maven.','View only — wallet edit permission is required to change Maven numbers.')}</span>}</div>
+        <div className="maven-live-toolbar">{canManageRotation ? <><label className="maven-select-all"><input type="checkbox" checked={allLiveSelected} onChange={toggleAllLive} /> {t('تحديد الكل', 'Select all')} <span className="cell-sub">({liveGroups.length} {t('رقم', 'numbers')} · {liveRows.length} {t('حساب', 'accounts')})</span></label><span>{selectedLive.length} {t('محدد', 'selected')}</span><button className="btn-ghost btn-sm" type="button" disabled={!selectedLive.length} onClick={() => void openReplace(selectedLive)}><Pencil size={14} /> {t('غيّر المحدد لرقم واحد', 'Change selected to one number')}</button><button className="btn-ghost btn-sm" type="button" disabled={!liveRows.length} onClick={changeAllLive}><Pencil size={14} /> {t('غيّر كل المحافظ', 'Change all wallets')}</button></>:<span>{t('عرض فقط — تحتاج صلاحية تعديل المحافظ لتغيير أرقام Maven.','View only — wallet edit permission is required to change Maven numbers.')}</span>}</div>
         <div className="table-wrap maven-table-wrap"><table className="data-table maven-live-table"><thead><tr>{canManageRotation && <th className="maven-select-cell"></th>}<th>{t('البنك', 'Bank')}</th><th>{t('النوع / التاجر', 'Type / merchant')}</th><th>{t('الرقم الحالي', 'Current number')}</th><th>{t('آخر فحص', 'Last checked')}</th>{canManageRotation && <th>{t('إجراء', 'Action')}</th>}</tr></thead><tbody>
-          {visibleLiveRows.map((row) => { const id = liveBankId(row); const phone = livePhone(row); return <tr key={`${id}-${phone ?? ''}`}>{canManageRotation && <td className="maven-select-cell"><input type="checkbox" checked={selectedLive.includes(id)} onChange={() => toggleLive(id)} aria-label={`${t('تحديد', 'Select')} ${id}`} disabled={!id} /></td>}<td className="mono">{id || '—'}</td><td><strong>{livePaymentType(row) ?? '—'}</strong><div className="cell-sub">{liveAccountName(row) ?? t('غير محدد', 'Not specified')}</div></td><td className="mono">{phone ?? '—'}</td><td className="cell-sub">{depositTime({ first_seen_at: row.last_checked ?? row.updated_at })}</td>{canManageRotation && <td className="maven-live-row-actions"><button className="btn-ghost btn-sm maven-change-btn" type="button" disabled={!id} onClick={() => void openReplace([id])}><Pencil size={14} /> {t('غيّر', 'Change')}</button><button className="btn-ghost btn-sm" type="button" disabled={!id || !canCreateWallet} onClick={() => openAddNew(id)}><Plus size={14} /> {t('استبدال بجديد', 'Replace w/ new')}</button></td>}</tr> })}
-          {!visibleLiveRows.length && <tr><td colSpan={canManageRotation ? 6 : 4} className="maven-empty">{t('لا توجد أرقام حية من Maven حالياً.', 'No live Maven receiving numbers currently available.')}</td></tr>}
+          {visibleLiveGroups.map((group) => {
+            const bankIds = group.rows.map(liveBankId).filter(Boolean)
+            const groupSelected = bankIds.length > 0 && bankIds.every((id) => selectedLive.includes(id))
+            const types = [...new Set(group.rows.map(livePaymentType).filter(Boolean))]
+            const latest = group.rows.reduce<string | null>((acc, r) => {
+              const at = r.last_checked ?? r.updated_at
+              return !acc || (at && at > acc) ? (at ?? acc) : acc
+            }, null)
+            return <tr key={group.phone ?? bankIds[0] ?? Math.random()}>
+              {canManageRotation && <td className="maven-select-cell"><input type="checkbox" checked={groupSelected} onChange={() => toggleLiveGroup(bankIds)} aria-label={`${t('تحديد', 'Select')} ${group.phone ?? ''}`} disabled={!bankIds.length} /></td>}
+              <td className="mono">{group.rows.length > 1 ? `${bankIds.length} ${t('حساب', 'accounts')}` : (bankIds[0] || '—')}</td>
+              <td><strong>{types.length > 1 ? `${types[0]} +${types.length - 1}` : (types[0] ?? '—')}</strong><div className="cell-sub">{liveAccountName(group.rows[0]) ?? t('غير محدد', 'Not specified')}</div></td>
+              <td className="mono">{group.phone ?? '—'}</td>
+              <td className="cell-sub">{depositTime({ first_seen_at: latest })}</td>
+              {canManageRotation && <td className="maven-live-row-actions"><button className="btn-ghost btn-sm maven-change-btn" type="button" disabled={!bankIds.length} onClick={() => void openReplace(bankIds)}><Pencil size={14} /> {group.rows.length > 1 ? t(`غيّر ${bankIds.length} حسابات`, `Change ${bankIds.length} accounts`) : t('غيّر', 'Change')}</button>{group.rows.length === 1 && <button className="btn-ghost btn-sm" type="button" disabled={!bankIds[0] || !canCreateWallet} onClick={() => openAddNew(bankIds[0])}><Plus size={14} /> {t('استبدال بجديد', 'Replace w/ new')}</button>}</td>}
+            </tr>
+          })}
+          {!visibleLiveGroups.length && <tr><td colSpan={canManageRotation ? 6 : 4} className="maven-empty">{t('لا توجد أرقام حية من Maven حالياً.', 'No live Maven receiving numbers currently available.')}</td></tr>}
         </tbody></table></div>
-        <div className="maven-pagination"><span>{liveRows.length ? `${(livePage - 1) * livePageSize + 1}-${Math.min(livePage * livePageSize, liveRows.length)} / ${liveRows.length}` : '0 / 0'}</span><button className="btn-ghost btn-sm" type="button" disabled={livePage <= 1} onClick={() => setLivePage((page) => page - 1)}>{t('السابق', 'Previous')}</button><strong>{livePage} / {livePageCount}</strong><button className="btn-ghost btn-sm" type="button" disabled={livePage >= livePageCount} onClick={() => setLivePage((page) => page + 1)}>{t('التالي', 'Next')}</button></div>
+        <div className="maven-pagination"><span>{liveGroups.length ? `${(livePage - 1) * livePageSize + 1}-${Math.min(livePage * livePageSize, liveGroups.length)} / ${liveGroups.length} ${t('رقم', 'numbers')} (${liveRows.length} ${t('حساب', 'accounts')})` : '0 / 0'}</span><button className="btn-ghost btn-sm" type="button" disabled={livePage <= 1} onClick={() => setLivePage((page) => page - 1)}>{t('السابق', 'Previous')}</button><strong>{livePage} / {livePageCount}</strong><button className="btn-ghost btn-sm" type="button" disabled={livePage >= livePageCount} onClick={() => setLivePage((page) => page + 1)}>{t('التالي', 'Next')}</button></div>
       </section>
       <section className="card maven-wallet-table-card">
         <div className="recent-head"><div><h3>{t('أرقام الاستقبال — محافظ Maven', 'Maven receiving wallets')}</h3><p className="cell-sub">{rows.length.toLocaleString()} {t('محفظة مطابقة للفلاتر', 'wallets match the filters')} · {t('مزامنة تلقائية كل 60 ثانية', 'Auto-sync every 60 seconds')}</p></div><div className="maven-wallet-table-actions">
