@@ -610,10 +610,11 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
                 <div className="sms-match-head"><span className="sms-match-title"><Search size={15} /> معاملات مقترحة من {receivedDate}</span></div>
                 <ul className="cand-list">
                   {candidates.map((cand) => (
-                    <li key={cand.tx_id} className="cand-item">
+                    <li key={cand.tx_id} className={`cand-item${cand.is_duplicate_group ? ' is-duplicate' : ''}`}>
                       <div className="cand-info">
                         <span className="mono">#{cand.ontarget_ref ?? cand.tx_id}</span>
                         <span className="mono">{money(cand.amount, 'EGP')}</span>
+                        {cand.is_duplicate_group && <span className="pay-status-badge is-duplicate-badge" title="نفس العميل والمبلغ خلال 5 دقائق — تحقق قبل الربط">محتمل تكرار</span>}
                         <div className="cell-sub">
                           {cand.sender_name ?? cand.sender_number ?? '—'}
                           {' · '}{cand.status ?? '—'}
