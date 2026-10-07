@@ -184,6 +184,14 @@ const rowSenderAccountName = (r: TxRow) => r.kind === 'deposit' ? (r.sender_acco
 // — decision_actor can just as easily be a raw automation actor name
 // ("automation-engine", "automation-engine-blacklist") as a real username.
 const rowApprovedByActor = (r: TxRow): string | null => r.decision_actor ?? r.approved_by ?? null
+// Operator-requested exclusions from the wallet-balance strip only — these
+// accounts stay active/receiving everywhere else (payment methods, decisions,
+// etc.); this just keeps them off this one at-a-glance display.
+const HIDDEN_WALLET_NUMBERS = new Set([
+  '01014667311', '01090096027', '01213841571', '01213841572', '01214523295', '01217783436', '01280333937',
+  'https://ipn.eg/S/ontarget3333/instapay/6Ue23q', 'https://ipn.eg/S/ontarget777/instapay/6Ue23q',
+  'ontarget333@instapay.com', 'ontarget777@instapay.com',
+])
 // Must match the table/card rowKey exactly (kind + checkout session id, or
 // kind + provider id) so a checkbox ticked against a rendered row is the
 // same row the bulk runner later looks up in sortedRows.
@@ -848,9 +856,9 @@ export default function Transactions() {
         </div>
       </section>
 
-      {wallets && wallets.length > 0 && (
+      {wallets && wallets.filter((w) => !HIDDEN_WALLET_NUMBERS.has(w.account_number ?? '')).length > 0 && (
         <section className="card trx-wallet-strip" aria-label={t('أرقام المحافظ المستقبلة حالياً', 'Currently receiving wallet numbers')}>
-          {wallets.map((w) => (
+          {wallets.filter((w) => !HIDDEN_WALLET_NUMBERS.has(w.account_number ?? '')).map((w) => (
             <div key={w.id} className="trx-wallet-chip">
               <WalletCards size={15} aria-hidden="true" />
               <span className="mono trx-wallet-number">{w.account_number ?? '—'}</span>
