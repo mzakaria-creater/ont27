@@ -1527,6 +1527,24 @@ extraRoutes.delete('/automation/rules/:id', requireAnyPerm(['automation_rules','
   return c.json({ ok: true })
 })
 
+// evaluate_and_dispatch_ngpay_decision (the pg_cron-driven NGPay auto
+// approve/decline engine) already writes one row per evaluation attempt to
+// auto_decision_trace — exactly why a transaction did or didn't get a
+// decision was always there, just never surfaced in the panel. An operator
+// had no way to answer "why is this still pending" without someone running
+// SQL by hand.
+extraRoutes.get('/automation/trace/:txId', requireAnyPerm(['automation', 'automation_rules'], 'can_view'), async (c) => {
+  const txId = c.req.param('txId')
+  if (!/^\d+$/.test(txId)) return c.json({ error: 'bad_tx_id' }, 400)
+  const { data, error } = await db.from('auto_decision_trace')
+    .select('tx_id, started_at, duration_ms, outcome, tx_age_ms, caller')
+    .eq('tx_id', txId)
+    .order('started_at', { ascending: false })
+    .limit(50)
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  return c.json({ trace: data ?? [] })
+})
+
 // Settings PATCH keeps the master switch, auto-decline switch and SMS-matching
 // circuit breaker independent. Disabling one must never silently change either
 // of the others.

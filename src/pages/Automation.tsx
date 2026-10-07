@@ -176,7 +176,30 @@ export default function Automation() {
   const [ruleActions, setRuleActions] = useState<string[]>([])
   const [tab, setTab] = useState<'control' | 'rules' | 'operations' | 'legacy'>('control')
 
+  const [traceTxId, setTraceTxId] = useState('')
+  const [traceRows, setTraceRows] = useState<{ tx_id: number; started_at: string; duration_ms: number; outcome: string; tx_age_ms: number | null; caller: string | null }[] | null>(null)
+  const [traceBusy, setTraceBusy] = useState(false)
+  const [traceErr, setTraceErr] = useState<string | null>(null)
+
   const reloadAutomation = () => api<NonNullable<typeof data>>('/api/automation').then(setData).catch(() => {})
+
+  // Why didn't/did this transaction get auto-decided? Before this, answering
+  // that meant someone running SQL against auto_decision_trace by hand —
+  // every evaluation attempt (cron tick or live trigger) was already logged
+  // there, just never exposed to an operator.
+  const runTrace = async () => {
+    const id = traceTxId.trim()
+    if (!/^\d+$/.test(id)) { setTraceErr(t('أدخل رقم معاملة صحيح', 'Enter a valid transaction id')); return }
+    setTraceBusy(true); setTraceErr(null); setTraceRows(null)
+    try {
+      const res = await api<{ trace: typeof traceRows }>(`/api/automation/trace/${id}`)
+      setTraceRows(res.trace ?? [])
+    } catch (e) {
+      setTraceErr(e instanceof ApiError ? e.code : t('فشل البحث', 'Lookup failed'))
+    } finally {
+      setTraceBusy(false)
+    }
+  }
 
   const saveRule = async (confirmConflict = false) => {
     setRuleBusy(true); setRuleMsg(null); if (!confirmConflict) setRuleConflict(null)
@@ -861,6 +884,44 @@ export default function Automation() {
 
       {tab === 'operations' && data && (
         <>
+          <section className="card recent-card">
+            <div className="recent-head"><h3>🔍 {t('تتبّع قرار الأتمتة', 'Decision trace lookup')}</h3></div>
+            <p className="page-sub">{t('ابحث برقم المعاملة لمعرفة كل مرة قيّمها محرك الأتمتة والنتيجة — بدون SQL.', 'Search by transaction id to see every time the automation engine evaluated it and why.')}</p>
+            <div className="search-row">
+              <input
+                className="login-input mono"
+                inputMode="numeric"
+                placeholder="138491584"
+                value={traceTxId}
+                onChange={(e) => setTraceTxId(e.target.value.replace(/[^0-9]/g, ''))}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void runTrace() } }}
+              />
+              <button type="button" className="btn-primary btn-sm" disabled={traceBusy || !traceTxId.trim()} onClick={() => void runTrace()}>
+                {traceBusy ? t('جارٍ البحث…', 'Searching…') : <><Search size={14} /> {t('بحث', 'Search')}</>}
+              </button>
+            </div>
+            {traceErr && <p className="cell-sub danger-text">{traceErr}</p>}
+            {traceRows && traceRows.length === 0 && <p className="sidebar-hint">{t('لا يوجد سجل تتبّع لهذه المعاملة — لم يُقيّمها المحرك بعد.', 'No trace rows for this transaction — the engine has not evaluated it yet.')}</p>}
+            {traceRows && traceRows.length > 0 && (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead><tr><th>{t('الوقت', 'Time')}</th><th>{t('النتيجة', 'Outcome')}</th><th>{t('المصدر', 'Caller')}</th><th>{t('مدة التقييم', 'Eval duration')}</th><th>{t('عمر المعاملة', 'Tx age')}</th></tr></thead>
+                  <tbody>
+                    {traceRows.map((row, i) => (
+                      <tr key={`${row.started_at}-${i}`}>
+                        <td className="mono">{new Date(row.started_at).toLocaleString()}</td>
+                        <td><span className={`pay-status-badge ${row.outcome.startsWith('dispatched_approve') ? 'st-paid' : row.outcome.startsWith('dispatched_decline') ? 'st-declined' : 'st-dim'}`}>{row.outcome}</span></td>
+                        <td>{row.caller ?? '—'}</td>
+                        <td className="mono">{Math.round(row.duration_ms)}ms</td>
+                        <td className="mono">{row.tx_age_ms != null ? `${Math.round(row.tx_age_ms / 1000)}s` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
           <section className="card recent-card">
             <div className="recent-head"><h3>🧑‍💻 مهام المتصفح الأخيرة</h3></div>
             {data.jobs.length === 0 && <p>لا توجد مهام.</p>}
