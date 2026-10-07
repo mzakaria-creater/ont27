@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import type { Context } from 'hono'
+import { randomBytes } from 'node:crypto'
 import { db } from './db.js'
 import { createClient } from '@supabase/supabase-js'
 import {
@@ -79,6 +80,58 @@ function clearAuthCookies(c: Context) {
   deleteCookie(c, REFRESH_COOKIE, { path: '/api/auth' })
 }
 
+type EdgeLoginResult =
+  | { ok: true; user: Pick<LoginUser, 'id' | 'username' | 'display_name' | 'role'>; refresh: string }
+  | { ok: false; error: string; status: 400 | 401 | 423 | 503; until?: string }
+
+async function loginThroughSupabaseEdge(
+  username: string,
+  password: string,
+  remember: boolean,
+): Promise<EdgeLoginResult | null> {
+  const url = process.env.SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SECRET_KEY
+  if (!url || !serviceKey) return null
+
+  const refresh = randomBytes(32).toString('hex')
+  try {
+    const response = await fetch(`${url}/functions/v1/panel-login-fallback`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(10_000),
+      headers: {
+        authorization: `Bearer ${serviceKey}`,
+        apikey: serviceKey,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        username,
+        password,
+        remember,
+        refresh_token_hash: sha256Hex(refresh),
+      }),
+    })
+    const result = await response.json().catch(() => null) as {
+      error?: string
+      until?: string
+      user?: Pick<LoginUser, 'id' | 'username' | 'display_name' | 'role'>
+    } | null
+    if (response.ok && result?.user) return { ok: true, user: result.user, refresh }
+    if (result?.error === 'invalid_credentials') {
+      return { ok: false, error: result.error, status: 401 }
+    }
+    if (result?.error === 'locked') {
+      return { ok: false, error: result.error, status: 423, until: result.until }
+    }
+    // A missing function or mismatched service key should not take down the
+    // original path during rollout; let the ordinary database lookup try.
+    console.error('panel edge login unavailable:', response.status, result?.error ?? 'invalid_response')
+    return null
+  } catch (error) {
+    console.error('panel edge login unavailable:', conciseError(error))
+    return null
+  }
+}
+
 export const authRoutes = new Hono()
 
 authRoutes.post('/login', async (c) => {
@@ -87,6 +140,23 @@ authRoutes.post('/login', async (c) => {
   const password = typeof body?.password === 'string' ? body.password : ''
   const remember = body?.remember !== false // default true — matches the prior always-30d behavior
   if (!username || !password) return c.json({ error: 'missing_credentials' }, 400)
+
+  const edgeLogin = await loginThroughSupabaseEdge(username, password, remember)
+  if (edgeLogin?.ok) {
+    const access = await signAccessToken({
+      sub: edgeLogin.user.id,
+      username: edgeLogin.user.username,
+      role: edgeLogin.user.role,
+    })
+    setAuthCookies(c, access, edgeLogin.refresh, remember)
+    return c.json({ user: edgeLogin.user })
+  }
+  if (edgeLogin && !edgeLogin.ok) {
+    return c.json(
+      { error: edgeLogin.error, ...(edgeLogin.until ? { until: edgeLogin.until } : {}) },
+      edgeLogin.status,
+    )
+  }
 
   // Keep the lookup on the ordinary PostgREST table path. The RPC route has
   // occasionally stalled at the gateway while direct table reads remained
