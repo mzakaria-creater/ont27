@@ -167,18 +167,24 @@ authRoutes.post('/login', async (c) => {
   let rows: LoginUser[] | null = null
   try {
     const normalizedLogin = username.toLocaleLowerCase('en-US')
-    const lookup = await db
-      .from('panel_users')
-      .select(LOGIN_USER_COLUMNS)
-      .limit(200)
-      .abortSignal(AbortSignal.timeout(8_000))
-    if (lookup.error) {
-      console.error('panel login lookup unavailable:', conciseError(lookup.error))
+    // The REST gateway itself (not the underlying query — the same select
+    // runs in low single-digit ms as raw SQL) has intermittently stalled for
+    // a few seconds at a time, independently of the edge-login fallback
+    // above timing out too. One short retry recovers almost all of those
+    // transient blips instead of failing every login that lands on one.
+    let lookup: { data: unknown; error: { message: string } | null } | null = null
+    for (let attempt = 1; ; attempt++) {
+      lookup = await db.from('panel_users').select(LOGIN_USER_COLUMNS).limit(200).abortSignal(AbortSignal.timeout(8_000))
+      if (!lookup.error || attempt >= 2) break
+      await new Promise((resolve) => setTimeout(resolve, 1_000))
+    }
+    if (lookup!.error) {
+      console.error('panel login lookup unavailable:', conciseError(lookup!.error))
       c.header('Retry-After', '5')
       return c.json({ error: 'auth_unavailable' }, 503)
     }
-    rows = Array.isArray(lookup.data)
-      ? (lookup.data as Array<LoginUser & { email?: string | null }>).filter((candidate) =>
+    rows = Array.isArray(lookup!.data)
+      ? (lookup!.data as Array<LoginUser & { email?: string | null }>).filter((candidate) =>
           candidate.username.toLocaleLowerCase('en-US') === normalizedLogin ||
           candidate.email?.toLocaleLowerCase('en-US') === normalizedLogin,
         )
@@ -414,11 +420,20 @@ authRoutes.get('/me', async (c) => {
   const claims = token ? await verifyAccessToken(token) : null
   if (!claims) return c.json({ error: 'unauthenticated' }, 401)
 
-  const { data: user, error: userErr } = await db.from('panel_users')
-    .select('id, username, email, display_name, role, active, prefs, last_login_at')
-    .eq('id', claims.sub)
-    .abortSignal(AbortSignal.timeout(8_000))
-    .maybeSingle()
+  // Same transient REST-gateway stall as login (the query itself is a
+  // sub-5ms indexed point lookup) — one short retry recovers most of them.
+  let user: { id: string; username: string; email: string | null; display_name: string; role: string; active: boolean; prefs: unknown; last_login_at: string | null } | null = null
+  let userErr: { message: string } | null = null
+  for (let attempt = 1; ; attempt++) {
+    const result = await db.from('panel_users')
+      .select('id, username, email, display_name, role, active, prefs, last_login_at')
+      .eq('id', claims.sub)
+      .abortSignal(AbortSignal.timeout(8_000))
+      .maybeSingle()
+    user = result.data; userErr = result.error
+    if (!userErr || attempt >= 2) break
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
+  }
   if (userErr) {
     console.error('panel /me user lookup unavailable:', conciseError(userErr))
     c.header('Retry-After', '5')
