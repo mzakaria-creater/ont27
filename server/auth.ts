@@ -407,31 +407,60 @@ authRoutes.post('/2fa/enable', async (c) => {
   return c.json({ recovery_codes: plaintext })
 })
 
+const PAGE_PERM_COLUMNS = 'page_key, can_view, can_create, can_edit, can_delete, can_approve, can_export'
+
 authRoutes.get('/me', async (c) => {
   const token = getCookie(c, ACCESS_COOKIE)
   const claims = token ? await verifyAccessToken(token) : null
   if (!claims) return c.json({ error: 'unauthenticated' }, 401)
 
-  const [{ data: user }, { data: perms }, { data: twofa }] = await Promise.all([
-    db.from('panel_users')
-      .select('id, username, email, display_name, role, active, prefs, last_login_at')
-      .eq('id', claims.sub).maybeSingle(),
-    // Role matrix with any per-user override swapped in, resolved by the same
-    // rule server/rbac.ts enforces — so what the UI shows and what the API
-    // allows cannot drift apart.
-    db.rpc('panel_effective_permissions', { p_user_id: claims.sub }),
-    db.from('panel_users_2fa')
-      .select('enabled_at').eq('user_id', claims.sub).maybeSingle(),
-  ])
-
+  const { data: user, error: userErr } = await db.from('panel_users')
+    .select('id, username, email, display_name, role, active, prefs, last_login_at')
+    .eq('id', claims.sub)
+    .abortSignal(AbortSignal.timeout(8_000))
+    .maybeSingle()
+  if (userErr) {
+    console.error('panel /me user lookup unavailable:', conciseError(userErr))
+    c.header('Retry-After', '5')
+    return c.json({ error: 'auth_unavailable' }, 503)
+  }
   if (!user || !user.active) return c.json({ error: 'user_inactive' }, 401)
+
+  // Role matrix with any per-user override swapped in, resolved by the same
+  // rule server/rbac.ts enforces — so what the UI shows and what the API
+  // allows cannot drift apart. This used to be one panel_effective_permissions
+  // RPC call, but the RPC gateway path has occasionally stalled while plain
+  // table reads stayed healthy — the same failure already fixed for login in
+  // 8af9cc3 ("Bypass stalled login RPC lookup") — which hung /me forever and
+  // left the panel stuck on "جارٍ التحقق من الجلسة…" (verifying session) with
+  // no timeout to ever break out of it. Every boolean column on both source
+  // tables is NOT NULL, so an override row always fully replaces its role
+  // row for that page_key; no per-column coalescing is needed.
+  const [{ data: roleRows, error: roleErr }, { data: overrideRows, error: overrideErr }, { data: twofa, error: twofaErr }] = await Promise.all([
+    db.from('role_page_permissions').select(PAGE_PERM_COLUMNS).eq('role_key', user.role)
+      .abortSignal(AbortSignal.timeout(8_000)),
+    db.from('user_page_permissions').select(PAGE_PERM_COLUMNS).eq('user_id', user.id)
+      .abortSignal(AbortSignal.timeout(8_000)),
+    db.from('panel_users_2fa').select('enabled_at').eq('user_id', claims.sub)
+      .abortSignal(AbortSignal.timeout(8_000))
+      .maybeSingle(),
+  ])
+  if (roleErr || overrideErr || twofaErr) {
+    console.error('panel /me permissions lookup unavailable:', conciseError(roleErr ?? overrideErr ?? twofaErr))
+    c.header('Retry-After', '5')
+    return c.json({ error: 'auth_unavailable' }, 503)
+  }
+
+  const permsByPageKey = new Map<string, Record<string, unknown>>()
+  for (const row of roleRows ?? []) permsByPageKey.set(row.page_key, { ...row, is_override: false })
+  for (const row of overrideRows ?? []) permsByPageKey.set(row.page_key, { ...row, is_override: true })
 
   return c.json({
     user: {
       id: user.id, username: user.username, email: user.email, display_name: user.display_name,
       role: user.role, prefs: user.prefs, last_login_at: user.last_login_at,
     },
-    permissions: perms ?? [],
+    permissions: [...permsByPageKey.values()],
     twofa_enrolled: !!twofa?.enabled_at,
   })
 })

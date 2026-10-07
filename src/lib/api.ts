@@ -11,10 +11,20 @@ export class ApiError extends Error {
   }
 }
 
+// A request with no backstop can hang forever if the server stalls (e.g. a
+// PostgREST RPC gateway stall — the exact failure that left /api/auth/me
+// unresolved and the panel stuck on "جارٍ التحقق من الجلسة…" with no way out).
+// Combine with any caller-supplied signal (Transactions.tsx cancels in-flight
+// list requests on filter change) rather than replacing it.
+const DEFAULT_TIMEOUT_MS = 30_000
+
 async function rawFetch(path: string, init?: RequestInit): Promise<Response> {
   const isFormData = typeof FormData !== 'undefined' && init?.body instanceof FormData
+  const timeoutSignal = AbortSignal.timeout(DEFAULT_TIMEOUT_MS)
+  const signal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal
   return fetch(path, {
     ...init,
+    signal,
     credentials: 'same-origin',
     headers: { ...(isFormData ? {} : { 'Content-Type': 'application/json' }), ...init?.headers },
   })
