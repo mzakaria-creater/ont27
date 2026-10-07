@@ -26,6 +26,8 @@ type LoginUser = {
   password_hash: string
 }
 
+const LOGIN_USER_COLUMNS = 'id,username,email,display_name,role,active,account_status,frozen_until,locked_until,failed_login_count,password_hash'
+
 function conciseError(error: unknown): string {
   const message = error instanceof Error
     ? error.message
@@ -86,20 +88,31 @@ authRoutes.post('/login', async (c) => {
   const remember = body?.remember !== false // default true — matches the prior always-30d behavior
   if (!username || !password) return c.json({ error: 'missing_credentials' }, 400)
 
-  // Case-insensitive, backslash-safe lookup via SECURITY DEFINER helper.
-  // The helper accepts both the login name and the account email so operators
-  // can use either value shown in the admin user record.
+  // Keep the lookup on the ordinary PostgREST table path. The RPC route has
+  // occasionally stalled at the gateway while direct table reads remained
+  // healthy, which made every valid login return auth_unavailable. This is a
+  // server-only service-role query and selects only the fields auth requires.
+  // Matching in memory keeps email/username comparison case-insensitive and
+  // treats %, _, commas, and backslashes literally without filter injection.
   let rows: LoginUser[] | null = null
   try {
+    const normalizedLogin = username.toLocaleLowerCase('en-US')
     const lookup = await db
-      .rpc('panel_get_user_for_login', { p_username: username })
-      .abortSignal(AbortSignal.timeout(6_000))
+      .from('panel_users')
+      .select(LOGIN_USER_COLUMNS)
+      .limit(200)
+      .abortSignal(AbortSignal.timeout(8_000))
     if (lookup.error) {
       console.error('panel login lookup unavailable:', conciseError(lookup.error))
       c.header('Retry-After', '5')
       return c.json({ error: 'auth_unavailable' }, 503)
     }
-    rows = Array.isArray(lookup.data) ? lookup.data as LoginUser[] : null
+    rows = Array.isArray(lookup.data)
+      ? (lookup.data as Array<LoginUser & { email?: string | null }>).filter((candidate) =>
+          candidate.username.toLocaleLowerCase('en-US') === normalizedLogin ||
+          candidate.email?.toLocaleLowerCase('en-US') === normalizedLogin,
+        )
+      : null
   } catch (error) {
     console.error('panel login lookup unavailable:', conciseError(error))
     c.header('Retry-After', '5')
