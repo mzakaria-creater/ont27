@@ -474,9 +474,21 @@ payoutRoutes.post(
     if (proofUrl && !proofUrl.startsWith(allowedProofPrefix))
       return c.json({ error: "invalid_proof_url" }, 400);
 
-    await autoLinkWithdrawalSms(100).catch((error) =>
+    // deltaSync's fast/full passes already call this continuously (every
+    // ~1s while active, and on every full cron run), so matched_sms_id below
+    // is already about as fresh as a synchronous re-run here would make it.
+    // Blocking this request on it was a real cost: a scan over up to 100
+    // payouts/200 SMS that can itself trigger several serial live Maven
+    // executions for OTHER, unrelated payouts — stalling this operator's
+    // own decision behind someone else's. Fire it off without waiting.
+    const preDecisionMatcher = autoLinkWithdrawalSms(100).catch((error) =>
       console.error("pre-decision WD SMS matcher failed:", error),
     );
+    try {
+      c.executionCtx.waitUntil(preDecisionMatcher);
+    } catch {
+      // Node/Railway keeps active promises alive itself.
+    }
     const { data: before, error: readErr } = await db
       .from("maven_payout_transactions")
       .select(

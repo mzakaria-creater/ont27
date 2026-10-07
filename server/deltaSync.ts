@@ -282,11 +282,26 @@ async function runSync(mode: 'fast' | 'full' = 'full', runPostProcessing = true)
     for (;;) {
       let query = oldDb.from(table).select('*').gte(col, since)
       if (cursor) query = query.or(buildKeysetOr(col, pk, cursor))
-      const { data: rows, error: fetchErr } = await query
+      query = query
         .order(col, { ascending: true })
         .order(pk, { ascending: true })
         .limit(PAGE)
-      if (fetchErr) throw new Error(`old: ${fetchErr.message}`)
+      // The old project runs ~20 pg_cron jobs against this same table every
+      // 1-2 minutes (wallet_switch_auto_run, reconcile sweeps, etc). This
+      // query itself is a 2ms indexed scan in isolation, but it occasionally
+      // queues behind one of those jobs' locks long enough to hit the old
+      // project's 2-minute statement_timeout. That contention clears in
+      // well under a minute (the longest observed sibling job ran ~13s), so
+      // a short retry recovers almost every occurrence instead of losing
+      // the whole page/table for this sync pass.
+      let rows: Record<string, unknown>[] | null = null
+      for (let attempt = 1; ; attempt++) {
+        const { data, error: fetchErr } = await query
+        if (!fetchErr) { rows = data; break }
+        const isTimeout = /statement timeout/i.test(fetchErr.message)
+        if (!isTimeout || attempt >= 3) throw new Error(`old: ${fetchErr.message}`)
+        await new Promise((resolve) => setTimeout(resolve, attempt * 3_000))
+      }
       if (!rows?.length) break
 
       // The old browser-worker stamps approved_by='Manual' (no actor name).
