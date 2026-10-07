@@ -184,6 +184,16 @@ const rowSenderAccountName = (r: TxRow) => r.kind === 'deposit' ? (r.sender_acco
 // — decision_actor can just as easily be a raw automation actor name
 // ("automation-engine", "automation-engine-blacklist") as a real username.
 const rowApprovedByActor = (r: TxRow): string | null => r.decision_actor ?? r.approved_by ?? null
+// Must match the table/card rowKey exactly (kind + checkout session id, or
+// kind + provider id) so a checkbox ticked against a rendered row is the
+// same row the bulk runner later looks up in sortedRows.
+const selKey = (r: TxRow): string => `${r.kind}-${r.checkout_session_id ?? rowId(r)}`
+// Bulk approve only ever makes sense for NGPay deposits: that path executes
+// live on Maven with no proof required, same as the single-row button.
+// Payout approval always needs a per-row UTR/proof, so it is never offered
+// as a mass action — only payout decline (which needs neither) is.
+const canBulkApprove = (r: TxRow): boolean => r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session
+const canBulkDecline = (r: TxRow): boolean => r.status === 'PENDING' && !r.is_checkout_session
 
 type SortValue = string | number | null | undefined
 // Sorting runs client-side over the already-loaded page window — the list
@@ -361,6 +371,10 @@ export default function Transactions() {
   const [wallets, setWallets] = useState<ReceivingWallet[] | null>(null)
   const [actionBusy, setActionBusy] = useState<string | null>(null)
   const [exportBusy, setExportBusy] = useState(false)
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null)
+  const [bulkResult, setBulkResult] = useState<{ action: 'approve' | 'decline'; ok: string[]; failed: { ref: string; reason: string }[] } | null>(null)
   const [proof, setProof] = useState<{ url: string; ref: string; onApprove?: () => void | Promise<void>; onDecline?: () => void | Promise<void> } | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   // Raw-details JSON is expensive to pretty-print and rarely viewed — defer
@@ -716,6 +730,74 @@ export default function Transactions() {
     }
   }
 
+  // Independent of decide() above (which owns the single-row confirm/busy-
+  // key/bilingual-error UX) so bulk never risks regressing that path. Returns
+  // a plain reason string per row instead -- the bulk result list below is
+  // its own, simpler summary.
+  const performBulkDecision = async (row: TxRow, action: 'approve' | 'decline'): Promise<{ ok: true } | { ok: false; reason: string }> => {
+    const id = row.kind === 'deposit' ? row.tx_id : row.maven_id
+    if (!id) return { ok: false, reason: 'missing_id' }
+    try {
+      if (row.kind === 'deposit') {
+        await api(`/api/deposits/${id}/decision`, { method: 'POST', body: JSON.stringify({ action, note: `Bulk decision from All Transactions: ${action}` }) })
+      } else if (action === 'decline') {
+        const result = await api<{ executed_on_provider: boolean; error?: string }>(`/api/payouts/${id}/decision`, { method: 'POST', body: JSON.stringify({ decision: 'DECLINED', remark: 'Bulk decline from All Transactions', mode: 'auto' }) })
+        if (!result.executed_on_provider) return { ok: false, reason: String(result.error ?? 'not_executed_on_provider') }
+      } else {
+        return { ok: false, reason: 'payout_bulk_approve_unsupported' }
+      }
+      return { ok: true }
+    } catch (e) {
+      const workerDetail = e instanceof ApiError && e.code === 'worker_failed' ? (e.body?.worker as Record<string, unknown> | undefined)?.error : null
+      if (e instanceof ApiError && e.code === 'amount_outside_method_limits') {
+        const { min_amount, max_amount, method_name } = e.body ?? {}
+        return { ok: false, reason: `${method_name ?? 'method'} limits ${min_amount ?? '—'}–${max_amount ?? '—'}` }
+      }
+      return { ok: false, reason: typeof workerDetail === 'string' ? workerDetail : e instanceof ApiError ? e.code : 'decision_failed' }
+    }
+  }
+
+  const runBulkDecision = async (action: 'approve' | 'decline') => {
+    const eligible = sortedRows.filter((r) => selectedKeys.has(selKey(r))
+      && (action === 'approve' ? canBulkApprove(r) && can('deposits', 'can_approve') : canBulkDecline(r) && can(r.kind === 'deposit' ? 'deposits' : 'payouts', 'can_approve')))
+    if (!eligible.length) {
+      setErr(t('لا توجد معاملات معلّقة قابلة لهذا الإجراء ضمن المحدد.', 'No pending transactions in the current selection are eligible for this action.'))
+      return
+    }
+    const totalAmount = eligible.reduce((sum, r) => sum + (r.amount ?? 0), 0)
+    const verb = action === 'approve' ? t('اعتماد', 'Approve') : t('رفض', 'Reject')
+    if (!window.confirm(`${verb} ${eligible.length} ${t('معاملة', 'transactions')}؟\n${t('الإجمالي', 'Total')}: ${money(totalAmount, 'EGP')}\n\n${t('يتم التنفيذ واحدة تلو الأخرى على Maven مباشرةً — لا يمكن التراجع بعد التنفيذ.', 'Each one executes live on Maven, one at a time — this cannot be undone once executed.')}`)) return
+    setBulkBusy(true)
+    setErr(null)
+    setBulkResult(null)
+    setBulkProgress({ done: 0, total: eligible.length })
+    const ok: string[] = []
+    const failed: { ref: string; reason: string }[] = []
+    for (let i = 0; i < eligible.length; i++) {
+      const row = eligible[i]
+      const ref = row.ontarget_ref ?? String(rowId(row))
+      const result = await performBulkDecision(row, action)
+      if (result.ok) ok.push(ref); else failed.push({ ref, reason: result.reason })
+      setBulkProgress({ done: i + 1, total: eligible.length })
+      // Sequential with a pause between live Maven calls, deliberately not
+      // Promise.all: firing many decision requests at once is exactly what
+      // saturated Supabase's shared edge-function runtime earlier today and
+      // took the login path down with it as collateral damage.
+      if (i < eligible.length - 1) await new Promise((resolve) => setTimeout(resolve, 400))
+    }
+    setBulkBusy(false)
+    setBulkProgress(null)
+    setBulkResult({ action, ok, failed })
+    setSelectedKeys(new Set())
+    await load(true)
+  }
+
+  const toggleSelected = (key: string) => setSelectedKeys((current) => {
+    const next = new Set(current)
+    if (next.has(key)) next.delete(key); else next.add(key)
+    return next
+  })
+
   const unlinkSms = async (row: TxRow) => {
     if (!row.matched_sms || !can('sms_live', 'can_edit')) return
     if (!window.confirm(t('فك ربط رسالة SMS من هذه المعاملة؟', 'Unlink this SMS from the transaction?'))) return
@@ -862,6 +944,30 @@ export default function Transactions() {
 
       {err && <div className="card warn">{err}</div>}
 
+      {selectedKeys.size > 0 && (
+        <div className="bulk-action-bar">
+          <span className="bulk-action-count">{t(`${selectedKeys.size} معاملة محددة`, `${selectedKeys.size} selected`)}</span>
+          <button type="button" className="btn-primary btn-sm" disabled={bulkBusy} onClick={() => void runBulkDecision('approve')}><CheckCircle2 size={14} /> {t('اعتماد المحدد', 'Approve selected')}</button>
+          <button type="button" className="btn-ghost danger btn-sm" disabled={bulkBusy} onClick={() => void runBulkDecision('decline')}><XCircle size={14} /> {t('رفض المحدد', 'Reject selected')}</button>
+          <button type="button" className="btn-ghost btn-sm" disabled={bulkBusy} onClick={() => setSelectedKeys(new Set())}>{t('إلغاء التحديد', 'Clear selection')}</button>
+          {bulkProgress && <span className="bulk-action-progress">{t('جارٍ التنفيذ', 'Processing')} {bulkProgress.done}/{bulkProgress.total}…</span>}
+        </div>
+      )}
+
+      {bulkResult && (
+        <div className={`card ${bulkResult.failed.length ? 'warn' : 'ok'} bulk-result-card`}>
+          <div className="bulk-result-head">
+            <span>{t(`تم: ${bulkResult.ok.length} نجحت، ${bulkResult.failed.length} فشلت`, `Done: ${bulkResult.ok.length} succeeded, ${bulkResult.failed.length} failed`)}</span>
+            <button type="button" className="btn-ghost btn-sm" onClick={() => setBulkResult(null)}><X size={14} /></button>
+          </div>
+          {bulkResult.failed.length > 0 && (
+            <ul className="bulk-result-failures">
+              {bulkResult.failed.map((f) => <li key={f.ref}><span className="mono">#{f.ref}</span> — {f.reason}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+
       <section className="card recent-card portal-transactions-card">
         {loading && !data && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
         {data && data.rows.length === 0 && <p>{t('لا توجد نتائج مطابقة.', 'No matching results.')}</p>}
@@ -870,6 +976,17 @@ export default function Transactions() {
             <table className="data-table all-transactions-table portal-transaction-grid">
               <thead>
                 <tr>
+                  <th aria-label={t('تحديد الكل', 'Select all')}>
+                    <input
+                      type="checkbox"
+                      checked={sortedRows.some(canBulkDecline) && sortedRows.filter(canBulkDecline).every((r) => selectedKeys.has(selKey(r)))}
+                      onChange={(event) => {
+                        const selectable = sortedRows.filter(canBulkDecline)
+                        setSelectedKeys(event.target.checked ? new Set(selectable.map(selKey)) : new Set())
+                      }}
+                      aria-label={t('تحديد كل المعاملات المعلّقة في هذه الصفحة', 'Select all pending transactions on this page')}
+                    />
+                  </th>
                   <th aria-label={t('توسيع', 'Expand')} />
                   <th>{t('الإجراء', 'Action')}</th>
                   <SortableTh colId="tx_id" label={t('رقم المعاملة', 'Transaction ID')} />
@@ -940,12 +1057,13 @@ export default function Transactions() {
                   return (
                     <Fragment key={rowKey}>
                         <tr key={rowKey} className={`${r.status === 'PENDING' ? 'row-pending ' : ''}${r.matched_sms?.match_status === 'auto_review' ? (r.kind === 'payout' ? 'sms-review-neon-out' : 'sms-review-neon-in') : ''}`}>
+                        <td>{canBulkDecline(r) && <input type="checkbox" checked={selectedKeys.has(selKey(r))} onChange={() => toggleSelected(selKey(r))} aria-label={t('تحديد هذه المعاملة', 'Select this transaction')} />}</td>
                         <td><button type="button" className="tx-expand-btn" onClick={() => toggleExpanded(rowKey)} aria-expanded={isExpanded} aria-label={isExpanded ? t('إغلاق التفاصيل', 'Collapse details') : t('فتح التفاصيل', 'Expand details')}>{isExpanded ? <ChevronDown size={15}/> : <ChevronRight size={15}/>}</button></td>
                         <td><div className="portal-row-actions">{canOpenModal ? <button type="button" className="tx-action-primary tx-action-icon" onClick={() => openDetail(r.ontarget_ref!)} title={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')} aria-label={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')}>{r.status === 'PENDING' ? <Pencil size={17}/> : <Eye size={17}/>}</button> : <Link className="tx-action-primary tx-action-icon" to={details} title={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')} aria-label={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')}>{r.status === 'PENDING' ? <Pencil size={17}/> : <Eye size={17}/>}</Link>}{id && (r.kind === 'deposit' ? <TransactionEditDialog iconOnly txId={Number(id)} ontargetRef={r.ontarget_ref} status={r.status} amount={r.amount} currency={r.currency} gateway={r.gateway} currentReceivingWallet={r.to_account_number ?? r.receiving_wallet} onDone={() => void load()} /> : <Link className="btn-ghost btn-sm tx-action-icon" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}&edit=1`} title={t('تعديل المعاملة', 'Edit transaction')} aria-label={t('تعديل المعاملة', 'Edit transaction')}><Pencil size={17}/></Link>)}{proofUrl && <button type="button" className="tx-proof-icon tx-action-icon" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id), onApprove: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'approve'); setProof(null) } : undefined, onDecline: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'decline'); setProof(null) } : undefined })} aria-label={t('عرض الإثبات', 'View proof')} title={t('عرض الإثبات', 'View proof')}><Image size={17}/></button>}</div></td>
                         <td className="mono">{canOpenModal ? <button type="button" className="transaction-cell-link tx-id-link" onClick={() => openDetail(r.ontarget_ref!)}>{id}</button> : <Link className="transaction-cell-link" to={details}>{r.is_checkout_session ? r.ontarget_ref : id}</Link>}{r.is_blacklisted && <span className="blacklist-marker" title={t('رقم الهاتف محظور — رفض تلقائي', 'Phone blacklisted — auto-decline')} aria-label={t('رقم الهاتف محظور', 'Phone blacklisted')}>🚫</span>}{r.is_checkout_session && <span className="deposit-kind is-first">🔗 Payment link</span>}{identifiers.filter((value) => value !== String(id)).map((value) => <div key={value} className="cell-sub mono">{value}</div>)}{isDeclinedDuplicate && <span className="deposit-kind is-declined-duplicate">⚠ {t('مرفوض مكرر','Declined duplicate')}</span>}{r.kind === 'deposit' && !r.is_checkout_session && <span className={`deposit-kind ${r.deposit_kind === 'retention_deposit' ? 'is-retention' : 'is-first'}`}>{r.deposit_kind === 'retention_deposit' ? `↻ ${t('Retention','Retention')}` : `★ ${t('First','First')}`}</span>}</td>
                         {shownColumns.map((c) => cell(c.id))}
                       </tr>
-                      {isExpanded && <tr key={`${rowKey}-details`} className="tx-expanded-row"><td colSpan={3 + shownColumns.length}><div className="tx-expanded-split">
+                      {isExpanded && <tr key={`${rowKey}-details`} className="tx-expanded-row"><td colSpan={4 + shownColumns.length}><div className="tx-expanded-split">
                       <div className="tx-expanded-table-side">
                       <div className="tx-expanded-grid">
                         <div><span>{t('بريد المستخدم', 'User email')}</span>{r.user_email ? <a href={`mailto:${r.user_email}`} className="transaction-cell-link">{r.user_email}</a> : '—'}</div>
@@ -989,7 +1107,7 @@ export default function Transactions() {
               const canOpenModal = r.kind === 'deposit' && !r.is_checkout_session && !!r.ontarget_ref
               const details = r.is_checkout_session ? `/payment-status?id=${encodeURIComponent(r.checkout_session_id ?? '')}` : r.kind === 'deposit' && r.ontarget_ref ? `/transactions/${encodeURIComponent(r.ontarget_ref)}` : `/${r.kind === 'deposit' ? 'deposits' : 'payouts'}?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`
               return <article key={`${r.kind}-${r.checkout_session_id ?? id}`} className={`all-tx-card${r.status === 'PENDING' ? ' pending' : ''}`}>
-                <header>{canOpenModal ? <button type="button" className="mono transaction-cell-link tx-id-link" onClick={() => openDetail(r.ontarget_ref!)}>{r.ontarget_ref}</button> : <Link className="mono transaction-cell-link" to={details}>{r.ontarget_ref ?? id}</Link>}{r.is_blacklisted && <span className="blacklist-marker" title={t('رقم الهاتف محظور — رفض تلقائي', 'Phone blacklisted — auto-decline')} aria-label={t('رقم الهاتف محظور', 'Phone blacklisted')}>🚫</span>}<span className={`pay-status-badge ${st.cls}`}>{st.label}</span></header>
+                <header>{canBulkDecline(r) && <input type="checkbox" checked={selectedKeys.has(selKey(r))} onChange={() => toggleSelected(selKey(r))} aria-label={t('تحديد هذه المعاملة', 'Select this transaction')} />}{canOpenModal ? <button type="button" className="mono transaction-cell-link tx-id-link" onClick={() => openDetail(r.ontarget_ref!)}>{r.ontarget_ref}</button> : <Link className="mono transaction-cell-link" to={details}>{r.ontarget_ref ?? id}</Link>}{r.is_blacklisted && <span className="blacklist-marker" title={t('رقم الهاتف محظور — رفض تلقائي', 'Phone blacklisted — auto-decline')} aria-label={t('رقم الهاتف محظور', 'Phone blacklisted')}>🚫</span>}<span className={`pay-status-badge ${st.cls}`}>{st.label}</span></header>
                 <div className="all-tx-card-amount mono">
                   {money(r.amount, r.currency ?? 'EGP')}
                   {r.amount_sync_status === 'mismatch' && <div className="amount-critical-warning" title={r.amount_mismatch_reason ?? 'Maven amount confirmation required'}>⚠ CRITICAL</div>}
