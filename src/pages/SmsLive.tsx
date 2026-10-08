@@ -1169,7 +1169,7 @@ export default function SmsLive() {
                   </SheetFooter>
                 )}
 
-                {selected.sms_category !== 'withdrawal' && selected.matched_tx_id == null && !selected.is_blocked && can('sms_live', 'can_edit') && (
+                {selected.sms_category !== 'withdrawal' && selected.matched_tx_id == null && can('sms_live', 'can_edit') && (
                   <div className="link-section">
                     <h4>🔗 {t('ربط بمعاملة', 'Link to a transaction')}</h4>
                     <form

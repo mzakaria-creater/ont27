@@ -110,7 +110,6 @@ function cairoDayKey(value: unknown): string | null {
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
   return `${values.year}-${values.month}-${values.day}`
 }
-const SMS_ASSIGNMENT_GRACE_MS = 3 * 60 * 60_000
 
 function balanceContinuity(sms: QueueSms, history: QueueSms[]) {
   const wallet = phoneKey(sms.receiver_number)
@@ -650,22 +649,8 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
     return c.json({ error: 'sms_transaction_date_mismatch', sms_date: smsDay, transaction_date: txDay }, 409)
   }
 
-  const smsAt = queueTime(sms.received_at)
-  const smsAgeMs = smsAt == null ? 0 : Date.now() - smsAt
-  if (smsAgeMs >= SMS_ASSIGNMENT_GRACE_MS && !sms.assignment_unlocked_at) {
-    const blockReason = 'Assignment window expired after 3 hours; unblock SMS before manual linking.'
-    const { error: lockError } = await db.from('inbound_sms').update({
-      is_blocked: true,
-      block_reason: blockReason,
-      blocked_at: new Date().toISOString(),
-      blocked_by: actor.username,
-      review_required: false,
-      assignment_unlocked_at: null,
-      assignment_unlocked_by: null,
-    }).eq('id', id).is('consumed_by_tx_id', null).is('matched_transaction_id', null).is('maven_transaction_id', null)
-    if (lockError) return c.json({ error: 'db_error', detail: lockError.message }, 500)
-    return c.json({ error: 'assignment_window_expired', requires_unblock: true, age_hours: Math.round((smsAgeMs / 3_600_000) * 100) / 100 }, 409)
-  }
+  // A manual operator link is itself the unlock: no separate "unblock" step is required, whether the
+  // SMS was blocked manually or by the 3-hour assignment window. Block fields are cleared on link below.
 
   const smsAmount = Number(sms.amount)
   const txAmount = Number(tx.amount)
@@ -684,6 +669,12 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
       consumed_by_tx_id: txId,
       review_required: false,
       processed_at: new Date().toISOString(),
+      is_blocked: false,
+      block_reason: null,
+      blocked_at: null,
+      blocked_by: null,
+      assignment_unlocked_at: sms.is_blocked ? new Date().toISOString() : (sms.assignment_unlocked_at ?? null),
+      assignment_unlocked_by: sms.is_blocked ? actor.username : (sms.assignment_unlocked_by ?? null),
     })
     .eq('id', id)
     .is('consumed_by_tx_id', null)
