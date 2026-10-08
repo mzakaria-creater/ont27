@@ -647,6 +647,17 @@ export default function SmsLive() {
     } finally { setLinkBusy(false) }
   }
 
+  // Unblock straight from a list card (no need to open the detail sheet first).
+  const unblockFromCard = async (id: number) => {
+    if (!can('sms_live', 'can_edit')) return
+    try {
+      await api(`/api/sms/${id}/unblock`, { method: 'POST' })
+      void load(true)
+    } catch (e) {
+      window.alert(e instanceof ApiError && e.code === 'sms_must_be_unlinked' ? t('لا يمكن فك حظر رسالة مرتبطة.', 'A linked SMS cannot be unblocked.') : t('فشل فك حظر الرسالة.', 'Failed to unblock SMS.'))
+    }
+  }
+
   const recordExpense = async () => {
     if (!selected || selected.sms_category !== 'withdrawal' || !expenseComment.trim()) return
     setExpenseBusy(true); setLinkErr(null)
@@ -956,6 +967,18 @@ export default function SmsLive() {
                   <div className="sms-card-actions-row">
                     <button type="button" className={`sms-card-assign-action ${r.sms_category === 'withdrawal' ? 'is-payout' : ''}`} onClick={(event) => { event.stopPropagation(); void openDetail(r.id) }}>
                       {r.sms_category === 'withdrawal' ? t('تعيين السحب', 'Assign withdrawal') : t('تعيين لمعاملة', 'Assign to transaction')} <span aria-hidden="true">→</span>
+                    </button>
+                    {r.sms_category !== 'withdrawal' && (
+                      <button type="button" className="sms-card-quick-link" onClick={(event) => { event.stopPropagation(); openQuickLink(r) }}>
+                        🔗 {t('ربط', 'Link')}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {!linked && r.is_blocked && can('sms_live', 'can_edit') && (
+                  <div className="sms-card-actions-row">
+                    <button type="button" className="sms-card-assign-action" onClick={(event) => { event.stopPropagation(); void unblockFromCard(r.id) }}>
+                      🔓 {t('فك الحظر', 'Unblock')}
                     </button>
                     {r.sms_category !== 'withdrawal' && (
                       <button type="button" className="sms-card-quick-link" onClick={(event) => { event.stopPropagation(); openQuickLink(r) }}>
