@@ -658,6 +658,18 @@ export default function SmsLive() {
     }
   }
 
+  const unblockQuickLink = async () => {
+    if (!quickLinkRow?.is_blocked || !can('sms_live', 'can_edit')) return
+    setQuickLinkBusy(true); setQuickLinkError(null)
+    try {
+      await api(`/api/sms/${quickLinkRow.id}/unblock`, { method: 'POST' })
+      setQuickLinkRow({ ...quickLinkRow, is_blocked: false, block_reason: null })
+      void load(true)
+    } catch (e) {
+      setQuickLinkError(e instanceof ApiError && e.code === 'sms_must_be_unlinked' ? t('لا يمكن فك حظر رسالة مرتبطة.', 'A linked SMS cannot be unblocked.') : t('فشل فك حظر الرسالة.', 'Failed to unblock SMS.'))
+    } finally { setQuickLinkBusy(false) }
+  }
+
   const recordExpense = async () => {
     if (!selected || selected.sms_category !== 'withdrawal' || !expenseComment.trim()) return
     setExpenseBusy(true); setLinkErr(null)
@@ -999,6 +1011,12 @@ export default function SmsLive() {
                 <button type="button" className="icon-action" disabled={quickLinkBusy} onClick={() => setQuickLinkRow(null)} aria-label={t('إغلاق', 'Close')}><X size={17} /></button>
               </div>
               <p className="cell-sub">{money(quickLinkRow.amount, 'EGP')} · {quickLinkRow.sender_name ?? quickLinkRow.sender_number ?? t('مرسل غير معروف', 'Unknown sender')}</p>
+              {quickLinkRow.is_blocked && (
+                <div className="card warn" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span>🚫 {t('هذه الرسالة محظورة', 'This SMS is blocked')}{quickLinkRow.block_reason ? ` — ${quickLinkRow.block_reason}` : ''}</span>
+                  <button type="button" className="btn-primary btn-sm" disabled={quickLinkBusy} onClick={() => void unblockQuickLink()}>🔓 {t('فك الحظر', 'Unblock')}</button>
+                </div>
+              )}
               <form className="search-row" onSubmit={(e) => { e.preventDefault(); void loadQuickLinkCandidates(quickLinkRow.id, quickLinkQuery.trim() || undefined) }}>
                 <input
                   className="login-input search-input"
