@@ -867,8 +867,10 @@ smsRoutes.post('/:id/unlink', requirePerm('sms_live', 'can_edit'), async (c) => 
     .maybeSingle()
   if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
   if (!sms) return c.json({ error: 'not_found' }, 404)
-  if (sms.sms_category === 'withdrawal') return c.json({ error: 'withdrawal_links_to_wallet' }, 409)
   const linkedTxId = sms.consumed_by_tx_id ?? sms.matched_transaction_id ?? sms.maven_transaction_id
+  // Unlink is allowed at any time and for any transaction status. Only a withdrawal SMS that is not
+  // tied to a transaction (it belongs to a wallet balance, not a deposit) is refused.
+  if (sms.sms_category === 'withdrawal' && linkedTxId == null) return c.json({ error: 'withdrawal_links_to_wallet' }, 409)
   if (!sms.matched && linkedTxId == null) return c.json({ error: 'not_linked' }, 409)
 
   const { error: updErr } = await db
