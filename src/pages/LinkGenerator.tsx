@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { BarChart3, Coins, Copy, ExternalLink, Info, Link2, Plus, RefreshCw, Search, ShieldCheck, Route, Timer, WalletCards } from 'lucide-react'
+import { BarChart3, Coins, Copy, ExternalLink, Info, Link2, Plus, RefreshCw, Search, ShieldCheck, Route, Timer, WalletCards, Zap } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
 import { useLocale } from '../lib/locale'
@@ -108,6 +108,29 @@ export default function LinkGenerator() {
     catch { setError(t('تعذّر نسخ الرابط.', 'Could not duplicate the link.')) }
   }
 
+  // One-click link with sensible defaults (open amount, EGP, every method,
+  // single-queue allocation) — the common case when staff just need *a*
+  // collection link right now and don't care about merchant/currency/method
+  // restrictions. Posts directly rather than going through `form` state, so
+  // it never clobbers whatever the staff member has half-typed into the
+  // full form above it.
+  const quickGenerate = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const created = await api<{ checkout_url?: string }>('/api/links', {
+        method: 'POST',
+        body: JSON.stringify({ amount_mode: 'open', currency: 'EGP', allocation_mode: 'single_queue', payment_method_codes: [], allowed_account_ids: [] }),
+      })
+      setNewCheckoutUrl(created.checkout_url ? `${location.origin}${created.checkout_url}` : null)
+      await load()
+    } catch (err) {
+      setError(err instanceof ApiError && err.status === 403 ? t('دورك لا يملك صلاحية إنشاء روابط', 'Your role cannot create links') : t('تعذر إنشاء الرابط', 'Failed to create link'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const create = async (e: FormEvent) => {
     e.preventDefault()
     setBusy(true)
@@ -205,7 +228,7 @@ export default function LinkGenerator() {
       {can('checkout-builder', 'can_create') && (
         <section className="payment-link-builder">
         <form className="card link-form payment-link-form" onSubmit={create}>
-          <div className="recent-head"><div><h3><Plus size={18}/>{t('إنشاء رابط جديد','Create a new link')}</h3><span className="cell-sub">{t('حدد قواعد التحصيل قبل النشر','Set collection rules before publishing')}</span></div></div>
+          <div className="recent-head"><div><h3><Plus size={18}/>{t('إنشاء رابط جديد','Create a new link')}</h3><span className="cell-sub">{t('حدد قواعد التحصيل قبل النشر','Set collection rules before publishing')}</span></div><button type="button" className="btn-ghost btn-sm" disabled={busy} onClick={() => void quickGenerate()} title={t('رابط فوري بمبلغ مفتوح وجنيه مصري وكل الطرق — بدون تعبئة النموذج', 'Instant link: open amount, EGP, every method — no form filling')}><Zap size={14}/> {t('توليد سريع','Quick generate')}</button></div>
           <div className="link-form-section">
             <h4 className="link-form-section-head"><Info size={14}/> {t('١ · بيانات الرابط', '1 · Link details')}</h4>
             <div className="grid-3">
