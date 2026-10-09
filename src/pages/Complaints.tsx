@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { RefreshCw, Search, X } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
+import { useAuth } from '../auth/AuthContext'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import TransactionEditDialog from '../components/TransactionEditDialog'
 import { Sheet, SheetHeader, SheetFooter } from '../components/Sheet'
 import { useIsMobile } from '../lib/useIsMobile'
+
+// Transaction investigation (live provider lookup by tx id / phone+amount) is
+// restricted to this named allowlist — mirrors server/complaints.ts's
+// TX_INVESTIGATORS check, which is the actual enforcement; this just keeps
+// the button from being shown to people who'd get a 403 from it.
+const TX_INVESTIGATORS = new Set(['joe', 'ahmedmano.solly', 'eslam'])
 
 // الشكاوى — tx_complaints on the old prod DB, with the control room's
 // investigate / approve / decline / close actions.
@@ -46,6 +53,8 @@ const STATUS_META: Record<string, { ar: string; en: string; cls: string }> = {
 
 export default function Complaints() {
   const { t } = useLocale()
+  const { user } = useAuth()
+  const canInvestigate = !!user && TX_INVESTIGATORS.has(user.username.toLowerCase())
   const isMobile = useIsMobile()
   const [rows, setRows] = useState<ComplaintRow[] | null>(null)
   const [total, setTotal] = useState(0)
@@ -236,6 +245,7 @@ export default function Complaints() {
         )}
       </section>
 
+      {canInvestigate && (
       <section className="card complaint-investigator">
         <div className="complaint-panel-title"><div><h3>🔎 {t('فحص شكوى معاملة','Investigate a transaction complaint')}</h3><p>{t('اكتب رقم معاملة Maven، أو رقم العميل والمبلغ.', 'Enter a Maven transaction ID, or customer phone and amount.')}</p></div><span className="pay-status-badge st-pending">LIVE CHECK</span></div>
         <form className="complaint-investigation-form" onSubmit={investigateCase}>
@@ -249,6 +259,7 @@ export default function Complaints() {
         {caseResult != null && <div className="complaint-analysis"><div className="section-label">{t('نتيجة التحليل','Analysis result')}</div><pre className="sms-body">{JSON.stringify(caseResult,null,2).slice(0,3000)}</pre><div className="complaint-log-row"><input className="login-input" value={caseNote} onChange={(e)=>setCaseNote(e.target.value)} placeholder={t('وصف الشكوى أو ملاحظة العميل…','Complaint description or customer note…')}/><button className="btn-primary btn-sm" disabled={caseBusy || (!caseTx && !casePhone)} onClick={() => void logCase()}>{t('تسجيل شكوى وإرسال تنبيه','File complaint & notify')}</button></div></div>}
         {caseMessage && <div className="guide-callout success">{caseMessage}</div>}
       </section>
+      )}
 
       <div className="filter-bar complaint-filter-bar">
         <form className="complaint-tx-search" onSubmit={searchByTx} role="search">
@@ -350,9 +361,11 @@ export default function Complaints() {
               {selected.resolved_at && <><dt>{t('حُلّت', 'Resolved')}</dt><dd className="mono">{depositTime({ first_seen_at: selected.resolved_at })}</dd></>}
             </dl>
 
-            <button className="btn-ghost btn-sm" disabled={busy} onClick={() => void investigate()}>
-              🔍 {t('فحص ومطابقة', 'Investigate & match')}
-            </button>
+            {canInvestigate && (
+              <button className="btn-ghost btn-sm" disabled={busy} onClick={() => void investigate()}>
+                🔍 {t('فحص ومطابقة', 'Investigate & match')}
+              </button>
+            )}
             {investigation != null && (
               <pre className="sms-body">{JSON.stringify(investigation, null, 1).slice(0, 1200)}</pre>
             )}

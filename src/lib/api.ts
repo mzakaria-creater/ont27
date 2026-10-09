@@ -22,12 +22,27 @@ async function rawFetch(path: string, init?: RequestInit): Promise<Response> {
   const isFormData = typeof FormData !== 'undefined' && init?.body instanceof FormData
   const timeoutSignal = AbortSignal.timeout(DEFAULT_TIMEOUT_MS)
   const signal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal
-  return fetch(path, {
-    ...init,
-    signal,
-    credentials: 'same-origin',
-    headers: { ...(isFormData ? {} : { 'Content-Type': 'application/json' }), ...init?.headers },
-  })
+  try {
+    return await fetch(path, {
+      ...init,
+      signal,
+      credentials: 'same-origin',
+      headers: { ...(isFormData ? {} : { 'Content-Type': 'application/json' }), ...init?.headers },
+    })
+  } catch (error) {
+    // A caller-aborted request (e.g. Transactions.tsx cancelling a stale
+    // list fetch) is deliberate, not a failure — let it propagate as-is so
+    // callers that check for AbortError still see one.
+    if (init?.signal?.aborted) throw error
+    // Everything else here is "the request never got a response": DNS/TCP
+    // failure, offline, CORS, or our own DEFAULT_TIMEOUT_MS firing. Wrapping
+    // it in ApiError gives every caller (loginErrorMessage included) a
+    // single, typed shape to check instead of an unhandled TypeError/
+    // DOMException that bypassed every `instanceof ApiError` guard in the
+    // app and only ever surfaced as a generic, unhelpful fallback message.
+    const timedOut = error instanceof DOMException && error.name === 'TimeoutError'
+    throw new ApiError(0, timedOut ? 'network_timeout' : 'network_error', null)
+  }
 }
 
 let refreshInFlight: Promise<boolean> | null = null

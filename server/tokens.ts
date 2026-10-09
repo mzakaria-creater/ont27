@@ -13,7 +13,11 @@ export const ACCESS_TTL_SEC = 15 * 60
 // "Remember me" controls both the refresh token's DB-side expiry and whether
 // its cookie persists past the browser session (see setAuthCookies in auth.ts).
 export const REFRESH_TTL_SEC_REMEMBER = 30 * 24 * 60 * 60
-export const REFRESH_TTL_SEC_SESSION = 24 * 60 * 60
+// Without "remember me" the session now expires 30 minutes after the last
+// activity (each /refresh rotation — see AuthContext's 12-min interval —
+// extends this window from "now", so an active tab stays logged in while an
+// idle/closed one drops out within 30 minutes, not 24 hours).
+export const REFRESH_TTL_SEC_SESSION = 30 * 60
 const BCRYPT_COST = 12
 
 export interface AccessClaims {

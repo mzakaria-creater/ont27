@@ -115,6 +115,7 @@ export default function Approvals() {
   const [retentionSummary, setRetentionSummary] = useState<RetentionSummary>({ paid: 0, declined: 0, pending: 0, total: 0 })
   const [now, setNow] = useState(() => Date.now())
   const refreshTimer = useRef<number | null>(null)
+  const lastRunAt = useRef(0)
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
@@ -150,10 +151,21 @@ export default function Approvals() {
     }
     void initialLoad()
     // Realtime changes update the queue without a full provider sync or a
-    // polling storm. A tiny debounce coalesces transaction + SMS changes.
+    // polling storm. inbound_sms has no row filter here — every SMS any
+    // linked device receives platform-wide retriggers this, which on a busy
+    // day meant `load()` (itself doing a JSON.stringify diff over the whole
+    // queue) running almost back-to-back. The 120ms debounce still coalesces
+    // a tight burst; lastRunAt additionally floors how often an actual
+    // reload can happen (same fix as Transactions.tsx's realtime subscription).
+    const MIN_REFRESH_GAP_MS = 4_000
     const schedule = () => {
       if (refreshTimer.current != null) window.clearTimeout(refreshTimer.current)
-      refreshTimer.current = window.setTimeout(() => { refreshTimer.current = null; void load() }, 120)
+      const wait = Math.max(120, MIN_REFRESH_GAP_MS - (Date.now() - lastRunAt.current))
+      refreshTimer.current = window.setTimeout(() => {
+        refreshTimer.current = null
+        lastRunAt.current = Date.now()
+        void load()
+      }, wait)
     }
     const channel = supabase.channel('approval-queue-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'maven_transactions' }, schedule)

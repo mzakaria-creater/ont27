@@ -440,6 +440,7 @@ export default function Transactions() {
   const requestSeq = useRef(0)
   const abortRef = useRef<AbortController | null>(null)
   const lastFingerprint = useRef('')
+  const lastRunAt = useRef(0)
   const load = useCallback(async (silent = false) => {
     const seq = ++requestSeq.current
     abortRef.current?.abort()
@@ -483,10 +484,27 @@ export default function Transactions() {
   // Keep All Transactions live as well as the approval queue. Provider pulls
   // are shared across tabs and local realtime events repaint immediately once
   // the delta has landed, without flashing the existing table.
+  //
+  // The subscription below has no row filter — it fires on every insert/
+  // update to maven_transactions / maven_payout_transactions platform-wide,
+  // not just rows matching this page's filters. On a live payments system
+  // that can be many events a minute, and the old 120ms debounce reset on
+  // every single one: during a busy stretch the full (up to pageSize) list
+  // never got a chance to settle and kept re-fetching almost continuously,
+  // which is what made this page feel "so so so slow" while traffic flowed.
+  // lastRunAt enforces a floor on how often an actual reload can happen,
+  // independent of how often events arrive; the 120ms debounce still just
+  // coalesces a tight burst into one call.
   useEffect(() => {
+    const MIN_REFRESH_GAP_MS = 4_000
     const schedule = () => {
       if (refreshTimer.current != null) window.clearTimeout(refreshTimer.current)
-      refreshTimer.current = window.setTimeout(() => { refreshTimer.current = null; void load(true) }, 120)
+      const wait = Math.max(120, MIN_REFRESH_GAP_MS - (Date.now() - lastRunAt.current))
+      refreshTimer.current = window.setTimeout(() => {
+        refreshTimer.current = null
+        lastRunAt.current = Date.now()
+        void load(true)
+      }, wait)
     }
     const channel = supabase.channel('transactions-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'maven_transactions' }, schedule)

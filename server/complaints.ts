@@ -179,7 +179,12 @@ complaintRoutes.post('/log', async (c) => {
   return c.json({ ok: true, result: data, telegram: tg })
 })
 
+// Looking up a transaction's live provider evidence for a complaint is
+// restricted to this named allowlist, not just the broader complaint-center
+// role gate above — requested explicitly, independent of role/promotions.
+const TX_INVESTIGATORS = new Set(['joe', 'ahmedmano.solly', 'eslam'])
 complaintRoutes.post('/investigate', async (c) => {
+  if (!TX_INVESTIGATORS.has(c.get('actor').username.toLowerCase())) return c.json({ error: 'forbidden' }, 403)
   const old = oldDb()
   if (!old) return c.json({ error: 'old_db_not_configured' }, 500)
   const body = await c.req.json().catch(() => null)
