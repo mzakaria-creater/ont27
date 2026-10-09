@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api, ApiError } from '../lib/api'
+import { PAYMENT_API_BASE } from '../lib/paymentApi'
 import { useLocale } from '../lib/locale'
 
 // Public payout-request page — the outbound counterpart of
@@ -68,7 +69,7 @@ export default function PayoutCheckout() {
 
   useEffect(() => {
     if (!linkKey) { setLinkLoaded(true); return }
-    api<{ link: PayoutLink }>(`/api/pay/payout-link/${encodeURIComponent(linkKey)}`)
+    api<{ link: PayoutLink }>(`${PAYMENT_API_BASE}/payout-link/${encodeURIComponent(linkKey)}`)
       .then(({ link }) => {
         setLink(link)
         if (link.amount_mode === 'fixed' && link.amount) setAmount(String(link.amount))
@@ -82,7 +83,7 @@ export default function PayoutCheckout() {
     setError(null)
     setBusy(true)
     try {
-      const { request } = await api<{ request: PayoutRequestResult }>('/api/pay/payout-session', {
+      const { request } = await api<{ request: PayoutRequestResult }>(`${PAYMENT_API_BASE}/payout-session`, {
         method: 'POST',
         body: JSON.stringify({
           code: linkKey,

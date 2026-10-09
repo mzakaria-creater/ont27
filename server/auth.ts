@@ -175,12 +175,13 @@ authRoutes.post('/login', async (c) => {
     const normalizedLogin = username.toLocaleLowerCase('en-US')
     // The REST gateway itself (not the underlying query — the same select
     // runs in low single-digit ms as raw SQL) has intermittently stalled for
-    // a few seconds at a time. The edge-login call above fails fast (that
-    // function isn't actually deployed, so it 404s almost immediately — it's
-    // not a latency risk), so the real time budget belongs here: three
-    // attempts give a multi-second gateway stall real room to clear instead
-    // of surfacing auth_unavailable to the user, while api/index.ts's
-    // maxDuration:30 keeps the platform from killing the function first.
+    // a few seconds at a time. The edge-login call above (panel-login-fallback,
+    // a real function doing its own panel_users lookup + bcrypt check — it is
+    // deployed, this isn't a dead/404 path) is capped at 5s so a slow edge
+    // invocation can't eat the whole budget either; three attempts here give
+    // a multi-second gateway stall real room to clear instead of surfacing
+    // auth_unavailable to the user, while api/index.ts's maxDuration:30 keeps
+    // the platform from killing the function before either path finishes.
     let lookup: { data: unknown; error: { message: string } | null } | null = null
     for (let attempt = 1; ; attempt++) {
       lookup = await db.from('panel_users').select(LOGIN_USER_COLUMNS).limit(200).abortSignal(AbortSignal.timeout(6_000))
