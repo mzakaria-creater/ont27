@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Building2, CheckCircle2, Download, Layers, RefreshCw, ShieldAlert, XCircle } from 'lucide-react'
+import { Building2, CheckCircle2, Check, Copy, Download, Gift, Layers, RefreshCw, ShieldAlert, X, XCircle } from 'lucide-react'
 import MultiSelectFilter from '../components/MultiSelectFilter'
 import { Sheet, SheetHeader } from '../components/Sheet'
 import { api, ApiError } from '../lib/api'
@@ -36,8 +36,24 @@ interface MerchantRow {
   master_merchant_id: string | null
   operator_id: string | null
   key_rotated_at: string | null
+  referred_by_user_id?: string | null
+  referred_by_name?: string | null
   created_at: string | null
   updated_at: string | null
+}
+
+interface ReferralLead {
+  id: string
+  referrer_user_id: string
+  business_name: string
+  contact_name: string | null
+  phone: string | null
+  email: string | null
+  notes: string | null
+  status: 'pending' | 'converted' | 'dismissed'
+  linked_merchant_id: string | null
+  created_at: string
+  panel_users: { display_name: string } | null
 }
 
 interface MasterRow {
@@ -78,6 +94,49 @@ export default function Merchants() {
   const [masterFilter, setMasterFilter] = useState<string[]>([])
   const [kycFilter, setKycFilter] = useState<string[]>([])
   const [selected, setSelected] = useState<MerchantRow | null>(null)
+  const [referralLink, setReferralLink] = useState<string | null>(null)
+  const [linkCopied, setLinkCopied] = useState(false)
+  const [leads, setLeads] = useState<ReferralLead[] | null>(null)
+  const [leadsErr, setLeadsErr] = useState<string | null>(null)
+  const [convertingLead, setConvertingLead] = useState<string | null>(null)
+  const [convertMerchantId, setConvertMerchantId] = useState('')
+  const [leadBusy, setLeadBusy] = useState<string | null>(null)
+
+  const loadLeads = () => {
+    api<{ rows: ReferralLead[] }>('/api/referrals/leads')
+      .then((res) => setLeads(res.rows))
+      .catch((e) => setLeadsErr(e instanceof ApiError && e.status === 403 ? null : t('تعذّر تحميل إحالات التجار.', 'Failed to load merchant referrals.')))
+  }
+
+  useEffect(() => {
+    api<{ path: string }>('/api/referrals/my-link').then((r) => setReferralLink(`${location.origin}${r.path}`)).catch(() => setReferralLink(null))
+    loadLeads()
+  }, [])
+
+  const copyReferralLink = async () => {
+    if (!referralLink) return
+    await navigator.clipboard.writeText(referralLink).catch(() => {})
+    setLinkCopied(true)
+    setTimeout(() => setLinkCopied(false), 1500)
+  }
+
+  const dismissLead = async (lead: ReferralLead) => {
+    setLeadBusy(lead.id)
+    try { await api(`/api/referrals/leads/${lead.id}`, { method: 'PATCH', body: JSON.stringify({ action: 'dismiss' }) }); loadLeads() }
+    catch { setLeadsErr(t('تعذّر تجاهل الإحالة.', 'Could not dismiss the referral.')) }
+    finally { setLeadBusy(null) }
+  }
+
+  const convertLead = async (lead: ReferralLead) => {
+    if (!convertMerchantId) return
+    setLeadBusy(lead.id)
+    try {
+      await api(`/api/referrals/leads/${lead.id}`, { method: 'PATCH', body: JSON.stringify({ action: 'convert', merchant_id: convertMerchantId }) })
+      setConvertingLead(null); setConvertMerchantId('')
+      loadLeads(); load()
+    } catch { setLeadsErr(t('تعذّر ربط الإحالة بالتاجر — تأكد من اختيار تاجر.', 'Could not link the referral to that merchant.')) }
+    finally { setLeadBusy(null) }
+  }
 
   const load = () => {
     setLoading(true); setErr(null)
@@ -191,6 +250,53 @@ export default function Merchants() {
         <div className="kpi-card"><ShieldAlert className="kpi-icon"/><div className="kpi-value">{totals.blocked.toLocaleString()}</div><div className="kpi-label">{t('لديه مبالغ محجوزة', 'With blocked funds')}</div></div>
       </div>
 
+      <section className="card recent-card">
+        <div className="recent-head">
+          <div><h3><Gift size={18}/> {t('إحالة تجار جدد', 'Refer new merchants')}</h3><span className="cell-sub">{t('شارك رابطك — أي تاجر جديد يسجّل عبره يُنسب إليك بعد المراجعة', 'Share your link — any new merchant who signs up through it is credited to you once reviewed')}</span></div>
+        </div>
+        {referralLink && (
+          <div className="control-row" style={{ marginBottom: leads?.length ? 14 : 0 }}>
+            <input className="login-input mono" style={{ flex: 1 }} readOnly value={referralLink} onFocus={(e) => e.currentTarget.select()} />
+            <button type="button" className="btn-ghost btn-sm" onClick={() => void copyReferralLink()}>{linkCopied ? <Check size={14}/> : <Copy size={14}/>} {linkCopied ? t('تم النسخ', 'Copied') : t('نسخ', 'Copy')}</button>
+          </div>
+        )}
+        {leadsErr && <div className="cell-sub" style={{ color: 'var(--status-declined)', marginTop: 8 }}>{leadsErr}</div>}
+        {leads && leads.filter((l) => l.status === 'pending').length > 0 && (
+          <div className="table-wrap" style={{ marginTop: 14 }}>
+            <table className="data-table">
+              <thead><tr><th>{t('النشاط', 'Business')}</th><th>{t('التواصل', 'Contact')}</th><th>{t('أحاله', 'Referred by')}</th><th>{t('بتاريخ', 'Received')}</th><th>{t('إجراء', 'Action')}</th></tr></thead>
+              <tbody>
+                {leads.filter((l) => l.status === 'pending').map((lead) => (
+                  <tr key={lead.id}>
+                    <td>{lead.business_name}{lead.notes && <div className="cell-sub">{lead.notes}</div>}</td>
+                    <td>{lead.contact_name ?? '—'}{lead.phone && <div className="cell-sub mono">{lead.phone}</div>}{lead.email && <div className="cell-sub mono">{lead.email}</div>}</td>
+                    <td>{lead.panel_users?.display_name ?? '—'}</td>
+                    <td className="mono">{lead.created_at.slice(0, 10)}</td>
+                    <td>
+                      {convertingLead === lead.id ? (
+                        <div className="row-actions">
+                          <select className="login-input" style={{ fontSize: 12, padding: '6px 8px' }} value={convertMerchantId} onChange={(e) => setConvertMerchantId(e.target.value)}>
+                            <option value="">{t('اختر التاجر…', 'Select merchant…')}</option>
+                            {(rows ?? []).filter((m) => !String(m.id).startsWith('hierarchy-')).map((m) => <option key={m.id} value={m.id}>{m.name ?? m.code ?? m.id}</option>)}
+                          </select>
+                          <button className="btn-primary btn-sm" disabled={!convertMerchantId || leadBusy === lead.id} onClick={() => void convertLead(lead)}>{t('تأكيد', 'Confirm')}</button>
+                          <button className="btn-ghost btn-sm" onClick={() => { setConvertingLead(null); setConvertMerchantId('') }}><X size={14}/></button>
+                        </div>
+                      ) : (
+                        <div className="row-actions">
+                          <button className="btn-ghost btn-sm" disabled={leadBusy === lead.id} onClick={() => setConvertingLead(lead.id)}>{t('ربط بتاجر', 'Link to merchant')}</button>
+                          <button className="btn-ghost btn-sm danger" disabled={leadBusy === lead.id} onClick={() => void dismissLead(lead)}>{t('تجاهل', 'Dismiss')}</button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       <div className="filter-bar">
         <form className="search-row" onSubmit={(e) => e.preventDefault()}>
           <input
@@ -302,6 +408,7 @@ export default function Merchants() {
               <dt>Callback URL</dt><dd className="mono small">{selected.callback_url ?? '—'}</dd>
               <dt>{t('مبالغ محجوزة', 'Blocked amount')}</dt><dd className="mono">{money(selected.blocked_amount, selected.base_currency)}</dd>
               <dt>{t('آخر تدوير مفاتيح', 'Last key rotation')}</dt><dd className="mono">{selected.key_rotated_at?.slice(0, 10) ?? '—'}</dd>
+              <dt>{t('أحاله', 'Referred by')}</dt><dd>{selected.referred_by_name ?? t('بدون إحالة', 'No referral')}</dd>
             </dl>
 
             <p className="drawer-note">

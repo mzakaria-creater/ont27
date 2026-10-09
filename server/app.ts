@@ -5,6 +5,7 @@ import { linkRoutes } from './links.js'
 import { depositRoutes } from './deposits.js'
 import { payoutRoutes } from './payouts.js'
 import { merchantRoutes } from './merchants.js'
+import { referralRoutes } from './referrals.js'
 import { walletRoutes } from './wallets.js'
 import { smsRoutes } from './sms.js'
 import { lateSmsMatchRoutes } from './lateSmsMatches.js'
@@ -75,6 +76,7 @@ app.route('/transactions-ai', transactionsAiRoutes)
 app.route('/gateway-dashboard', gatewayDashboardRoutes)
 app.route('/devices', deviceRoutes)
 app.route('/merchants', merchantRoutes)
+app.route('/referrals', referralRoutes)
 app.route('/wallets', walletRoutes)
 app.route('/sms', smsRoutes)
 app.route('/late-matches', lateSmsMatchRoutes)
