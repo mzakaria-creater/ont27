@@ -238,12 +238,16 @@ async function applyEdit(
           remark: edit.reason,
           // Preserve the route's execution context. Direct panel edits must
           // reach ngpay-approve as `direct_edit` so an explicitly requested
-          // PAID↔DECLINED correction can pass the worker's audited reversal
-          // guard; otherwise the worker treats it as an ordinary automation
-          // decision and correctly refuses the reversal.
+          // PAID↔DECLINED correction (or an UNDERPAID→PAID correction once
+          // the customer's full payment is actually confirmed, e.g. by SMS
+          // evidence the provider's own classifier didn't have) can pass the
+          // worker's audited reversal guard; otherwise the worker treats it
+          // as an ordinary automation decision and correctly refuses it.
           source: source === 'direct_edit' ? 'direct_edit' : 'panel_decision',
-          allow_reversal: edit.status != null && edit.status !== currentStatus &&
-            ['PAID', 'DECLINED'].includes(currentStatus) && ['PAID', 'DECLINED'].includes(mavenDecision),
+          allow_reversal: edit.status != null && edit.status !== currentStatus && (
+            (['PAID', 'DECLINED'].includes(currentStatus) && ['PAID', 'DECLINED'].includes(mavenDecision)) ||
+            (currentStatus === 'UNDERPAID' && mavenDecision === 'PAID')
+          ),
           override_amount: edit.amount ?? undefined,
         }),
       })

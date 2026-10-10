@@ -348,9 +348,18 @@ Deno.serve(async (req) => {
       } else {
         if (beforeStatus !== "PENDING") {
           const repriceInPlace = amountOverride != null && beforeStatus === effectiveDecision;
-          const safeReversal = allow_reversal === true && ["PAID", "DECLINED"].includes(effectiveDecision) && ["PAID", "DECLINED"].includes(String(beforeStatus ?? "")) && beforeStatus !== effectiveDecision && ["manual_fix_decline_reversal", "complaint", "direct_edit"].includes(String(source ?? ""));
+          const trustedCorrectionSource = ["manual_fix_decline_reversal", "complaint", "direct_edit"].includes(String(source ?? ""));
+          const safeReversal = allow_reversal === true && trustedCorrectionSource && ["PAID", "DECLINED"].includes(effectiveDecision) && ["PAID", "DECLINED"].includes(String(beforeStatus ?? "")) && beforeStatus !== effectiveDecision;
           const safeUnderpayment = amountOverride != null && effectiveDecision === "UNDERPAID" && beforeStatus === "PAID" && providerAmount != null && amountOverride < providerAmount;
-          if (!repriceInPlace && !safeReversal && !safeUnderpayment) {
+          // Mirror image of safeUnderpayment: a transaction Maven marked
+          // UNDERPAID (saw a lower amount than requested) turns out to have
+          // actually been paid in full once more evidence arrives — a late
+          // top-up SMS, a bank statement, a resolved customer dispute. Only a
+          // trusted human correction can decide Maven's own amount read was
+          // wrong; automation never reaches this branch with a PAID target
+          // against an UNDERPAID row on its own.
+          const safeUnderpaymentCorrection = allow_reversal === true && trustedCorrectionSource && effectiveDecision === "PAID" && beforeStatus === "UNDERPAID";
+          if (!repriceInPlace && !safeReversal && !safeUnderpayment && !safeUnderpaymentCorrection) {
             if (shouldReconcileAutomationTerminal(actor_name, beforeStatus, effectiveDecision)) {
               const observedAt = new Date().toISOString();
               const { error: syncError } = await sb.from("maven_transactions").update({
