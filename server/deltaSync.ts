@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { db } from './db.js'
 import { ACCESS_COOKIE, verifyAccessToken } from './tokens.js'
 import { repairPaidSmsMatches } from './smsMatcher.js'
+import { repairCheckoutSmsMatches } from './checkoutSmsMatcher.js'
 import { produceRiskAlerts } from './riskAlerts.js'
 import { autoLinkWithdrawalSms } from './payoutSmsMatcher.js'
 import { oldDb } from './oldDb.js'
@@ -673,6 +674,27 @@ async function runSync(mode: 'fast' | 'full' = 'full', runPostProcessing = true)
     } catch (e) {
       results['sms_exact_matches'] = `error: ${(e as Error).message}`
       console.error('exact SMS matcher failed:', e)
+    }
+  }
+
+  // Runs after the Maven matcher above claims its SMS, so checkout_sessions
+  // only ever gets the leftover, unclaimed pool — the newer, less-proven
+  // path never competes with the main reconciliation flow for priority.
+  {
+    try {
+      const checkoutRepair = await repairCheckoutSmsMatches(true, mode === 'full' ? 1000 : 500)
+      results['checkout_sms_matches'] = checkoutRepair.matched
+      console.info('checkout SMS matcher completed', {
+        scannedSms: checkoutRepair.scannedSms,
+        scannedSessions: checkoutRepair.scannedSessions,
+        matched: checkoutRepair.matched,
+        skippedAmbiguous: checkoutRepair.skippedAmbiguous,
+        errors: checkoutRepair.errors.length,
+      })
+      if (checkoutRepair.errors.length) console.error('checkout SMS repair partial errors:', checkoutRepair.errors)
+    } catch (e) {
+      results['checkout_sms_matches'] = `error: ${(e as Error).message}`
+      console.error('checkout SMS matcher failed:', e)
     }
   }
 
