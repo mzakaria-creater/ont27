@@ -28,6 +28,16 @@ function json(body: unknown, status = 200) {
 // Login now fails loudly unless the redirect lands inside the back office, and
 // if the collector account is blocked (reset / login page) the worker falls
 // back to the operator account (MAVEN_OPERATOR_* on MAVEN_OPERATOR_BASE).
+//
+// 2026-10-10: the read-back verification below used to accept a single
+// immediate read after submitUpdate. Live evidence (deposit_decision_log)
+// showed "verify failed: expected PAID, provider says PENDING" recurring
+// across multiple days — always racing Maven's own backend, which hadn't
+// finished committing yet. Every sampled case *did* reach the requested
+// status minutes later, several only because a human redid the edit by hand
+// after seeing a false failure. Added a short bounded retry on the read-back
+// itself (see VERIFY_RETRY_ATTEMPTS below) — zero added latency when the
+// first read already matches, which is the dominant case.
 // ============================================================================
 
 const DEFAULT_BASE = "https://bo.maven-consulting.co/Supplier";
@@ -224,6 +234,65 @@ Deno.serve(async (req) => {
     const isNgPay = gatewayKey === "nagupayp2p" || gatewayKey === "nagopayp2p" || gatewayKey.includes("nagupay") || gatewayKey.includes("nagopay");
     if (!isNgPay) return json({ error: `This worker only executes NGPay deposits — got gateway=${row.gateway}` }, 400);
 
+    // pg_net is asynchronous. If the database or Edge runtime is congested,
+    // more than one queued automation request can reach this worker for the
+    // same transaction. Do not repeat a provider action that this worker has
+    // already verified, and do not start beside an automation attempt that is
+    // still in flight. Manual operator requests deliberately bypass this
+    // cooldown so an explicit correction keeps its existing live checks.
+    const automationRequest = /^automation-engine(?:-|$)/i.test(actor_name);
+    if (automationRequest) {
+      const recentVerifiedCutoff = new Date(Date.now() - 15 * 60_000).toISOString();
+      const { data: recentVerified, error: recentVerifiedError } = await sb
+        .from("deposit_decision_log")
+        .select("id,decision,created_at")
+        .eq("tx_id", tx_id)
+        .eq("decision", decision)
+        .eq("executed_on_provider", true)
+        .gte("created_at", recentVerifiedCutoff)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (recentVerifiedError) return json({ error: `Automation replay guard failed: ${recentVerifiedError.message}` }, 503);
+      if (recentVerified && row.status === decision) {
+        return json({
+          ok: true,
+          tx_id,
+          skipped: "recent_verified_automation_execution",
+          decision,
+          after_status: row.status,
+          executed_on_provider: true,
+          provider_action_observed: true,
+          audit_log_id: recentVerified.id,
+        });
+      }
+
+      const inFlightCutoff = new Date(Date.now() - 3 * 60_000).toISOString();
+      const { data: inFlight, error: inFlightError } = await sb
+        .from("deposit_decision_log")
+        .select("id,created_at")
+        .eq("tx_id", tx_id)
+        .eq("decision", decision)
+        .eq("executed_on_provider", false)
+        .like("actor_name", "automation-engine%")
+        .gte("created_at", inFlightCutoff)
+        .not("reason", "ilike", "%FAILED:%")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (inFlightError) return json({ error: `Automation in-flight guard failed: ${inFlightError.message}` }, 503);
+      if (inFlight) {
+        return json({
+          ok: true,
+          tx_id,
+          skipped: "automation_execution_in_flight",
+          decision,
+          executed_on_provider: false,
+          in_flight_audit_log_id: inFlight.id,
+        }, 202);
+      }
+    }
+
     const { data: logRow, error: logErr } = await sb
       .from("deposit_decision_log")
       .insert({
@@ -324,24 +393,46 @@ Deno.serve(async (req) => {
           submitError = error;
         }
 
+        // Live evidence (deposit_decision_log, checked before writing this):
+        // "verify failed: expected PAID, provider says PENDING" recurred
+        // across multiple days, always for a transaction that was already
+        // PENDING before this write — i.e. the single immediate read-back
+        // below was racing Maven's own backend, which hadn't finished
+        // committing the UpdateTransaction yet. Every sampled case *did*
+        // reach the originally-requested status minutes later — several only
+        // because a human (joe) redid the edit by hand after seeing a false
+        // "failed" result. A few retries with real spacing lets Maven's side
+        // catch up before this worker gives up, with zero added latency on
+        // the dominant case (status already matches on the first read).
+        const VERIFY_RETRY_ATTEMPTS = 4;
+        const VERIFY_RETRY_DELAY_MS = 1500;
         let after: any;
-        try {
-          after = await getDetailsWithRetry(cookie, tx_id, base);
-        } catch (readBackError) {
-          if (submitError) {
-            const submitMessage = submitError instanceof Error ? submitError.message : String(submitError);
-            const readMessage = readBackError instanceof Error ? readBackError.message : String(readBackError);
-            throw new Error(`${submitMessage}; provider read-back also failed: ${readMessage}`);
+        let verifyMismatch: string | null = null;
+        for (let verifyAttempt = 1; verifyAttempt <= VERIFY_RETRY_ATTEMPTS; verifyAttempt++) {
+          try {
+            after = await getDetailsWithRetry(cookie, tx_id, base);
+          } catch (readBackError) {
+            if (submitError) {
+              const submitMessage = submitError instanceof Error ? submitError.message : String(submitError);
+              const readMessage = readBackError instanceof Error ? readBackError.message : String(readBackError);
+              throw new Error(`${submitMessage}; provider read-back also failed: ${readMessage}`);
+            }
+            throw readBackError;
           }
-          throw readBackError;
+          afterStatus = after.Status ?? null;
+          if (providerStateMatches(afterStatus, after.Amount, effectiveDecision, amountOverride)) {
+            verifyMismatch = null;
+            break;
+          }
+          verifyMismatch = afterStatus;
+          if (verifyAttempt < VERIFY_RETRY_ATTEMPTS) await sleep(VERIFY_RETRY_DELAY_MS);
         }
-        afterStatus = after.Status ?? null;
-        if (!providerStateMatches(afterStatus, after.Amount, effectiveDecision, amountOverride)) {
+        if (verifyMismatch != null) {
           if (submitError) {
             const submitMessage = submitError instanceof Error ? submitError.message : String(submitError);
-            throw new Error(`${submitMessage}; read-back did not confirm the requested state (expected ${effectiveDecision}, provider says ${afterStatus})`);
+            throw new Error(`${submitMessage}; read-back did not confirm the requested state (expected ${effectiveDecision}, provider says ${verifyMismatch})`);
           }
-          return await fail(`Update submitted but verify failed: expected ${effectiveDecision}, provider says ${afterStatus}`);
+          return await fail(`Update submitted but verify failed: expected ${effectiveDecision}, provider says ${verifyMismatch}`);
         }
         if (amountOverride != null) {
           afterAmount = after.Amount == null ? null : Number(after.Amount);
