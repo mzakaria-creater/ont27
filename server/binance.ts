@@ -12,6 +12,7 @@ const MARKET_BASE = 'https://data-api.binance.vision/api/v3'
 const MARKET_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'] as const
 const MARKET_INTERVALS = ['15m', '1h', '4h', '1d'] as const
 const marketCache = new Map<string, { expires: number; body: unknown }>()
+const p2pAdsCache = new Map<string, { expires: number; body: unknown }>()
 
 function publicConfig(row: Record<string, unknown> | null) {
   if (!row) return null
@@ -69,6 +70,10 @@ async function credentials(): Promise<{ api_key: string; api_secret: string } | 
   const { data, error } = await db.rpc('get_binance_p2p_credentials')
   if (error || !data?.[0]) return null
   return data[0] as { api_key: string; api_secret: string }
+}
+
+function credentialsLookUsable(creds: { api_key: string; api_secret: string }) {
+  return /^[A-Za-z0-9]{32,128}$/.test(creds.api_key) && /^[A-Za-z0-9]{32,128}$/.test(creds.api_secret)
 }
 
 async function binanceTime(): Promise<number> {
@@ -135,6 +140,51 @@ function normalizeC2cOrder(row: Record<string, unknown>, side: 'BUY' | 'SELL') {
   }
 }
 
+function p2pBody(tradeType: 'BUY' | 'SELL', payTypes: string[], rows: number) {
+  return JSON.stringify({
+    fiat: 'EGP',
+    page: 1,
+    rows,
+    tradeType,
+    asset: 'USDT',
+    countries: [],
+    proMerchantAds: false,
+    publisherType: null,
+    payTypes,
+  })
+}
+
+function normalizeP2pAd(row: Record<string, unknown>, requestedSide: 'BUY' | 'SELL') {
+  const adv = row.adv && typeof row.adv === 'object' ? row.adv as Record<string, unknown> : {}
+  const advertiser = row.advertiser && typeof row.advertiser === 'object' ? row.advertiser as Record<string, unknown> : {}
+  const methods = Array.isArray(adv.tradeMethods)
+    ? adv.tradeMethods.map((method) => {
+      const value = method && typeof method === 'object' ? method as Record<string, unknown> : {}
+      return String(value.tradeMethodName ?? value.tradeMethodShortName ?? value.identifier ?? value.payType ?? '').trim()
+    }).filter(Boolean)
+    : []
+  return {
+    requestedSide,
+    advNo: adv.advNo ?? null,
+    tradeType: adv.tradeType ?? null,
+    asset: adv.asset ?? 'USDT',
+    fiat: adv.fiatUnit ?? 'EGP',
+    price: Number(adv.price),
+    available: Number(adv.surplusAmount ?? adv.tradableQuantity),
+    minSingleTransAmount: Number(adv.minSingleTransAmount),
+    maxSingleTransAmount: Number(adv.maxSingleTransAmount),
+    payTimeLimit: Number(adv.payTimeLimit),
+    methods,
+    advertiser: {
+      nickName: advertiser.nickName ?? null,
+      monthOrderCount: Number(advertiser.monthOrderCount),
+      monthFinishRate: Number(advertiser.monthFinishRate),
+      userType: advertiser.userType ?? null,
+      userGrade: advertiser.userGrade ?? null,
+    },
+  }
+}
+
 binanceRoutes.get('/market', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) => {
   const requestedSymbol = String(c.req.query('symbol') ?? 'BTCUSDT').toUpperCase()
   const requestedInterval = String(c.req.query('interval') ?? '1h')
@@ -189,11 +239,70 @@ binanceRoutes.get('/market', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) =>
   return c.json(body)
 })
 
+binanceRoutes.get('/p2p-ads', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) => {
+  const rows = Math.min(Math.max(Number(c.req.query('rows')) || 10, 1), 20)
+  const payment = String(c.req.query('payment') ?? 'VodafoneCash').trim()
+  const payTypes = payment && payment.toLowerCase() !== 'all' ? [payment] : []
+  const cacheKey = `${rows}:${payTypes.join('|') || 'all'}`
+  const cached = p2pAdsCache.get(cacheKey)
+  if (cached && cached.expires > Date.now()) return c.json(cached.body)
+
+  const started = Date.now()
+  const [buyResponse, sellResponse] = await Promise.all([
+    fetch('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: p2pBody('BUY', payTypes, rows),
+      signal: AbortSignal.timeout(7_000),
+    }).catch(() => null),
+    fetch('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: p2pBody('SELL', payTypes, rows),
+      signal: AbortSignal.timeout(7_000),
+    }).catch(() => null),
+  ])
+  if (!buyResponse || !sellResponse) return c.json({ error: 'binance_p2p_unreachable' }, 502)
+  const [buyResult, sellResult] = await Promise.all([
+    buyResponse.json().catch(() => ({ data: [] })),
+    sellResponse.json().catch(() => ({ data: [] })),
+  ]) as [Record<string, unknown>, Record<string, unknown>]
+  if (!buyResponse.ok || !sellResponse.ok || buyResult.code !== '000000' || sellResult.code !== '000000') {
+    return c.json({
+      error: 'binance_p2p_error',
+      buy_status: buyResponse.status,
+      sell_status: sellResponse.status,
+      buy_code: buyResult.code ?? null,
+      sell_code: sellResult.code ?? null,
+    }, 502)
+  }
+  const buyAds = Array.isArray(buyResult.data) ? buyResult.data.filter((row): row is Record<string, unknown> => !!row && typeof row === 'object').map((row) => normalizeP2pAd(row, 'BUY')).filter((row) => Number.isFinite(row.price)) : []
+  const sellAds = Array.isArray(sellResult.data) ? sellResult.data.filter((row): row is Record<string, unknown> => !!row && typeof row === 'object').map((row) => normalizeP2pAd(row, 'SELL')).filter((row) => Number.isFinite(row.price)) : []
+  const bestBuy = buyAds.length ? Math.min(...buyAds.map((row) => row.price)) : null
+  const bestSell = sellAds.length ? Math.max(...sellAds.map((row) => row.price)) : null
+  const body = {
+    asset: 'USDT',
+    fiat: 'EGP',
+    payment: payTypes[0] ?? 'ALL',
+    buyAds,
+    sellAds,
+    bestBuy,
+    bestSell,
+    midpoint: bestBuy != null && bestSell != null ? (bestBuy + bestSell) / 2 : bestBuy ?? bestSell,
+    source: 'Binance P2P public marketplace',
+    at: new Date().toISOString(),
+    latencyMs: Date.now() - started,
+  }
+  p2pAdsCache.set(cacheKey, { expires: Date.now() + 15_000, body })
+  return c.json(body)
+})
+
 // A lightweight, account-authorized health check. It never returns credentials
 // or provider payloads; it only confirms whether a signed C2C read succeeds.
 binanceRoutes.get('/health', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) => {
   const creds = await credentials()
   if (!creds) return c.json({ connected: false, reason: 'credentials_required', checked_at: new Date().toISOString() })
+  if (!credentialsLookUsable(creds)) return c.json({ connected: false, reason: 'invalid_credential_format', provider_status: null, checked_at: new Date().toISOString() })
   try {
     const response = await signedC2cHistory(creds, 'BUY', 1, 1)
     const result = await response.json().catch(() => ({})) as Record<string, unknown>
@@ -206,6 +315,7 @@ binanceRoutes.get('/health', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) =>
 binanceRoutes.get('/wallet', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) => {
   const creds = await credentials()
   if (!creds) return c.json({ error: 'credentials_required' }, 409)
+  if (!credentialsLookUsable(creds)) return c.json({ error: 'invalid_credential_format' }, 409)
   try {
     const spotResponse = await signedSpotAccount(creds)
     const spotResult = await spotResponse.json().catch(() => ({ msg: 'invalid_response' })) as Record<string, unknown>
@@ -234,6 +344,7 @@ binanceRoutes.get('/wallet', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) =>
 binanceRoutes.get('/connection', requireSuperAdmin, async (c) => {
   const creds = await credentials()
   if (!creds) return c.json({ error: 'credentials_required' }, 409)
+  if (!credentialsLookUsable(creds)) return c.json({ error: 'invalid_credential_format' }, 409)
   try {
     const response = await signedC2cHistory(creds, 'BUY', 1, 1)
     const result = await response.json().catch(() => ({ msg: 'invalid_response' })) as Record<string, unknown>
@@ -249,6 +360,7 @@ binanceRoutes.get('/connection', requireSuperAdmin, async (c) => {
 binanceRoutes.get('/history', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) => {
   const creds = await credentials()
   if (!creds) return c.json({ error: 'credentials_required' }, 409)
+  if (!credentialsLookUsable(creds)) return c.json({ error: 'invalid_credential_format' }, 409)
   const side = c.req.query('side') === 'SELL' ? 'SELL' : 'BUY'
   const page = Math.min(Math.max(Number(c.req.query('page')) || 1, 1), 1000)
   const rows = Math.min(Math.max(Number(c.req.query('rows')) || 50, 1), 100)
@@ -262,6 +374,7 @@ binanceRoutes.get('/history', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) =
 binanceRoutes.get('/p2p-report', requireAnyPerm(VIEW_KEYS, 'can_view'), async (c) => {
   const creds = await credentials()
   if (!creds) return c.json({ error: 'credentials_required' }, 409)
+  if (!credentialsLookUsable(creds)) return c.json({ error: 'invalid_credential_format' }, 409)
   const rows = Math.min(Math.max(Number(c.req.query('rows')) || 100, 1), 100)
   const from = Number(c.req.query('from')) || undefined
   const to = Number(c.req.query('to')) || undefined
