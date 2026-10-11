@@ -4673,3 +4673,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .late-match-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .late-match-actions button{display:inline-flex;align-items:center;gap:6px}
 .late-match-actions button:disabled{opacity:.6;cursor:progress}
+
+/* Wide sheet: the transaction details have a 2-column layout (main + 320px side) that needs real width. */
+.drawer.sheet-panel.sheet-wide { width: min(1120px, 96vw); max-width: 96vw; }
+.drawer.sheet-panel.sheet-wide .txd-grid { grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); }
+@media (max-width: 900px) {
+  .drawer.sheet-panel.sheet-wide { width: 100vw; max-width: 100vw; }
+  .drawer.sheet-panel.sheet-wide .txd-grid { grid-template-columns: minmax(0, 1fr); }
+}

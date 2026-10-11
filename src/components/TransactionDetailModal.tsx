@@ -242,7 +242,7 @@ export default function TransactionDetailModal({ txRef, onClose, onChanged }: { 
   }
 
   return (
-    <Sheet open onClose={onClose} busy={busy} ariaLabel={String(d?.ontarget_ref ?? d?.tx_id ?? txRef)}>
+    <Sheet open wide onClose={onClose} busy={busy} ariaLabel={String(d?.ontarget_ref ?? d?.tx_id ?? txRef)}>
       <SheetHeader
         onClose={onClose}
         busy={busy}
