@@ -4759,3 +4759,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .grp-color { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
 .grp-color.on { border-color: var(--text); }
 @media (max-width: 900px) { .grp-layout { grid-template-columns: minmax(0, 1fr); } .fx-hero-rate { font-size: 40px; } }
+
+/* Transactions KPI strip + saved views */
+.trx-kpi-strip { display: grid; gap: 10px; margin-bottom: 12px; }
+.trx-kpi-tile { cursor: pointer; text-align: start; border: 1px solid var(--border, rgba(128,128,128,.25)); }
+.trx-kpi-tile.active { outline: 2px solid var(--accent, #3b82f6); }
+
+/* Treasury currency cards */
+.treasury-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.treasury-card { border-radius: 14px; padding: 16px; color: #fff; background: linear-gradient(135deg, #1e40af, #2563eb); }
+.treasury-card header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.treasury-card header .cell-sub { color: rgba(255,255,255,.8); }
+.treasury-card dl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0; }
+.treasury-card dl div { background: rgba(255,255,255,.12); border-radius: 10px; padding: 8px 10px; }
+.treasury-card dt { font-size: .72rem; opacity: .8; }
+.treasury-card dd { margin: 2px 0 0; font-weight: 700; }
