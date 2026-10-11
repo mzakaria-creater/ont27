@@ -56,6 +56,34 @@ monitoringRoutes.post('/client-error', async (c) => {
   return c.json({ ok: !error }, error ? 500 : 200)
 })
 
+// Live transaction feed + alert counters (all real V2 data).
+monitoringRoutes.get('/feed', async (c) => {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const [feed, hooks, auditHooks, caps, settlements] = await Promise.all([
+    db.from('maven_transactions')
+      .select('tx_id, ontarget_ref, status, amount, currency, payment_method, country, first_seen_at')
+      .order('first_seen_at', { ascending: false }).limit(10),
+    db.from('webhook_delivery_log').select('id', { count: 'exact', head: true }).eq('success', false).gte('created_at', since),
+    db.from('audit_log').select('id', { count: 'exact', head: true }).eq('action', 'webhook.failed').gte('created_at', since),
+    db.from('wallet_capacity_limits').select('daily_limit, current_daily_used').gt('daily_limit', 0).limit(5000),
+    db.from('merchant_settlements').select('id', { count: 'exact', head: true }).neq('status', 'settled').lt('settlement_date', new Date().toISOString()),
+  ])
+  const uiStatus = (s: string) => ['PAID', 'APPROVED'].includes(s) ? 'completed' : ['DECLINED', 'FAILED', 'EXPIRED', 'CANCELLED'].includes(s) ? 'failed' : 'processing'
+  const critical = (caps.data ?? []).filter((r) => Number(r.current_daily_used ?? 0) >= 0.9 * Number(r.daily_limit)).length
+  return c.json({
+    generatedAt: new Date().toISOString(),
+    alerts: {
+      callbackFailures: (hooks.count ?? 0) + (auditHooks.count ?? 0),
+      criticalCapacity: critical,
+      overdueSettlements: settlements.count ?? 0,
+    },
+    items: (feed.data ?? []).map((r) => ({
+      tx_id: r.tx_id, ref: r.ontarget_ref ?? String(r.tx_id), at: r.first_seen_at, amount: r.amount, currency: r.currency ?? 'EGP',
+      method: r.payment_method, country: r.country, status: r.status, ui_status: uiStatus(r.status ?? ''),
+    })),
+  })
+})
+
 monitoringRoutes.get('/', async (c) => {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
