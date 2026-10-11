@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import ProofModal from './ProofModal'
 import TransactionEditPanel from './TransactionEditPanel'
+import TransactionNotesActions from './TransactionNotesActions'
 import { Sheet, SheetHeader } from './Sheet'
 import { api, ApiError } from '../lib/api'
 import { depositTime, isAutomaticApprovalActor, money, statusMeta } from '../lib/deposits'
@@ -473,6 +474,8 @@ export default function TransactionDetailModal({ txRef, onClose, onChanged }: { 
                 <p className="drawer-note">{t('إجمالي الإيداعات المعتمدة', 'Approved deposit total')}: <span className="mono">{money(data.client.approved_total, d.currency)}</span></p>
               </section>
             )}
+
+            {data && <TransactionNotesActions txId={data.deposit.tx_id} settlementBlocked={(data.deposit as { settlement_blocked?: boolean | null }).settlement_blocked} onChanged={async () => { await load(); await Promise.resolve(onChanged?.()) }} />}
 
             {data && (
               <TransactionEditPanel

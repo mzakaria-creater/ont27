@@ -7,6 +7,7 @@ import { payoutRoutes } from './payouts.js'
 import { merchantRoutes } from './merchants.js'
 import { fxRoutes } from './fx.js'
 import { treasuryRoutes } from './treasury.js'
+import { txExtrasRoutes } from './txExtras.js'
 import { referralRoutes } from './referrals.js'
 import { walletRoutes } from './wallets.js'
 import { smsRoutes } from './sms.js'
@@ -80,6 +81,7 @@ app.route('/devices', deviceRoutes)
 app.route('/merchants', merchantRoutes)
 app.route('/fx', fxRoutes)
 app.route('/treasury', treasuryRoutes)
+app.route('/tx-extras', txExtrasRoutes)
 app.route('/referrals', referralRoutes)
 app.route('/wallets', walletRoutes)
 app.route('/sms', smsRoutes)
