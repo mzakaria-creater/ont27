@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext'
 import ProofModal from './ProofModal'
 import TransactionEditPanel from './TransactionEditPanel'
 import TransactionNotesActions from './TransactionNotesActions'
-import { Sheet, SheetHeader } from './Sheet'
+import DetailModal from './DetailModal'
 import { api, ApiError } from '../lib/api'
 import { depositTime, isAutomaticApprovalActor, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
@@ -243,15 +243,13 @@ export default function TransactionDetailModal({ txRef, onClose, onChanged }: { 
   }
 
   return (
-    <Sheet open wide onClose={onClose} busy={busy} ariaLabel={String(d?.ontarget_ref ?? d?.tx_id ?? txRef)}>
-      <SheetHeader
-        onClose={onClose}
-        busy={busy}
-        title={<span className="mono">{d?.ontarget_ref ?? d?.tx_id ?? txRef}</span>}
-        subtitle={d && <>{t('مرجع التاجر', 'Merchant ref')}: <span className="mono">{d.merchant_tx_reference ?? '—'}</span> · {t('البوابة', 'Gateway')}: <span className="mono">{d.gateway ?? '—'}</span></>}
-      >
-        {st && <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>}
-      </SheetHeader>
+    <DetailModal
+      onClose={onClose}
+      busy={busy}
+      title={<span className="mono">{d?.ontarget_ref ?? d?.tx_id ?? txRef}</span>}
+      subtitle={d && <>{t('مرجع التاجر', 'Merchant ref')}: <span className="mono">{d.merchant_tx_reference ?? '—'}</span> · {t('البوابة', 'Gateway')}: <span className="mono">{d.gateway ?? '—'}</span></>}
+      badge={st && <span className={`pay-status-badge ${st.cls}`}>{st.label}</span>}
+    >
       {err && <div className="card warn">{err}</div>}
       {!data && !err && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
       {d && st && (
@@ -501,6 +499,6 @@ export default function TransactionDetailModal({ txRef, onClose, onChanged }: { 
           onDecline={can('deposits', 'can_approve') && data.deposit.status === 'PENDING' ? () => decide('decline') : undefined}
         />
       )}
-    </Sheet>
+    </DetailModal>
   )
 }
