@@ -40,6 +40,8 @@ const MATCH_FILTERS = [
   { key: 'blocked', ar: 'محظورة', en: 'Blocked' },
 ]
 
+const needsManualDecision = (status: string | null | undefined) => String(status ?? '').toUpperCase() === 'PENDING'
+
 // Same 5 channels + grouping MethodLogo already uses for the per-row icon —
 // server-side matching (applySmsFilters) mirrors these exact keys.
 const PROVIDER_FILTERS = [
@@ -499,8 +501,10 @@ export default function SmsLive() {
     setParams(next, { replace: true })
   }
 
-  const link = async (txId: number, confirmAmountMismatch = false, changeDeclinedToPaid = false) => {
+  const link = async (target: CandidateTx | number, confirmAmountMismatch = false, changeDeclinedToPaid = false) => {
     if (!selected) return
+    const txId = typeof target === 'number' ? target : target.tx_id
+    const txStatus = typeof target === 'number' ? null : target.status
     setLinkBusy(true)
     setLinkErr(null)
     try {
@@ -519,7 +523,9 @@ export default function SmsLive() {
           matched_tx_id: txId,
         } : current)
         setCandidates(null)
-        window.dispatchEvent(new CustomEvent('ontarget:sms-assignment-success', { detail: { direction: 'in', amount: selected.amount, wallet: displayWalletForRow(selected), transactionRef: String(txId) } }))
+        if (needsManualDecision(txStatus)) {
+          window.dispatchEvent(new CustomEvent('ontarget:sms-assignment-success', { detail: { direction: 'in', amount: selected.amount, wallet: displayWalletForRow(selected), transactionRef: String(txId) } }))
+        }
         setLinkErr(t(
           `تم ربط الرسالة كدليل فقط لأن مبلغ SMS (${result.sms_amount ?? '—'} جنيه) لا يطابق مبلغ المعاملة (${result.tx_amount ?? '—'} جنيه). لم يتم اعتماد المعاملة تلقائياً؛ صحّح المبلغ واعتمدها يدوياً.`,
           result.warning,
@@ -552,7 +558,9 @@ export default function SmsLive() {
           return
         }
       }
-      window.dispatchEvent(new CustomEvent('ontarget:sms-assignment-success', { detail: { direction: selected.sms_category === 'withdrawal' ? 'out' : 'in', amount: selected.amount, wallet: displayWalletForRow(selected), transactionRef: String(txId) } }))
+      if (needsManualDecision(txStatus)) {
+        window.dispatchEvent(new CustomEvent('ontarget:sms-assignment-success', { detail: { direction: selected.sms_category === 'withdrawal' ? 'out' : 'in', amount: selected.amount, wallet: displayWalletForRow(selected), transactionRef: String(txId) } }))
+      }
       const note = providerApprovalNote(result.provider_approval)
       setLinkErr(note)
       // Keep the detail panel open when there is something to tell the
@@ -581,7 +589,7 @@ export default function SmsLive() {
           `مبلغ SMS هو ${money(smsAmount, 'EGP')} بينما مبلغ المعاملة هو ${money(txAmount, 'EGP')}. المتابعة ستربط الرسالة كدليل فقط ولن تعتمد المعاملة تلقائياً. يجب تصحيح مبلغ المعاملة واعتمادها يدوياً. هل تريد المتابعة؟`,
           `The SMS amount is ${money(smsAmount, 'EGP')} while the transaction amount is ${money(txAmount, 'EGP')}. Continuing will link the SMS as evidence only and will not auto-approve the transaction. Correct the transaction amount and approve it manually. Continue?`,
         ))
-        if (confirmed) await link(txId, true, changeDeclinedToPaid)
+        if (confirmed) await link(target, true, changeDeclinedToPaid)
       } else if (e instanceof ApiError && e.code === 'already_linked') {
         setLinkErr(t('الرسالة مرتبطة بالفعل — أعد الفتح.', 'Message already linked — reopen.'))
       } else if (e instanceof ApiError && e.code === 'transaction_already_linked') {
@@ -1209,7 +1217,7 @@ export default function SmsLive() {
                               <button
                                 className="btn-primary btn-sm"
                                 disabled={linkBusy}
-                                onClick={() => void link(cand.tx_id)}
+                                onClick={() => void link(cand)}
                               >
                                 {t('ربط', 'Link')}
                               </button>
@@ -1227,7 +1235,7 @@ export default function SmsLive() {
                                   className="btn-ghost btn-sm danger"
                                   disabled={linkBusy}
                                   title={t('يربط SMS ثم يطلب تغيير الحالة إلى مدفوعة', 'Link SMS, then apply audited PAID status')}
-                                  onClick={() => void link(cand.tx_id, false, true)}
+                                  onClick={() => void link(cand, false, true)}
                                 >
                                   ✅ {t('ربط واعتماد', 'Link + approve')}
                                 </button>}
