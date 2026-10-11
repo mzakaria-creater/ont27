@@ -3411,7 +3411,8 @@ a.risk-row-card:hover{border-color:var(--border-soft)}
 .method-cell-logo-only { gap: 0; min-inline-size: 34px; justify-content: center; }
 .airdroid-security { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
 .airdroid-security p { margin: 4px 0 0; color: var(--text-dim); font-size: 12px; }
-.maven-frame-blocked { align-items: center; border-color: var(--amber-border); background: linear-gradient(135deg, var(--amber-bg), var(--surface)); }
+.maven-frame-blocked { display: flex; align-items: center; gap: 12px; margin: 12px 0; border-color: var(--amber-border); background: linear-gradient(135deg, var(--amber-bg), var(--surface)); }
+.maven-frame-blocked p { margin: 4px 0 0; color: var(--text-dim); font-size: 12px; }
 .maven-frame-blocked > div { flex: 1 1 auto; }
 .maven-frame-blocked > .btn-primary { flex: 0 0 auto; }
 @media (max-width: 640px) { .maven-frame-blocked { align-items: stretch; flex-direction: column; } .maven-frame-blocked > .btn-primary { justify-content: center; } }

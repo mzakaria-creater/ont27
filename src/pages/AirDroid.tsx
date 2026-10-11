@@ -5,18 +5,20 @@ import { depositTime } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 
 interface Device { device: string; sim_slot: number | null; online: boolean | null; battery: number | null; last_seen_at: string | null }
+type Portal = 'airdroid' | 'maven' | 'sms-forward'
+
 const AIRDROID_SIGNIN_URL = 'https://my.airdroid.com/user-center/signin/?type=biz&isVerifyIos=0&code=-2&redirect=https%3A%2F%2Fbiz.airdroid.com'
 const AIRDROID_CONSOLE_URL = 'https://biz.airdroid.com/#/devices/list/-100'
 const AIRDROID_ACCOUNT = 'info@ontarget-egy.com'
 const MAVEN_SUPPLIER_URL = 'https://bo.maven-consulting.co/Supplier'
 const SMS_FORWARD_PC_URL = 'http://192.168.1.158:8892/'
 
-export default function AirDroid() {
+export default function AirDroid({ defaultPortal = 'airdroid' }: { defaultPortal?: Portal }) {
   const { t } = useLocale()
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState(false)
   const [frameKey, setFrameKey] = useState(0)
-  const [portal, setPortal] = useState<'airdroid'|'maven'|'sms-forward'>('airdroid')
+  const [portal, setPortal] = useState<Portal>(defaultPortal)
   const [error, setError] = useState<string | null>(null)
   const load = async () => { setLoading(true); try { const result = await api<{ devices: Device[] }>('/api/sms/devices'); setDevices(result.devices); setError(null) } catch { setError(t('تعذر قراءة حالة الأجهزة.', 'Could not load device status.')) } finally { setLoading(false) } }
   useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 15_000); return () => window.clearInterval(timer) }, [])
@@ -26,9 +28,10 @@ export default function AirDroid() {
     <div className="filter-bar airdroid-portal-tabs"><div className="filter-pills"><button className={`pill${portal==='airdroid'?' active':''}`} onClick={()=>setPortal('airdroid')}><Smartphone size={15}/> AirDroid</button><button className={`pill${portal==='maven'?' active':''}`} onClick={()=>setPortal('maven')}><LockKeyhole size={15}/> Maven Supplier</button><button className={`pill${portal==='sms-forward'?' active':''}`} onClick={()=>setPortal('sms-forward')}><MonitorSmartphone size={15}/> SMS Forward PC</button></div></div>
     <section className="card airdroid-console-card">
       <div className="recent-head"><div><h3><MonitorSmartphone size={18}/> {portal==='airdroid'?t('لوحة أجهزة AirDroid المدمجة', 'Embedded AirDroid device console'):portal==='maven'?t('بوابة Maven Supplier المدمجة','Embedded Maven Supplier portal'):t('مزامنة SMS من الكمبيوتر','PC SMS forwarding sync')}</h3><span className="cell-sub">{portal==='airdroid'?'biz.airdroid.com · devices/list/-100':portal==='maven'?'bo.maven-consulting.co/Supplier':'192.168.1.158:8892'}</span></div><div className="airdroid-console-actions"><button className="btn-ghost btn-sm" onClick={()=>setFrameKey((value)=>value+1)}><RefreshCw size={14}/> {t('إعادة تحميل','Reload')}</button><a className="btn-primary btn-sm" href={portal==='airdroid'?AIRDROID_CONSOLE_URL:portal==='maven'?MAVEN_SUPPLIER_URL:SMS_FORWARD_PC_URL} target="_blank" rel="noreferrer">{t('فتح في نافذة','Open in window')} <ExternalLink size={14}/></a></div></div>
+      {portal === 'maven' && <div className="warn maven-frame-blocked"><div><strong>{t('قد يمنع Maven العرض داخل الإطار', 'Maven may block the embedded frame')}</strong><p>{t('سنحاول تحميل بوابة المورد هنا، لكن Maven يرسل حماية X-Frame-Options: DENY من خادمه. إذا بقيت المساحة فارغة، افتحها في نافذة منفصلة بنفس جلسة المتصفح.', 'The supplier portal is loaded below, but Maven sends X-Frame-Options: DENY from its own server. If the space stays blank, open it in a separate window with the same browser session.')}</p></div><a className="btn-primary btn-sm" href={MAVEN_SUPPLIER_URL} target="_blank" rel="noreferrer">{t('فتح Maven', 'Open Maven')} <ExternalLink size={14}/></a></div>}
       <div className="airdroid-frame-wrap">
         <iframe key={`${portal}-${frameKey}`} className="airdroid-frame" src={portal==='airdroid'?AIRDROID_CONSOLE_URL:portal==='maven'?MAVEN_SUPPLIER_URL:SMS_FORWARD_PC_URL} title={portal==='airdroid'?t('لوحة AirDroid Business','AirDroid Business console'):portal==='maven'?t('بوابة Maven Supplier','Maven Supplier portal'):t('مزامنة SMS من الكمبيوتر','PC SMS forwarding sync')} allow="clipboard-read; clipboard-write; fullscreen" referrerPolicy="strict-origin-when-cross-origin"/>
-        <div className="airdroid-frame-help"><strong>{t('هل الإطار فارغ؟','Blank frame?')}</strong><span>{portal==='airdroid'?t('AirDroid قد يقيّد العرض داخل مواقع أخرى. استخدم زر فتح في نافذة للتحكم الكامل.','AirDroid may restrict display inside other sites. Use Open in window for full control.'):portal==='maven'?t('Maven يرسل X-Frame-Options: DENY وقد يمنع العرض المدمج. استخدم فتح في نافذة مع جلسة Eslam الموجودة في المتصفح.','Maven sends X-Frame-Options: DENY and may block embedding. Use Open in window with the existing Eslam browser session.'):t('يعمل هذا الرابط فقط عندما يكون جهازك على نفس شبكة الكمبيوتر 192.168.1.x. إذا منع المتصفح HTTP داخل HTTPS، استخدم فتح في نافذة أو HTTPS proxy.','This local URL works when your device is on the same 192.168.1.x network. If the browser blocks HTTP inside HTTPS, use Open in window or an HTTPS proxy.')}</span></div>
+        <div className="airdroid-frame-help"><strong>{t('هل الإطار فارغ؟','Blank frame?')}</strong><span>{portal==='airdroid'?t('AirDroid قد يقيّد العرض داخل مواقع أخرى. استخدم زر فتح في نافذة للتحكم الكامل.','AirDroid may restrict display inside other sites. Use Open in window for full control.'):portal==='maven'?t('هذا حظر من خادم Maven نفسه، وليس من لوحة OnTarget. استخدم زر فتح Maven عند ظهور صفحة فارغة.','This block comes from Maven’s own server, not from the OnTarget panel. Use Open Maven if the frame is blank.'):t('يعمل هذا الرابط فقط عندما يكون جهازك على نفس شبكة الكمبيوتر 192.168.1.x. إذا منع المتصفح HTTP داخل HTTPS، استخدم فتح في نافذة أو HTTPS proxy.','This local URL works when your device is on the same 192.168.1.x network. If the browser blocks HTTP inside HTTPS, use Open in window or an HTTPS proxy.')}</span></div>
       </div>
     </section>
     <section className="card airdroid-security"><ShieldCheck size={20}/><div><strong>{t('تسجيل الدخول يبقى لدى AirDroid', 'Authentication stays with AirDroid')}</strong><p>{t('حساب الدخول', 'Sign-in account')}: <span className="mono">{AIRDROID_ACCOUNT}</span> · {t('كلمة المرور لا تُخزن في التطبيق. استخدم مدير كلمات مرور المتصفح.', 'The password is not stored in this app. Use the browser password manager.')}</p></div><a className="btn-ghost btn-sm" href={AIRDROID_SIGNIN_URL} target="_blank" rel="noreferrer">{t('تسجيل الدخول الآمن','Secure sign-in')} <ExternalLink size={14}/></a></section>

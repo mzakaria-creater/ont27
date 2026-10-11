@@ -606,6 +606,7 @@ export default function App() {
             <Route path="/replay-lab" element={<PageGate keys={['automation','sms_live','webhooks']}><ReplayLab /></PageGate>} />
             <Route path="/webhooks" element={<PageGate keys={['webhooks','developers']}><WebhookCenter /></PageGate>} />
             <Route path="/airdroid" element={<PageGate keys={['sms_live','wallets']}><AirDroid /></PageGate>} />
+            <Route path="/maven" element={<PageGate keys={['sms_live','wallets']}><AirDroid defaultPortal="maven" /></PageGate>} />
             <Route path="/devices" element={<PageGate keys={['sms_live','wallets']}><Devices /></PageGate>} />
             <Route path="/ontarget-hub" element={<PageGate keys={['wallets','payouts','sms_live','treasury']}><TreasuryHub /></PageGate>} />
             <Route path="/hub" element={<PageGate keys={['wallets','payouts','sms_live','treasury']}><TreasuryHub /></PageGate>} />
