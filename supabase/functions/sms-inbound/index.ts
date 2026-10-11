@@ -132,37 +132,54 @@ async function resolveWallet(
   textWallet: string | null,
   amount: number | null,
   balance: number | null,
-): Promise<string | null> {
-  if (textWallet) return textWallet;
-  if (!device || device === "unknown-device" || device === "unknown") return null;
+  isWithdrawal: boolean,
+): Promise<{ wallet: string | null; employee: string | null; source: string | null }> {
+  if (textWallet) return { wallet: textWallet, employee: null, source: "sms_text" };
+  if (!device || device === "unknown-device" || device === "unknown") return { wallet: null, employee: null, source: null };
 
-  const { data } = await supabaseAdmin.from("wallet_device_map")
-    .select("to_account_number, sim_slot").eq("device", device);
-  const rows = (data ?? []) as { to_account_number: string; sim_slot: number | null }[];
-  if (!rows.length) return null;
+  const { data: prefixRows, error: prefixError } = await supabaseAdmin.from("device_prefix_map")
+    .select("wallet_number, sim_slot, employee")
+    .eq("prefix", device)
+    .eq("active", true);
+  if (prefixError) console.error("device_prefix_map lookup failed", prefixError);
+
+  const mappedRows = (prefixRows ?? []) as { wallet_number: string; sim_slot: number | null; employee: string | null }[];
+  const rows = mappedRows.length
+    ? mappedRows.map((row) => ({ wallet: row.wallet_number, sim_slot: row.sim_slot, employee: row.employee, source: "device_prefix_map" }))
+    : await (async () => {
+      const { data } = await supabaseAdmin.from("wallet_device_map")
+        .select("to_account_number, sim_slot").eq("device", device);
+      return ((data ?? []) as { to_account_number: string; sim_slot: number | null }[])
+        .map((row) => ({ wallet: row.to_account_number, sim_slot: row.sim_slot, employee: null, source: "wallet_device_map" }));
+    })();
+
+  if (!rows.length) return { wallet: null, employee: null, source: null };
 
   if (simSlot !== null && simSlot !== undefined) {
     const match = rows.find((r) => String(r.sim_slot ?? "") === String(simSlot));
-    if (match) return match.to_account_number;
+    if (match) return { wallet: match.wallet, employee: match.employee, source: `${match.source}:sim_slot` };
   }
 
-  const candidates = [...new Set(rows.map((r) => r.to_account_number).filter(Boolean))];
-  if (candidates.length === 1) return candidates[0];
-  if (candidates.length === 0) return null;
-  if (amount === null || balance === null) return null;
+  const candidates = rows.filter((row, index) => row.wallet && rows.findIndex((other) => other.wallet === row.wallet) === index);
+  if (candidates.length === 1) return { wallet: candidates[0].wallet, employee: candidates[0].employee, source: `${candidates[0].source}:single_candidate` };
+  if (candidates.length === 0) return { wallet: null, employee: null, source: null };
+  if (amount === null || balance === null) return { wallet: null, employee: null, source: null };
 
-  for (const wallet of candidates) {
+  for (const candidate of candidates) {
     const { data: last } = await supabaseAdmin.from("inbound_sms")
       .select("balance_after")
-      .or(`wallet_number.eq.${wallet},confirmed_wallet_number.eq.${wallet},receiver_number.eq.${wallet}`)
+      .or(`wallet_number.eq.${candidate.wallet},confirmed_wallet_number.eq.${candidate.wallet},receiver_number.eq.${candidate.wallet}`)
       .not("balance_after", "is", null)
       .order("received_at", { ascending: false })
       .limit(1)
       .maybeSingle();
     const previous = last?.balance_after == null ? null : Number(last.balance_after);
-    if (previous !== null && Math.abs(previous + amount - balance) <= 1) return wallet;
+    const expected = previous === null ? null : isWithdrawal ? previous - amount : previous + amount;
+    if (expected !== null && Math.abs(expected - balance) <= 1) {
+      return { wallet: candidate.wallet, employee: candidate.employee, source: `${candidate.source}:balance_continuity` };
+    }
   }
-  return null;
+  return { wallet: null, employee: null, source: null };
 }
 
 async function readPayload(req: Request): Promise<Record<string, unknown>> {
@@ -320,11 +337,10 @@ Deno.serve(async (req: Request) => {
     // carrying a real wallet number just because its device has exactly one
     // mapped SIM, polluting an "unknown" row with data that implies evidence
     // that was never actually there.
-    const wallet = textWallet
-      ? textWallet
-      : (isIncoming || isWithdrawal || amount !== null)
-        ? await resolveWallet(device, simSlotValue, null, amount, balance).catch(() => null)
-        : null;
+    const resolved = (isIncoming || isWithdrawal || amount !== null || textWallet)
+      ? await resolveWallet(device, simSlotValue, textWallet, amount, balance, isWithdrawal).catch(() => ({ wallet: null, employee: null, source: null }))
+      : { wallet: null, employee: null, source: null };
+    const wallet = resolved.wallet;
 
     const smsCategory = ["deposit", "received", "income", "withdrawal", "expense"].includes(categoryText)
       ? categoryText
@@ -378,6 +394,9 @@ Deno.serve(async (req: Request) => {
       wallet,
       receiver_number: wallet,
       wallet_number: wallet,
+      device_prefix: device === "unknown-device" ? null : device,
+      resolved_employee: resolved.employee,
+      wallet_resolution_source: resolved.source,
       amount,
       balance_after: balance,
       sms_category: smsCategory,
