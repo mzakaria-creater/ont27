@@ -655,6 +655,29 @@ export default function SmsLive() {
     } finally { setLinkBusy(false) }
   }
 
+  // Unblock straight from a list card (no need to open the detail sheet first).
+  const unblockFromCard = async (id: number) => {
+    if (!can('sms_live', 'can_edit')) return
+    try {
+      await api(`/api/sms/${id}/unblock`, { method: 'POST' })
+      void load(true)
+    } catch (e) {
+      window.alert(e instanceof ApiError && e.code === 'sms_must_be_unlinked' ? t('لا يمكن فك حظر رسالة مرتبطة.', 'A linked SMS cannot be unblocked.') : t('فشل فك حظر الرسالة.', 'Failed to unblock SMS.'))
+    }
+  }
+
+  const unblockQuickLink = async () => {
+    if (!quickLinkRow?.is_blocked || !can('sms_live', 'can_edit')) return
+    setQuickLinkBusy(true); setQuickLinkError(null)
+    try {
+      await api(`/api/sms/${quickLinkRow.id}/unblock`, { method: 'POST' })
+      setQuickLinkRow({ ...quickLinkRow, is_blocked: false, block_reason: null })
+      void load(true)
+    } catch (e) {
+      setQuickLinkError(e instanceof ApiError && e.code === 'sms_must_be_unlinked' ? t('لا يمكن فك حظر رسالة مرتبطة.', 'A linked SMS cannot be unblocked.') : t('فشل فك حظر الرسالة.', 'Failed to unblock SMS.'))
+    } finally { setQuickLinkBusy(false) }
+  }
+
   const recordExpense = async () => {
     if (!selected || selected.sms_category !== 'withdrawal' || !expenseComment.trim()) return
     setExpenseBusy(true); setLinkErr(null)
@@ -972,6 +995,18 @@ export default function SmsLive() {
                     )}
                   </div>
                 )}
+                {!linked && r.is_blocked && can('sms_live', 'can_edit') && (
+                  <div className="sms-card-actions-row">
+                    <button type="button" className="sms-card-assign-action" onClick={(event) => { event.stopPropagation(); void unblockFromCard(r.id) }}>
+                      🔓 {t('فك الحظر', 'Unblock')}
+                    </button>
+                    {r.sms_category !== 'withdrawal' && (
+                      <button type="button" className="sms-card-quick-link" onClick={(event) => { event.stopPropagation(); openQuickLink(r) }}>
+                        🔗 {t('ربط', 'Link')}
+                      </button>
+                    )}
+                  </div>
+                )}
               </article>
             })}
           </div>
@@ -984,6 +1019,12 @@ export default function SmsLive() {
                 <button type="button" className="icon-action" disabled={quickLinkBusy} onClick={() => setQuickLinkRow(null)} aria-label={t('إغلاق', 'Close')}><X size={17} /></button>
               </div>
               <p className="cell-sub">{money(quickLinkRow.amount, 'EGP')} · {quickLinkRow.sender_name ?? quickLinkRow.sender_number ?? t('مرسل غير معروف', 'Unknown sender')}</p>
+              {quickLinkRow.is_blocked && (
+                <div className="card warn" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span>🚫 {t('هذه الرسالة محظورة', 'This SMS is blocked')}{quickLinkRow.block_reason ? ` — ${quickLinkRow.block_reason}` : ''}</span>
+                  <button type="button" className="btn-primary btn-sm" disabled={quickLinkBusy} onClick={() => void unblockQuickLink()}>🔓 {t('فك الحظر', 'Unblock')}</button>
+                </div>
+              )}
               <form className="search-row" onSubmit={(e) => { e.preventDefault(); void loadQuickLinkCandidates(quickLinkRow.id, quickLinkQuery.trim() || undefined) }}>
                 <input
                   className="login-input search-input"
@@ -1177,7 +1218,7 @@ export default function SmsLive() {
                   </SheetFooter>
                 )}
 
-                {selected.sms_category !== 'withdrawal' && selected.matched_tx_id == null && !selected.is_blocked && can('sms_live', 'can_edit') && (
+                {selected.sms_category !== 'withdrawal' && selected.matched_tx_id == null && can('sms_live', 'can_edit') && (
                   <div className="link-section">
                     <h4>🔗 {t('ربط بمعاملة', 'Link to a transaction')}</h4>
                     <form

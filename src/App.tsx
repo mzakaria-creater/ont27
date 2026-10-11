@@ -11,6 +11,7 @@ import { SUPABASE_URL, SUPABASE_KEY } from './lib/supabase'
 import { LocaleProvider, useLocale } from './lib/locale'
 import { installNotificationAudioUnlock, playNotificationTone } from './lib/notificationSounds'
 import WrongfulDeclineRealtimePopup from './components/WrongfulDeclineRealtimePopup'
+import LateSmsMatchPopup from './components/LateSmsMatchPopup'
 import SmsFreezeRealtimePopup from './components/SmsFreezeRealtimePopup'
 import AppErrorBoundary from './components/AppErrorBoundary'
 import PanelShell from './components/PanelShell'
@@ -22,6 +23,8 @@ const LiveMonitorControl = lazy(() => import('./pages/LiveMonitorControl'))
 const Deposits = lazy(() => import('./pages/Deposits'))
 const Payouts = lazy(() => import('./pages/Payouts'))
 const Merchants = lazy(() => import('./pages/Merchants'))
+const MerchantGroups = lazy(() => import('./pages/MerchantGroups'))
+const FxDashboard = lazy(() => import('./pages/FxDashboard'))
 const Wallets = lazy(() => import('./pages/Wallets'))
 const MavenWallets = lazy(() => import('./pages/MavenWallets'))
 const NgpayWalletManagement = lazy(() => import('./pages/NgpayWalletManagement'))
@@ -70,11 +73,13 @@ const Complaints = lazy(() => import('./pages/Complaints'))
 const LinkGenerator = lazy(() => import('./pages/LinkGenerator'))
 const PaymentCheckout = lazy(() => import('./pages/PaymentCheckout'))
 const PayoutCheckout = lazy(() => import('./pages/PayoutCheckout'))
+const ReferMerchant = lazy(() => import('./pages/ReferMerchant'))
 const PaymentStatus = lazy(() => import('./pages/PaymentStatus'))
 const PaymentMethods = lazy(() => import('./pages/PaymentMethods'))
 const MerchantPaymentSetup = lazy(() => import('./pages/MerchantPaymentSetup'))
 const KnownRecipients = lazy(() => import('./pages/KnownRecipients'))
 const TreasuryHub = lazy(() => import('./pages/TreasuryHub'))
+const Treasury = lazy(() => import('./pages/Treasury'))
 const ExecutiveDashboard = lazy(() => import('./pages/ExecutiveDashboard'))
 const AnalyticsDashboard = lazy(() => import('./pages/AnalyticsDashboard'))
 const SystemHealth = lazy(() => import('./pages/SystemHealth'))
@@ -478,7 +483,7 @@ function RouteResetBoundary({ children }: { children: ReactNode }) {
 // (topbar, staff-only realtime popups) — regardless of whether the person
 // viewing them happens to have a valid staff session in the same browser.
 // Checkout in particular must read as a fully separate site to the customer.
-const PUBLIC_ROUTES = ['/login', '/payment-checkout', '/payout-checkout', '/payment-status', '/account-action']
+const PUBLIC_ROUTES = ['/login', '/payment-checkout', '/payout-checkout', '/payment-status', '/account-action', '/refer']
 
 function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation()
@@ -487,6 +492,7 @@ function AppShell({ children }: { children: ReactNode }) {
     <div className="shell">
       <Topbar />
       <WrongfulDeclineRealtimePopup />
+      <LateSmsMatchPopup />
       <SmsFreezeRealtimePopup />
       {children}
     </div>
@@ -521,6 +527,7 @@ export default function App() {
           <Route path="/payout-checkout" element={<PayoutCheckout />} />
           <Route path="/payment-status" element={<PaymentStatus />} />
           <Route path="/account-action" element={<AccountAction />} />
+          <Route path="/refer" element={<ReferMerchant />} />
           <Route element={<ProtectedRoute />}>
             <Route path="/tv" element={<PageGate keys={['sms_live']}><TvScreen /></PageGate>} />
             <Route path="/chat" element={<InternalChat />} />
@@ -553,6 +560,9 @@ export default function App() {
             <Route path="/team-tasks" element={<PageGate keys={['support']}><TeamTasks /></PageGate>} />
             <Route path="/operator-handbook" element={<PageGate keys={['support']}><OperatorHandbook /></PageGate>} />
             <Route path="/merchants" element={<PageGate keys={['merchants']}><Merchants /></PageGate>} />
+            <Route path="/merchant-groups" element={<PageGate keys={['merchants']}><MerchantGroups /></PageGate>} />
+            <Route path="/treasury" element={<PageGate keys={['treasury','wallets','dashboard']}><Treasury /></PageGate>} />
+            <Route path="/fx" element={<PageGate keys={['dashboard', 'merchants', 'reports', 'treasury']}><FxDashboard /></PageGate>} />
             <Route path="/wallets" element={<PageGate keys={['wallets']}><Wallets /></PageGate>} />
             <Route path="/mavenwallets" element={<PageGate keys={['wallets']}><MavenWallets /></PageGate>} />
             <Route path="/ngpay-wallet-management" element={<PageGate keys={['wallets']}><NgpayWalletManagement /></PageGate>} />

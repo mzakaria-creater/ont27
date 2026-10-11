@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Pencil, Save, Send, X } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { STATUS_META, money, statusMeta } from '../lib/deposits'
@@ -34,6 +35,13 @@ export default function TransactionEditDialog({ txId, ontargetRef, status, amoun
     (nextAmount !== '' && canEditAmount && ['PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID', 'OVERPAID', 'APPROVED'].includes(status)) ||
     (nextStatus !== '' && ['PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID', 'OVERPAID', 'APPROVED'].includes(nextStatus))
   )
+  // Esc closes the dialog (unless a save is in flight).
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) setOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, busy])
   const submit = async () => {
     if (!changing || !reason.trim()) return
     setBusy(true); setError(null); setDone(null)
@@ -47,7 +55,7 @@ export default function TransactionEditDialog({ txId, ontargetRef, status, amoun
   }
   return <>
     <button type="button" className={`btn-ghost btn-sm${iconOnly ? ' tx-action-icon' : ''}`} onClick={() => { setOpen(true); setDone(null); setError(null); setNextAmount(''); setNextSenderNumber(''); setNextReceivingWallet(''); setReason(''); setReasonChoice('') }} title="Edit transaction / receiving wallet" aria-label="Edit transaction / receiving wallet"><Pencil size={13}/>{!iconOnly && ' Edit'}</button>
-    {open && <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={() => !busy && setOpen(false)}><div className="modal-card transaction-edit-dialog" onClick={e => e.stopPropagation()}>
+    {open && createPortal(<div className="modal-backdrop" role="dialog" aria-modal="true" onClick={() => !busy && setOpen(false)}><div className="modal-card transaction-edit-dialog" onClick={e => e.stopPropagation()}>
       <div className="modal-head"><h3><Pencil size={16}/> Edit transaction / wallet</h3><button className="btn-ghost btn-sm" onClick={() => setOpen(false)}><X size={15}/></button></div>
       <div className="cell-sub mono">#{ontargetRef ?? txId} · Current: {statusMeta(status).label} · {money(amount ?? 0, currency ?? 'EGP')}</div>
       <label className="field-label">New status</label><select className="login-input" value={nextStatus} onChange={e => setNextStatus(e.target.value)} disabled={busy}><option value="">Select status…</option>{STATUSES.filter(s => s !== status).map(s => <option key={s} value={s}>{statusMeta(s).label}</option>)}</select>
@@ -58,6 +66,6 @@ export default function TransactionEditDialog({ txId, ontargetRef, status, amoun
       {changing && <p className={`drawer-note${provider ? '' : ' warn-text'}`}>{provider ? 'This will execute on the provider and be audited.' : 'Local correction or approval request; every action is audited.'}</p>}
       {error && <div className="card warn">{error}</div>}{done && <div className="card">{done}</div>}
       <SheetFooter><button className="btn-primary" disabled={!changing || !reason.trim() || busy} onClick={() => void submit()}>{steward ? <Save size={14}/> : <Send size={14}/>} {busy ? 'Working…' : steward ? (changingWallet && !nextStatus && !nextAmount && !nextSenderNumber ? 'Apply wallet change' : 'Apply change') : 'Request change'}</button><button className="btn-ghost" onClick={() => setOpen(false)} disabled={busy}>Cancel</button></SheetFooter>
-    </div></div>}
+    </div></div>, document.body)}
   </>
 }

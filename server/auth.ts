@@ -97,7 +97,13 @@ async function loginThroughSupabaseEdge(
   try {
     const response = await fetch(`${url}/functions/v1/panel-login-fallback`, {
       method: 'POST',
-      signal: AbortSignal.timeout(10_000),
+      // Kept short: this is only the *first* of two sequential attempts in
+      // the login handler (edge function, then the direct DB lookup below).
+      // At 10s this alone could eat most of a serverless function's time
+      // budget before the fallback even starts, which is what produced the
+      // intermittent "تعذر الاتصال بالخادم" (can't connect) failures — the
+      // function was killed by the platform timeout, not an actual outage.
+      signal: AbortSignal.timeout(5_000),
       headers: {
         authorization: `Bearer ${serviceKey}`,
         apikey: serviceKey,
@@ -169,13 +175,17 @@ authRoutes.post('/login', async (c) => {
     const normalizedLogin = username.toLocaleLowerCase('en-US')
     // The REST gateway itself (not the underlying query — the same select
     // runs in low single-digit ms as raw SQL) has intermittently stalled for
-    // a few seconds at a time, independently of the edge-login fallback
-    // above timing out too. One short retry recovers almost all of those
-    // transient blips instead of failing every login that lands on one.
+    // a few seconds at a time. The edge-login call above (panel-login-fallback,
+    // a real function doing its own panel_users lookup + bcrypt check — it is
+    // deployed, this isn't a dead/404 path) is capped at 5s so a slow edge
+    // invocation can't eat the whole budget either; three attempts here give
+    // a multi-second gateway stall real room to clear instead of surfacing
+    // auth_unavailable to the user, while api/index.ts's maxDuration:30 keeps
+    // the platform from killing the function before either path finishes.
     let lookup: { data: unknown; error: { message: string } | null } | null = null
     for (let attempt = 1; ; attempt++) {
-      lookup = await db.from('panel_users').select(LOGIN_USER_COLUMNS).limit(200).abortSignal(AbortSignal.timeout(8_000))
-      if (!lookup.error || attempt >= 2) break
+      lookup = await db.from('panel_users').select(LOGIN_USER_COLUMNS).limit(200).abortSignal(AbortSignal.timeout(6_000))
+      if (!lookup.error || attempt >= 3) break
       await new Promise((resolve) => setTimeout(resolve, 1_000))
     }
     if (lookup!.error) {

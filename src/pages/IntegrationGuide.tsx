@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLocale } from '../lib/locale'
 import { useIsMobile } from '../lib/useIsMobile'
-import { Check, Copy, ExternalLink, ShieldCheck } from 'lucide-react'
+import { Check, Copy, Download, ExternalLink, ShieldCheck } from 'lucide-react'
 
 const sections = [
   ['introduction', 'Introduction'], ['getting-started', 'Getting started'], ['authentication', 'Authentication'],
@@ -46,10 +46,19 @@ function DocTable({ headers, rows, codeAll }: { headers: string[]; rows: string[
 
 export default function IntegrationGuide() {
   const { t } = useLocale()
+  // The browser's own print pipeline, not a bundled PDF library — this app
+  // already relies on @media print + .no-print/.print-only (see
+  // MerchantMonthly.tsx's settlement reports) for exactly this, so a
+  // merchant doc page gets the same "Save as PDF" path everything else
+  // already uses, instead of a second, inconsistent export mechanism.
+  const exportPdf = () => window.print()
   return <>
     <section className="guide-hero">
       <div><span className="guide-eyebrow">ON TARGET · MERCHANT DOCUMENTATION</span><h2>API Integration Guide</h2><p>{t('مرجع عملي كامل لربط التاجر بواجهة الدفع والاستعلام وWebhooks.', 'Production integration reference for checkout, status queries, and webhooks.')}</p></div>
-      <div className="guide-version"><ShieldCheck size={20}/><span>API v1</span><small>Updated August 2026</small></div>
+      <div className="guide-hero-actions no-print">
+        <button type="button" className="btn-ghost btn-sm" onClick={exportPdf}><Download size={14}/> {t('تنزيل PDF', 'Download PDF')}</button>
+        <div className="guide-version"><ShieldCheck size={20}/><span>API v1</span><small>Updated August 2026</small></div>
+      </div>
     </section>
     <div className="guide-layout">
       <aside className="card guide-toc"><strong>Contents</strong>{sections.map(([id,label],i)=><a key={id} href={`#${id}`}><span>{String(i+1).padStart(2,'0')}</span>{label}</a>)}</aside>

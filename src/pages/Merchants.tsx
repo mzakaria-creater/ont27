@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Building2, CheckCircle2, Download, Layers, RefreshCw, ShieldAlert, XCircle } from 'lucide-react'
+import { Building2, CheckCircle2, Check, Clock3, Copy, Download, Gift, Layers, RefreshCw, ShieldOff, X } from 'lucide-react'
+import { useAuth } from '../auth/AuthContext'
 import MultiSelectFilter from '../components/MultiSelectFilter'
 import { Sheet, SheetHeader } from '../components/Sheet'
 import { api, ApiError } from '../lib/api'
@@ -33,11 +34,31 @@ interface MerchantRow {
   registration_id: string | null
   blocked_amount: number | null
   callback_url: string | null
+  group_id?: string | null
+  tier?: string | null
+  volume_today?: number
+  paid_today?: number
   master_merchant_id: string | null
   operator_id: string | null
   key_rotated_at: string | null
+  referred_by_user_id?: string | null
+  referred_by_name?: string | null
   created_at: string | null
   updated_at: string | null
+}
+
+interface ReferralLead {
+  id: string
+  referrer_user_id: string
+  business_name: string
+  contact_name: string | null
+  phone: string | null
+  email: string | null
+  notes: string | null
+  status: 'pending' | 'converted' | 'dismissed'
+  linked_merchant_id: string | null
+  created_at: string
+  panel_users: { display_name: string } | null
 }
 
 interface MasterRow {
@@ -62,13 +83,30 @@ const KYC_META: Record<string, { ar: string; en: string; cls: string }> = {
   rejected: { ar: 'مرفوض', en: 'Rejected', cls: 'st-declined' },
 }
 
+const TIER_META: Record<string, { label: string; cls: string }> = {
+  platinum: { label: 'Platinum', cls: 'tier-platinum' },
+  gold: { label: 'Gold', cls: 'tier-gold' },
+  silver: { label: 'Silver', cls: 'tier-silver' },
+  bronze: { label: 'Bronze', cls: 'tier-bronze' },
+}
+
+function TierBadge({ tier }: { tier?: string | null }) {
+  const meta = tier ? TIER_META[tier] : null
+  return meta ? <span className={`tier-badge ${meta.cls}`}>{meta.label}</span> : <span className="cell-sub">—</span>
+}
+
 function isLive(m: MerchantRow): boolean {
   return (m.is_active ?? m.active ?? false) === true
 }
 
 export default function Merchants() {
   const { t } = useLocale()
+  const { can } = useAuth()
   const isMobile = useIsMobile()
+  const [groupNames, setGroupNames] = useState<Map<string, string>>(new Map())
+  const [groupFilter, setGroupFilter] = useState<string[]>([])
+  const [tierFilter, setTierFilter] = useState<string[]>([])
+  const [tierBusy, setTierBusy] = useState(false)
   const [rows, setRows] = useState<MerchantRow[] | null>(null)
   const [masters, setMasters] = useState<MasterRow[]>([])
   const [err, setErr] = useState<string | null>(null)
@@ -78,6 +116,49 @@ export default function Merchants() {
   const [masterFilter, setMasterFilter] = useState<string[]>([])
   const [kycFilter, setKycFilter] = useState<string[]>([])
   const [selected, setSelected] = useState<MerchantRow | null>(null)
+  const [referralLink, setReferralLink] = useState<string | null>(null)
+  const [linkCopied, setLinkCopied] = useState(false)
+  const [leads, setLeads] = useState<ReferralLead[] | null>(null)
+  const [leadsErr, setLeadsErr] = useState<string | null>(null)
+  const [convertingLead, setConvertingLead] = useState<string | null>(null)
+  const [convertMerchantId, setConvertMerchantId] = useState('')
+  const [leadBusy, setLeadBusy] = useState<string | null>(null)
+
+  const loadLeads = () => {
+    api<{ rows: ReferralLead[] }>('/api/referrals/leads')
+      .then((res) => setLeads(res.rows))
+      .catch((e) => setLeadsErr(e instanceof ApiError && e.status === 403 ? null : t('تعذّر تحميل إحالات التجار.', 'Failed to load merchant referrals.')))
+  }
+
+  useEffect(() => {
+    api<{ path: string }>('/api/referrals/my-link').then((r) => setReferralLink(`${location.origin}${r.path}`)).catch(() => setReferralLink(null))
+    loadLeads()
+  }, [])
+
+  const copyReferralLink = async () => {
+    if (!referralLink) return
+    await navigator.clipboard.writeText(referralLink).catch(() => {})
+    setLinkCopied(true)
+    setTimeout(() => setLinkCopied(false), 1500)
+  }
+
+  const dismissLead = async (lead: ReferralLead) => {
+    setLeadBusy(lead.id)
+    try { await api(`/api/referrals/leads/${lead.id}`, { method: 'PATCH', body: JSON.stringify({ action: 'dismiss' }) }); loadLeads() }
+    catch { setLeadsErr(t('تعذّر تجاهل الإحالة.', 'Could not dismiss the referral.')) }
+    finally { setLeadBusy(null) }
+  }
+
+  const convertLead = async (lead: ReferralLead) => {
+    if (!convertMerchantId) return
+    setLeadBusy(lead.id)
+    try {
+      await api(`/api/referrals/leads/${lead.id}`, { method: 'PATCH', body: JSON.stringify({ action: 'convert', merchant_id: convertMerchantId }) })
+      setConvertingLead(null); setConvertMerchantId('')
+      loadLeads(); load()
+    } catch { setLeadsErr(t('تعذّر ربط الإحالة بالتاجر — تأكد من اختيار تاجر.', 'Could not link the referral to that merchant.')) }
+    finally { setLeadBusy(null) }
+  }
 
   const load = () => {
     setLoading(true); setErr(null)
@@ -120,6 +201,22 @@ export default function Merchants() {
   }
 
   useEffect(() => { load() }, [])
+  useEffect(() => {
+    api<{ groups: Array<{ id: string; name: string }> }>('/api/merchants/groups')
+      .then((res) => setGroupNames(new Map(res.groups.map((g) => [g.id, g.name]))))
+      .catch(() => setGroupNames(new Map()))
+  }, [])
+
+  const setTier = async (m: MerchantRow, tier: string) => {
+    setTierBusy(true)
+    try {
+      await api(`/api/merchants/${m.id}/tier`, { method: 'PATCH', body: JSON.stringify({ tier: tier || null }) })
+      const next = tier || null
+      setRows((cur) => cur?.map((r) => (r.id === m.id ? { ...r, tier: next } : r)) ?? cur)
+      setSelected((cur) => (cur && cur.id === m.id ? { ...cur, tier: next } : cur))
+    } catch { setErr(t('تعذّر تغيير الفئة.', 'Could not change the tier.')) }
+    finally { setTierBusy(false) }
+  }
 
   const masterName = useMemo(() => {
     const map = new Map(masters.map((m) => [m.id, m.name ?? m.code ?? m.id]))
@@ -140,11 +237,13 @@ export default function Merchants() {
       if (statusFilter === 'disabled' && isLive(m)) return false
       if (masterFilter.length && !masterFilter.includes(masterName(m.master_merchant_id) ?? '')) return false
       if (kycFilter.length && !kycFilter.includes((m.kyc_status ?? '').toLowerCase())) return false
+      if (groupFilter.length && !groupFilter.includes(m.group_id ? groupNames.get(m.group_id) ?? '' : '—')) return false
+      if (tierFilter.length && !tierFilter.includes(m.tier ?? '')) return false
       if (!needle) return true
       return [m.name, m.code, m.MID, m.email, m.phone, m.country, masterName(m.master_merchant_id)]
         .some((v) => v?.toLowerCase().includes(needle))
     })
-  }, [rows, q, statusFilter, masterFilter, kycFilter, masterName])
+  }, [rows, q, statusFilter, masterFilter, kycFilter, groupFilter, tierFilter, groupNames, masterName])
 
   const totals = useMemo(() => {
     const list = rows ?? []
@@ -152,7 +251,7 @@ export default function Merchants() {
       total: list.length,
       active: list.filter(isLive).length,
       disabled: list.filter((m) => !isLive(m)).length,
-      blocked: list.filter((m) => Number(m.blocked_amount) > 0).length,
+      pendingKyc: list.filter((m) => (m.kyc_status ?? '').toLowerCase() === 'pending').length,
     }
   }, [rows])
 
@@ -187,9 +286,56 @@ export default function Merchants() {
       <div className="kpi-grid">
         <div className="kpi-card"><Layers className="kpi-icon"/><div className="kpi-value">{totals.total.toLocaleString()}</div><div className="kpi-label">{t('إجمالي التجار', 'Total merchants')}</div></div>
         <div className="kpi-card"><CheckCircle2 className="kpi-icon"/><div className="kpi-value">{totals.active.toLocaleString()}</div><div className="kpi-label">{t('نشط', 'Active')}</div></div>
-        <div className="kpi-card"><XCircle className="kpi-icon"/><div className="kpi-value">{totals.disabled.toLocaleString()}</div><div className="kpi-label">{t('موقوف', 'Disabled')}</div></div>
-        <div className="kpi-card"><ShieldAlert className="kpi-icon"/><div className="kpi-value">{totals.blocked.toLocaleString()}</div><div className="kpi-label">{t('لديه مبالغ محجوزة', 'With blocked funds')}</div></div>
+        <div className="kpi-card"><Clock3 className="kpi-icon"/><div className="kpi-value">{totals.pendingKyc.toLocaleString()}</div><div className="kpi-label">{t('قيد التوثيق KYC', 'Pending KYC')}</div></div>
+        <div className="kpi-card"><ShieldOff className="kpi-icon"/><div className="kpi-value">{totals.disabled.toLocaleString()}</div><div className="kpi-label">{t('موقوف', 'Suspended')}</div></div>
       </div>
+
+      <section className="card recent-card">
+        <div className="recent-head">
+          <div><h3><Gift size={18}/> {t('إحالة تجار جدد', 'Refer new merchants')}</h3><span className="cell-sub">{t('شارك رابطك — أي تاجر جديد يسجّل عبره يُنسب إليك بعد المراجعة', 'Share your link — any new merchant who signs up through it is credited to you once reviewed')}</span></div>
+        </div>
+        {referralLink && (
+          <div className="control-row" style={{ marginBottom: leads?.length ? 14 : 0 }}>
+            <input className="login-input mono" style={{ flex: 1 }} readOnly value={referralLink} onFocus={(e) => e.currentTarget.select()} />
+            <button type="button" className="btn-ghost btn-sm" onClick={() => void copyReferralLink()}>{linkCopied ? <Check size={14}/> : <Copy size={14}/>} {linkCopied ? t('تم النسخ', 'Copied') : t('نسخ', 'Copy')}</button>
+          </div>
+        )}
+        {leadsErr && <div className="cell-sub" style={{ color: 'var(--status-declined)', marginTop: 8 }}>{leadsErr}</div>}
+        {leads && leads.filter((l) => l.status === 'pending').length > 0 && (
+          <div className="table-wrap" style={{ marginTop: 14 }}>
+            <table className="data-table">
+              <thead><tr><th>{t('النشاط', 'Business')}</th><th>{t('التواصل', 'Contact')}</th><th>{t('أحاله', 'Referred by')}</th><th>{t('بتاريخ', 'Received')}</th><th>{t('إجراء', 'Action')}</th></tr></thead>
+              <tbody>
+                {leads.filter((l) => l.status === 'pending').map((lead) => (
+                  <tr key={lead.id}>
+                    <td>{lead.business_name}{lead.notes && <div className="cell-sub">{lead.notes}</div>}</td>
+                    <td>{lead.contact_name ?? '—'}{lead.phone && <div className="cell-sub mono">{lead.phone}</div>}{lead.email && <div className="cell-sub mono">{lead.email}</div>}</td>
+                    <td>{lead.panel_users?.display_name ?? '—'}</td>
+                    <td className="mono">{lead.created_at.slice(0, 10)}</td>
+                    <td>
+                      {convertingLead === lead.id ? (
+                        <div className="row-actions">
+                          <select className="login-input" style={{ fontSize: 12, padding: '6px 8px' }} value={convertMerchantId} onChange={(e) => setConvertMerchantId(e.target.value)}>
+                            <option value="">{t('اختر التاجر…', 'Select merchant…')}</option>
+                            {(rows ?? []).filter((m) => !String(m.id).startsWith('hierarchy-')).map((m) => <option key={m.id} value={m.id}>{m.name ?? m.code ?? m.id}</option>)}
+                          </select>
+                          <button className="btn-primary btn-sm" disabled={!convertMerchantId || leadBusy === lead.id} onClick={() => void convertLead(lead)}>{t('تأكيد', 'Confirm')}</button>
+                          <button className="btn-ghost btn-sm" onClick={() => { setConvertingLead(null); setConvertMerchantId('') }}><X size={14}/></button>
+                        </div>
+                      ) : (
+                        <div className="row-actions">
+                          <button className="btn-ghost btn-sm" disabled={leadBusy === lead.id} onClick={() => setConvertingLead(lead.id)}>{t('ربط بتاجر', 'Link to merchant')}</button>
+                          <button className="btn-ghost btn-sm danger" disabled={leadBusy === lead.id} onClick={() => void dismissLead(lead)}>{t('تجاهل', 'Dismiss')}</button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <div className="filter-bar">
         <form className="search-row" onSubmit={(e) => e.preventDefault()}>
@@ -206,6 +352,8 @@ export default function Merchants() {
           <button type="button" className={`pill${statusFilter === 'disabled' ? ' active' : ''}`} onClick={() => setStatusFilter('disabled')}>{t('موقوف', 'Disabled')}</button>
         </div>
         <MultiSelectFilter label={t('التاجر الرئيسي', 'Master merchant')} allLabel={t('الكل', 'All')} options={masters.map((m) => ({ value: m.name ?? m.code ?? m.id, label: m.name ?? m.code ?? m.id }))} value={masterFilter} onChange={setMasterFilter}/>
+        <MultiSelectFilter label={t('المجموعة', 'Group')} allLabel={t('الكل', 'All')} options={[...[...groupNames.values()].map((n) => ({ value: n, label: n })), { value: '—', label: t('بدون مجموعة', 'No group') }]} value={groupFilter} onChange={setGroupFilter}/>
+        <MultiSelectFilter label={t('الفئة', 'Tier')} allLabel={t('الكل', 'All')} options={Object.entries(TIER_META).map(([value, m]) => ({ value, label: m.label }))} value={tierFilter} onChange={setTierFilter}/>
         {kycOptions.length > 0 && <MultiSelectFilter label="KYC" allLabel={t('الكل', 'All')} options={kycOptions.map((v) => ({ value: v, label: KYC_META[v] ? t(KYC_META[v].ar, KYC_META[v].en) : v }))} value={kycFilter} onChange={setKycFilter}/>}
       </div>
 
@@ -228,7 +376,8 @@ export default function Merchants() {
                   <div className="merchant-row-card-foot">
                     <span className="mono">{m.country_code ?? m.country ?? '—'} · {m.base_currency ?? '—'}</span>
                     {kyc ? <span className={`pay-status-badge ${kyc.cls}`}>{t(kyc.ar, kyc.en)}</span> : <span className="mono">{m.kyc_status ?? '—'}</span>}
-                    <span className="mono">{money(m.blocked_amount, m.base_currency)}</span>
+                    <TierBadge tier={m.tier}/>
+                    <span className="mono">{money(m.volume_today ?? 0, 'EGP')}</span>
                   </div>
                 </button>
               )
@@ -241,10 +390,13 @@ export default function Merchants() {
                 <tr>
                   <th>{t('التاجر', 'Merchant')}</th>
                   <th>MID</th>
+                  <th>{t('المجموعة', 'Group')}</th>
                   <th>{t('التاجر الرئيسي', 'Master merchant')}</th>
                   <th>{t('الدولة / العملة', 'Country / currency')}</th>
+                  <th>{t('حجم اليوم', 'Volume today')}</th>
                   <th>KYC</th>
                   <th>{t('الحالة', 'Status')}</th>
+                  <th>{t('الفئة', 'Tier')}</th>
                   <th>{t('مبالغ محجوزة', 'Blocked amount')}</th>
                 </tr>
               </thead>
@@ -258,8 +410,10 @@ export default function Merchants() {
                         {m.code && <div className="cell-sub mono">{m.code}</div>}
                       </td>
                       <td className="mono">{m.MID ?? '—'}</td>
+                      <td>{m.group_id ? groupNames.get(m.group_id) ?? '—' : '—'}</td>
                       <td>{masterName(m.master_merchant_id) ?? '—'}</td>
                       <td className="mono">{m.country_code ?? m.country ?? '—'} · {m.base_currency ?? '—'}</td>
+                      <td className="mono">{String(m.id).startsWith('hierarchy-') ? '—' : money(m.volume_today ?? 0, 'EGP')}</td>
                       <td>
                         {kyc
                           ? <span className={`pay-status-badge ${kyc.cls}`}>{t(kyc.ar, kyc.en)}</span>
@@ -270,6 +424,7 @@ export default function Merchants() {
                           {isLive(m) ? t('نشط', 'Active') : t('موقوف', 'Disabled')}
                         </span>
                       </td>
+                      <td><TierBadge tier={m.tier}/></td>
                       <td className="mono">{money(m.blocked_amount, m.base_currency)}</td>
                     </tr>
                   )
@@ -289,6 +444,11 @@ export default function Merchants() {
               <dt>MID</dt><dd className="mono">{selected.MID ?? '—'}</dd>
               <dt>{t('الحالة', 'Status')}</dt><dd>{isLive(selected) ? t('نشط', 'Active') : t('موقوف', 'Disabled')}{selected.status && <> · <span className="mono">{selected.status}</span></>}</dd>
               <dt>KYC</dt><dd className="mono">{selected.kyc_status ?? '—'}</dd>
+              <dt>{t('المجموعة', 'Group')}</dt><dd>{selected.group_id ? groupNames.get(selected.group_id) ?? '—' : '—'}</dd>
+              <dt>{t('الفئة', 'Tier')}</dt><dd>{can('merchants', 'can_edit') && !String(selected.id).startsWith('hierarchy-')
+                ? <select className="login-input" value={selected.tier ?? ''} disabled={tierBusy} onChange={(e) => void setTier(selected, e.target.value)}><option value="">—</option>{Object.entries(TIER_META).map(([v, m]) => <option key={v} value={v}>{m.label}</option>)}</select>
+                : <TierBadge tier={selected.tier}/>}</dd>
+              <dt>{t('حجم اليوم', 'Volume today')}</dt><dd className="mono">{money(selected.volume_today ?? 0, 'EGP')}</dd>
               <dt>{t('التاجر الرئيسي', 'Master merchant')}</dt><dd>{masterName(selected.master_merchant_id) ?? '—'}</dd>
               <dt>{t('النشاط', 'Business type')}</dt><dd>{selected.business_type ?? '—'}</dd>
               <dt>{t('جهة الاتصال', 'Contact')}</dt><dd>{selected.primary_contact_name ?? '—'}</dd>
@@ -302,6 +462,7 @@ export default function Merchants() {
               <dt>Callback URL</dt><dd className="mono small">{selected.callback_url ?? '—'}</dd>
               <dt>{t('مبالغ محجوزة', 'Blocked amount')}</dt><dd className="mono">{money(selected.blocked_amount, selected.base_currency)}</dd>
               <dt>{t('آخر تدوير مفاتيح', 'Last key rotation')}</dt><dd className="mono">{selected.key_rotated_at?.slice(0, 10) ?? '—'}</dd>
+              <dt>{t('أحاله', 'Referred by')}</dt><dd>{selected.referred_by_name ?? t('بدون إحالة', 'No referral')}</dd>
             </dl>
 
             <p className="drawer-note">

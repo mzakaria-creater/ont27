@@ -440,6 +440,7 @@ export default function Transactions() {
   const requestSeq = useRef(0)
   const abortRef = useRef<AbortController | null>(null)
   const lastFingerprint = useRef('')
+  const lastRunAt = useRef(0)
   const load = useCallback(async (silent = false) => {
     const seq = ++requestSeq.current
     abortRef.current?.abort()
@@ -483,10 +484,27 @@ export default function Transactions() {
   // Keep All Transactions live as well as the approval queue. Provider pulls
   // are shared across tabs and local realtime events repaint immediately once
   // the delta has landed, without flashing the existing table.
+  //
+  // The subscription below has no row filter — it fires on every insert/
+  // update to maven_transactions / maven_payout_transactions platform-wide,
+  // not just rows matching this page's filters. On a live payments system
+  // that can be many events a minute, and the old 120ms debounce reset on
+  // every single one: during a busy stretch the full (up to pageSize) list
+  // never got a chance to settle and kept re-fetching almost continuously,
+  // which is what made this page feel "so so so slow" while traffic flowed.
+  // lastRunAt enforces a floor on how often an actual reload can happen,
+  // independent of how often events arrive; the 120ms debounce still just
+  // coalesces a tight burst into one call.
   useEffect(() => {
+    const MIN_REFRESH_GAP_MS = 4_000
     const schedule = () => {
       if (refreshTimer.current != null) window.clearTimeout(refreshTimer.current)
-      refreshTimer.current = window.setTimeout(() => { refreshTimer.current = null; void load(true) }, 120)
+      const wait = Math.max(120, MIN_REFRESH_GAP_MS - (Date.now() - lastRunAt.current))
+      refreshTimer.current = window.setTimeout(() => {
+        refreshTimer.current = null
+        lastRunAt.current = Date.now()
+        void load(true)
+      }, wait)
     }
     const channel = supabase.channel('transactions-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'maven_transactions' }, schedule)
@@ -855,6 +873,28 @@ export default function Transactions() {
           </div>
         </div>
       </section>
+
+      {(() => {
+        const n = (...ks: string[]) => ks.reduce((a, k) => a + (counts[k] ?? 0), 0)
+        const total = Object.values(counts).reduce((a, b) => a + b, 0)
+        const pick = (v: string) => setFilter({ status: v, page: 1 })
+        const tiles: Array<{ key: string; ar: string; en: string; value: number; tone: string; status: string }> = [
+          { key: 'all', ar: 'الإجمالي', en: 'Total', value: total, tone: '', status: '' },
+          { key: 'ok', ar: 'مكتملة', en: 'Completed', value: n('PAID', 'APPROVED'), tone: 'st-paid', status: 'PAID,APPROVED' },
+          { key: 'pen', ar: 'معلقة', en: 'Pending', value: n('PENDING'), tone: 'st-pending', status: 'PENDING' },
+          { key: 'bad', ar: 'فاشلة', en: 'Failed', value: n('DECLINED', 'EXPIRED'), tone: 'st-declined', status: 'DECLINED,EXPIRED' },
+          { key: 'rev', ar: 'مراجعة', en: 'Review / hold', value: n('UNDERPAID', 'OVERPAID'), tone: 'st-pending', status: 'UNDERPAID,OVERPAID' },
+        ]
+        const today = todayRange()
+        return <section className="trx-kpi-strip" aria-label={t('ملخص الحالات', 'Status summary')}>
+          <div className="stat-grid">{tiles.map((k) => <button type="button" key={k.key} className={`stat-card trx-kpi-tile${status === k.status ? ' active' : ''}`} onClick={() => pick(k.status)}><span className="stat-label">{t(k.ar, k.en)}</span><span className="stat-value">{k.value.toLocaleString('en-US')}</span></button>)}</div>
+          <div className="chip-row"><span className="cell-sub">{t('عروض محفوظة', 'Saved views')}:</span>
+            <button type="button" className="pill" onClick={() => setFilter({ date_range: 'today', from: today.from, to: today.to, currency: 'EGP', status: '', page: 1 })}>🇪🇬 {t('مصر — اليوم', 'Egypt — Today')}</button>
+            <button type="button" className="pill" onClick={() => setFilter({ status: 'PENDING', date_range: 'all', from: '', to: '', page: 1 })}>⏳ {t('بانتظار المراجعة', 'Pending Review')}</button>
+            <button type="button" className="pill" onClick={() => setFilter({ status: 'DECLINED,EXPIRED', date_range: 'today', from: today.from, to: today.to, page: 1 })}>⛔ {t('الفاشلة اليوم', 'Failed today')}</button>
+          </div>
+        </section>
+      })()}
 
       {wallets && wallets.filter((w) => !HIDDEN_WALLET_NUMBERS.has(w.account_number ?? '')).length > 0 && (
         <section className="card trx-wallet-strip" aria-label={t('أرقام المحافظ المستقبلة حالياً', 'Currently receiving wallet numbers')}>

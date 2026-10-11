@@ -182,6 +182,29 @@ async function resolveWallet(
   return { wallet: null, employee: null, source: null };
 }
 
+// Direction (incoming vs outgoing) is decided from the transaction clause only.
+// Orange Cash appends promo ads after the receipt ("خصم 65% على اشتراك ...",
+// "ادفع دلوقتي ..."), and matching words like "خصم" anywhere in the text
+// mislabeled incoming payments as withdrawals (SMS #1010336). The receipt ends
+// at "رقم المعاملة/العملية <digits>"; everything after it is ignored. Mirrors
+// public.sms_core_text() / public.sms_direction() in the database.
+function smsCoreText(message: string): string {
+  const m = message.match(/^[\s\S]*?رقم\s*(?:المعاملة|العملية)\s*[:：]?\s*\d+/);
+  return m ? m[0] : (message.split("\n\n")[0] ?? message);
+}
+
+function smsDirection(message: string): "in" | "out" | "notice" | "unknown" {
+  const c = smsCoreText(message);
+  if (/لديك\s*عملية\s*سحب/.test(c) && !/بمبلغ/.test(c)) return "notice";
+  const isOut = /(عملية\s*سحب\s*ناجحة|تحويل\s*أموال\s*ناجحة|رسوم\s*السحب|رسوم\s*التحويل|تم\s*خصم|تم\s*سحب|تم\s*تحويل|لرقم|تحويل\s*(إلى|الي|الى))/.test(c)
+    || /(withdraw|debit|paid out)/i.test(c);
+  const isIn = /(تم\s*استلام|استلمت|استقبلت|إيداع|ايداع|تم\s*اضافة|تم\s*إضافة)/.test(c)
+    || /(received|deposit|credited)/i.test(c);
+  if (isOut) return "out"; // a successful outgoing action always wins
+  if (isIn) return "in";
+  return "unknown";
+}
+
 async function readPayload(req: Request): Promise<Record<string, unknown>> {
   const contentType = req.headers.get("content-type")?.toLowerCase() ?? "";
 
@@ -313,8 +336,15 @@ Deno.serve(async (req: Request) => {
     // signal too, independent of whether لرقم/رسوم التحويل also survive in a
     // given template variant — "ناجحة" (successful, confirming the SENDER's
     // own action) never appears on the incoming "تم استلام" confirmation.
-    const isWithdrawal = /(withdraw|withdrawal|debit|sent|paid out|سحب|خصم|تحويل إلى|تحويل الي|تم خصم|لرقم|رسوم\s*التحويل|تحويل\s*أموال\s*ناجحة)/i.test(messageText);
-    const isIncoming = /(received|deposit|credited|credit|incoming|تم استلام|استقبلت|إيداع)/i.test(messageText);
+    const legacyWithdrawal = /(withdraw|withdrawal|debit|sent|paid out|سحب|خصم|تحويل إلى|تحويل الي|تم خصم|لرقم|رسوم\s*التحويل|تحويل\s*أموال\s*ناجحة)/i.test(messageText);
+    const legacyIncoming = /(received|deposit|credited|credit|incoming|تم استلام|استقبلت|إيداع)/i.test(messageText);
+    // Provider receipts that state an amount are classified from the receipt
+    // clause only (see smsDirection). Peer-phone texts ("From : +20...") and
+    // messages without a clear direction keep the legacy keyword rules.
+    const hasAmountClause = /(بمبلغ|مبلغ)/.test(message) && !/From\s*:\s*\+/.test(message);
+    const direction = hasAmountClause ? smsDirection(message) : "unknown";
+    const isWithdrawal = direction === "out" ? true : direction === "in" ? false : legacyWithdrawal;
+    const isIncoming = direction === "in" ? true : direction === "out" ? false : legacyIncoming;
 
     // A genuine wallet-provider deposit notification always originates from a
     // regulated sender ID (e.g. "OrangeCash") — Egyptian carriers never let a

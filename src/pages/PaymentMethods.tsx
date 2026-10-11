@@ -275,6 +275,17 @@ export default function PaymentMethods() {
       </div>
 
       {!data && <p className="sidebar-hint">{t('جار التحميل…', 'Loading…')}</p>}
+      {data && (() => {
+        const GCC = new Set(['AE', 'SA', 'KW', 'QA', 'BH', 'OM'])
+        const countryOf = (id: string) => data.methodCountries.filter(c => c.payment_method_id === id && c.is_active).map(c => c.country_code)
+        const regionCount = (pred: (m: Method) => boolean) => data.methods.filter(pred).length
+        const stats = tab === 'accounts' ? (() => {
+          const act = data.accounts.filter(a => a.is_active)
+          const pct = (a: Account) => a.daily_limit > 0 ? a.daily_used / a.daily_limit : 0
+          return [[t('إجمالي المحافظ', 'Total wallets'), data.accounts.length], [t('نشطة', 'Active'), act.length], [t('قرب الحد (80%+)', 'Near limit (80%+)'), act.filter(a => pct(a) >= 0.8 && pct(a) < 1).length], [t('وصلت للحد', 'At capacity'), act.filter(a => pct(a) >= 1).length]] as Array<[string, number]>
+        })() : [[t('إجمالي الطرق', 'Total methods'), data.methods.length], [t('نشطة', 'Active'), data.methods.filter(m => m.is_active).length], [t('مصر', 'Egypt'), regionCount(m => countryOf(m.id).includes('EG'))], [t('الخليج', 'GCC'), regionCount(m => countryOf(m.id).some(c => GCC.has(c)))], [t('كريبتو', 'Crypto'), regionCount(m => m.channel_type === 'crypto')]] as Array<[string, number]>
+        return <div className="stat-grid payment-kpi-strip">{stats.map(([label, n]) => <div className="stat-card" key={label}><span className="stat-label">{label}</span><span className="stat-value">{n}</span></div>)}</div>
+      })()}
 
       {data && tab === 'methods' && (
         <>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
+import { PAYMENT_API_BASE } from '../lib/paymentApi'
 import { providerLabel } from './PaymentCheckout'
 import type { PaySession } from './PaymentCheckout'
 import { useLocale } from '../lib/locale'
@@ -30,7 +31,7 @@ export default function PaymentStatus() {
     let alive = true
     const load = async () => {
       try {
-        const { session } = await api<{ session: PaySession }>(`/api/pay/session/${id}`)
+        const { session } = await api<{ session: PaySession }>(`${PAYMENT_API_BASE}/session/${id}`)
         if (!alive) return
         setSession(session)
         setLastCheck(new Date())

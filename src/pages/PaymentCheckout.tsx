@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import QRCode from 'qrcode'
 import { api, ApiError } from '../lib/api'
+import { PAYMENT_API_BASE } from '../lib/paymentApi'
 import { useLocale } from '../lib/locale'
 import MethodLogo from '../components/MethodLogo'
 
@@ -205,7 +206,7 @@ export default function PaymentCheckout() {
 
   useEffect(() => {
     if (!linkKey) return
-    api<{ link: PayLink }>(`/api/pay/link/${encodeURIComponent(linkKey)}`)
+    api<{ link: PayLink }>(`${PAYMENT_API_BASE}/link/${encodeURIComponent(linkKey)}`)
       .then(({ link }) => {
         setLink(link)
         if (link.amount_mode === 'fixed' && link.amount) setAmount(String(link.amount))
@@ -218,7 +219,7 @@ export default function PaymentCheckout() {
   // for real (and re-checks the rate) at session creation.
   useEffect(() => {
     if (link?.currency !== 'USD') return
-    api<{ rate: number }>('/api/pay/rate').then((r) => setRate(r.rate)).catch(() => setRate(null))
+    api<{ rate: number }>(`${PAYMENT_API_BASE}/rate`).then((r) => setRate(r.rate)).catch(() => setRate(null))
   }, [link?.currency])
 
   useEffect(() => {
@@ -242,7 +243,7 @@ export default function PaymentCheckout() {
     setError(null)
     setBusy(true)
     try {
-      const { session } = await api<{ session: PaySession }>('/api/pay/session', {
+      const { session } = await api<{ session: PaySession }>(`${PAYMENT_API_BASE}/session`, {
         method: 'POST',
         headers: { 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({ code: linkKey, phone, amount: Number(amount), name: name || undefined, myhfm_account: myhfmAccount || undefined, payment_method_code: paymentMethod || undefined, idempotency_key: idempotencyKey }),
@@ -264,7 +265,7 @@ export default function PaymentCheckout() {
       const form = new FormData()
       form.set('file', proofFile)
       if (proofNote.trim()) form.set('note', proofNote.trim())
-      const { session: updated } = await api<{ session: PaySession }>(`/api/pay/session/${session.id}/proof`, { method: 'POST', body: form })
+      const { session: updated } = await api<{ session: PaySession }>(`${PAYMENT_API_BASE}/session/${session.id}/proof`, { method: 'POST', body: form })
       setSession(updated)
     } catch (err) {
       setProofError(err instanceof ApiError && err.code === 'session_expired' ? t('انتهت صلاحية الجلسة.', 'The session has expired.') : t('تعذّر رفع الإثبات — حاول مرة أخرى.', 'Failed to upload proof — try again.'))

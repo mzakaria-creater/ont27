@@ -92,6 +92,8 @@ export function loginErrorMessage(err: unknown): string {
     }
     if (err.code === 'missing_credentials') return 'أدخل اسم المستخدم وكلمة المرور'
     if (err.code === 'auth_unavailable') return 'خدمة تسجيل الدخول غير متاحة مؤقتاً — حاول مرة أخرى بعد لحظات'
+    if (err.code === 'network_timeout') return 'استجابة الخادم تأخرت أكثر من المعتاد — حاول مرة أخرى'
+    if (err.code === 'network_error') return 'تعذر الاتصال بالخادم — تحقق من اتصال الإنترنت وحاول مرة أخرى'
   }
   return 'تعذر الاتصال بالخادم — حاول مرة أخرى'
 }

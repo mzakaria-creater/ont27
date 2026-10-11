@@ -93,6 +93,10 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
       .is('consumed_by_tx_id', null)
       .is('matched_transaction_id', null)
       .is('maven_transaction_id', null)
+      // server/checkoutSmsMatcher.ts claims SMS for checkout_sessions here —
+      // excluded so the two matchers partition the same inbound_sms pool
+      // instead of racing to match the same physical SMS twice.
+      .is('claimed_by_checkout_session_id', null)
       .or('is_blocked.eq.false,is_blocked.is.null')
       .order('received_at', { ascending: false, nullsFirst: false })
       .limit(limit),

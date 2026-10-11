@@ -12,9 +12,7 @@ export const walletRoutes = new Hono<AuthEnv>()
 walletRoutes.use('*', requireAuth)
 
 walletRoutes.get('/live', requirePerm('wallets', 'can_view'), async (c) => {
-  const old = oldDb()
-  if (!old) return c.json({ live: [] })
-  const { data, error } = await old.rpc('maven_banks_live_list')
+  const { data, error } = await db.rpc('maven_banks_live_list')
   if (error) return c.json({ error: 'legacy_wallet_lookup_failed', detail: error.message }, 502)
   return c.json({ live: Array.isArray(data) ? data : [] })
 })
@@ -26,13 +24,13 @@ walletRoutes.get('/live', requirePerm('wallets', 'can_view'), async (c) => {
 // Real (not simulated) change of a live Maven receiving number. It works by
 // driving the same admin back office a human operator uses
 // (https://bo.maven-consulting.co/Supplier — login + P2PBanks form submit),
-// automated by the maven-wallet-switch edge function on the old project.
+// automated by the maven-wallet-switch edge function on this (V2) project.
 // There is no documented REST API for this; it is HTML-form automation, so
 // it can break silently if Maven changes that site, and a wrong bank_id or
 // number changes real live routing immediately. Always preview before commit.
-const MAVEN_WALLET_SWITCH_URL = 'https://yvwppyoaksyhycimvgtw.supabase.co/functions/v1/maven-wallet-switch'
+const MAVEN_WALLET_SWITCH_URL = `${process.env.SUPABASE_URL ?? 'https://iwhjmhazcvctvipoasct.supabase.co'}/functions/v1/maven-wallet-switch`
 async function callMavenWalletSwitch(body: Record<string, unknown>, timeoutMs = 20_000): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
-  const serviceKey = process.env.OLD_SERVICE_KEY
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY
   if (!serviceKey) return { ok: false, status: 0, body: { error: 'maven_switch_not_configured' } }
   try {
     const res = await fetch(MAVEN_WALLET_SWITCH_URL, {
@@ -148,9 +146,7 @@ walletRoutes.get('/', requirePerm('wallets', 'can_view'), async (c) => {
   // mapping and its auto-inferred rows go stale.
   const includeLive = c.req.query('include_live') !== 'false'
   const liveP = includeLive ? (async () => {
-    const old = oldDb()
-    if (!old) return []
-    const { data } = await old.rpc('maven_banks_live_list')
+    const { data } = await db.rpc('maven_banks_live_list')
     return Array.isArray(data) ? data : []
   })() : Promise.resolve([])
 
@@ -184,9 +180,7 @@ walletRoutes.get('/', requirePerm('wallets', 'can_view'), async (c) => {
 // source into the v2 wallet map. This is idempotent and never overwrites an
 // operator's device assignment.
 walletRoutes.post('/sync-live', requirePerm('wallets', 'can_edit'), async (c) => {
-  const old = oldDb()
-  if (!old) return c.json({ error: 'old_db_not_configured' }, 503)
-  const { data, error } = await old.rpc('maven_banks_live_list')
+  const { data, error } = await db.rpc('maven_banks_live_list')
   if (error) return c.json({ error: 'legacy_wallet_lookup_failed', detail: error.message }, 502)
   const rows = (Array.isArray(data) ? data : []) as Array<Record<string, unknown>>
   const wallets = rows.map((row) => ({
@@ -295,9 +289,7 @@ walletRoutes.post('/allocation/simulate', requirePerm('wallets', 'can_view'), as
   const monthStart = cairoBoundary(1)
   const dayStart = cairoBoundary('today')
   const livePromise = (async () => {
-    const old = oldDb()
-    if (!old) return []
-    const { data } = await old.rpc('maven_banks_live_list')
+    const { data } = await db.rpc('maven_banks_live_list')
     return Array.isArray(data) ? data as { phone_number?: string | null }[] : []
   })()
   const [wallets, devices, accounts, transactions, sms, liveWallets] = await Promise.all([
@@ -626,9 +618,11 @@ walletRoutes.get(
   requireAnyPerm(['wallets', 'treasury', 'reports', 'sms_live'], 'can_view'),
   async (c) => {
     const days = Math.min(Math.max(Number(c.req.query('days')) || 7, 0.5), 90)
-    const old = oldDb()
-    if (!old) return c.json({ error: 'old_db_not_configured' }, 503)
-    const { data, error } = await old.rpc('wallet_movements', { p_days: days })
+    // 2026-10-05: this used to read the OLD project, which stopped receiving inbound_sms on
+    // 2026-09-19 once SMS ingestion moved to this project, so the page showed stale numbers.
+    // The v2 wallet_movements() (same JSON shape) also looks at confirmed_wallet_number, which
+    // the old one ignored (it missed e.g. 51,778 EGP of outgoing transfers on 2026-09-27).
+    const { data, error } = await db.rpc('wallet_movements', { p_days: days })
     if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
     return c.json(data)
   },
