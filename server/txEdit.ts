@@ -187,7 +187,7 @@ function esc(v: unknown): string {
 }
 
 // Applies an approved edit. Returns the audit payload or an error string.
-async function applyEdit(
+export async function applyEdit(
   tx: Record<string, unknown>,
   edit: EditInput,
   actorName: string,

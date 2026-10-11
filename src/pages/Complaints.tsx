@@ -7,17 +7,24 @@ import TransactionEditDialog from '../components/TransactionEditDialog'
 import { Sheet, SheetHeader, SheetFooter } from '../components/Sheet'
 import { useIsMobile } from '../lib/useIsMobile'
 
-// الشكاوى — tx_complaints on the old prod DB, with the control room's
-// investigate / approve / decline / close actions.
+// V2 complaints control room: investigate, decide, and track linked tickets.
 
 interface ComplaintRow {
   id: number
   tx_id: number | null
+  customer_name?: string | null
   customer_phone: string | null
   amount: number | null
   note: string | null
   status: string | null
   finding: string | null
+  priority?: string | null
+  state?: string | null
+  sms_received?: boolean
+  balance_after?: number | null
+  ticket_id?: number | null
+  resolved_action?: string | null
+  resolved_by?: string | null
   created_at: string | null
   resolved_at: string | null
   admin_note: string | null
@@ -28,6 +35,7 @@ interface ComplaintRow {
 }
 interface TicketRow { id:number; ticket_no:string|null; tx_id:number|null; customer_phone:string|null; subject:string|null; description:string|null; action_requested?:string|null; assigned_to?:string|null; due_at?:string|null; priority:string|null; ticket_status:string; created_at:string|null }
 interface Assignee { id:string; username:string; display_name:string|null; role:string; active:boolean }
+interface TelegramAlert { id:number; alert_type:string; chat_id:string|null; message:string; ok:boolean; error:string|null; created_at:string }
 
 type InvestigationResult = { txId: string; result: unknown; error?: string }
 
@@ -71,6 +79,8 @@ export default function Complaints() {
   const [ticketModal, setTicketModal] = useState<TicketRow | null>(null)
   const [ticketDraft, setTicketDraft] = useState<Partial<TicketRow>>({})
   const [ticketBusy, setTicketBusy] = useState(false)
+  const [activeTab, setActiveTab] = useState<'complaints'|'tickets'|'bot'>('complaints')
+  const [telegramAlerts, setTelegramAlerts] = useState<TelegramAlert[]>([])
 
   const load = useCallback(async () => {
     const params = new URLSearchParams()
@@ -90,6 +100,8 @@ export default function Complaints() {
   useEffect(() => { void load() }, [load])
   const loadTickets = useCallback(async () => { try { const [res, people] = await Promise.all([api<{ rows: TicketRow[] }>('/api/tickets?limit=100'), api<{ rows: Assignee[] }>('/api/tickets/assignees')]); setTickets(res.rows); setAssignees(people.rows) } catch { setTickets([]) } }, [])
   useEffect(() => { void loadTickets() }, [loadTickets])
+  const loadTelegram = useCallback(async () => { try { const res = await api<{ alerts: TelegramAlert[] }>('/api/complaints/telegram?limit=100'); setTelegramAlerts(res.alerts ?? []) } catch { setTelegramAlerts([]) } }, [])
+  useEffect(() => { if (activeTab === 'bot') void loadTelegram() }, [activeTab, loadTelegram])
   const openTicket = (ticket: TicketRow) => { setTicketModal(ticket); setTicketDraft({ ...ticket }) }
   const saveTicket = async () => {
     if (!ticketModal) return
@@ -121,6 +133,18 @@ export default function Complaints() {
     } finally {
       setBusy(false)
     }
+  }
+
+  const reExamine = async () => {
+    if (!selected?.tx_id) return
+    setBusy(true)
+    try {
+      const res = await api<{ verdict: unknown; analysis: unknown }>('/api/complaints/re-examine', { method: 'POST', body: JSON.stringify({ tx_id: selected.tx_id }) })
+      setInvestigation({ verdict: res.verdict, analysis: res.analysis })
+      await load()
+    } catch {
+      setInvestigation({ error: t('فشل إعادة الفحص', 'Re-examination failed') })
+    } finally { setBusy(false) }
   }
 
   const investigateCase = async (event: FormEvent<HTMLFormElement>) => {
@@ -206,7 +230,13 @@ export default function Complaints() {
         <div className="complaint-kpi red"><span>{t('مرفوضة','Declined')}</span><strong>{counts.declined}</strong><small>{t('قرار رفض مسجل','decline recorded')}</small></div>
       </section>
 
-      <section className="card recent-card complaint-ledger" style={{ marginBottom: 16 }}>
+      <nav className="complaint-tabs" aria-label={t('أقسام الشكاوى', 'Complaint sections')}>
+        <button type="button" className={activeTab === 'complaints' ? 'is-active' : ''} onClick={() => setActiveTab('complaints')}>{t('الشكاوى', 'Complaints')}<b>{counts.open}</b></button>
+        <button type="button" className={activeTab === 'tickets' ? 'is-active' : ''} onClick={() => setActiveTab('tickets')}>{t('التذاكر', 'Tickets')}<b>{tickets.filter((ticket) => ticket.ticket_status !== 'closed').length}</b></button>
+        <button type="button" className={activeTab === 'bot' ? 'is-active' : ''} onClick={() => setActiveTab('bot')}>Telegram<b>{telegramAlerts.length}</b></button>
+      </nav>
+
+      {activeTab === 'tickets' && <section className="card recent-card complaint-ledger" style={{ marginBottom: 16 }}>
         <div className="recent-head"><div><h3>🎫 {t('تذاكر الدعم','Support tickets')}</h3><span className="cell-sub">{tickets.length} {t('تذكرة مرتبطة بالشكاوى والمعاملات','tickets linked to complaints and transactions')}</span></div></div>
         <div className="ticket-filter-row"><span className="cell-sub">{t('عرض القائمة حسب المسؤول','Filter list by assignee')}</span><select className="filter-select" value={ticketFilter} onChange={e=>setTicketFilter(e.target.value)}><option value="all">{t('كل الفريق','All team')}</option><option value="unassigned">{t('غير مسندة','Unassigned')}</option>{assignees.map(a=><option key={a.username} value={a.username}>{a.display_name||a.username}</option>)}</select></div>
         {isMobile ? (
@@ -234,8 +264,14 @@ export default function Complaints() {
             {visibleTickets.length === 0 && <tr><td colSpan={7} className="sidebar-hint">{t('لا توجد تذاكر بعد. تسجيل شكوى جديدة ينشئ تذكرة تلقائياً.','No tickets yet. Filing a complaint creates one automatically.')}</td></tr>}
           </tbody></table></div>
         )}
-      </section>
+      </section>}
 
+      {activeTab === 'bot' && <section className="card complaint-ledger complaint-bot-panel">
+        <div className="recent-head"><div><h3>Telegram {t('سجل البوت', 'bot activity')}</h3><span className="cell-sub">{t('رسائل الشكاوى ونتائج القرارات المسجلة في V2.', 'Complaint and decision messages recorded in V2.')}</span></div><button type="button" className="btn-ghost btn-sm" onClick={() => void loadTelegram()}><RefreshCw size={14} /> {t('تحديث', 'Refresh')}</button></div>
+        <div className="complaint-bot-list">{telegramAlerts.map((alert) => <article className="complaint-bot-item" key={alert.id}><div className="recent-head"><span className="pay-status-badge">{alert.alert_type}</span><span className="mono">{depositTime({ first_seen_at: alert.created_at })}</span></div><pre className="sms-body">{alert.message}</pre><div className={`cell-sub ${alert.ok ? 'text-success' : 'text-danger'}`}>{alert.ok ? t('تم التسليم', 'Delivered') : alert.error ?? t('فشل التسليم', 'Delivery failed')}</div></article>)}{telegramAlerts.length === 0 && <p className="sidebar-hint">{t('لا توجد رسائل Telegram للشكاوى.', 'No complaint Telegram messages yet.')}</p>}</div>
+      </section>}
+
+      {activeTab === 'complaints' && <>
       <section className="card complaint-investigator">
         <div className="complaint-panel-title"><div><h3>🔎 {t('فحص شكوى معاملة','Investigate a transaction complaint')}</h3><p>{t('اكتب رقم معاملة Maven، أو رقم العميل والمبلغ.', 'Enter a Maven transaction ID, or customer phone and amount.')}</p></div><span className="pay-status-badge st-pending">LIVE CHECK</span></div>
         <form className="complaint-investigation-form" onSubmit={investigateCase}>
@@ -299,7 +335,8 @@ export default function Complaints() {
                     <span className="mono">#{r.id}{r.tx_id != null && <> · TRX {r.tx_id}</>}</span>
                     <span className="mono">{money(r.amount, 'EGP')}</span>
                   </div>
-                  <div className="cell-sub">{r.customer_phone ?? '—'}{r.note && <> · {r.note}</>}</div>
+                  <div className="cell-sub">{r.customer_name || r.customer_phone || '—'}{r.customer_name && r.customer_phone ? <> · <span className="mono">{r.customer_phone}</span></> : null}{r.note && <> · {r.note}</>}</div>
+                  <div className="cell-sub">{r.priority && <span className="pay-status-badge st-dim">{r.priority}</span>} {r.sms_received ? t('SMS مطابقة', 'SMS matched') : t('بدون SMS مطابقة', 'No matching SMS')}</div>
                   {r.finding && <div className="cell-sub">{r.finding}</div>}
                   <div className="complaint-card-foot">
                     <span className={`pay-status-badge ${m.cls}`}>{t(m.ar, m.en)}</span>
@@ -322,7 +359,7 @@ export default function Complaints() {
                     <tr key={r.id} onClick={() => open(r)}>
                       <td className="mono">{r.id}</td>
                       <td className="mono">{r.tx_id ?? '—'}</td>
-                      <td className="mono">{r.customer_phone ?? '—'}{r.note&&<div className="cell-sub">{r.note}</div>}</td>
+                      <td>{r.customer_name || '—'}<div className="cell-sub mono">{r.customer_phone ?? '—'}{r.note&&<> · {r.note}</>}</div></td>
                       <td className="mono">{money(r.amount, 'EGP')}</td>
                       <td className="sms-cell">{r.finding ?? '—'}</td>
                       <td><span className={`pay-status-badge ${m.cls}`}>{t(m.ar, m.en)}</span></td>
@@ -343,16 +380,24 @@ export default function Complaints() {
             <dl className="detail-grid">
               <dt>tx</dt><dd className="mono">{selected.tx_id ?? '—'}</dd>
               <dt>{t('الهاتف', 'Phone')}</dt><dd className="mono">{selected.customer_phone ?? '—'}</dd>
+              <dt>{t('الأولوية', 'Priority')}</dt><dd>{selected.priority ?? 'normal'}</dd>
+              <dt>{t('حالة SMS', 'SMS status')}</dt><dd>{selected.sms_received ? t('مطابقة', 'Matched') : t('غير موجودة', 'Not found')}{selected.balance_after != null ? <> · <span className="mono">{selected.balance_after}</span></> : null}</dd>
               <dt>{t('المبلغ', 'Amount')}</dt><dd className="mono">{money(selected.amount, 'EGP')}</dd>
               <dt>{t('الشكوى', 'Complaint')}</dt><dd>{selected.note ?? '—'}</dd>
               <dt>{t('نتيجة الفحص', 'Finding')}</dt><dd>{selected.finding ?? '—'}</dd>
               <dt>{t('أُنشئت', 'Created')}</dt><dd className="mono">{depositTime({ first_seen_at: selected.created_at })}</dd>
               {selected.resolved_at && <><dt>{t('حُلّت', 'Resolved')}</dt><dd className="mono">{depositTime({ first_seen_at: selected.resolved_at })}</dd></>}
+              {selected.resolved_by && <><dt>{t('بواسطة', 'By')}</dt><dd>{selected.resolved_by} · {selected.resolved_action ?? '—'}</dd></>}
             </dl>
 
-            <button className="btn-ghost btn-sm" disabled={busy} onClick={() => void investigate()}>
-              🔍 {t('فحص ومطابقة', 'Investigate & match')}
-            </button>
+            <div className="complaint-action-row">
+              <button className="btn-ghost btn-sm" disabled={busy} onClick={() => void investigate()}>
+                🔍 {t('فحص SMS', 'Check SMS')}
+              </button>
+              <button className="btn-ghost btn-sm" disabled={busy} onClick={() => void reExamine()}>
+                🔄 {t('إعادة الفحص', 'Re-examine')}
+              </button>
+            </div>
             {investigation != null && (
               <pre className="sms-body">{JSON.stringify(investigation, null, 1).slice(0, 1200)}</pre>
             )}
@@ -378,6 +423,7 @@ export default function Complaints() {
             </SheetFooter>
         </Sheet>
       )}
+      </>}
       {ticketModal && <div className="ticket-modal-backdrop" onClick={()=>!ticketBusy&&setTicketModal(null)}><section className="ticket-modal" onClick={e=>e.stopPropagation()}>
         <div className="drawer-head"><div><span className="guide-eyebrow">SUPPORT WORK ITEM</span><h3>{ticketModal.ticket_no || `TKT-${ticketModal.id}`}</h3></div><button className="btn-ghost btn-sm" onClick={()=>setTicketModal(null)}>✕</button></div>
         <div className="ticket-linked-list"><strong>{t('المعاملات والبيانات المرتبطة','Linked transaction details')}</strong><div className="ticket-linked-chip">{ticketModal.tx_id ? `TRX ${ticketModal.tx_id}` : (ticketModal.description?.match(/\d{11}/g)?.join(' · ') || t('لا يوجد رقم معاملة','No transaction reference'))}</div>{ticketModal.customer_phone&&<div className="cell-sub">📱 {ticketModal.customer_phone}</div>}</div>
