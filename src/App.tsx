@@ -23,6 +23,8 @@ const LiveMonitorControl = lazy(() => import('./pages/LiveMonitorControl'))
 const Deposits = lazy(() => import('./pages/Deposits'))
 const Payouts = lazy(() => import('./pages/Payouts'))
 const Merchants = lazy(() => import('./pages/Merchants'))
+const MerchantGroups = lazy(() => import('./pages/MerchantGroups'))
+const FxDashboard = lazy(() => import('./pages/FxDashboard'))
 const Wallets = lazy(() => import('./pages/Wallets'))
 const MavenWallets = lazy(() => import('./pages/MavenWallets'))
 const NgpayWalletManagement = lazy(() => import('./pages/NgpayWalletManagement'))
@@ -556,6 +558,8 @@ export default function App() {
             <Route path="/team-tasks" element={<PageGate keys={['support']}><TeamTasks /></PageGate>} />
             <Route path="/operator-handbook" element={<PageGate keys={['support']}><OperatorHandbook /></PageGate>} />
             <Route path="/merchants" element={<PageGate keys={['merchants']}><Merchants /></PageGate>} />
+            <Route path="/merchant-groups" element={<PageGate keys={['merchants']}><MerchantGroups /></PageGate>} />
+            <Route path="/fx" element={<PageGate keys={['dashboard', 'merchants', 'reports', 'treasury']}><FxDashboard /></PageGate>} />
             <Route path="/wallets" element={<PageGate keys={['wallets']}><Wallets /></PageGate>} />
             <Route path="/mavenwallets" element={<PageGate keys={['wallets']}><MavenWallets /></PageGate>} />
             <Route path="/ngpay-wallet-management" element={<PageGate keys={['wallets']}><NgpayWalletManagement /></PageGate>} />

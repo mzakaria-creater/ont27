@@ -108,6 +108,8 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/merchant-link-generator', icon: '🔗', labelAr: 'روابط الدفع', labelEn: 'Payment links', keys: ['checkout-builder'], group: 'payments' },
   // Management — merchants, wallets, money movement
   { to: '/merchants', icon: '🏬', labelAr: 'التجار', labelEn: 'Merchants', keys: ['merchants'], group: 'customers' },
+  { to: '/merchant-groups', icon: '🧱', labelAr: 'الشركاء والمجموعات', labelEn: 'Partners & Groups', keys: ['merchants'], group: 'customers' },
+  { to: '/fx', icon: '💹', labelAr: 'لوحة الأسعار', labelEn: 'FX dashboard', keys: ['dashboard', 'merchants', 'reports', 'treasury'], group: 'overview' },
   { to: '/wallets', icon: '👛', labelAr: 'المحافظ', labelEn: 'Wallets', keys: ['wallets'], group: 'payments' },
   { to: '/mavenwallets', icon: '◉', labelAr: 'محافظ Maven', labelEn: 'Maven Wallets', keys: ['wallets'], group: 'payments' },
   { to: '/ngpay-wallet-management', icon: '🛠️', labelAr: 'تغيير محافظ NGPay', labelEn: 'NGPay wallet management', keys: ['wallets'], group: 'payments' },
