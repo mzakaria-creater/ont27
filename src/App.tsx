@@ -101,6 +101,7 @@ const Devices = lazy(() => import('./pages/Devices'))
 const StaffAttendance = lazy(() => import('./pages/StaffAttendance'))
 const MindMap = lazy(() => import('./pages/MindMap'))
 const RedTeam = lazy(() => import('./pages/RedTeam'))
+const ProposalGenerator = lazy(() => import('./pages/ProposalGenerator'))
 
 type Conn = 'wait' | 'ok' | 'bad'
 
@@ -568,6 +569,7 @@ export default function App() {
             <Route path="/integration-guide" element={<PageGate keys={['api-keys','settings','merchants']}><IntegrationGuide /></PageGate>} />
             <Route path="/audit" element={<PageGate keys={['audit_log','audit-logs']}><Audit /></PageGate>} />
             <Route path="/reports" element={<PageGate keys={['reports','advanced_analysis']}><Reports /></PageGate>} />
+            <Route path="/proposal-generator" element={<PageGate keys={['reports','merchants']}><ProposalGenerator /></PageGate>} />
             <Route path="/mz-report" element={<PageGate keys={['reports','advanced_analysis']}><MZReport /></PageGate>} />
             <Route path="/enterprise-report" element={<PageGate keys={['reports','advanced_analysis']}><EnterpriseReport /></PageGate>} />
             <Route path="/reportspage" element={<Navigate to="/reports" replace />} />
