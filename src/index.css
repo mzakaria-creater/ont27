@@ -4681,3 +4681,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .drawer.sheet-panel.sheet-wide { width: 100vw; max-width: 100vw; }
   .drawer.sheet-panel.sheet-wide .txd-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Collapse the details layout by the sheet's own width, not the viewport's. */
+.drawer.sheet-panel { container-type: inline-size; }
+@container (max-width: 760px) {
+  .txd-grid { grid-template-columns: minmax(0, 1fr); }
+  .txd-detail-sections { grid-template-columns: minmax(0, 1fr); }
+  .txd-detail-block .detail-grid { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  .txd-amount-value { font-size: 34px; }
+}
