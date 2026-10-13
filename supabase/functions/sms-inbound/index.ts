@@ -120,6 +120,21 @@ function extractSenderName(message: string): string | null {
   return message.match(/من\s+([^،\n]{2,60})،\s*رصيدك/)?.[1]?.trim() || null;
 }
 
+// Vodafone Cash's "تم استلام" confirmation states the sender's name in a
+// completely separate clause from Orange's ("...من رقم X المسجل بإسم <name>
+// على رقم محفظتك..." -- no trailing "، رصيدك" at all), so extractSenderName
+// above never matched it. Combined with the wiring bug fixed below (row.*
+// used to read senderValue directly instead of the already-extracted
+// rawSender), Vodafone deposits carried NEITHER sender_number NOR
+// sender_name -- a total identity blackout that Orange never has (its phone
+// survives embedded in sender_name, "<name>-01xxxxxxxxx"). That forced every
+// Vodafone deposit onto the weaker wallet+amount+time fallback instead of
+// the identity-based matching paths, which is most of what made Vodafone
+// automation noticeably less reliable than Orange's.
+function extractVodafoneSenderName(message: string): string | null {
+  return message.match(/المسجل\s+بإسم\s+([^\n]+?)\s*على\s+رقم\s+محفظتك/)?.[1]?.trim() ?? null;
+}
+
 function extractSenderNumber(message: string): string | null {
   const match = message.match(/(?:من|from)\s+[^\n،]*?(\+?(?:20|0020)\d{10}|01\d{9,10})/i);
   return match?.[1] ?? null;
@@ -454,9 +469,14 @@ Deno.serve(async (req: Request) => {
     // and the older aliases (sender, wallet, trx_reference) some legacy
     // reporting still queries — cheap to keep both in sync.
     const row = {
-      sender: senderValue === null ? null : String(senderValue),
-      sender_number: senderValue === null ? null : String(senderValue),
-      sender_name: (firstValue(payload, "sender_name", "name") === null ? null : String(firstValue(payload, "sender_name", "name"))) ?? extractSenderName(message),
+      // rawSender already resolves to the text-extracted phone when the
+      // caller didn't supply one (see above) -- using senderValue directly
+      // here discarded that extraction and left sender_number/sender null
+      // for every Vodafone deposit despite the number being right there in
+      // the message.
+      sender: rawSender,
+      sender_number: rawSender,
+      sender_name: (firstValue(payload, "sender_name", "name") === null ? null : String(firstValue(payload, "sender_name", "name"))) ?? extractSenderName(message) ?? extractVodafoneSenderName(message),
       message,
       sms_first_line: message.split(/\r?\n/)[0]?.slice(0, 500) ?? message,
       wallet,
