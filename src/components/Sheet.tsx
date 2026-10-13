@@ -17,10 +17,12 @@ interface SheetProps {
   // Disables both Escape-to-close and backdrop-click-to-close — e.g. while a
   // decision/save is in flight and closing mid-request would be wrong.
   busy?: boolean
+  // Wide panel for content with its own multi-column layout (e.g. the transaction details).
+  wide?: boolean
   children: ReactNode
 }
 
-export function Sheet({ open, onClose, side = 'start', ariaLabel, busy = false, children }: SheetProps) {
+export function Sheet({ open, onClose, side = 'start', ariaLabel, busy = false, wide = false, children }: SheetProps) {
   useEffect(() => {
     if (!open) return
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && !busy) onClose() }
@@ -32,7 +34,7 @@ export function Sheet({ open, onClose, side = 'start', ariaLabel, busy = false, 
   const sideClass = side === 'start' ? '' : ` sheet-side-${side}`
   return (
     <div className={`drawer-backdrop${sideClass}`} onClick={() => !busy && onClose()}>
-      <aside className={`drawer sheet-panel${sideClass}`} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={ariaLabel}>
+      <aside className={`drawer sheet-panel${sideClass}${wide ? ' sheet-wide' : ''}`} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={ariaLabel}>
         {children}
       </aside>
     </div>

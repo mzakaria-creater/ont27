@@ -381,19 +381,29 @@ async function depositDetail(c: Context<AuthEnv>, txId: string) {
   // project. These are diagnostics only; a source outage must not make the
   // transaction detail page unavailable.
   const source = oldDb()
+  const readLegacyDiagnostics = async <T,>(label: string, query: PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> => {
+    try {
+      const { data: rows, error: legacyError } = await query
+      if (legacyError) {
+        console.error(`transaction detail legacy ${label} failed`, { txId, error: legacyError.message })
+        return []
+      }
+      return rows ?? []
+    } catch (error) {
+      console.error(`transaction detail legacy ${label} failed`, { txId, error: error instanceof Error ? error.message : 'legacy_query_failed' })
+      return []
+    }
+  }
   const [reviewRows, jobRows, providerRows] = source ? await Promise.all([
-    source.from('review_queue')
+    readLegacyDiagnostics('review_queue', source.from('review_queue')
       .select('id, decision, decision_reason, target_status, matched_sms_id, match_score, match_reasons, assigned_tier, assigned_reviewer, decided_by, decided_at, action_source, created_at, updated_at')
-      .eq('tx_id', txId).order('updated_at', { ascending: false }).limit(20)
-      .then(({ data: rows }) => rows ?? []),
-    source.from('browser_jobs')
+      .eq('tx_id', txId).order('updated_at', { ascending: false }).limit(20)),
+    readLegacyDiagnostics('browser_jobs', source.from('browser_jobs')
       .select('id, target_status, source, state, last_error, attempts, max_attempts, maven_before_status, maven_after_status, dispatch_mode, operator_username, created_at, updated_at, completed_at, failed_at')
-      .eq('tx_id', txId).order('created_at', { ascending: false }).limit(20)
-      .then(({ data: rows }) => rows ?? []),
-    source.from('ngpay_approval_events')
+      .eq('tx_id', txId).order('created_at', { ascending: false }).limit(20)),
+    readLegacyDiagnostics('ngpay_approval_events', source.from('ngpay_approval_events')
       .select('id, status, approved_by, assigned_to_name, note, source, maven_target, maven_synced, created_at, updated_at')
-      .eq('tx_id', txId).order('created_at', { ascending: false }).limit(20)
-      .then(({ data: rows }) => rows ?? []),
+      .eq('tx_id', txId).order('created_at', { ascending: false }).limit(20)),
   ]) : [[], [], []]
 
   const client = data.sender_number

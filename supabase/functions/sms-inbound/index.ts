@@ -132,37 +132,77 @@ async function resolveWallet(
   textWallet: string | null,
   amount: number | null,
   balance: number | null,
-): Promise<string | null> {
-  if (textWallet) return textWallet;
-  if (!device || device === "unknown-device" || device === "unknown") return null;
+  isWithdrawal: boolean,
+): Promise<{ wallet: string | null; employee: string | null; source: string | null }> {
+  if (textWallet) return { wallet: textWallet, employee: null, source: "sms_text" };
+  if (!device || device === "unknown-device" || device === "unknown") return { wallet: null, employee: null, source: null };
 
-  const { data } = await supabaseAdmin.from("wallet_device_map")
-    .select("to_account_number, sim_slot").eq("device", device);
-  const rows = (data ?? []) as { to_account_number: string; sim_slot: number | null }[];
-  if (!rows.length) return null;
+  const { data: prefixRows, error: prefixError } = await supabaseAdmin.from("device_prefix_map")
+    .select("wallet_number, sim_slot, employee")
+    .eq("prefix", device)
+    .eq("active", true);
+  if (prefixError) console.error("device_prefix_map lookup failed", prefixError);
+
+  const mappedRows = (prefixRows ?? []) as { wallet_number: string; sim_slot: number | null; employee: string | null }[];
+  const rows = mappedRows.length
+    ? mappedRows.map((row) => ({ wallet: row.wallet_number, sim_slot: row.sim_slot, employee: row.employee, source: "device_prefix_map" }))
+    : await (async () => {
+      const { data } = await supabaseAdmin.from("wallet_device_map")
+        .select("to_account_number, sim_slot").eq("device", device);
+      return ((data ?? []) as { to_account_number: string; sim_slot: number | null }[])
+        .map((row) => ({ wallet: row.to_account_number, sim_slot: row.sim_slot, employee: null, source: "wallet_device_map" }));
+    })();
+
+  if (!rows.length) return { wallet: null, employee: null, source: null };
 
   if (simSlot !== null && simSlot !== undefined) {
     const match = rows.find((r) => String(r.sim_slot ?? "") === String(simSlot));
-    if (match) return match.to_account_number;
+    if (match) return { wallet: match.wallet, employee: match.employee, source: `${match.source}:sim_slot` };
   }
 
-  const candidates = [...new Set(rows.map((r) => r.to_account_number).filter(Boolean))];
-  if (candidates.length === 1) return candidates[0];
-  if (candidates.length === 0) return null;
-  if (amount === null || balance === null) return null;
+  const candidates = rows.filter((row, index) => row.wallet && rows.findIndex((other) => other.wallet === row.wallet) === index);
+  if (candidates.length === 1) return { wallet: candidates[0].wallet, employee: candidates[0].employee, source: `${candidates[0].source}:single_candidate` };
+  if (candidates.length === 0) return { wallet: null, employee: null, source: null };
+  if (amount === null || balance === null) return { wallet: null, employee: null, source: null };
 
-  for (const wallet of candidates) {
+  for (const candidate of candidates) {
     const { data: last } = await supabaseAdmin.from("inbound_sms")
       .select("balance_after")
-      .or(`wallet_number.eq.${wallet},confirmed_wallet_number.eq.${wallet},receiver_number.eq.${wallet}`)
+      .or(`wallet_number.eq.${candidate.wallet},confirmed_wallet_number.eq.${candidate.wallet},receiver_number.eq.${candidate.wallet}`)
       .not("balance_after", "is", null)
       .order("received_at", { ascending: false })
       .limit(1)
       .maybeSingle();
     const previous = last?.balance_after == null ? null : Number(last.balance_after);
-    if (previous !== null && Math.abs(previous + amount - balance) <= 1) return wallet;
+    const expected = previous === null ? null : isWithdrawal ? previous - amount : previous + amount;
+    if (expected !== null && Math.abs(expected - balance) <= 1) {
+      return { wallet: candidate.wallet, employee: candidate.employee, source: `${candidate.source}:balance_continuity` };
+    }
   }
-  return null;
+  return { wallet: null, employee: null, source: null };
+}
+
+// Direction (incoming vs outgoing) is decided from the transaction clause only.
+// Orange Cash appends promo ads after the receipt ("خصم 65% على اشتراك ...",
+// "ادفع دلوقتي ..."), and matching words like "خصم" anywhere in the text
+// mislabeled incoming payments as withdrawals (SMS #1010336). The receipt ends
+// at "رقم المعاملة/العملية <digits>"; everything after it is ignored. Mirrors
+// public.sms_core_text() / public.sms_direction() in the database.
+function smsCoreText(message: string): string {
+  const m = message.match(/^[\s\S]*?رقم\s*(?:المعاملة|العملية)\s*[:：]?\s*\d+/);
+  return m ? m[0] : (message.split("\n\n")[0] ?? message);
+}
+
+function smsDirection(message: string): "in" | "out" | "notice" | "unknown" {
+  const c = smsCoreText(message);
+  if (/لديك\s*عملية\s*سحب/.test(c) && !/بمبلغ/.test(c)) return "notice";
+  const isOut = /(عملية\s*سحب\s*ناجحة|تحويل\s*أموال\s*ناجحة|رسوم\s*السحب|رسوم\s*التحويل|تم\s*خصم|تم\s*سحب|تم\s*تحويل|لرقم|تحويل\s*(إلى|الي|الى))/.test(c)
+    || /(withdraw|debit|paid out)/i.test(c);
+  const isIn = /(تم\s*استلام|استلمت|استقبلت|إيداع|ايداع|تم\s*اضافة|تم\s*إضافة)/.test(c)
+    || /(received|deposit|credited)/i.test(c);
+  if (isOut) return "out"; // a successful outgoing action always wins
+  if (isIn) return "in";
+  return "unknown";
 }
 
 async function readPayload(req: Request): Promise<Record<string, unknown>> {
@@ -296,8 +336,15 @@ Deno.serve(async (req: Request) => {
     // signal too, independent of whether لرقم/رسوم التحويل also survive in a
     // given template variant — "ناجحة" (successful, confirming the SENDER's
     // own action) never appears on the incoming "تم استلام" confirmation.
-    const isWithdrawal = /(withdraw|withdrawal|debit|sent|paid out|سحب|خصم|تحويل إلى|تحويل الي|تم خصم|لرقم|رسوم\s*التحويل|تحويل\s*أموال\s*ناجحة)/i.test(messageText);
-    const isIncoming = /(received|deposit|credited|credit|incoming|تم استلام|استقبلت|إيداع)/i.test(messageText);
+    const legacyWithdrawal = /(withdraw|withdrawal|debit|sent|paid out|سحب|خصم|تحويل إلى|تحويل الي|تم خصم|لرقم|رسوم\s*التحويل|تحويل\s*أموال\s*ناجحة)/i.test(messageText);
+    const legacyIncoming = /(received|deposit|credited|credit|incoming|تم استلام|استقبلت|إيداع)/i.test(messageText);
+    // Provider receipts that state an amount are classified from the receipt
+    // clause only (see smsDirection). Peer-phone texts ("From : +20...") and
+    // messages without a clear direction keep the legacy keyword rules.
+    const hasAmountClause = /(بمبلغ|مبلغ)/.test(message) && !/From\s*:\s*\+/.test(message);
+    const direction = hasAmountClause ? smsDirection(message) : "unknown";
+    const isWithdrawal = direction === "out" ? true : direction === "in" ? false : legacyWithdrawal;
+    const isIncoming = direction === "in" ? true : direction === "out" ? false : legacyIncoming;
 
     // A genuine wallet-provider deposit notification always originates from a
     // regulated sender ID (e.g. "OrangeCash") — Egyptian carriers never let a
@@ -320,11 +367,10 @@ Deno.serve(async (req: Request) => {
     // carrying a real wallet number just because its device has exactly one
     // mapped SIM, polluting an "unknown" row with data that implies evidence
     // that was never actually there.
-    const wallet = textWallet
-      ? textWallet
-      : (isIncoming || isWithdrawal || amount !== null)
-        ? await resolveWallet(device, simSlotValue, null, amount, balance).catch(() => null)
-        : null;
+    const resolved = (isIncoming || isWithdrawal || amount !== null || textWallet)
+      ? await resolveWallet(device, simSlotValue, textWallet, amount, balance, isWithdrawal).catch(() => ({ wallet: null, employee: null, source: null }))
+      : { wallet: null, employee: null, source: null };
+    const wallet = resolved.wallet;
 
     const smsCategory = ["deposit", "received", "income", "withdrawal", "expense"].includes(categoryText)
       ? categoryText
@@ -378,6 +424,9 @@ Deno.serve(async (req: Request) => {
       wallet,
       receiver_number: wallet,
       wallet_number: wallet,
+      device_prefix: device === "unknown-device" ? null : device,
+      resolved_employee: resolved.employee,
+      wallet_resolution_source: resolved.source,
       amount,
       balance_after: balance,
       sms_category: smsCategory,

@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { supabase } from '../lib/supabase'
+import LiveTransactionFeed from '../components/LiveTransactionFeed'
 import SmsMatchQueues, { type QueueSms } from '../components/SmsMatchQueues'
 
 type Source = { ok: boolean; error: string | null }
@@ -60,6 +61,7 @@ export default function Monitor() {
       <p className="page-sub">{t('تدفق SMS والمعاملات والتكاملات وحالة الأجهزة.', 'SMS, transaction, integration, and device activity in one operational stream.')}</p>
     </section>
     {error && <div className="card warn">{t('تعذّر تحميل بيانات المراقبة.', 'Unable to load monitoring data.')}</div>}
+    <LiveTransactionFeed />
     <SmsMatchQueues waiting={smsQueues.waiting} unlinked={smsQueues.unlinked} loading={!data && !error} />
     {linkedPairs.length > 0 && <section className="card recent-card live-pair-card"><div className="recent-head"><div><h3>{t('المعاملات مع SMS المطابقة', 'Transactions with matched SMS')}</h3><span className="cell-sub">{t('SMS فوق معاملتها في بطاقة واحدة', 'SMS above its transaction in one card')}</span></div><span className="live-dot"><span className="ld" />LIVE</span></div><div className="live-pair-grid">{linkedPairs.slice(0, 12).map(({ tx, sms }) => <article className="live-pair" key={tx.tx_id}><div className="live-pair-sms"><span className="tx-sms-label">📨 SMS #{sms?.id}</span><span>{sms?.provider ?? '—'} · {sms?.sender_name ?? sms?.sender_number ?? '—'}</span><span className="mono">{money(sms?.amount, tx.currency)}</span><p>{sms?.raw_sms ?? sms?.message ?? '—'}</p></div><div className="live-pair-head"><Link to={`/transactions/${encodeURIComponent(tx.ontarget_ref ?? String(tx.tx_id))}`} className="mono">TRX {tx.ontarget_ref ?? tx.tx_id}</Link><span className={`pay-status-badge ${tx.status === 'PAID' || tx.status === 'APPROVED' ? 'st-paid' : tx.status === 'DECLINED' ? 'st-declined' : 'st-pending'}`}>{tx.status}</span></div><div className="live-pair-main"><strong className="mono">{money(tx.amount, tx.currency)}</strong><span>{tx.merchant ?? '—'}</span><span>{when(tx.first_seen_at)}</span></div></article>)}</div></section>}
     <div className="stat-grid">

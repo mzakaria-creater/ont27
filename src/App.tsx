@@ -23,6 +23,8 @@ const LiveMonitorControl = lazy(() => import('./pages/LiveMonitorControl'))
 const Deposits = lazy(() => import('./pages/Deposits'))
 const Payouts = lazy(() => import('./pages/Payouts'))
 const Merchants = lazy(() => import('./pages/Merchants'))
+const MerchantGroups = lazy(() => import('./pages/MerchantGroups'))
+const FxDashboard = lazy(() => import('./pages/FxDashboard'))
 const Wallets = lazy(() => import('./pages/Wallets'))
 const MavenWallets = lazy(() => import('./pages/MavenWallets'))
 const NgpayWalletManagement = lazy(() => import('./pages/NgpayWalletManagement'))
@@ -77,6 +79,7 @@ const PaymentMethods = lazy(() => import('./pages/PaymentMethods'))
 const MerchantPaymentSetup = lazy(() => import('./pages/MerchantPaymentSetup'))
 const KnownRecipients = lazy(() => import('./pages/KnownRecipients'))
 const TreasuryHub = lazy(() => import('./pages/TreasuryHub'))
+const Treasury = lazy(() => import('./pages/Treasury'))
 const ExecutiveDashboard = lazy(() => import('./pages/ExecutiveDashboard'))
 const AnalyticsDashboard = lazy(() => import('./pages/AnalyticsDashboard'))
 const SystemHealth = lazy(() => import('./pages/SystemHealth'))
@@ -103,6 +106,7 @@ const Devices = lazy(() => import('./pages/Devices'))
 const StaffAttendance = lazy(() => import('./pages/StaffAttendance'))
 const MindMap = lazy(() => import('./pages/MindMap'))
 const RedTeam = lazy(() => import('./pages/RedTeam'))
+const ProposalGenerator = lazy(() => import('./pages/ProposalGenerator'))
 
 type Conn = 'wait' | 'ok' | 'bad'
 
@@ -556,6 +560,9 @@ export default function App() {
             <Route path="/team-tasks" element={<PageGate keys={['support']}><TeamTasks /></PageGate>} />
             <Route path="/operator-handbook" element={<PageGate keys={['support']}><OperatorHandbook /></PageGate>} />
             <Route path="/merchants" element={<PageGate keys={['merchants']}><Merchants /></PageGate>} />
+            <Route path="/merchant-groups" element={<PageGate keys={['merchants']}><MerchantGroups /></PageGate>} />
+            <Route path="/treasury" element={<PageGate keys={['treasury','wallets','dashboard']}><Treasury /></PageGate>} />
+            <Route path="/fx" element={<PageGate keys={['dashboard', 'merchants', 'reports', 'treasury']}><FxDashboard /></PageGate>} />
             <Route path="/wallets" element={<PageGate keys={['wallets']}><Wallets /></PageGate>} />
             <Route path="/mavenwallets" element={<PageGate keys={['wallets']}><MavenWallets /></PageGate>} />
             <Route path="/ngpay-wallet-management" element={<PageGate keys={['wallets']}><NgpayWalletManagement /></PageGate>} />
@@ -572,6 +579,7 @@ export default function App() {
             <Route path="/integration-guide" element={<PageGate keys={['api-keys','settings','merchants']}><IntegrationGuide /></PageGate>} />
             <Route path="/audit" element={<PageGate keys={['audit_log','audit-logs']}><Audit /></PageGate>} />
             <Route path="/reports" element={<PageGate keys={['reports','advanced_analysis']}><Reports /></PageGate>} />
+            <Route path="/proposal-generator" element={<PageGate keys={['reports','merchants']}><ProposalGenerator /></PageGate>} />
             <Route path="/mz-report" element={<PageGate keys={['reports','advanced_analysis']}><MZReport /></PageGate>} />
             <Route path="/enterprise-report" element={<PageGate keys={['reports','advanced_analysis']}><EnterpriseReport /></PageGate>} />
             <Route path="/reportspage" element={<Navigate to="/reports" replace />} />
@@ -610,6 +618,7 @@ export default function App() {
             <Route path="/replay-lab" element={<PageGate keys={['automation','sms_live','webhooks']}><ReplayLab /></PageGate>} />
             <Route path="/webhooks" element={<PageGate keys={['webhooks','developers']}><WebhookCenter /></PageGate>} />
             <Route path="/airdroid" element={<PageGate keys={['sms_live','wallets']}><AirDroid /></PageGate>} />
+            <Route path="/maven" element={<PageGate keys={['sms_live','wallets']}><AirDroid defaultPortal="maven" /></PageGate>} />
             <Route path="/devices" element={<PageGate keys={['sms_live','wallets']}><Devices /></PageGate>} />
             <Route path="/ontarget-hub" element={<PageGate keys={['wallets','payouts','sms_live','treasury']}><TreasuryHub /></PageGate>} />
             <Route path="/hub" element={<PageGate keys={['wallets','payouts','sms_live','treasury']}><TreasuryHub /></PageGate>} />

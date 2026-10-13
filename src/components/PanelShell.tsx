@@ -91,6 +91,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/operations-archive', icon: '🗄️', labelAr: 'أرشيف العمليات', labelEn: 'Operations archive', keys: ['audit_log', 'audit-logs', 'transactions'], group: 'transactions' },
   { to: '/sms', icon: '📨', labelAr: 'SMS مباشر', labelEn: 'Live SMS', keys: ['sms_live'], group: 'payments' },
   { to: '/airdroid', icon: '📱', labelAr: 'إدارة AirDroid', labelEn: 'AirDroid devices', keys: ['sms_live', 'wallets'], group: 'payments' },
+  { to: '/maven', icon: '◈', labelAr: 'بوابة Maven', labelEn: 'Maven portal', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/devices', icon: '📲', labelAr: 'أسطول الأجهزة', labelEn: 'Device fleet', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/gateway', icon: '🏦', labelAr: 'البوابة والأرصدة', labelEn: 'Gateway & Balances', keys: ['wallets', 'deposits', 'payouts'], group: 'payments' },
   { to: '/wallet-report', icon: '📊', labelAr: 'تقرير المحافظ', labelEn: 'Wallet report', keys: ['sms_live', 'wallets'], group: 'payments' },
@@ -108,6 +109,9 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/merchant-link-generator', icon: '🔗', labelAr: 'روابط الدفع', labelEn: 'Payment links', keys: ['checkout-builder'], group: 'payments' },
   // Management — merchants, wallets, money movement
   { to: '/merchants', icon: '🏬', labelAr: 'التجار', labelEn: 'Merchants', keys: ['merchants'], group: 'customers' },
+  { to: '/merchant-groups', icon: '🧱', labelAr: 'الشركاء والمجموعات', labelEn: 'Partners & Groups', keys: ['merchants'], group: 'customers' },
+  { to: '/treasury', icon: '🏦', labelAr: 'الخزينة', labelEn: 'Treasury', keys: ['treasury', 'wallets', 'dashboard'], group: 'overview' },
+  { to: '/fx', icon: '💹', labelAr: 'لوحة الأسعار', labelEn: 'FX dashboard', keys: ['dashboard', 'merchants', 'reports', 'treasury'], group: 'overview' },
   { to: '/wallets', icon: '👛', labelAr: 'المحافظ', labelEn: 'Wallets', keys: ['wallets'], group: 'payments' },
   { to: '/mavenwallets', icon: '◉', labelAr: 'محافظ Maven', labelEn: 'Maven Wallets', keys: ['wallets'], group: 'payments' },
   { to: '/ngpay-wallet-management', icon: '🛠️', labelAr: 'تغيير محافظ NGPay', labelEn: 'NGPay wallet management', keys: ['wallets'], group: 'payments' },
@@ -133,6 +137,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/binance/p2p-history', icon: '🧾', labelAr: 'سجل P2P', labelEn: 'P2P History', keys: ['binance_p2p', 'treasury'], group: 'automation' },
   // System — reporting, audit, admin
   { to: '/reports', icon: '📊', labelAr: 'التقارير الشاملة', labelEn: 'Full reports', keys: ['reports', 'advanced_analysis'], group: 'insights' },
+  { to: '/proposal-generator', icon: '▤', labelAr: 'منشئ العروض التجارية', labelEn: 'Proposal generator', keys: ['reports', 'merchants'], group: 'insights' },
   { to: '/mz-report', icon: '◈', labelAr: 'تقرير MZ التنفيذي', labelEn: 'MZ Executive Report', keys: ['reports', 'advanced_analysis'], group: 'insights' },
   { to: '/enterprise-report', icon: '▤', labelAr: 'التقرير المالي التنفيذي', labelEn: 'Enterprise financial report', keys: ['reports', 'advanced_analysis'], group: 'insights' },
   { to: '/mind-map', icon: '🧠', labelAr: 'خريطة النظام', labelEn: 'System mind map', keys: ['reports', 'advanced_analysis'], group: 'insights' },

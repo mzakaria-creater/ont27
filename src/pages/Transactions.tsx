@@ -874,6 +874,28 @@ export default function Transactions() {
         </div>
       </section>
 
+      {(() => {
+        const n = (...ks: string[]) => ks.reduce((a, k) => a + (counts[k] ?? 0), 0)
+        const total = Object.values(counts).reduce((a, b) => a + b, 0)
+        const pick = (v: string) => setFilter({ status: v, page: 1 })
+        const tiles: Array<{ key: string; ar: string; en: string; value: number; tone: string; status: string }> = [
+          { key: 'all', ar: 'الإجمالي', en: 'Total', value: total, tone: '', status: '' },
+          { key: 'ok', ar: 'مكتملة', en: 'Completed', value: n('PAID', 'APPROVED'), tone: 'st-paid', status: 'PAID,APPROVED' },
+          { key: 'pen', ar: 'معلقة', en: 'Pending', value: n('PENDING'), tone: 'st-pending', status: 'PENDING' },
+          { key: 'bad', ar: 'فاشلة', en: 'Failed', value: n('DECLINED', 'EXPIRED'), tone: 'st-declined', status: 'DECLINED,EXPIRED' },
+          { key: 'rev', ar: 'مراجعة', en: 'Review / hold', value: n('UNDERPAID', 'OVERPAID'), tone: 'st-pending', status: 'UNDERPAID,OVERPAID' },
+        ]
+        const today = todayRange()
+        return <section className="trx-kpi-strip" aria-label={t('ملخص الحالات', 'Status summary')}>
+          <div className="stat-grid">{tiles.map((k) => <button type="button" key={k.key} className={`stat-card trx-kpi-tile${status === k.status ? ' active' : ''}`} onClick={() => pick(k.status)}><span className="stat-label">{t(k.ar, k.en)}</span><span className="stat-value">{k.value.toLocaleString('en-US')}</span></button>)}</div>
+          <div className="chip-row"><span className="cell-sub">{t('عروض محفوظة', 'Saved views')}:</span>
+            <button type="button" className="pill" onClick={() => setFilter({ date_range: 'today', from: today.from, to: today.to, currency: 'EGP', status: '', page: 1 })}>🇪🇬 {t('مصر — اليوم', 'Egypt — Today')}</button>
+            <button type="button" className="pill" onClick={() => setFilter({ status: 'PENDING', date_range: 'all', from: '', to: '', page: 1 })}>⏳ {t('بانتظار المراجعة', 'Pending Review')}</button>
+            <button type="button" className="pill" onClick={() => setFilter({ status: 'DECLINED,EXPIRED', date_range: 'today', from: today.from, to: today.to, page: 1 })}>⛔ {t('الفاشلة اليوم', 'Failed today')}</button>
+          </div>
+        </section>
+      })()}
+
       {wallets && wallets.filter((w) => !HIDDEN_WALLET_NUMBERS.has(w.account_number ?? '')).length > 0 && (
         <section className="card trx-wallet-strip" aria-label={t('أرقام المحافظ المستقبلة حالياً', 'Currently receiving wallet numbers')}>
           {wallets.filter((w) => !HIDDEN_WALLET_NUMBERS.has(w.account_number ?? '')).map((w) => (

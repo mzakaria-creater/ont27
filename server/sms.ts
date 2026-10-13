@@ -704,7 +704,7 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
   // must never take the generic immediate-approval path below.
   await db.from('inbound_sms').update({ auto_match_score: exactSmsMatch ? 100 : 0 }).eq('id', id).eq('consumed_by_tx_id', txId)
   const reviewDb = oldDb()
-  if (reviewDb) {
+  if (reviewDb && tx.status === 'PENDING') {
     await reviewDb.from('review_queue').update({
       decision: 'pending_review',
       matched_sms_id: Number(id),
