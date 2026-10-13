@@ -943,7 +943,7 @@ export default function SmsLive() {
                       <td className="mono">{displayWallet ?? '—'}{r.receiver_number && displayWallet && r.receiver_number !== displayWallet && <div className="cell-sub">SMS: {r.receiver_number}</div>}</td>
                       <td className="mono">{depositTime({ first_seen_at: r.received_at })}<div className="cell-sub">{r.sms_category ? (CATEGORY_META[r.sms_category] ? t(CATEGORY_META[r.sms_category].ar, CATEGORY_META[r.sms_category].en) : r.sms_category) : '—'}</div></td>
                       <td className="mono">
-                        <MethodLogo method={r.provider ?? 'Orange Money'} /> {r.device_name ?? '—'}
+                        <MethodLogo method={r.provider} /> {r.device_name ?? '—'}
                         {r.sim_slot != null && <div className="cell-sub mono">SIM {r.sim_slot}</div>}
                       </td>
                       <td className="mono">{r.trx_id ?? '—'}<div className="cell-sub">SMS #{r.id}</div></td>
@@ -972,7 +972,7 @@ export default function SmsLive() {
               const matchMeta = linked ? MATCH_META.auto : r.match_status ? MATCH_META[r.match_status] : null
               return <article className="sms-live-card-shell" key={r.id}>
                 <button type="button" className={`sms-live-card sms-live-card-${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}${!linked && !r.is_blocked ? ' is-unlinked' : ''}${r.review_required && !linked ? ' is-review-hold' : ''}`} onClick={() => void openDetail(r.id)}>
-                  <div className="sms-live-card-head"><span className="sms-card-brand"><span className={`sms-type-mark ${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}`}>{r.sms_category === 'withdrawal' ? '↗' : '↙'}</span><MethodLogo method={r.provider ?? 'Orange Money'} /></span><strong className="mono">SMS #{r.id}</strong><span className="mono">{depositTime({ first_seen_at: r.received_at })}</span></div>
+                  <div className="sms-live-card-head"><span className="sms-card-brand"><span className={`sms-type-mark ${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}`}>{r.sms_category === 'withdrawal' ? '↗' : '↙'}</span><MethodLogo method={r.provider} /></span><strong className="mono">SMS #{r.id}</strong><span className="mono">{depositTime({ first_seen_at: r.received_at })}</span></div>
                   <div className="sms-live-card-amount">{money(r.amount, 'EGP')}</div>
                   <div className="sms-live-card-grid">
                     <span>{t('النوع', 'Type')}<b>{cat ? t(cat.ar, cat.en) : '—'}</b></span>

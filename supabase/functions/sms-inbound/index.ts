@@ -54,7 +54,13 @@ function extractAmount(message: string): number | null {
 }
 
 function extractBalance(message: string): number | null {
-  const m = message.match(/رصيدك\s*الحالي\s*([\d.,]+)\s*(?=جنيه)/);
+  // Vodafone Cash's "تم استلام" confirmation states the balance as
+  // "رصيدك الحالي: 1327.79 جنيه" -- a colon between the label and the
+  // number that this regex did not tolerate, so balance_after came back
+  // null for every single Vodafone deposit (confirmed live: 0 of 273 in a
+  // 24h window had a balance, vs 531 of 634 Orange ones, which never carry
+  // that colon).
+  const m = message.match(/رصيدك\s*الحالي\s*[:：]?\s*([\d.,]+)\s*(?=جنيه)/);
   if (!m) return null;
   const n = Number(m[1].replace(/,/g, ""));
   return Number.isFinite(n) ? n : null;
@@ -62,6 +68,28 @@ function extractBalance(message: string): number | null {
 
 function extractReference(message: string): string | null {
   return message.match(/رقم\s*(?:المعاملة|العملية)\s*[:：]?\s*(\d+)/)?.[1] ?? null;
+}
+
+// The device-forwarder apps in production never actually send a
+// provider/network/carrier field, so `provider` always fell back to the
+// DEVICE identifier ("ont1", "ont2", ...) instead of a real network name.
+// That silently broke two things at once: the SMS Live provider filter
+// (Vodafone Cash / Orange Cash checkboxes match the `provider` column with
+// ilike '%vodafone%'/'%orange%' — see server/sms.ts PROVIDER_FILTER_PATTERNS
+// — so they matched nothing for any row through this path) and the
+// method-logo badge, which showed the same generic mark for every row
+// regardless of network. Now that both Vodafone and Orange wallets are live
+// side by side, every row looked identical either way. Detect the network
+// from the message text itself, the same signal mark_supported_sms_source()
+// already trusts server-side.
+function detectNetworkFromMessage(message: string): string | null {
+  if (/vodafone/i.test(message) || /vf[- ]?cash/i.test(message) || /فودافون/.test(message)) return "Vodafone Cash";
+  if (/orange/i.test(message) || /اورنج|اورنچ/.test(message)) return "Orange Cash";
+  if (/etisalat|e&/i.test(message)) return "Etisalat Cash";
+  if (/instapay|insta\s*pay/i.test(message) || /انستا\s*باي/.test(message)) return "InstaPay";
+  if (/we\s*pay/i.test(message)) return "WE Pay";
+  if (/alexbank|alex\s*bank|bank\s*of\s*alexandria/i.test(message) || /بنك\s*الاسكندرية/.test(message)) return "Alex Bank";
+  return null;
 }
 
 // Real provider traffic that is never a deposit/withdrawal event on its own:
@@ -315,11 +343,12 @@ Deno.serve(async (req: Request) => {
     const walletValue = firstValue(payload, "wallet", "wallet_number", "receiver_number", "to");
     const amountValue = firstValue(payload, "amount", "value", "transfer_amount");
     const referenceValue = firstValue(payload, "trx_reference", "trx_ref", "transaction_id", "transactionId", "reference", "ref", "utr");
-    const providerValue = firstValue(payload, "provider", "network", "carrier") ?? "ont1";
     const simSlotValue = payload.sim_slot === undefined || payload.sim_slot === null ? null : payload.sim_slot as string | number;
 
     const message = messageValue === null ? null : String(messageValue);
     if (!message) return response({ error: "message is required" }, 400);
+
+    const providerValue = firstValue(payload, "provider", "network", "carrier") ?? detectNetworkFromMessage(message) ?? "ont1";
 
     const numericAmount = amountValue === null ? null : Number(String(amountValue).replace(/[^0-9.-]/g, ""));
     let amount = numericAmount !== null && Number.isFinite(numericAmount) ? numericAmount : null;
