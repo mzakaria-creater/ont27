@@ -319,15 +319,37 @@ Deno.serve(async (req) => {
     let unchanged = 0;
     let alerts = 0;
     for (const row of mapped) {
-      const old = local.get(Number(row.tx_id));
+      let old = local.get(Number(row.tx_id));
       if (!old) {
-        const insertRow = { ...providerPatch(row, nowIso), first_seen_at: createdAt(row, nowIso), last_status_change: nowIso, paid_source: row.status === "PAID" ? "reconciliation" : null, row_hash: row.row_hash };
-        // Reconcile is intentionally idempotent. A duplicate tx_id must not
-        // abort the whole worker when another overlap run inserted it first.
-        const { error } = await sb.from("maven_transactions").upsert(insertRow, { onConflict: "tx_id", ignoreDuplicates: false });
-        if (error) throw new Error(`insert ${row.tx_id}: ${error.message}`);
-        inserted++;
-        continue;
+        // `local` was snapshotted once, before this run's Maven list call. A
+        // slow or lease-queued "live" invocation (e.g. stuck retrying a flaky
+        // Maven response) can finish minutes after the trigger-based engine
+        // already created AND approved this very tx_id. Re-check right before
+        // treating it as brand new, so that race cannot stomp the real
+        // first_seen_at/last_status_change with this invocation's own late
+        // "now". Confirmed live: tx 138499877 was approved by the trigger
+        // engine at 02:43:02 (7s after creation), then this path overwrote
+        // both timestamps to 02:48:46 when a delayed reconcile pass finally
+        // ran -- a false ~6-minute "time to approve" with no real delay
+        // behind it (403 of 515 PAID rows in a sampled 24h window carried
+        // this exact signature: first_seen_at == last_status_change, both
+        // minutes after modified_utc).
+        const { data: justInTime } = await sb
+          .from("maven_transactions")
+          .select("tx_id,status,row_hash,amount,local_amount,provider_amount,amount_sync_status,amount_confirmed_at,modified_at_utc,created_at_utc,first_seen_at,approved_by,paid_source")
+          .eq("tx_id", row.tx_id)
+          .maybeSingle();
+        if (justInTime) {
+          old = justInTime as typeof old;
+        } else {
+          const insertRow = { ...providerPatch(row, nowIso), first_seen_at: createdAt(row, nowIso), last_status_change: nowIso, paid_source: row.status === "PAID" ? "reconciliation" : null, row_hash: row.row_hash };
+          // Reconcile is intentionally idempotent. A duplicate tx_id must not
+          // abort the whole worker when another overlap run inserted it first.
+          const { error } = await sb.from("maven_transactions").upsert(insertRow, { onConflict: "tx_id", ignoreDuplicates: false });
+          if (error) throw new Error(`insert ${row.tx_id}: ${error.message}`);
+          inserted++;
+          continue;
+        }
       }
       if (old.row_hash === row.row_hash) { unchanged++; continue; }
 

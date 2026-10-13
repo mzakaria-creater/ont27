@@ -38,6 +38,13 @@ function json(body: unknown, status = 200) {
 // after seeing a false failure. Added a short bounded retry on the read-back
 // itself (see VERIFY_RETRY_ATTEMPTS below) — zero added latency when the
 // first read already matches, which is the dominant case.
+//
+// 2026-10-10 (same day, second fix): a direct edit from UNDERPAID to PAID
+// ('SMS verified / payment evidence confirmed') was unconditionally refused
+// with "Live provider status is UNDERPAID, not PENDING — refusing reversal".
+// The reversal guard had a safe path for PAID<->DECLINED and for PAID (down
+// to) UNDERPAID, but no symmetric path for UNDERPAID back up to PAID once a
+// human confirms the full amount really was paid. See safeUnderpaymentCorrection.
 // ============================================================================
 
 const DEFAULT_BASE = "https://bo.maven-consulting.co/Supplier";
@@ -348,7 +355,15 @@ Deno.serve(async (req) => {
       } else {
         if (beforeStatus !== "PENDING") {
           const repriceInPlace = amountOverride != null && beforeStatus === effectiveDecision;
-          const trustedCorrectionSource = ["manual_fix_decline_reversal", "complaint", "direct_edit"].includes(String(source ?? ""));
+          // "late_sms_match" is server/lateSmsMatches.ts's operator-approved
+          // popup, whose entire purpose is recovering a transaction the 5-minute
+          // auto-decline sweep closed before its SMS evidence arrived -- its own
+          // request already sends allow_reversal:true for exactly this case.
+          // Omitting it here meant every approval through that popup failed with
+          // "refusing reversal" unconditionally (confirmed live: tx 138499863
+          // failed identically 5 times in under 30 seconds), because this was the
+          // only gate actually checked -- allow_reversal alone was never enough.
+          const trustedCorrectionSource = ["manual_fix_decline_reversal", "complaint", "direct_edit", "late_sms_match"].includes(String(source ?? ""));
           const safeReversal = allow_reversal === true && trustedCorrectionSource && ["PAID", "DECLINED"].includes(effectiveDecision) && ["PAID", "DECLINED"].includes(String(beforeStatus ?? "")) && beforeStatus !== effectiveDecision;
           const safeUnderpayment = amountOverride != null && effectiveDecision === "UNDERPAID" && beforeStatus === "PAID" && providerAmount != null && amountOverride < providerAmount;
           // Mirror image of safeUnderpayment: a transaction Maven marked

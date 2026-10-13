@@ -77,8 +77,15 @@ export async function listTransactions(cookie: string, start: number, from: stri
       } catch { /* try the next Maven endpoint */ }
     }
   }
-  if (!response || !response.ok || /<html[\s>]/i.test(text)) throw new Error(`Maven list failed (${response?.status ?? 0})`);
-  if (!best) throw new Error(`Maven list failed (${response.status})`);
+  // `best` is set as soon as ANY endpoint attempt parses a valid JSON page —
+  // including a legitimately empty one. Judging success from `response`/`text`
+  // here was wrong: those hold whichever endpoint ran LAST, so a good, already-
+  // parsed `best` from the primary endpoint was discarded whenever the
+  // fallback endpoint (tried only because the primary page's count was 0, a
+  // normal quiet-window case) came back as an HTML error page on an
+  // otherwise-200 response. That is the exact "Maven list failed (200)" seen
+  // live, ten times in 12 hours, on perfectly healthy empty pages.
+  if (!best) throw new Error(`Maven list failed (${response?.status ?? 0})`);
   const payload = best;
   if (payload.errorMessage) throw new Error(payload.errorMessage);
   // `best` is already normalized above. Returning the original Maven field
