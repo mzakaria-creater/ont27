@@ -241,16 +241,17 @@ function smsDirection(message: string): "in" | "out" | "notice" | "unknown" {
   if (/لديك\s*عملية\s*سحب/.test(c) && !/بمبلغ/.test(c)) return "notice";
   const isOut = /(عملية\s*سحب\s*ناجحة|تحويل\s*أموال\s*ناجحة|رسوم\s*السحب|رسوم\s*التحويل|تم\s*خصم|تم\s*سحب|تم\s*تحويل|لرقم|تحويل\s*(إلى|الي|الى))/.test(c)
     || /(withdraw|debit|paid out)/i.test(c);
-  // "لتأكيد دفع مبلغ X ... ل <merchant>" is Vodafone Cash's merchant/bill-pay
-  // COMPLETED-payment confirmation (confirmed live: the "Ubiqpay Technology
-  // Ltd." merchant-pay channel, 40 of 41 such SMS stuck at sms_category
-  // "unknown" because this exact clause was recognized by neither isOut nor
-  // isIn, so classification fell through entirely to wallet-resolution
-  // success). Deliberately narrow to "لتأكيد" + "دفع مبلغ" together: Orange's
-  // "ادفع X (merchant)" and Fawry's "To pay X for merchant" are PENDING
-  // payment-request notifications, not confirmations that money arrived, and
-  // must never be classified as a deposit.
-  const isIn = /(تم\s*استلام|استلمت|استقبلت|إيداع|ايداع|تم\s*اضافة|تم\s*إضافة|لتأكيد\s*دفع\s*مبلغ)/.test(c)
+  // "لتأكيد دفع مبلغ X ... ل <merchant>" (e.g. "Ubiqpay Technology Ltd.") is a
+  // Vodafone Cash merchant/bill-pay confirmation for a SEPARATE merchant, not
+  // a deposit to us. A 2026-10-13 change briefly classified it as "deposit" on
+  // the theory that "لتأكيد" (confirm) implied a completed payment -- wrong,
+  // per the account owner directly and independently per two different staff
+  // (ahmedmano.solly, minafx2@gmail.com) each manually blocking an occurrence
+  // of this exact message as irrelevant before the correction. Must stay
+  // "unknown" like Orange's "ادفع X (merchant)" / Fawry's "To pay X for
+  // merchant" -- never classified as a deposit, never shown as financial
+  // evidence, never eligible for automation.
+  const isIn = /(تم\s*استلام|استلمت|استقبلت|إيداع|ايداع|تم\s*اضافة|تم\s*إضافة)/.test(c)
     || /(received|deposit|credited)/i.test(c);
   if (isOut) return "out"; // a successful outgoing action always wins
   if (isIn) return "in";
