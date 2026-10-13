@@ -10,7 +10,7 @@ import PageSizeSelect from '../components/PageSizeSelect'
 import ProofModal from '../components/ProofModal'
 import SenderIdentity from '../components/SenderIdentity'
 import { useAuth } from '../auth/AuthContext'
-import { AlertTriangle, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, CircleHelp, Clock3, Eye, Image, LayoutGrid, MessageSquareText, Pencil, RefreshCw, Search, SlidersHorizontal, Sparkles, TableProperties, Unlink, Users, WalletCards, X, XCircle } from 'lucide-react'
+import { AlertTriangle, Ban, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, CircleHelp, Clock3, Eye, Image, LayoutGrid, MessageSquareText, Pencil, RefreshCw, Search, SlidersHorizontal, Sparkles, TableProperties, Unlink, Unlock, Users, WalletCards, X, XCircle } from 'lucide-react'
 import TransactionEditDialog from '../components/TransactionEditDialog'
 import TransactionDetailModal from '../components/TransactionDetailModal'
 import ColumnPicker, { useVisibleColumns } from '../components/ColumnPicker'
@@ -334,6 +334,7 @@ export default function Transactions() {
   const [pageSize, setPageSize] = usePageSize('transactions', TRX_PAGE_SIZES)
   const { t } = useLocale()
   const { can } = useAuth()
+  const canClientProtection = can('risk', 'can_edit') || can('transactions', 'can_edit') || can('client_crm', 'can_edit')
   const [params, setParams] = useSearchParams()
   const type = params.get('type') ?? ''
   const status = params.get('status') ?? ''
@@ -383,7 +384,7 @@ export default function Transactions() {
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null)
   const [bulkResult, setBulkResult] = useState<{ action: 'approve' | 'decline'; ok: string[]; failed: { ref: string; reason: string }[] } | null>(null)
-  const [proof, setProof] = useState<{ url: string; ref: string; onApprove?: () => void | Promise<void>; onDecline?: () => void | Promise<void> } | null>(null)
+  const [proof, setProof] = useState<{ url: string; ref: string; onApprove?: () => void | Promise<void>; onDecline?: () => void | Promise<void>; onBlock?: () => void | Promise<void>; blockLabel?: string } | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   // Raw-details JSON is expensive to pretty-print and rarely viewed — defer
   // it until someone actually opens that disclosure, instead of stringifying
@@ -840,6 +841,34 @@ export default function Transactions() {
     }
   }
 
+  const changeClientBlock = async (row: TxRow, action: 'block' | 'unblock') => {
+    const phone = row.sender_number?.trim()
+    const id = row.kind === 'deposit' ? row.tx_id : row.maven_id
+    if (!canClientProtection || !phone) return
+    const question = action === 'block' ? t('حظر هذا العميل؟', 'Block this client?') : t('رفع الحظر عن هذا العميل؟', 'Unblock this client?')
+    if (!window.confirm(`${question}\n${phone}`)) return
+    const key = `${row.kind}-${id}-${action}-client`
+    setActionBusy(key)
+    setErr(null)
+    try {
+      await api(action === 'block' ? '/api/risk/blacklist' : '/api/risk/blacklist/unblock-client', {
+        method: 'POST',
+        body: JSON.stringify(action === 'block'
+          ? { type: 'phone', value: phone, tx_id: id, reason: `Blocked from All Transactions · ${row.ontarget_ref ?? id}` }
+          : { value: phone }),
+      })
+      await load(true)
+    } catch (e) {
+      setErr(e instanceof ApiError && e.code === 'sms_link_requires_manual_review'
+        ? t('توجد SMS مرتبطة — المعاملة تحتاج مراجعة يدوية قبل حظر العميل.', 'SMS is linked — manual review is required before blocking the client.')
+        : e instanceof ApiError && e.status === 409
+          ? t('العميل محظور بالفعل.', 'Client is already blocked.')
+          : t('تعذر تحديث حظر العميل.', 'Could not update client block.'))
+    } finally {
+      setActionBusy(null)
+    }
+  }
+
   const refreshNow = async () => {
     setErr(null)
     setLoading(true)
@@ -1078,7 +1107,7 @@ export default function Transactions() {
                           </button>
                         : <button type="button" className="tx-sms-chip is-missing" onClick={() => toggleExpanded(rowKey)}>{t('بدون SMS', 'No SMS')}</button>}</td>
                       case 'proof': return <td key={colId}>{proofUrl
-                        ? <button type="button" className="tx-proof-icon" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id), onApprove: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'approve'); setProof(null) } : undefined, onDecline: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'decline'); setProof(null) } : undefined })} aria-label={t('عرض الإثبات', 'View proof')} title={t('عرض الإثبات', 'View proof')}><Image size={14}/></button>
+                        ? <button type="button" className="tx-proof-icon" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id), onApprove: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'approve'); setProof(null) } : undefined, onDecline: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'decline'); setProof(null) } : undefined, onBlock: canClientProtection && r.kind === 'deposit' && r.sender_number ? async () => { await changeClientBlock(r, r.is_blacklisted ? 'unblock' : 'block'); setProof(null) } : undefined, blockLabel: r.is_blacklisted ? t('رفع حظر العميل', 'Unblock client') : t('حظر العميل', 'Block client') })} aria-label={t('عرض الإثبات', 'View proof')} title={t('عرض الإثبات', 'View proof')}><Image size={14}/></button>
                         : <span className="tx-proof-empty" title={t('لا يوجد إثبات', 'No proof')}>—</span>}</td>
                       case 'party': return <td key={colId}><SenderIdentity name={party} phone={clientPhone} nameHref={party ? `/transactions?q=${encodeURIComponent(party)}` : undefined} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined}/></td>
                       case 'client_name': return <td key={colId}>{party ?? '—'}</td>
@@ -1107,7 +1136,7 @@ export default function Transactions() {
                         <tr key={rowKey} className={`${r.status === 'PENDING' ? 'row-pending ' : ''}${r.matched_sms?.match_status === 'auto_review' ? (r.kind === 'payout' ? 'sms-review-neon-out' : 'sms-review-neon-in') : ''}`}>
                         <td>{canBulkDecline(r) && <input type="checkbox" checked={selectedKeys.has(selKey(r))} onChange={() => toggleSelected(selKey(r))} aria-label={t('تحديد هذه المعاملة', 'Select this transaction')} />}</td>
                         <td><button type="button" className="tx-expand-btn" onClick={() => toggleExpanded(rowKey)} aria-expanded={isExpanded} aria-label={isExpanded ? t('إغلاق التفاصيل', 'Collapse details') : t('فتح التفاصيل', 'Expand details')}>{isExpanded ? <ChevronDown size={15}/> : <ChevronRight size={15}/>}</button></td>
-                        <td><div className="portal-row-actions">{canOpenModal ? <button type="button" className="tx-action-primary tx-action-icon" onClick={() => openDetail(r.ontarget_ref!)} title={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')} aria-label={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')}>{r.status === 'PENDING' ? <Pencil size={17}/> : <Eye size={17}/>}</button> : <Link className="tx-action-primary tx-action-icon" to={details} title={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')} aria-label={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')}>{r.status === 'PENDING' ? <Pencil size={17}/> : <Eye size={17}/>}</Link>}{id && (r.kind === 'deposit' ? <TransactionEditDialog iconOnly txId={Number(id)} ontargetRef={r.ontarget_ref} status={r.status} amount={r.amount} currency={r.currency} gateway={r.gateway} currentReceivingWallet={r.to_account_number ?? r.receiving_wallet} onDone={() => void load()} /> : <Link className="btn-ghost btn-sm tx-action-icon" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}&edit=1`} title={t('تعديل المعاملة', 'Edit transaction')} aria-label={t('تعديل المعاملة', 'Edit transaction')}><Pencil size={17}/></Link>)}{proofUrl && <button type="button" className="tx-proof-icon tx-action-icon" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id), onApprove: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'approve'); setProof(null) } : undefined, onDecline: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'decline'); setProof(null) } : undefined })} aria-label={t('عرض الإثبات', 'View proof')} title={t('عرض الإثبات', 'View proof')}><Image size={17}/></button>}</div></td>
+                        <td><div className="portal-row-actions">{canOpenModal ? <button type="button" className="tx-action-primary tx-action-icon" onClick={() => openDetail(r.ontarget_ref!)} title={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')} aria-label={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')}>{r.status === 'PENDING' ? <Pencil size={17}/> : <Eye size={17}/>}</button> : <Link className="tx-action-primary tx-action-icon" to={details} title={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')} aria-label={r.status === 'PENDING' ? t('تعديل المعاملة', 'Edit transaction') : t('عرض المعاملة', 'View transaction')}>{r.status === 'PENDING' ? <Pencil size={17}/> : <Eye size={17}/>}</Link>}{id && (r.kind === 'deposit' ? <TransactionEditDialog iconOnly txId={Number(id)} ontargetRef={r.ontarget_ref} status={r.status} amount={r.amount} currency={r.currency} gateway={r.gateway} currentReceivingWallet={r.to_account_number ?? r.receiving_wallet} onDone={() => void load()} /> : <Link className="btn-ghost btn-sm tx-action-icon" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}&edit=1`} title={t('تعديل المعاملة', 'Edit transaction')} aria-label={t('تعديل المعاملة', 'Edit transaction')}><Pencil size={17}/></Link>)}{proofUrl && <button type="button" className="tx-proof-icon tx-action-icon" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id), onApprove: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'approve'); setProof(null) } : undefined, onDecline: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'decline'); setProof(null) } : undefined, onBlock: canClientProtection && r.kind === 'deposit' && r.sender_number ? async () => { await changeClientBlock(r, r.is_blacklisted ? 'unblock' : 'block'); setProof(null) } : undefined, blockLabel: r.is_blacklisted ? t('رفع حظر العميل', 'Unblock client') : t('حظر العميل', 'Block client') })} aria-label={t('عرض الإثبات', 'View proof')} title={t('عرض الإثبات', 'View proof')}><Image size={17}/></button>}</div></td>
                         <td className="mono">{canOpenModal ? <button type="button" className="transaction-cell-link tx-id-link" onClick={() => openDetail(r.ontarget_ref!)}>{id}</button> : <Link className="transaction-cell-link" to={details}>{r.is_checkout_session ? r.ontarget_ref : id}</Link>}{r.is_blacklisted && <span className="blacklist-marker" title={t('رقم الهاتف محظور — رفض تلقائي', 'Phone blacklisted — auto-decline')} aria-label={t('رقم الهاتف محظور', 'Phone blacklisted')}>🚫</span>}{r.is_checkout_session && <span className="deposit-kind is-first">🔗 Payment link</span>}{identifiers.filter((value) => value !== String(id)).map((value) => <div key={value} className="cell-sub mono">{value}</div>)}{isDeclinedDuplicate && <span className="deposit-kind is-declined-duplicate">⚠ {t('مرفوض مكرر','Declined duplicate')}</span>}{r.kind === 'deposit' && !r.is_checkout_session && <span className={`deposit-kind ${r.deposit_kind === 'retention_deposit' ? 'is-retention' : 'is-first'}`}>{r.deposit_kind === 'retention_deposit' ? `↻ ${t('Retention','Retention')}` : `★ ${t('First','First')}`}</span>}</td>
                         {shownColumns.map((c) => cell(c.id))}
                       </tr>
@@ -1124,7 +1153,7 @@ export default function Transactions() {
                         <div><span>{t('التكرار', 'Duplicates')}</span>{(r.client_transaction_count ?? 1) > 1 ? <Link className="transaction-cell-link" to={`/transactions?q=${encodeURIComponent(clientPhone ?? party ?? '')}`}>{r.client_transaction_count} {t('معاملات', 'transactions')}</Link> : t('أول معاملة', 'First transaction')}{isDeclinedDuplicate && <span className="deposit-kind is-declined-duplicate">⚠ {t('مرفوض مكرر','Declined duplicate')}</span>}</div>
                         <div><span>{t('اعتمد بواسطة', 'Approved by')}</span><strong>{r.status === 'PENDING' ? '—' : (isAutomaticApprovalActor(rowApprovedByActor(r)) ? t('آلي (Auto)', 'Auto') : rowApprovedByActor(r))}</strong></div>
                       </div>
-                      <div className="tx-expanded-actions">{r.status === 'PENDING' && !r.is_checkout_session && r.kind === 'deposit' && can('deposits','can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r,'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.status === 'PENDING' && r.kind === 'payout' && can('payouts','can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.kind === 'deposit' && r.status === 'DECLINED' && !r.matched_sms && can('sms_live','can_edit') && <><Link className="btn-primary btn-sm" to={liveSmsHref(r)}>📨 {t('SMS مباشر', 'Live SMS')}</Link><Link className="btn-ghost btn-sm danger" to={smsAssignHref(r)}>🔗✅ {t('ربط واعتماد SMS', 'Link & approve SMS')}</Link></>}{r.matched_sms && can('sms_live','can_edit') && <button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void unlinkSms(r)}><Unlink size={13} aria-hidden="true"/> {t('فك ربط SMS', 'Unlink SMS')}</button>}{r.is_checkout_session && <span className="cell-sub">{t('جلسة رابط دفع — بانتظار ظهور المعاملة المزوّدة', 'Payment-link session — waiting for provider transaction')}</span>}</div>
+                      <div className="tx-expanded-actions">{r.status === 'PENDING' && !r.is_checkout_session && r.kind === 'deposit' && can('deposits','can_approve') && <><button className="btn-primary btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r,'approve')}>{t('اعتماد', 'Approve')}</button><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.status === 'PENDING' && r.kind === 'payout' && can('payouts','can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void decide(r,'decline')}>{t('رفض', 'Reject')}</button></>}{r.kind === 'deposit' && r.status === 'DECLINED' && !r.matched_sms && can('sms_live','can_edit') && <><Link className="btn-primary btn-sm" to={liveSmsHref(r)}>📨 {t('SMS مباشر', 'Live SMS')}</Link><Link className="btn-ghost btn-sm danger" to={smsAssignHref(r)}>🔗✅ {t('ربط واعتماد SMS', 'Link & approve SMS')}</Link></>}{r.matched_sms && can('sms_live','can_edit') && <button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void unlinkSms(r)}><Unlink size={13} aria-hidden="true"/> {t('فك ربط SMS', 'Unlink SMS')}</button>}{canClientProtection && r.kind === 'deposit' && r.sender_number && (r.is_blacklisted ? <button className="btn-ghost btn-sm" disabled={actionBusy !== null} onClick={() => void changeClientBlock(r, 'unblock')} title={t('رفع حظر العميل', 'Unblock client')}><Unlock size={13}/> {t('رفع الحظر', 'Unblock')}</button> : <button className="btn-ghost btn-sm danger" disabled={actionBusy !== null} onClick={() => void changeClientBlock(r, 'block')} title={t('حظر العميل', 'Block client')}><Ban size={13}/> {t('حظر العميل', 'Block client')}</button>)}{r.is_checkout_session && <span className="cell-sub">{t('جلسة رابط دفع — بانتظار ظهور المعاملة المزوّدة', 'Payment-link session — waiting for provider transaction')}</span>}</div>
                       <details className="tx-raw-details" onToggle={(e) => { if (e.currentTarget.open) setRawOpen((current) => current.has(rowKey) ? current : new Set(current).add(rowKey)) }}><summary>{t('عرض تفاصيل Raw', 'View raw details')}</summary>{rawOpen.has(rowKey) ? (r.raw_preview ? <pre>{JSON.stringify(r.raw_preview, null, 2)}</pre> : <p className="cell-sub">{t('لا تتوفر بيانات Raw لهذا الصف.', 'Raw data is not available for this row.')}</p>) : null}</details>
                       </div>
                       <div className="tx-expanded-sms-side">
@@ -1168,7 +1197,7 @@ export default function Transactions() {
                     : <span className="tx-sms-chip is-missing">{t('بدون SMS', 'No SMS')}</span>)}
                 </div>
                 {r.kind === 'deposit' && r.matched_sms?.balance_after != null && <div className="tx-live-balance mono">رصيدك الحالي {money(r.matched_sms.balance_after, r.currency ?? 'EGP')}</div>}
-                {proofUrl && <button type="button" className="all-tx-card-proof" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id), onApprove: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'approve'); setProof(null) } : undefined, onDecline: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'decline'); setProof(null) } : undefined })}><img src={proofUrl} alt="" loading="lazy" /><span>{t('عرض إثبات الدفع', 'View payment proof')}</span></button>}
+                {proofUrl && <button type="button" className="all-tx-card-proof" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id), onApprove: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'approve'); setProof(null) } : undefined, onDecline: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'decline'); setProof(null) } : undefined, onBlock: canClientProtection && r.kind === 'deposit' && r.sender_number ? async () => { await changeClientBlock(r, r.is_blacklisted ? 'unblock' : 'block'); setProof(null) } : undefined, blockLabel: r.is_blacklisted ? t('رفع حظر العميل', 'Unblock client') : t('حظر العميل', 'Block client') })}><img src={proofUrl} alt="" loading="lazy" /><span>{t('عرض إثبات الدفع', 'View payment proof')}</span></button>}
                 <div className="all-tx-card-brands"><MerchantLogo merchant={r.merchant ?? r.master_merchant} /><MethodLogo method={r.kind === 'deposit' ? r.payment_method : r.pay_by} /></div>
                 <dl>
                   <div><dt>{t('النوع', 'Type')}</dt><dd>{r.kind === 'deposit' ? t('إيداع', 'Deposit') : t('سحب', 'Payout')}</dd></div>
@@ -1187,6 +1216,9 @@ export default function Transactions() {
                   {r.kind === 'deposit' && r.status === 'DECLINED' && !r.matched_sms && can('sms_live','can_edit') && <><Link className="btn-primary btn-sm" to={liveSmsHref(r)}>📨 {t('SMS مباشر', 'Live SMS')}</Link><Link className="btn-ghost btn-sm" to={smsAssignHref(r)}>🔗✅ {t('تعيين واعتماد SMS', 'Assign & approve SMS')}</Link></>}
                   {r.matched_sms && can('sms_live','can_edit') && <button className="btn-ghost danger btn-sm" disabled={actionBusy !== null} onClick={() => void unlinkSms(r)}><Unlink size={13} aria-hidden="true"/> {t('فك ربط SMS', 'Unlink SMS')}</button>}
                   {r.status === 'PENDING' && r.kind === 'payout' && can('payouts', 'can_approve') && <><Link className="btn-primary btn-sm" to={`/payouts?q=${encodeURIComponent(r.ontarget_ref ?? String(id))}`}>{t('إثبات ودفع', 'Proof & Pay')}</Link><button className="btn-ghost danger btn-sm" disabled={actionBusy !== null} onClick={() => void decide(r, 'decline')}>{t('رفض', 'Reject')}</button></>}
+                  {canClientProtection && r.kind === 'deposit' && r.sender_number && (r.is_blacklisted
+                    ? <button className="btn-ghost btn-sm" disabled={actionBusy !== null} onClick={() => void changeClientBlock(r, 'unblock')} title={t('رفع حظر العميل', 'Unblock client')}><Unlock size={13}/> {t('رفع الحظر', 'Unblock')}</button>
+                    : <button className="btn-ghost danger btn-sm" disabled={actionBusy !== null} onClick={() => void changeClientBlock(r, 'block')} title={t('حظر العميل', 'Block client')}><Ban size={13}/> {t('حظر العميل', 'Block client')}</button>)}
                   {canOpenModal ? <button type="button" className="btn-ghost btn-sm" onClick={() => openDetail(r.ontarget_ref!)}>{t('التفاصيل', 'Details')}</button> : <Link className="btn-ghost btn-sm" to={details}>{t('التفاصيل', 'Details')}</Link>}
                 </div>
               </article>
@@ -1203,7 +1235,7 @@ export default function Transactions() {
         )}
       </section>
     </div>
-      {proof && <ProofModal url={proof.url} title={`${t('إثبات الدفع', 'Payment proof')} · ${proof.ref}`} onClose={() => setProof(null)} actionBusy={actionBusy !== null} onApprove={proof.onApprove} onDecline={proof.onDecline} />}
+      {proof && <ProofModal url={proof.url} title={`${t('إثبات الدفع', 'Payment proof')} · ${proof.ref}`} onClose={() => setProof(null)} actionBusy={actionBusy !== null} onApprove={proof.onApprove} onDecline={proof.onDecline} onBlock={proof.onBlock} blockLabel={proof.blockLabel} />}
       {openRef && <TransactionDetailModal txRef={openRef} onClose={closeDetail} onChanged={() => void load(true)} />}
     </>
   )

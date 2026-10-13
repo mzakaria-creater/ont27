@@ -11,6 +11,8 @@ type ProofModalProps = {
   onClose: () => void
   onApprove?: () => void | Promise<void>
   onDecline?: () => void | Promise<void>
+  onBlock?: () => void | Promise<void>
+  blockLabel?: string
   actionBusy?: boolean
 }
 
@@ -28,7 +30,7 @@ const EXTRACT_FIELDS: [string, [string, string]][] = [
   ['balance_after', ['الرصيد بعد', 'Balance after']],
 ]
 
-export default function ProofModal({ url, title, onClose, onApprove, onDecline, actionBusy = false }: ProofModalProps) {
+export default function ProofModal({ url, title, onClose, onApprove, onDecline, onBlock, blockLabel, actionBusy = false }: ProofModalProps) {
   const { t } = useLocale()
   const [zoom, setZoom] = useState(1)
   const [extracting, setExtracting] = useState(false)
@@ -89,9 +91,10 @@ export default function ProofModal({ url, title, onClose, onApprove, onDecline, 
             </dl>
           )}
         </div>}
-        {(onApprove || onDecline) && <div className="proof-decision-actions">
+        {(onApprove || onDecline || onBlock) && <div className="proof-decision-actions">
           {onApprove && <button type="button" className="btn-primary" disabled={actionBusy} onClick={() => void onApprove()}>✅ {actionBusy ? t('جارٍ التنفيذ…', 'Processing…') : t('اعتماد', 'Approve')}</button>}
           {onDecline && <button type="button" className="btn-ghost danger" disabled={actionBusy} onClick={() => void onDecline()}>❌ {actionBusy ? t('جارٍ التنفيذ…', 'Processing…') : t('رفض', 'Decline')}</button>}
+          {onBlock && <button type="button" className="btn-ghost danger" disabled={actionBusy} onClick={() => void onBlock()}>🚫 {actionBusy ? t('جارٍ التنفيذ…', 'Processing…') : (blockLabel ?? t('حظر العميل', 'Block client'))}</button>}
         </div>}
       </div>
     </div>
