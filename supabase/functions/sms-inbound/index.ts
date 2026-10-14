@@ -24,6 +24,23 @@ const supabaseAdmin = createClient(SUPABASE_URL, secretKey, {
 // EdgeRuntime.waitUntil call site below): a slow or down mail server must
 // never add latency to -- or fail -- live SMS ingestion.
 const WITHDRAWAL_ALERT_EMAIL = "minafx2@gmail.com";
+
+// Confirmed live on SMS #1014741 (Orange Cash, "عملية تحويل أموال ناجحة
+// بمبلغ 3700.00 جنيه، لرقم 01094182796، رسوم التحويل 15.00 جنيه، رصيدك
+// الحالي 38.60 جنيه"): wallet_number/receiver_number on a withdrawal row is
+// OUR OWN sending wallet, never the recipient -- same fact
+// server/payoutSmsMatcher.ts's payoutDestination() already documents and
+// extracts via this identical "لرقم" pattern. The first version of this
+// alert used wallet_number/receiver_number as if it were the recipient and
+// never surfaced the real destination number at all, nor the fee/balance
+// that are sitting right there in the message.
+function extractPayoutDestination(message: string): string | null {
+  return message.match(/(?:لرقم|to\s+(?:number|phone)|recipient)\s*[:：-]?\s*(?:\+?20)?(01\d{9})/i)?.[1] ?? null;
+}
+function extractTransferFee(message: string): string | null {
+  return message.match(/رسوم\s*(?:التحويل|السحب)\s*[:：]?\s*([\d.,]+)/)?.[1] ?? null;
+}
+
 async function sendWithdrawalAlertEmail(row: Record<string, unknown>, smsId: number): Promise<void> {
   const smtpUser = Deno.env.get("SMTP_USER");
   const smtpPassword = Deno.env.get("SMTP_PASSWORD");
@@ -37,16 +54,21 @@ async function sendWithdrawalAlertEmail(row: Record<string, unknown>, smsId: num
     secure: Number(Deno.env.get("SMTP_PORT") || "465") === 465,
     auth: { user: smtpUser, pass: smtpPassword },
   });
+  const message = String(row.message ?? "");
   const amount = row.amount != null ? `${row.amount} EGP` : "—";
-  const wallet = row.wallet_number ?? row.receiver_number ?? "—";
-  const sender = row.sender_name ?? row.sender_number ?? "—";
+  const ourWallet = row.wallet_number ?? row.receiver_number ?? "—";
+  const recipient = extractPayoutDestination(message) ?? "—";
+  const fee = extractTransferFee(message);
   const provider = row.provider ?? "—";
-  const subject = `Money Out SMS #${smsId}: ${amount} (${provider})`;
+  const subject = `Money Out SMS #${smsId}: ${amount} to ${recipient} (${provider})`;
   const text = [
     `Withdrawal (money-out) SMS detected.`, ``,
-    `SMS #${smsId}`, `Amount: ${amount}`, `From wallet: ${wallet}`, `Provider: ${provider}`,
-    `Sender/payee: ${sender}`, `Device: ${row.device_name ?? "—"}`, `Received: ${row.received_at ?? "—"}`,
-    ``, `Message:`, String(row.message ?? ""),
+    `SMS #${smsId}`, `Amount: ${amount}`, `To (recipient): ${recipient}`,
+    `From our wallet: ${ourWallet}`, `Transfer fee: ${fee ? `${fee} EGP` : "—"}`,
+    `Balance after: ${row.balance_after != null ? `${row.balance_after} EGP` : "—"}`,
+    `Provider: ${provider}`, `Reference: ${row.trx_reference ?? "—"}`,
+    `Device: ${row.device_name ?? "—"}`, `Received: ${row.received_at ?? "—"}`,
+    ``, `Message:`, message,
   ].join("\n");
   await transport.sendMail({
     from: Deno.env.get("SMTP_FROM") || `OnTarget <${smtpUser}>`,
