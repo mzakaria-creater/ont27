@@ -177,6 +177,28 @@ function fingerprint(list: ListResponse): string {
 const rowId = (r: TxRow) => r.kind === 'deposit' ? r.tx_id : r.maven_id
 const rowParty = (r: TxRow) => r.kind === 'deposit' ? (r.sender_name ?? r.sender_number) : (r.account_name ?? r.mobile_no)
 const rowClientPhone = (r: TxRow) => r.kind === 'deposit' ? r.sender_number : r.mobile_no
+
+// Maven's payout feed only ever reports pay_by as a generic "P2P" — confirmed
+// live, every single payout in the ledger — so the Method column had no way
+// to tell a Vodafone payout from an Orange one apart, unlike deposits (whose
+// payment_method already carries the real network). Egypt's mobile numbering
+// plan is public and effectively permanent (010 Vodafone, 011 Etisalat, 012
+// Orange, 015 WE), so derive the network from the recipient's own phone
+// number instead of showing a meaningless "P2P" badge for every payout.
+const networkFromEgyptianMobile = (mobile: string | null | undefined): string | null => {
+  let digits = (mobile ?? '').replace(/\D/g, '')
+  if (digits.startsWith('0020')) digits = digits.slice(2)
+  if (digits.startsWith('20') && digits.length === 12) digits = `0${digits.slice(2)}`
+  if (digits.length !== 11 || !digits.startsWith('0')) return null
+  switch (digits.slice(0, 3)) {
+    case '010': return 'Vodafone Cash'
+    case '011': return 'Etisalat Cash'
+    case '012': return 'Orange Cash'
+    case '015': return 'WE Pay'
+    default: return null
+  }
+}
+const payoutMethodLabel = (r: TxRow) => networkFromEgyptianMobile(r.mobile_no) ?? r.pay_by ?? null
 const rowSenderAccountName = (r: TxRow) => r.kind === 'deposit' ? (r.sender_account_name ?? r.payment_method ?? rowParty(r)) : (r.account_name ?? rowParty(r))
 // decision_actor (from deposit_decision_log/payout_decision_log, or the
 // synthetic "Maven team" reconciliation marker) takes priority over the
@@ -1092,7 +1114,7 @@ export default function Transactions() {
                   const cell = (colId: string) => {
                     switch (colId) {
                       case 'status': return <td key={colId}><TransactionStatusIcon status={r.status} label={st.label} /></td>
-                      case 'type': return <td key={colId}><div className="portal-method-cell"><MethodLogo method={r.kind === 'deposit' ? r.payment_method : r.pay_by}/><span>{r.kind === 'deposit' ? (r.payment_method ?? t('إيداع', 'Deposit')) : (r.pay_by ?? t('سحب', 'Payout'))}</span></div></td>
+                      case 'type': return <td key={colId}><div className="portal-method-cell"><MethodLogo method={r.kind === 'deposit' ? r.payment_method : payoutMethodLabel(r)}/><span>{r.kind === 'deposit' ? (r.payment_method ?? t('إيداع', 'Deposit')) : (payoutMethodLabel(r) ?? t('سحب', 'Payout'))}</span></div></td>
                       case 'amount': return (
                         <td key={colId} className="mono portal-amount-cell">
                           {money(r.amount, r.currency ?? 'EGP')}
@@ -1198,7 +1220,7 @@ export default function Transactions() {
                 </div>
                 {r.kind === 'deposit' && r.matched_sms?.balance_after != null && <div className="tx-live-balance mono">رصيدك الحالي {money(r.matched_sms.balance_after, r.currency ?? 'EGP')}</div>}
                 {proofUrl && <button type="button" className="all-tx-card-proof" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id), onApprove: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'approve'); setProof(null) } : undefined, onDecline: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'decline'); setProof(null) } : undefined, onBlock: canClientProtection && r.kind === 'deposit' && r.sender_number ? async () => { await changeClientBlock(r, r.is_blacklisted ? 'unblock' : 'block'); setProof(null) } : undefined, blockLabel: r.is_blacklisted ? t('رفع حظر العميل', 'Unblock client') : t('حظر العميل', 'Block client') })}><img src={proofUrl} alt="" loading="lazy" /><span>{t('عرض إثبات الدفع', 'View payment proof')}</span></button>}
-                <div className="all-tx-card-brands"><MerchantLogo merchant={r.merchant ?? r.master_merchant} /><MethodLogo method={r.kind === 'deposit' ? r.payment_method : r.pay_by} /></div>
+                <div className="all-tx-card-brands"><MerchantLogo merchant={r.merchant ?? r.master_merchant} /><MethodLogo method={r.kind === 'deposit' ? r.payment_method : payoutMethodLabel(r)} /></div>
                 <dl>
                   <div><dt>{t('النوع', 'Type')}</dt><dd>{r.kind === 'deposit' ? t('إيداع', 'Deposit') : t('سحب', 'Payout')}</dd></div>
                   <div><dt>{t('الطرف', 'Party')}</dt><dd><SenderIdentity name={party} phone={clientPhone} nameHref={party ? `/transactions?q=${encodeURIComponent(party)}` : undefined} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined} /></dd></div>
