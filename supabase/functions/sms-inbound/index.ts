@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
+import nodemailer from "npm:nodemailer@7.0.6";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 if (!SUPABASE_URL) throw new Error("SUPABASE_URL is required");
@@ -15,6 +16,45 @@ const supabaseAdmin = createClient(SUPABASE_URL, secretKey, {
   // prevent the database from recovering.
   db: { retry: false },
 });
+
+// "Money out" (withdrawal) SMS -- a transfer leaving one of our own wallets
+// -- gets an immediate email alert, same SMTP credentials the
+// transaction-approval-email function already uses in this project. This is
+// deliberately NOT awaited before the webhook responds (see the
+// EdgeRuntime.waitUntil call site below): a slow or down mail server must
+// never add latency to -- or fail -- live SMS ingestion.
+const WITHDRAWAL_ALERT_EMAIL = "minafx2@gmail.com";
+async function sendWithdrawalAlertEmail(row: Record<string, unknown>, smsId: number): Promise<void> {
+  const smtpUser = Deno.env.get("SMTP_USER");
+  const smtpPassword = Deno.env.get("SMTP_PASSWORD");
+  if (!smtpUser || !smtpPassword) {
+    console.warn("withdrawal alert email skipped: SMTP not configured");
+    return;
+  }
+  const transport = nodemailer.createTransport({
+    host: Deno.env.get("SMTP_HOST") || "mail.privateemail.com",
+    port: Number(Deno.env.get("SMTP_PORT") || "465"),
+    secure: Number(Deno.env.get("SMTP_PORT") || "465") === 465,
+    auth: { user: smtpUser, pass: smtpPassword },
+  });
+  const amount = row.amount != null ? `${row.amount} EGP` : "—";
+  const wallet = row.wallet_number ?? row.receiver_number ?? "—";
+  const sender = row.sender_name ?? row.sender_number ?? "—";
+  const provider = row.provider ?? "—";
+  const subject = `Money Out SMS #${smsId}: ${amount} (${provider})`;
+  const text = [
+    `Withdrawal (money-out) SMS detected.`, ``,
+    `SMS #${smsId}`, `Amount: ${amount}`, `From wallet: ${wallet}`, `Provider: ${provider}`,
+    `Sender/payee: ${sender}`, `Device: ${row.device_name ?? "—"}`, `Received: ${row.received_at ?? "—"}`,
+    ``, `Message:`, String(row.message ?? ""),
+  ].join("\n");
+  await transport.sendMail({
+    from: Deno.env.get("SMTP_FROM") || `OnTarget <${smtpUser}>`,
+    to: WITHDRAWAL_ALERT_EMAIL,
+    subject,
+    text,
+  });
+}
 
 const jsonHeaders = {
   "Content-Type": "application/json",
@@ -538,6 +578,20 @@ Deno.serve(async (req: Request) => {
     if (error) {
       console.error("inbound_sms insert failed", error);
       return response({ error: "Could not store SMS" }, 500);
+    }
+
+    if (smsCategory === "withdrawal") {
+      const alertTask = sendWithdrawalAlertEmail(row, data.id).catch((err) =>
+        console.error("withdrawal alert email failed", err instanceof Error ? err.message : err)
+      );
+      try {
+        // @ts-ignore -- EdgeRuntime is a Supabase/Deno Deploy global, not in the Deno lib types.
+        EdgeRuntime.waitUntil(alertTask);
+      } catch {
+        // Runtime without EdgeRuntime.waitUntil (e.g. local dev) -- the
+        // response below still returns promptly either way; this only
+        // means the mail send races the function's teardown locally.
+      }
     }
 
     return response({ ok: true, id: data.id }, 201);

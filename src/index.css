@@ -545,6 +545,25 @@ body {
 .welcome-access-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}.welcome-access-card{display:grid;gap:8px;text-decoration:none;color:var(--text);padding:16px}.welcome-access-card:hover{border-color:var(--accent)}.welcome-access-card span{color:var(--text-dim);font-size:11px}
 .user-action-grid{display:flex;flex-wrap:wrap;gap:6px;min-width:360px}.account-link-value{margin:10px 0;padding:10px;border:1px solid var(--border);border-radius:8px;overflow-wrap:anywhere;background:var(--surface)}.account-action-page{min-height:100vh;display:grid;place-items:center;padding:20px;background:var(--bg)}.account-action-page .auth-card{width:min(430px,100%)}
 
+/* Every search bar here already renders its OWN clear ("x") button next to
+   the input (.trx-search-clear / the inline X icon), but the input's native
+   type="search" also draws the browser's own built-in clear icon inside the
+   field once it has a value -- in WebKit (Chrome/Safari/Edge) that's a second,
+   differently-styled "x" overlapping the input's own padding, and some
+   browsers also add search history/decoration chrome on top of it. Disable
+   the native decoration everywhere; the custom button already covers it. */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+input[type="search"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 /* Search is a primary operation throughout the control room. Give every
    established search control a visible boundary at rest and an unmistakable
    keyboard/focus halo, in both themes. */
@@ -4805,6 +4824,21 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .trx-kpi-strip { display: grid; gap: 10px; margin-bottom: 12px; }
 .trx-kpi-tile { cursor: pointer; text-align: start; border: 1px solid var(--border, rgba(128,128,128,.25)); }
 .trx-kpi-tile.active { outline: 2px solid var(--accent, #3b82f6); }
+
+/* All Transactions: the title + KPI strip + wallet/activity strips sit above
+   the table and were together taking up more vertical room than the table
+   itself on a laptop screen, pushing most rows below the fold. Shrink that
+   whole header stack so the table gets the space back and more rows show
+   without scrolling -- the data and controls are unchanged, only sizing. */
+.all-transactions-head { margin-block-end: 0; }
+.all-transactions-head h2 { font-size: 16px !important; }
+.all-transactions-head .page-sub { margin-top: 2px; font-size: 11.5px; }
+.trx-kpi-strip .stat-grid { margin-block-end: 8px; }
+.trx-kpi-strip .stat-card { padding: 8px 12px; gap: 1px; }
+.trx-kpi-strip .stat-label { font-size: 10.5px; }
+.trx-kpi-strip .stat-value { font-size: 16px; }
+.trx-wallet-strip { padding: 7px 10px; margin-block-end: 8px; }
+.trx-activity-insights { padding: 8px 12px; margin-block-end: 8px; }
 
 /* Treasury currency cards */
 .treasury-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
