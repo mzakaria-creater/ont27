@@ -400,6 +400,21 @@ Deno.serve(async (req: Request) => {
     const isWithdrawal = direction === "out" ? true : direction === "in" ? false : legacyWithdrawal;
     const isIncoming = direction === "in" ? true : direction === "out" ? false : legacyIncoming;
 
+    // "جالك طلب تحويل بمبلغ X ... افتح تطبيق أنا فودافون علشان تقبل أو ترفض
+    // الطلب" is Vodafone Cash's PENDING incoming-transfer-request notice --
+    // the money has not moved, the wallet owner still has to accept it in the
+    // app. Confirmed live on sender 01067348969: 8 occurrences across
+    // different fabricated amounts (158/150/151/100/80/74 EGP), only ONE real
+    // "تم استلام" deposit from that same sender ever landed (45 EGP, a
+    // different amount). One of the fake-amount request SMS (#1014624, 74
+    // EGP) was used as "SMS evidence" by staff to manually override an
+    // automation-engine-blacklist auto-decline back to PAID on tx #138501449
+    // -- i.e. this misclassification already caused one blacklisted sender's
+    // declined transaction to be paid out. Must stay "unknown": never a
+    // deposit/withdrawal, never shown as financial evidence, never wallet-
+    // resolved, never eligible for automation or manual-match "evidence".
+    const isPendingTransferRequest = /طلب\s*تحويل/.test(message) && /(تقبل|ترفض|accept|reject)/i.test(message);
+
     // A genuine wallet-provider deposit notification always originates from a
     // regulated sender ID (e.g. "OrangeCash") — Egyptian carriers never let a
     // real subscriber MSISDN send as one. A leading "+" on the raw envelope
@@ -421,18 +436,20 @@ Deno.serve(async (req: Request) => {
     // carrying a real wallet number just because its device has exactly one
     // mapped SIM, polluting an "unknown" row with data that implies evidence
     // that was never actually there.
-    const resolved = (isIncoming || isWithdrawal || amount !== null || textWallet)
+    const resolved = (!isPendingTransferRequest && (isIncoming || isWithdrawal || amount !== null || textWallet))
       ? await resolveWallet(device, simSlotValue, textWallet, amount, balance, isWithdrawal).catch(() => ({ wallet: null, employee: null, source: null }))
       : { wallet: null, employee: null, source: null };
     const wallet = resolved.wallet;
 
-    const smsCategory = ["deposit", "received", "income", "withdrawal", "expense"].includes(categoryText)
-      ? categoryText
-      : isWithdrawal
-        ? "withdrawal"
-        : (isIncoming || (amount !== null && wallet !== null))
-          ? "deposit"
-          : "unknown";
+    const smsCategory = isPendingTransferRequest
+      ? "unknown"
+      : ["deposit", "received", "income", "withdrawal", "expense"].includes(categoryText)
+        ? categoryText
+        : isWithdrawal
+          ? "withdrawal"
+          : (isIncoming || (amount !== null && wallet !== null))
+            ? "deposit"
+            : "unknown";
 
     // Genuine provider chatter that isn't a transaction (balance pings,
     // promo/loyalty texts, envelope-only fragments) goes to its own table
