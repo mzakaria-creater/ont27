@@ -111,6 +111,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   // Management — merchants, wallets, money movement
   { to: '/merchants', icon: '🏬', labelAr: 'التجار', labelEn: 'Merchants', keys: ['merchants'], group: 'customers' },
   { to: '/merchant-groups', icon: '🧱', labelAr: 'الشركاء والمجموعات', labelEn: 'Partners & Groups', keys: ['merchants'], group: 'customers' },
+  { to: '/late-matches', icon: '🔗', labelAr: 'مطابقات متأخرة', labelEn: 'Late SMS matches', keys: ['deposits'], group: 'overview' },
   { to: '/treasury', icon: '🏦', labelAr: 'الخزينة', labelEn: 'Treasury', keys: ['treasury', 'wallets', 'dashboard'], group: 'overview' },
   { to: '/fx', icon: '💹', labelAr: 'لوحة الأسعار', labelEn: 'FX dashboard', keys: ['dashboard', 'merchants', 'reports', 'treasury'], group: 'overview' },
   { to: '/wallets', icon: '👛', labelAr: 'المحافظ', labelEn: 'Wallets', keys: ['wallets'], group: 'payments' },
