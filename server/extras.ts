@@ -190,8 +190,18 @@ extraRoutes.get(
         .from('maven_transactions')
         // The list only needs a pagination estimate; exact COUNT(*) on the
         // production ledger can exceed the DB statement timeout and turn an
-        // otherwise fast page read into an intermittent HTTP 500.
-        .select(DEPOSIT_COLS, { count: 'planned' })
+        // otherwise fast page read into an intermittent HTTP 500. That intent
+        // held for a plain status/date filter, but a free-text search (q)
+        // runs an 11-way OR across trigram/JSON-path ILIKE columns that
+        // itself already costs 300ms-800ms+ -- and 'planned' still measured
+        // live as a real COUNT(*) subquery over the same filter (not a cheap
+        // EXPLAIN-based estimate), doubling that cost on every keystroke
+        // (confirmed live: this exact query, called 146 times, averaged
+        // 5-8s). Skip the count outright when q is set; `total` below is
+        // derived from the fetched window instead, exact whenever a source
+        // returned fewer rows than it was asked for (the common case for a
+        // targeted search) and only a lower-bound otherwise.
+        .select(DEPOSIT_COLS, q ? {} : { count: 'planned' })
         .order('created_utc', { ascending: false, nullsFirst: false })
         .range(0, fetchTo - 1)
       if (statuses.length) query = query.in('status', [...new Set(statuses.flatMap((value) => value === 'PAID' ? ['PAID', 'APPROVED'] : [value]))])
@@ -232,7 +242,9 @@ extraRoutes.get(
     const payQuery = () => {
       let query = db
         .from('maven_payout_transactions')
-        .select(PAYOUT_COLS, { count: 'planned' })
+        // See depQuery's comment: skip the count under a free-text search,
+        // same reasoning and same fallback via the fetched window below.
+        .select(PAYOUT_COLS, q ? {} : { count: 'planned' })
         .order('created_utc', { ascending: false, nullsFirst: false })
         .range(0, fetchTo - 1)
       if (statuses.length) query = query.in('status', [...new Set(statuses.flatMap((value) => value === 'PAID' ? ['PAID', 'APPROVED'] : [value]))])
@@ -270,7 +282,8 @@ extraRoutes.get(
     let checkoutCount = 0
     if (wantDep) {
       let checkoutQuery = db.from('checkout_sessions')
-        .select('id, reference, status, amount, currency, customer_name, customer_phone, payment_link_id, metadata, success_url, created_at, expires_at, paid_at', { count: 'planned' })
+        // See depQuery's comment: skip the count under a free-text search.
+        .select('id, reference, status, amount, currency, customer_name, customer_phone, payment_link_id, metadata, success_url, created_at, expires_at, paid_at', q ? {} : { count: 'planned' })
         .order('created_at', { ascending: false })
         .range(0, fetchTo - 1)
       if (from) checkoutQuery = checkoutQuery.gte('created_at', `${from}T00:00:00Z`)
@@ -444,7 +457,16 @@ extraRoutes.get(
           decision_actor: decision?.actor_name ?? null,
         }
       }),
-      total: (dep.count ?? 0) + (pay.count ?? 0) + checkoutCount,
+      // When q skipped the real count (see depQuery's comment), derive it
+      // from what was actually fetched: exact whenever every source
+      // returned fewer rows than it was asked for (nothing left beyond this
+      // window), otherwise a lower bound of fetchTo + 1 so pagination can
+      // still advance instead of silently capping at whatever was fetched.
+      total: q
+        ? ((dep.data?.length ?? 0) < fetchTo && (pay.data?.length ?? 0) < fetchTo && checkoutRows.length < fetchTo
+          ? rows.length
+          : fetchTo + 1)
+        : (dep.count ?? 0) + (pay.count ?? 0) + checkoutCount,
       limit,
       offset,
     })

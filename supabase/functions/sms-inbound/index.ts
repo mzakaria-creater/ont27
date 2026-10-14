@@ -41,6 +41,40 @@ function extractTransferFee(message: string): string | null {
   return message.match(/رسوم\s*(?:التحويل|السحب)\s*[:：]?\s*([\d.,]+)/)?.[1] ?? null;
 }
 
+function esc(value: unknown): string {
+  return String(value ?? "—").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
+// Red theme on purpose -- this is money LEAVING one of our wallets, the
+// opposite event from transaction-approval-email's green "approved"
+// template, and should read as an alert, not a confirmation.
+function withdrawalAlertHtml(fields: { smsId: number; amount: string; recipient: string; ourWallet: string; fee: string; balanceAfter: string; provider: string; reference: string; device: string; receivedAt: string; message: string }): { subject: string; html: string; text: string } {
+  const { smsId, amount, recipient, ourWallet, fee, balanceAfter, provider, reference, device, receivedAt, message } = fields;
+  const subject = `Money Out SMS #${smsId}: ${amount} to ${recipient} (${provider})`;
+  const rows: [string, string][] = [
+    ["Amount", amount], ["To (recipient)", recipient], ["From our wallet", ourWallet],
+    ["Transfer fee", fee], ["Balance after", balanceAfter], ["Provider", provider],
+    ["Reference", reference], ["Device", device], ["Received", receivedAt],
+  ].map(([label, value]) => [label, value]);
+  const rowsHtml = rows.map(([label, value]) => `<tr><td style="padding:9px 0;color:#667085">${esc(label)}</td><td align="right" style="padding:9px 0;font-weight:700">${esc(value)}</td></tr>`).join("");
+  const html = `<!doctype html><html><body style="margin:0;background:#f6f3f3;font-family:Arial,Helvetica,sans-serif;color:#2a1515">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 12px;background:#f6f3f3"><tr><td align="center">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 10px 32px rgba(120,20,20,.12)">
+  <tr><td style="padding:30px 36px;background:#7f1d1d;color:#fff"><div style="font-weight:800;letter-spacing:1.5px;font-size:14px">ONTARGET</div><div style="margin-top:20px;width:50px;height:50px;line-height:50px;text-align:center;border-radius:50%;background:#ef4444;font-size:26px">&#9650;</div><h1 style="margin:14px 0 4px;font-size:27px">Money Out Alert</h1><div style="color:#fecaca">Withdrawal SMS detected -- wallet balance decreased</div></td></tr>
+  <tr><td style="padding:30px 36px"><p style="font-size:15px;line-height:1.7;color:#57534e;margin:0 0 22px">A withdrawal SMS just reported money leaving one of our wallets (SMS #${smsId}).</p>
+  <div style="border:1px solid #fecaca;border-radius:14px;overflow:hidden"><div style="padding:20px;background:#fef2f2;border-bottom:1px solid #fecaca"><div style="font-size:12px;color:#991b1b">AMOUNT OUT</div><div style="font-size:29px;font-weight:800;color:#7f1d1d;margin-top:4px">${esc(amount)}</div><div style="margin-top:9px;font-size:14px;color:#57534e">${esc(ourWallet)} &nbsp;&#8594;&nbsp; ${esc(recipient)}</div></div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:12px 20px;font-size:14px">${rowsHtml}</table></div>
+  <div style="margin-top:22px;padding:14px 16px;background:#fafaf9;border-radius:10px;border:1px solid #e7e5e4;font-size:12.5px;color:#57534e;white-space:pre-wrap;direction:rtl;text-align:right">${esc(message)}</div></td></tr>
+  <tr><td style="padding:18px 36px;background:#fafaf9;border-top:1px solid #e7e5e4;color:#a8a29e;font-size:12px">Internal operational alert from OnTarget.</td></tr></table></td></tr></table></body></html>`;
+  const text = [
+    `Money Out Alert -- withdrawal SMS detected.`, ``,
+    `SMS #${smsId}`, `Amount: ${amount}`, `To (recipient): ${recipient}`,
+    `From our wallet: ${ourWallet}`, `Transfer fee: ${fee}`, `Balance after: ${balanceAfter}`,
+    `Provider: ${provider}`, `Reference: ${reference}`, `Device: ${device}`, `Received: ${receivedAt}`,
+    ``, `Message:`, message,
+  ].join("\n");
+  return { subject, html, text };
+}
+
 async function sendWithdrawalAlertEmail(row: Record<string, unknown>, smsId: number): Promise<void> {
   const smtpUser = Deno.env.get("SMTP_USER");
   const smtpPassword = Deno.env.get("SMTP_PASSWORD");
@@ -55,25 +89,25 @@ async function sendWithdrawalAlertEmail(row: Record<string, unknown>, smsId: num
     auth: { user: smtpUser, pass: smtpPassword },
   });
   const message = String(row.message ?? "");
-  const amount = row.amount != null ? `${row.amount} EGP` : "—";
-  const ourWallet = row.wallet_number ?? row.receiver_number ?? "—";
-  const recipient = extractPayoutDestination(message) ?? "—";
   const fee = extractTransferFee(message);
-  const provider = row.provider ?? "—";
-  const subject = `Money Out SMS #${smsId}: ${amount} to ${recipient} (${provider})`;
-  const text = [
-    `Withdrawal (money-out) SMS detected.`, ``,
-    `SMS #${smsId}`, `Amount: ${amount}`, `To (recipient): ${recipient}`,
-    `From our wallet: ${ourWallet}`, `Transfer fee: ${fee ? `${fee} EGP` : "—"}`,
-    `Balance after: ${row.balance_after != null ? `${row.balance_after} EGP` : "—"}`,
-    `Provider: ${provider}`, `Reference: ${row.trx_reference ?? "—"}`,
-    `Device: ${row.device_name ?? "—"}`, `Received: ${row.received_at ?? "—"}`,
-    ``, `Message:`, message,
-  ].join("\n");
+  const { subject, html, text } = withdrawalAlertHtml({
+    smsId,
+    amount: row.amount != null ? `${row.amount} EGP` : "—",
+    recipient: extractPayoutDestination(message) ?? "—",
+    ourWallet: String(row.wallet_number ?? row.receiver_number ?? "—"),
+    fee: fee ? `${fee} EGP` : "—",
+    balanceAfter: row.balance_after != null ? `${row.balance_after} EGP` : "—",
+    provider: String(row.provider ?? "—"),
+    reference: String(row.trx_reference ?? "—"),
+    device: String(row.device_name ?? "—"),
+    receivedAt: String(row.received_at ?? "—"),
+    message,
+  });
   await transport.sendMail({
     from: Deno.env.get("SMTP_FROM") || `OnTarget <${smtpUser}>`,
     to: WITHDRAWAL_ALERT_EMAIL,
     subject,
+    html,
     text,
   });
 }
@@ -477,6 +511,21 @@ Deno.serve(async (req: Request) => {
     // resolved, never eligible for automation or manual-match "evidence".
     const isPendingTransferRequest = /طلب\s*تحويل/.test(message) && /(تقبل|ترفض|accept|reject)/i.test(message);
 
+    // "لتأكيد دفع مبلغ X ... ل Ubiqpay Technology Ltd." is Vodafone Cash's
+    // merchant/bill-pay confirmation for a SEPARATE merchant (see the
+    // 2026-10-13/14 revert history below for isWithdrawal/isIncoming) --
+    // that revert only removed it as an explicit isIncoming SIGNAL, but
+    // never stopped the UNCONDITIONAL fallback two lines below ((amount !==
+    // null && wallet !== null) => "deposit") from reaching the same wrong
+    // answer by a different route: this message has a real amount and, once
+    // the device happens to map to exactly one wallet, a real wallet too.
+    // Confirmed live: SMS #1014822 (1400 EGP) landed sms_category='deposit'
+    // AGAIN days after the revert, already manually blocked by an operator.
+    // Must never resolve a wallet or classify as deposit, same as
+    // isPendingTransferRequest right above.
+    const isMerchantBillPayConfirmation = /لتأكيد\s*دفع\s*مبلغ/.test(message);
+    const isNonDepositConfirmation = isPendingTransferRequest || isMerchantBillPayConfirmation;
+
     // A genuine wallet-provider deposit notification always originates from a
     // regulated sender ID (e.g. "OrangeCash") — Egyptian carriers never let a
     // real subscriber MSISDN send as one. A leading "+" on the raw envelope
@@ -498,12 +547,12 @@ Deno.serve(async (req: Request) => {
     // carrying a real wallet number just because its device has exactly one
     // mapped SIM, polluting an "unknown" row with data that implies evidence
     // that was never actually there.
-    const resolved = (!isPendingTransferRequest && (isIncoming || isWithdrawal || amount !== null || textWallet))
+    const resolved = (!isNonDepositConfirmation && (isIncoming || isWithdrawal || amount !== null || textWallet))
       ? await resolveWallet(device, simSlotValue, textWallet, amount, balance, isWithdrawal).catch(() => ({ wallet: null, employee: null, source: null }))
       : { wallet: null, employee: null, source: null };
     const wallet = resolved.wallet;
 
-    const smsCategory = isPendingTransferRequest
+    const smsCategory = isNonDepositConfirmation
       ? "unknown"
       : ["deposit", "received", "income", "withdrawal", "expense"].includes(categoryText)
         ? categoryText
