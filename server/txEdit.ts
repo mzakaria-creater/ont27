@@ -236,14 +236,28 @@ export async function applyEdit(
           decision: mavenDecision,
           actor_name: actorName,
           remark: edit.reason,
-          // Preserve the route's execution context. Direct panel edits must
-          // reach ngpay-approve as `direct_edit` so an explicitly requested
+          // Preserve the route's execution context so an explicitly requested
           // PAID↔DECLINED correction (or an UNDERPAID→PAID correction once
           // the customer's full payment is actually confirmed, e.g. by SMS
           // evidence the provider's own classifier didn't have) can pass the
           // worker's audited reversal guard; otherwise the worker treats it
           // as an ordinary automation decision and correctly refuses it.
-          source: source === 'direct_edit' ? 'direct_edit' : 'panel_decision',
+          //
+          // This used to collapse every source OTHER than the literal string
+          // 'direct_edit' into 'panel_decision' -- which ngpay-approve's own
+          // trustedCorrectionSource never recognizes. The second real caller
+          // of applyEdit(), the edit-request approval route, passes
+          // `edit_request:<id>` here, so EVERY edit-request-approved
+          // reversal was silently refused with "refusing reversal", no
+          // matter how many times a steward approved it. Confirmed live: tx
+          // #138496378, minafx2@gmail.com retried an UNDERPAID->PAID
+          // correction 5 times over 25 minutes, failing identically every
+          // time. An edit-request approval went through the SAME role-gated
+          // human-approval step direct_edit does (arguably a stronger one --
+          // a separate requester AND approver), so it deserves the same
+          // trust. Pass the real source through; ngpay-approve now also
+          // recognizes the `edit_request:` prefix (see its own comment).
+          source,
           allow_reversal: edit.status != null && edit.status !== currentStatus && (
             (['PAID', 'DECLINED'].includes(currentStatus) && ['PAID', 'DECLINED'].includes(mavenDecision)) ||
             (currentStatus === 'UNDERPAID' && mavenDecision === 'PAID')

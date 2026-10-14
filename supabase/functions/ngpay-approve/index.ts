@@ -385,7 +385,17 @@ Deno.serve(async (req) => {
           // "refusing reversal" unconditionally (confirmed live: tx 138499863
           // failed identically 5 times in under 30 seconds), because this was the
           // only gate actually checked -- allow_reversal alone was never enough.
-          const trustedCorrectionSource = ["manual_fix_decline_reversal", "complaint", "direct_edit", "late_sms_match"].includes(String(source ?? ""));
+          // server/txEdit.ts's edit-request approval route passes
+          // `edit_request:<id>` here, not the bare string `direct_edit` --
+          // same pattern as the late_sms_match fix above, just not caught at
+          // the same time. It went through the SAME role-gated human
+          // approval step direct_edit did (a separate requester AND
+          // approver, if anything a stronger guarantee), so it deserves the
+          // same trust. Confirmed live: tx #138496378, minafx2@gmail.com
+          // retried an UNDERPAID->PAID correction 5 times over 25 minutes
+          // via the edit-request flow, failing identically every time.
+          const sourceStr = String(source ?? "");
+          const trustedCorrectionSource = ["manual_fix_decline_reversal", "complaint", "direct_edit", "late_sms_match"].includes(sourceStr) || sourceStr.startsWith("edit_request:");
           const safeReversal = allow_reversal === true && trustedCorrectionSource && ["PAID", "DECLINED"].includes(effectiveDecision) && ["PAID", "DECLINED"].includes(String(beforeStatus ?? "")) && beforeStatus !== effectiveDecision;
           const safeUnderpayment = amountOverride != null && effectiveDecision === "UNDERPAID" && beforeStatus === "PAID" && providerAmount != null && amountOverride < providerAmount;
           // Mirror image of safeUnderpayment: a transaction Maven marked
