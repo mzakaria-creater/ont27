@@ -17,6 +17,28 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
+// Fire-and-forget customer approval email. This is the ONE place every
+// approval actually gets confirmed with the real provider -- the manual
+// panel path (server/deposits.ts) also calls notifyApprovedTransaction
+// itself after this worker succeeds, but the dominant live path
+// (evaluate_and_dispatch_ngpay_decision_core -> this function directly,
+// actor_name "automation-engine"/"automation-engine-instant") never called
+// anything that sends mail. Confirmed live: 2026-10-14, a run of ~10
+// consecutive automation-approved transactions, zero approval emails.
+// transaction-approval-email's own approval_email_deliveries idempotency
+// check means calling it from both places for the same tx_id is safe --
+// the second call becomes a harmless "already_sent", not a duplicate send.
+function notifyApproval(supabaseUrl: string, serviceKey: string, txId: number): Promise<void> {
+  return fetch(`${supabaseUrl}/functions/v1/transaction-approval-email`, {
+    method: "POST",
+    signal: AbortSignal.timeout(20_000),
+    headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, "content-type": "application/json" },
+    body: JSON.stringify({ tx_id: txId }),
+  }).then(async (r) => {
+    if (!r.ok) console.error("approval email dispatch failed", { tx_id: txId, status: r.status, body: await r.text().catch(() => "") });
+  }).catch((e) => console.error("approval email dispatch failed", { tx_id: txId, error: e instanceof Error ? e.message : String(e) }));
+}
+
 // ============================================================================
 // ngpay-approve — REAL provider execution for NGPay deposit decisions.
 // (see earlier versions for full history)
@@ -390,6 +412,10 @@ Deno.serve(async (req) => {
                 reason: `Automation skipped: Maven is already ${beforeStatus}; local mirror repaired`,
                 executed_on_provider: true,
               }).eq("id", logRow.id);
+              if (String(beforeStatus).toUpperCase() === "PAID") {
+                const notifyTask = notifyApproval(supabaseUrl, serviceKey, tx_id);
+                try { (globalThis as any).EdgeRuntime?.waitUntil(notifyTask); } catch { /* best effort */ }
+              }
               return json({
                 ok: true,
                 tx_id,
@@ -491,6 +517,11 @@ Deno.serve(async (req) => {
     const updErr = txUpdate.error;
     if (updErr) {
       return json({ ok: true, warning: `provider execution succeeded but local row update failed: ${updErr.message}`, tx_id, before_status: beforeStatus, after_status: afterStatus, audit_log_id: logRow.id, executed_on_provider: true, account: session?.account });
+    }
+
+    if (String(afterStatus ?? decision).toUpperCase() === "PAID") {
+      const notifyTask = notifyApproval(supabaseUrl, serviceKey, tx_id);
+      try { (globalThis as any).EdgeRuntime?.waitUntil(notifyTask); } catch { /* best effort */ }
     }
 
     return json({
