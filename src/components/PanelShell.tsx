@@ -9,6 +9,7 @@ import { depositTime, money } from '../lib/deposits'
 import type { PagePermission } from '../lib/api'
 import { useLocale } from '../lib/locale'
 import { installNotificationAudioUnlock, playNotificationTone } from '../lib/notificationSounds'
+import MethodLogo from './MethodLogo'
 import { Ban, BarChart3, Bot, Building2, CalendarDays, ChevronDown, CircleDollarSign, Clock3, LayoutDashboard, Link2, Menu, MessageSquareText, Minimize2, PanelLeftClose, PanelLeftOpen, Plus, Search, Send, Settings, Users, WalletCards, X } from 'lucide-react'
 
 // Shared authed layout ("Live Transaction Monitor" skin): nav rail (real pages
@@ -233,6 +234,7 @@ interface RailSms {
   is_blocked?: boolean | null
   matched_sub_merchant?: string | null
   matched_master_merchant?: string | null
+  provider?: string | null
 }
 
 interface RailSmsCandidate {
@@ -539,7 +541,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
           return (
             <div key={r.id} role="button" tabIndex={0} onClick={() => setSelected(r)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelected(r) }} className={`sms-feed-item sms-feed-button ${cardState}`} aria-label={`SMS ${r.id} details`}>
               <div className="sms-feed-head">
-                <span className="sms-feed-device">{r.device_name ?? '—'}{r.sim_slot != null && <> · SIM{r.sim_slot}</>}</span>
+                <span className="sms-feed-device"><MethodLogo method={r.provider} />{r.device_name ?? '—'}{r.sim_slot != null && <> · SIM{r.sim_slot}</>}</span>
                 <span className="sms-feed-time mono">{depositTime({ first_seen_at: r.received_at })}</span>
               </div>
               <div className="sms-feed-main">

@@ -2041,7 +2041,8 @@ a.stat-card:hover { border-color: var(--accent); }
 .sms-widget-launcher.has-unlinked { border-color: #eab308; box-shadow: var(--shadow-panel), 0 0 0 3px rgba(234,179,8,.2), 0 0 24px rgba(234,179,8,.34); }
 .unlinked-badge { background: #ca8a04; box-shadow: 0 0 18px rgba(234,179,8,.72); }
 .sms-feed-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-.sms-feed-device { font-size: 9.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .02em; }
+.sms-feed-device { display: inline-flex; align-items: center; gap: 5px; font-size: 9.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .02em; }
+.sms-feed-device .method-logo { width: 16px; height: 16px; border-radius: 5px; flex: 0 0 auto; }
 .sms-feed-time { font-size: 11px; font-weight: 700; color: var(--text); }
 .sms-feed-main { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; min-width: 0; }
 .sms-feed-dir { flex: 0 0 auto; font-size: 12px; }
