@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthContext'
 import { CATEGORIES, categoryFor } from '../nav/pageCatalog'
 import { api, ApiError } from '../lib/api'
 import { syncProviders } from '../lib/providerSync'
-import { depositTime, money } from '../lib/deposits'
+import { depositTime, displayReceivingWallet, money } from '../lib/deposits'
 import type { PagePermission } from '../lib/api'
 import { useLocale } from '../lib/locale'
 import { installNotificationAudioUnlock, playNotificationTone } from '../lib/notificationSounds'
@@ -225,6 +225,7 @@ interface RailSms {
   matched_tx_id?: number | null
   matched_ontarget_ref?: string | null
   matched_receiving_wallet?: string | null
+  wallet_identity_ambiguous?: boolean | null
   linked_wallet_number?: string | null
   balance_after?: number | null
   wallet_balance_after?: number | null
@@ -521,11 +522,14 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
           const walletLinked = r.sms_category === 'withdrawal' && r.linked_wallet_number != null
           const linked = walletLinked || r.matched_tx_id != null
           const balance = r.balance_after ?? r.wallet_balance_after
-          // Keep the raw SMS wallet visible; the matched transaction wallet is
-          // shown separately so a mapping cannot hide the SMS evidence.
-          const receivingWallet = r.sms_category === 'withdrawal'
-            ? r.linked_wallet_number ?? r.receiver_number ?? r.wallet_number
-            : r.matched_receiving_wallet ?? r.confirmed_wallet_number ?? r.wallet_number ?? r.receiver_number
+          // Shared with the full /sms page's displayWalletForRow -- this
+          // widget used to read matched_receiving_wallet unconditionally
+          // (stale on an unlinked row) and ignore wallet_identity_ambiguous
+          // entirely, so it could show a device's merely-guessed wallet (when
+          // the forwarder omitted sim_slot and the device maps to more than
+          // one wallet) as if it were confirmed, which the full page already
+          // knows to hide rather than guess.
+          const receivingWallet = displayReceivingWallet(r)
           const rawText = r.raw_sms ?? r.message ?? r.sms_first_line
           // One color, one meaning: withdrawal is always red regardless of
           // link status (money leaving is its own kind of thing to watch);
@@ -564,9 +568,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
         })}
       </div>
       {selected && (() => {
-        const selectedWallet = selected.sms_category === 'withdrawal'
-          ? selected.linked_wallet_number ?? selected.receiver_number ?? selected.wallet_number
-          : selected.matched_receiving_wallet ?? selected.confirmed_wallet_number ?? selected.wallet_number ?? selected.receiver_number
+        const selectedWallet = displayReceivingWallet(selected)
         const selectedBalance = selected.balance_after ?? selected.wallet_balance_after
         const selectedRaw = selected.raw_sms ?? selected.message ?? selected.sms_first_line
         const selectedLinked = selected.sms_category === 'withdrawal' ? selected.linked_wallet_number != null : selected.matched_tx_id != null

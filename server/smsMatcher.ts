@@ -52,6 +52,24 @@ function dedupeSmsRows(rows: SmsRow[]): SmsRow[] {
   }
   return [...passthrough, ...byTrx.values()]
 }
+// An SMS's own network must never auto-match a transaction whose Maven
+// payment_method explicitly names the OTHER network -- amount+wallet+time
+// can coincidentally line up between two unrelated clients on different
+// networks now that both Vodafone and Orange wallets are live side by side,
+// and Maven's payment_method field ("VodafoneCash" / "Orange Money") is
+// exactly the signal that catches it. Ambiguous/unspecified methods ("Mobile
+// Wallet", null, a merchant name) stay eligible for either network; this only
+// rejects an explicit contradiction, the same soft-exclusion style as the
+// existing Orange-only checks below.
+const smsSourceText = (sms: SmsRow) => `${sms.sms_sender ?? ''} ${sms.provider ?? ''} ${sms.raw_sms ?? ''} ${sms.message ?? ''}`
+const smsIsVodafone = (sms: SmsRow) => /vodafone\s*cash|vf[- ]?cash|فودافون\s*كاش/i.test(smsSourceText(sms))
+const smsIsOrange = (sms: SmsRow) => /orange\s*cash|orange\s*money|اورنچ\s*كاش|اورنج\s*كاش/i.test(smsSourceText(sms))
+const crossNetworkMismatch = (sms: SmsRow, tx: TxRow) => {
+  const method = String(tx.payment_method ?? '').toLowerCase()
+  if (method.includes('vodafone') && smsIsOrange(sms)) return true
+  if (method.includes('orange') && smsIsVodafone(sms)) return true
+  return false
+}
 const nameKey = (value: unknown) => String(value ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter((part) => part.length > 1).join(' ')
 const sameName = (left: unknown, right: unknown) => { const a = nameKey(left); const b = nameKey(right); return Boolean(a && b && (a === b || a.includes(b) || b.includes(a))) }
 function hasBalanceContinuity(sms: SmsRow, history: SmsRow[]) {
@@ -177,6 +195,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
       }
     }
     const byEvidence = byAmount.filter((tx) => {
+      if (crossNetworkMismatch(sms, tx)) return false
       const txWallet = phone(transactionWallet(tx))
       const walletMatch = Boolean(txWallet && smsWallet && txWallet === smsWallet)
       if (smsPhone && phone(tx.sender_number) && phone(tx.sender_number) !== smsPhone) return false
@@ -202,6 +221,7 @@ export async function repairPaidSmsMatches(apply: boolean, scanLimit = PAGE): Pr
     // prevents the SMS from disappearing while deliberately avoiding any
     // instant provider decision. A known sender mismatch is still a hard stop.
     const byReviewEvidence = byAmount.filter((tx) => {
+      if (crossNetworkMismatch(sms, tx)) return false
       const txPhone = phone(tx.sender_number)
       if (smsPhone && txPhone && smsPhone !== txPhone) return false
       const txWallet = phone(transactionWallet(tx))

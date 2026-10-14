@@ -545,7 +545,7 @@ smsRoutes.get('/:id/candidates', requirePerm('sms_live', 'can_view'), async (c) 
 
   const { data: sms, error: smsErr } = await db
     .from('inbound_sms')
-    .select('id, amount, received_at, sms_category')
+    .select('id, amount, received_at, sms_category, provider')
     .eq('id', id)
     .maybeSingle()
   if (smsErr) return c.json({ error: 'db_error', detail: smsErr.message }, 500)
@@ -554,9 +554,20 @@ smsRoutes.get('/:id/candidates', requirePerm('sms_live', 'can_view'), async (c) 
   const smsDay = cairoDayKey(sms.received_at)
   if (!smsDay) return c.json({ candidates: [], reason: 'sms_date_missing' })
 
+  // Vodafone and Orange wallets are both live side by side now, so an
+  // amount+day coincidence between two unrelated clients on different
+  // networks is no longer rare enough to ignore. Maven's own payment_method
+  // ("VodafoneCash" / "Orange Money") is a free, explicit signal for this --
+  // only applied to the default auto-suggested list, never to an operator's
+  // own text/reference search, which can still surface a cross-network
+  // transaction deliberately.
+  const smsProviderText = String(sms.provider ?? '').toLowerCase()
+  const smsIsVodafone = /vodafone|vf[- ]?cash/.test(smsProviderText)
+  const smsIsOrange = /orange/.test(smsProviderText)
+
   let query = db
     .from('maven_transactions')
-    .select('tx_id, ontarget_ref, status, amount, currency, sender_name, sender_number, merchant, sub_merchant, master_merchant, gateway, receiving_wallet, to_account_number, first_seen_at')
+    .select('tx_id, ontarget_ref, status, amount, currency, sender_name, sender_number, merchant, sub_merchant, master_merchant, gateway, payment_method, receiving_wallet, to_account_number, first_seen_at')
     .order('first_seen_at', { ascending: false, nullsFirst: false })
     // Fetch a wider same-day pool before sorting by proximity to the SMS.
     // Limiting at the database's newest rows could hide the transaction that
@@ -573,6 +584,8 @@ smsRoutes.get('/:id/candidates', requirePerm('sms_live', 'can_view'), async (c) 
     // it preserves the audit trail and allows the recovery workflow to review
     // a late SMS. The link route never auto-approves a non-PENDING transaction.
     query = query.eq('amount', sms.amount).in('status', ['PENDING', 'PAID', 'APPROVED', 'UNDERPAID', 'DECLINED', 'EXPIRED'])
+    if (smsIsVodafone) query = query.not('payment_method', 'ilike', '%orange%')
+    else if (smsIsOrange) query = query.not('payment_method', 'ilike', '%vodafone%')
   }
   query = query.gte('first_seen_at', cairoBoundary(smsDay)).lte('first_seen_at', cairoBoundary(smsDay, true))
 
