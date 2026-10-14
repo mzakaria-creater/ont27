@@ -10,7 +10,7 @@ import type { PagePermission } from '../lib/api'
 import { useLocale } from '../lib/locale'
 import { installNotificationAudioUnlock, playNotificationTone } from '../lib/notificationSounds'
 import MethodLogo from './MethodLogo'
-import { Ban, BarChart3, Bot, Building2, CalendarDays, ChevronDown, CircleDollarSign, Clock3, LayoutDashboard, Link2, Menu, MessageSquareText, Minimize2, PanelLeftClose, PanelLeftOpen, Plus, Search, Send, Settings, Users, WalletCards, X } from 'lucide-react'
+import { Ban, BarChart3, Bot, Building2, CalendarDays, ChevronDown, CircleDollarSign, Clock3, LayoutDashboard, Link2, Menu, MessageSquareText, Minimize2, PanelLeftClose, PanelLeftOpen, Plus, Search, Send, Settings, Unlink, Users, WalletCards, X } from 'lucide-react'
 
 // Shared authed layout ("Live Transaction Monitor" skin): nav rail (real pages
 // first, then the role's remaining permitted modules as "قريباً" placeholders),
@@ -299,6 +299,8 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
   const [selected, setSelected] = useState<RailSms | null>(null)
   const [candidates, setCandidates] = useState<RailSmsCandidate[]>([])
   const [linkingTxId, setLinkingTxId] = useState<number | null>(null)
+  const [approvingTxId, setApprovingTxId] = useState<number | null>(null)
+  const [unlinking, setUnlinking] = useState<'plain' | 'decline' | null>(null)
   const [linkErr, setLinkErr] = useState<string | null>(null)
   const [payoutRef, setPayoutRef] = useState('')
   const [assigningPayout, setAssigningPayout] = useState(false)
@@ -373,15 +375,32 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
     return () => { alive = false }
   }, [selected])
 
-  const linkToSuggestedTx = async (txId: number, confirmAmountMismatch = false) => {
+  const linkToSuggestedTx = async (txId: number, confirmAmountMismatch = false, alsoApprove = false) => {
     if (!selected) return
     setLinkingTxId(txId)
+    if (alsoApprove) setApprovingTxId(txId)
     setLinkErr(null)
     try {
       await api(`/api/sms/${selected.id}/link`, { method: 'POST', body: JSON.stringify({ tx_id: txId, confirm_amount_mismatch: confirmAmountMismatch }) })
       setRows((prev) => prev.map((r) => r.id === selected.id ? { ...r, matched: true, match_status: 'manual', matched_tx_id: txId } : r))
       setSelected((prev) => prev && prev.id === selected.id ? { ...prev, matched: true, match_status: 'manual', matched_tx_id: txId } : prev)
       setCandidates([])
+      if (alsoApprove) {
+        try {
+          await api(`/api/deposits/${txId}/decision`, { method: 'POST', body: JSON.stringify({ action: 'approve', note: 'Approved from Live SMS drop-up after manual link' }) })
+        } catch (approveError) {
+          // The link above already succeeded. "not_pending" here almost
+          // always means /api/sms/:id/link's own immediate-approval path
+          // (server/sms.ts, confirmed sender+wallet identity) already paid
+          // it the moment it linked -- that is the outcome the operator
+          // wanted, not a failure, so it must not surface as an error.
+          if (!(approveError instanceof ApiError && approveError.code === 'not_pending')) {
+            setLinkErr(approveError instanceof ApiError && approveError.status === 403
+              ? 'تم الربط، لكن لا تملك صلاحية اعتماد المعاملة.'
+              : 'تم الربط، لكن فشل اعتماد المعاملة — اعتمدها يدوياً من صفحة المعاملات.')
+          }
+        }
+      }
     } catch (error) {
       // The generic "could not link" message hid exactly why — every one of
       // these is a real, distinct reason the /link endpoint rejects a link,
@@ -413,6 +432,34 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
       }
     } finally {
       setLinkingTxId(null)
+      setApprovingTxId(null)
+    }
+  }
+
+  const unlinkSelected = async (alsoDecline: boolean) => {
+    if (!selected) return
+    const txId = selected.matched_tx_id
+    setUnlinking(alsoDecline ? 'decline' : 'plain')
+    setLinkErr(null)
+    try {
+      await api(`/api/sms/${selected.id}/unlink`, { method: 'POST' })
+      setRows((prev) => prev.map((r) => r.id === selected.id ? { ...r, matched: false, match_status: 'unmatched', matched_tx_id: null, matched_ontarget_ref: null, matched_receiving_wallet: null } : r))
+      setSelected((prev) => prev && prev.id === selected.id ? { ...prev, matched: false, match_status: 'unmatched', matched_tx_id: null, matched_ontarget_ref: null, matched_receiving_wallet: null } : prev)
+      if (alsoDecline && txId != null) {
+        try {
+          await api(`/api/deposits/${txId}/decision`, { method: 'POST', body: JSON.stringify({ action: 'decline', note: 'Declined from Live SMS drop-up after unlink' }) })
+        } catch (declineError) {
+          setLinkErr(declineError instanceof ApiError && declineError.code === 'not_pending'
+            ? `تم فك الربط، لكن المعاملة أصلاً بحالة ${String(declineError.body?.status ?? '—')} ولا يمكن رفضها تلقائياً.`
+            : declineError instanceof ApiError && declineError.status === 403
+              ? 'تم فك الربط، لكن لا تملك صلاحية رفض المعاملة.'
+              : 'تم فك الربط، لكن فشل رفض المعاملة — راجعها يدوياً من صفحة المعاملات.')
+        }
+      }
+    } catch {
+      setLinkErr('فشل فك الربط — حاول مرة أخرى.')
+    } finally {
+      setUnlinking(null)
     }
   }
 
@@ -591,6 +638,22 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
               <div><span><Building2 size={12} /> التاجر</span><strong>{selectedMerchant}</strong></div>
             </div>
             {selectedRaw && <div className="sms-detail-sheet-raw" dir="auto"><span>Raw SMS</span><p>{selectedRaw}</p></div>}
+            {selected.sms_category !== 'withdrawal' && selected.matched_tx_id != null && can('sms_live', 'can_edit') && (
+              <div className="sms-match-card sms-suggest-card">
+                <div className="sms-match-head"><span className="sms-match-title"><Unlink size={15} /> فك الربط عن المعاملة</span></div>
+                <div className="cand-actions">
+                  <button type="button" className="btn-ghost danger btn-sm" disabled={unlinking != null} onClick={() => void unlinkSelected(false)}>
+                    {unlinking === 'plain' ? 'جارٍ فك الربط…' : 'فك الربط فقط'}
+                  </button>
+                  {can('deposits', 'can_approve') && (
+                    <button type="button" className="btn-ghost danger btn-sm" disabled={unlinking != null} onClick={() => void unlinkSelected(true)}>
+                      {unlinking === 'decline' ? 'جارٍ فك الربط والرفض…' : 'فك الربط + رفض المعاملة'}
+                    </button>
+                  )}
+                </div>
+                {linkErr && <p className="sms-detail-link-err">{linkErr}</p>}
+              </div>
+            )}
             {!selectedLinked && selected.sms_category === 'deposit' && can('sms_live', 'can_edit') && (
               <div className="sms-match-card sms-suggest-card sms-manual-link-card">
                 <div className="sms-match-head"><span className="sms-match-title"><Link2 size={15} /> ربط يدوي بمعاملة من نفس اليوم</span></div>
@@ -631,14 +694,26 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
                           {' · '}{cand.merchant ?? 'تاجر غير محدد'}
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        className="btn-primary btn-sm"
-                        disabled={linkingTxId === cand.tx_id}
-                        onClick={() => void linkToSuggestedTx(cand.tx_id)}
-                      >
-                        {linkingTxId === cand.tx_id ? 'جارٍ الربط…' : 'ربط'}
-                      </button>
+                      <div className="cand-actions">
+                        <button
+                          type="button"
+                          className="btn-primary btn-sm"
+                          disabled={linkingTxId === cand.tx_id}
+                          onClick={() => void linkToSuggestedTx(cand.tx_id)}
+                        >
+                          {linkingTxId === cand.tx_id && approvingTxId !== cand.tx_id ? 'جارٍ الربط…' : 'ربط'}
+                        </button>
+                        {cand.status === 'PENDING' && can('deposits', 'can_approve') && (
+                          <button
+                            type="button"
+                            className="btn-primary btn-sm is-approve"
+                            disabled={linkingTxId === cand.tx_id}
+                            onClick={() => void linkToSuggestedTx(cand.tx_id, false, true)}
+                          >
+                            {approvingTxId === cand.tx_id ? 'جارٍ الربط والاعتماد…' : 'ربط + اعتماد'}
+                          </button>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>

@@ -1848,6 +1848,8 @@ a.stat-card:hover { border-color: var(--accent); }
 .is-duplicate-badge { background: color-mix(in srgb, #a855f7 16%, transparent); color: #c084fc; }
 .cand-info { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .cand-info .cell-sub { flex-basis: 100%; }
+.cand-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.cand-actions .btn-sm.is-approve { background: var(--status-paid); border-color: var(--status-paid); }
 
 /* ===== Live Transaction Monitor v2 skin ===== */
 .card, .stat-card, .module-card, .drawer, .login-box {
