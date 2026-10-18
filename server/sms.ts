@@ -318,7 +318,8 @@ async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> 
 // the newest mapping as fact: that was the source of repeated false wallet
 // numbers in SMS Live. The operator can still assign the wallet explicitly.
 async function markAmbiguousWallets(rows: Record<string, unknown>[]): Promise<void> {
-  const devices = [...new Set(rows.map((row) => String(row.webhook_name ?? row.device_name ?? '').trim()).filter(Boolean))]
+  const deviceKey = (row: Record<string, unknown>) => String(row.device_prefix ?? row.device_name ?? row.webhook_name ?? '').trim()
+  const devices = [...new Set(rows.map(deviceKey).filter(Boolean))]
   if (!devices.length) return
   const { data } = await db.from('device_prefix_map').select('prefix, sim_slot, wallet_number').in('prefix', devices).eq('active', true)
   const byDevice = new Map<string, { sim_slot: number | null; wallet: string }[]>()
@@ -330,7 +331,7 @@ async function markAmbiguousWallets(rows: Record<string, unknown>[]): Promise<vo
   }
   for (const row of rows) {
     if (row.confirmed_wallet_number) continue
-    const device = String(row.webhook_name ?? row.device_name ?? '').trim()
+    const device = deviceKey(row)
     const mappings = byDevice.get(device) ?? []
     const slot = row.sim_slot == null ? null : Number(row.sim_slot)
     const payload = row.raw_payload && typeof row.raw_payload === 'object' ? row.raw_payload as Record<string, unknown> : {}
