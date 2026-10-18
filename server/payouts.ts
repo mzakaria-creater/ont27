@@ -114,7 +114,7 @@ const presentPayout = (row: Record<string, unknown>) => {
 
 const PROOF_BUCKET = "pop";
 const PROOF_PREFIX = "payout-proofs/";
-const AUGUST_PENDING_PAYOUT_IDS = [30841644, 30841646, 30841645, 30841757, 30841810] as const;
+const AUGUST_PENDING_PAYOUT_IDS = [30841644, 30841646, 30841645, 30841637, 30841757, 30841810] as const;
 
 payoutRoutes.get("/", requirePerm("payouts", "can_view"), async (c) => {
   const statuses = [...new Set((c.req.query("status") ?? "").split(",").map((value) => value.trim().toUpperCase()).filter(Boolean))];

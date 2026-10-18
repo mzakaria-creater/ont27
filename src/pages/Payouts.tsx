@@ -762,7 +762,7 @@ export default function Payouts() {
     await load(true);
   };
   const rejectConfirmedAugust = async () => {
-    if (!window.confirm(t("سيتم رفض عمليات أغسطس الخمس المحددة عبر Maven/NGPay بعد التحقق من حالتها. متابعة؟", "The five confirmed August payouts will be rejected through Maven/NGPay after status verification. Continue?"))) return;
+    if (!window.confirm(t("سيتم رفض عمليات أغسطس الست المحددة عبر Maven/NGPay بعد التحقق من حالتها. متابعة؟", "The six confirmed August payouts will be rejected through Maven/NGPay after status verification. Continue?"))) return;
     setAugustRejectBusy(true); setAugustRejectMessage(null);
     try {
       const result = await api<{ ok: boolean; eligible_count: number; results: Array<{ maven_id: number; executed_on_provider?: boolean; error?: string }> }>("/api/payouts/bulk-reject-august-2026", {
