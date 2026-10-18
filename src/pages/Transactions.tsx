@@ -1114,7 +1114,10 @@ export default function Transactions() {
                   const cell = (colId: string) => {
                     switch (colId) {
                       case 'status': return <td key={colId}><TransactionStatusIcon status={r.status} label={st.label} /></td>
-                      case 'type': return <td key={colId}><div className="portal-method-cell"><MethodLogo method={r.kind === 'deposit' ? r.payment_method : payoutMethodLabel(r)}/><span>{r.kind === 'deposit' ? (r.payment_method ?? t('إيداع', 'Deposit')) : (payoutMethodLabel(r) ?? t('سحب', 'Payout'))}</span></div></td>
+                      case 'type': {
+                        const paymentMethod = r.kind === 'deposit' ? (r.payment_method ?? t('إيداع', 'Deposit')) : (payoutMethodLabel(r) ?? t('سحب', 'Payout'))
+                        return <td key={colId}><div className="portal-method-cell" title={paymentMethod} aria-label={paymentMethod}><MethodLogo method={paymentMethod}/><span className="portal-method-name">{paymentMethod}</span></div></td>
+                      }
                       case 'amount': return (
                         <td key={colId} className="mono portal-amount-cell">
                           {money(r.amount, r.currency ?? 'EGP')}
