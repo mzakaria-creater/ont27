@@ -33,6 +33,33 @@ const rawField = (raw: unknown, ...names: string[]) => {
   return null;
 };
 
+const normalizePhone = (value: unknown) => String(value ?? "").replace(/\D/g, "").slice(-10);
+
+type ClientDepositSummary = {
+  has_deposited: boolean;
+  deposit_count: number;
+  approved_deposit_count: number;
+};
+
+async function loadClientDepositHistory(phones: string[]): Promise<Map<string, ClientDepositSummary>> {
+  const uniquePhones = [...new Set(phones.map(normalizePhone).filter(Boolean))];
+  if (!uniquePhones.length) return new Map();
+  const { data, error } = await db.rpc("panel_client_history", {
+    p_deposit_phones: uniquePhones,
+    p_payout_phones: uniquePhones,
+  });
+  if (error) throw new Error(`payout client deposit history: ${error.message}`);
+  return new Map((data ?? []).map((row: { phone: string; deposit_count: number; approved_at?: string[] | null }) => {
+    const depositCount = Number(row.deposit_count ?? 0);
+    const approvedCount = Array.isArray(row.approved_at) ? row.approved_at.length : 0;
+    return [normalizePhone(row.phone), {
+      has_deposited: depositCount > 0,
+      deposit_count: depositCount,
+      approved_deposit_count: approvedCount,
+    }];
+  }));
+}
+
 const presentPayout = (row: Record<string, unknown>) => {
   const raw = row.maven_raw_row;
   const amount = Number(row.amount ?? 0);
@@ -135,6 +162,13 @@ payoutRoutes.get("/", requirePerm("payouts", "can_view"), async (c) => {
   const { data, count, error } = await query;
   if (error) return c.json({ error: "db_error", detail: error.message }, 500);
   const rows = data ?? [];
+  let depositHistory: Map<string, ClientDepositSummary>;
+  try {
+    depositHistory = await loadClientDepositHistory(rows.map((row) => row.mobile_no));
+  } catch (historyError) {
+    console.error(historyError);
+    return c.json({ error: "db_error", detail: "client deposit history unavailable" }, 500);
+  }
   const decisionById = new Map<number, Record<string, unknown>>();
   const smsById = new Map<number, Record<string, unknown>>();
   if (rows.length) {
@@ -169,6 +203,7 @@ payoutRoutes.get("/", requirePerm("payouts", "can_view"), async (c) => {
   return c.json({
     rows: rows.map((row) => ({
       ...presentPayout(row),
+      client_deposit: depositHistory.get(normalizePhone(row.mobile_no)) ?? null,
       decision: decisionById.get(row.maven_id) ?? null,
       linked_sms: row.matched_sms_id
         ? (smsById.get(Number(row.matched_sms_id)) ?? null)
@@ -312,9 +347,16 @@ payoutRoutes.get("/:mavenId", requirePerm("payouts", "can_view"), async (c) => {
             .maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
+  let clientDeposit: ClientDepositSummary | null = null;
+  try {
+    clientDeposit = (await loadClientDepositHistory([data.mobile_no])).get(normalizePhone(data.mobile_no)) ?? null;
+  } catch (historyError) {
+    console.error(historyError);
+  }
   return c.json({
     payout: {
       ...data,
+      client_deposit: clientDeposit,
       linked_sms: linkedSms ?? null,
       decisions: decisions ?? [],
       actions: actions ?? [],

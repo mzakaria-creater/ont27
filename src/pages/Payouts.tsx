@@ -37,6 +37,11 @@ export interface PayoutRow {
   merchant: string | null;
   account_name: string | null;
   mobile_no: string | null;
+  client_deposit?: {
+    has_deposited: boolean;
+    deposit_count: number;
+    approved_deposit_count: number;
+  } | null;
   agent_name: string | null;
   approved_by: string | null;
   commission: number | null;
@@ -958,6 +963,7 @@ export default function Payouts() {
                     <div className="payout-card-grid-fields">
                       <span>{t("الاسم", "Name")}<b>{row.account_name ?? "—"}</b></span>
                       <span>{t("الهاتف", "Phone")}<b className="mono">{row.mobile_no ?? "—"}</b></span>
+                      <span>{t("إيداع سابق", "Prior deposit")}<b className={`pay-status-badge ${row.client_deposit?.approved_deposit_count ? "st-paid" : row.client_deposit?.has_deposited ? "st-pending" : "st-declined"}`}>{row.client_deposit ? (row.client_deposit.has_deposited ? t(`نعم · ${row.client_deposit.deposit_count}`, `Yes · ${row.client_deposit.deposit_count}`) : t("لا", "No")) : t("غير متاح", "Unavailable")}</b></span>
                       <span>{t("التاجر", "Merchant")}<b>{row.merchant ?? "—"}</b></span>
                       <span>{t("الطريقة", "Method")}<b>{row.pay_by ?? "—"}</b></span>
                     </div>
@@ -1278,6 +1284,14 @@ export default function Payouts() {
                   <dd>{selected.merchant ?? "—"}</dd>
                   <dt>{t("اعتمده", "Approved by")}</dt>
                   <dd>{selected.approved_by ?? "—"}</dd>
+                  <dt>{t("إيداع سابق معنا", "Prior deposit with us")}</dt>
+                  <dd>
+                    {selected.client_deposit
+                      ? selected.client_deposit.has_deposited
+                        ? t(`نعم — ${selected.client_deposit.deposit_count} إيداع`, `Yes — ${selected.client_deposit.deposit_count} deposit(s)`)
+                        : t("لا يوجد إيداع سابق", "No prior deposit")
+                      : t("غير متاح", "Unavailable")}
+                  </dd>
                 </dl>
                 {!!selected.actions?.length && (
                   <section className="payout-action-history">
