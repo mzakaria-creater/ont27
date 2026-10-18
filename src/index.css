@@ -1955,7 +1955,10 @@ a.stat-card:hover { border-color: var(--accent); }
    leaving dead space around a visually-smaller page — supported in every
    Chromium/WebKit browser this panel actually runs on; Firefox simply
    renders at normal scale here since it doesn't implement `zoom`. */
-.trx-zoom-out { zoom: 0.9; }
+.dash-body { zoom: 0.8; }
+/* The Transactions page used to add its own 90% zoom. The shell now owns
+   the global 80% scale, so keep that page from being zoomed twice. */
+.trx-zoom-out { zoom: 1; }
 /* Sticky rail that fits the viewport: long nav scrolls INSIDE the rail
    instead of pushing the page. */
 .sidebar {
