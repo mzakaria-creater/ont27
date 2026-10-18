@@ -165,7 +165,9 @@ async function resolveWallet(
   if (candidates.length === 0) return { wallet: null, employee: null, source: null };
   if (amount === null || balance === null) return { wallet: null, employee: null, source: null };
 
-  for (const candidate of candidates) {
+  // Both SIM candidates are independent reads. Run them together so wallet
+  // resolution adds one database round trip instead of one round trip per SIM.
+  const checks = await Promise.all(candidates.map(async (candidate) => {
     const { data: last } = await supabaseAdmin.from("inbound_sms")
       .select("balance_after")
       .or(`wallet_number.eq.${candidate.wallet},confirmed_wallet_number.eq.${candidate.wallet},receiver_number.eq.${candidate.wallet}`)
@@ -175,10 +177,10 @@ async function resolveWallet(
       .maybeSingle();
     const previous = last?.balance_after == null ? null : Number(last.balance_after);
     const expected = previous === null ? null : isWithdrawal ? previous - amount : previous + amount;
-    if (expected !== null && Math.abs(expected - balance) <= 1) {
-      return { wallet: candidate.wallet, employee: candidate.employee, source: `${candidate.source}:balance_continuity` };
-    }
-  }
+    return { candidate, matches: expected !== null && Math.abs(expected - balance) <= 1 };
+  }));
+  const match = checks.find((check) => check.matches)?.candidate;
+  if (match) return { wallet: match.wallet, employee: match.employee, source: `${match.source}:balance_continuity` };
   return { wallet: null, employee: null, source: null };
 }
 
