@@ -3536,6 +3536,7 @@ a.risk-row-card:hover{border-color:var(--border-soft)}
 .sms-recommendation-popover { position: absolute; z-index: 30; inset-block-start: calc(100% + 7px); inset-inline-start: 0; display: grid; gap: 5px; width: min(330px, 72vw); padding: 10px 11px; border: 1px solid var(--accent); border-radius: 8px; background: var(--surface); color: var(--text); box-shadow: 0 12px 28px rgba(15,23,42,.2); font-size: 10px; line-height: 1.45; opacity: 0; pointer-events: none; transform: translateY(-3px); transition: opacity .14s ease, transform .14s ease; }
 .sms-recommendation-popover strong { color: var(--accent); font-size: 11px; }
 .sms-recommendation-wrap:hover .sms-recommendation-popover, .sms-recommendation-wrap:focus-within .sms-recommendation-popover { opacity: 1; pointer-events: auto; transform: translateY(0); }
+.sms-recommendation-action { width: 100%; justify-content: center; white-space: normal; }
 .live-pair-card { overflow: hidden; }
 .live-pair-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
 .live-pair { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 11px; background: color-mix(in srgb, var(--surface) 94%, var(--accent) 6%); }

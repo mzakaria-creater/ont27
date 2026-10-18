@@ -792,9 +792,19 @@ export default function SmsLive() {
   const selectedReport = selected ? smsReport(selected) : null
   const walletAlerts = walletPaidTotals.filter((row) => row.paid_amount >= 50_000)
   const recommendationFor = (smsId: number) => recommendations[smsId]
-  const recommendationBadge = (recommendation: SmsRecommendation) => (
+  const recommendationBadge = (recommendation: SmsRecommendation) => {
+    const detailTitle = [
+      `TX #${recommendation.txId}`,
+      recommendation.reference ? `Ref ${recommendation.reference}` : null,
+      recommendation.status ?? null,
+      recommendation.amount != null ? money(recommendation.amount, 'EGP') : null,
+      recommendation.senderNumber ?? recommendation.senderName ?? null,
+      recommendation.receivingWallet ? `Wallet ${recommendation.receivingWallet}` : null,
+      recommendation.paymentMethod ?? null,
+    ].filter(Boolean).join(' · ')
+    return (
     <span className="sms-recommendation-wrap">
-      <span className="pay-status-badge sms-recommendation-badge" tabIndex={0}>
+      <span className="pay-status-badge sms-recommendation-badge" tabIndex={0} title={detailTitle} aria-label={detailTitle}>
         {t('مقترح', 'Recommended')} · <span className="mono">TX #{recommendation.txId}</span>
       </span>
       <span className="sms-recommendation-popover" role="tooltip">
@@ -805,9 +815,13 @@ export default function SmsLive() {
         <span><b>{t('المحفظة', 'Wallet')}</b> <span className="mono">{recommendation.receivingWallet ?? '—'}</span></span>
         <span><b>{t('الطريقة', 'Method')}</b> {recommendation.paymentMethod ?? '—'}{recommendation.merchant ? <> · {recommendation.merchant}</> : null}</span>
         <span><b>{t('وقت المعاملة', 'Transaction time')}</b> {recommendation.firstSeenAt ? depositTime({ first_seen_at: recommendation.firstSeenAt }) : '—'}</span>
+        {recommendation.status === 'DECLINED' && can('transactions', 'can_edit') && <button type="button" className="btn-ghost btn-sm danger sms-recommendation-action" onClick={(event) => { event.stopPropagation(); void openDetail(recommendation.smsId) }}>
+          ✅ {t('فتح للربط وتغييرها إلى PAID', 'Open to link and change to PAID')}
+        </button>}
       </span>
     </span>
-  )
+    )
+  }
 
   return (
     <>

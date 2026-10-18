@@ -110,6 +110,11 @@ function cairoDayKey(value: unknown): string | null {
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
   return `${values.year}-${values.month}-${values.day}`
 }
+function previousCairoDay(day: string): string {
+  const date = new Date(`${day}T12:00:00Z`)
+  date.setUTCDate(date.getUTCDate() - 1)
+  return new Intl.DateTimeFormat('en-CA', { timeZone: CAIRO_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
+}
 
 function balanceContinuity(sms: QueueSms, history: QueueSms[]) {
   const wallet = phoneKey(sms.receiver_number)
@@ -570,8 +575,8 @@ smsRoutes.get('/devices', requirePerm('sms_live', 'can_view'), async (c) => {
   return c.json({ devices: data ?? [] })
 })
 
-// Candidate Maven transactions for manual linking: same Cairo calendar day
-// as the SMS, or an explicit ?q= ref/tx_id search still constrained to that day.
+// Candidate Maven transactions for manual linking: yesterday and today in
+// Cairo, or an explicit ?q= ref/tx_id search still constrained to that range.
 smsRoutes.get('/:id/candidates', requirePerm('sms_live', 'can_view'), async (c) => {
   const id = c.req.param('id')
   if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)
@@ -621,7 +626,7 @@ smsRoutes.get('/:id/candidates', requirePerm('sms_live', 'can_view'), async (c) 
     if (smsIsVodafone) query = query.not('payment_method', 'ilike', '%orange%')
     else if (smsIsOrange) query = query.not('payment_method', 'ilike', '%vodafone%')
   }
-  query = query.gte('first_seen_at', cairoBoundary(smsDay)).lte('first_seen_at', cairoBoundary(smsDay, true))
+  query = query.gte('first_seen_at', cairoBoundary(previousCairoDay(smsDay))).lte('first_seen_at', cairoBoundary(smsDay, true))
 
   const { data, error } = await query
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
@@ -692,7 +697,7 @@ smsRoutes.post('/:id/link', requirePerm('sms_live', 'can_edit'), async (c) => {
 
   const smsDay = cairoDayKey(sms.received_at)
   const txDay = cairoDayKey(tx.first_seen_at)
-  if (!smsDay || !txDay || smsDay !== txDay) {
+  if (!smsDay || !txDay || (smsDay !== txDay && previousCairoDay(smsDay) !== txDay)) {
     return c.json({ error: 'sms_transaction_date_mismatch', sms_date: smsDay, transaction_date: txDay }, 409)
   }
 

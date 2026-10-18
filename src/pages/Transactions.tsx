@@ -37,6 +37,7 @@ const TRX_PAGE_SIZES = [50, 100, 150, 250, 500, 1000] as const
 const pad2 = (value: number) => String(value).padStart(2, '0')
 const toDateStr = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 const todayRange = () => { const t = toDateStr(new Date()); return { from: t, to: t } }
+const recentRange = () => { const now = new Date(); const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1); return { from: toDateStr(yesterday), to: toDateStr(now) } }
 const currentWeekRange = () => {
   const now = new Date()
   const mondayOffset = (now.getDay() + 6) % 7 // Mon=0 … Sun=6
@@ -363,11 +364,10 @@ export default function Transactions() {
   const statusValues = splitFilterValues(status)
   const typeValues = splitFilterValues(type)
   const dateRangeParam = params.get('date_range')
-  const dateRange = dateRangeParam === 'all' || dateRangeParam === 'custom' || dateRangeParam === 'week' || dateRangeParam === 'month' || dateRangeParam === 'last_month' ? dateRangeParam : 'today'
-  // Today by default — not this month. A full month's rows is real extra
-  // data to fetch/render on every load for the common case of someone just
-  // checking recent activity; today keeps the first paint fast.
-  const presetRange = dateRange === 'today' ? todayRange() : dateRange === 'week' ? currentWeekRange() : dateRange === 'month' ? currentMonthRange() : dateRange === 'last_month' ? lastMonthRange() : null
+  const dateRange = dateRangeParam === 'all' || dateRangeParam === 'custom' || dateRangeParam === 'recent' || dateRangeParam === 'today' || dateRangeParam === 'week' || dateRangeParam === 'month' || dateRangeParam === 'last_month' ? dateRangeParam : 'recent'
+  // The default operational view is yesterday + today, which catches late
+  // SMS and provider updates without loading the full transaction history.
+  const presetRange = dateRange === 'recent' ? recentRange() : dateRange === 'today' ? todayRange() : dateRange === 'week' ? currentWeekRange() : dateRange === 'month' ? currentMonthRange() : dateRange === 'last_month' ? lastMonthRange() : null
   const from = dateRange === 'all' ? '' : params.get('from') ?? presetRange?.from ?? ''
   const to = dateRange === 'all' ? '' : params.get('to') ?? presetRange?.to ?? ''
   const merchant = params.get('merchant') ?? ''
@@ -1017,10 +1017,11 @@ export default function Transactions() {
               if (value === 'all') setFilter({ date_range: 'all', from: '', to: '' })
               else if (value === 'custom') setFilter({ date_range: 'custom' })
               else {
-                const range = value === 'today' ? todayRange() : value === 'week' ? currentWeekRange() : value === 'month' ? currentMonthRange() : lastMonthRange()
+                const range = value === 'recent' ? recentRange() : value === 'today' ? todayRange() : value === 'week' ? currentWeekRange() : value === 'month' ? currentMonthRange() : lastMonthRange()
                 setFilter({ date_range: value, from: range.from, to: range.to })
               }
             }}>
+              <option value="recent">{t('أمس واليوم', 'Yesterday + today')}</option>
               <option value="today">{t('اليوم', 'Today')}</option>
               <option value="week">{t('هذا الأسبوع', 'This week')}</option>
               <option value="month">{t('هذا الشهر', 'This month')}</option>
