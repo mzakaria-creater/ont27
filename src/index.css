@@ -3531,6 +3531,7 @@ a.risk-row-card:hover{border-color:var(--border-soft)}
 .sms-queue-raw { margin: 0; max-height: 48px; overflow: auto; color: var(--text); font: 10px/1.55 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .sms-queue-meta { justify-content: space-between; color: var(--text-muted); font-size: 9px; }
 .sms-queue-meta b { color: var(--status-declined); }
+.sms-recommendation-badge { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
 .live-pair-card { overflow: hidden; }
 .live-pair-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
 .live-pair { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 11px; background: color-mix(in srgb, var(--surface) 94%, var(--accent) 6%); }

@@ -147,6 +147,13 @@ interface SmsStats {
   review: number
 }
 
+interface SmsRecommendation {
+  smsId: number
+  txId: number
+  candidateCount: number
+  route: string
+}
+
 interface WalletPaidTotal { wallet: string; paid_amount: number; transaction_count?: number; transaction_ref?: string | null; merchant?: string | null }
 
 interface ListResponse {
@@ -233,6 +240,7 @@ export default function SmsLive() {
   const [amountQ, setAmountQ] = useState(params.get('amount') ?? '')
   const [data, setData] = useState<ListResponse | null>(null)
   const [stats, setStats] = useState<SmsStats | null>(null)
+  const [recommendations, setRecommendations] = useState<Record<number, SmsRecommendation>>({})
   const [walletPaidTotals, setWalletPaidTotals] = useState<WalletPaidTotal[]>([])
   const [walletAlertDismissed, setWalletAlertDismissed] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -266,6 +274,7 @@ export default function SmsLive() {
   const [manualOpen, setManualOpen] = useState(false)
   const [manualBusy, setManualBusy] = useState(false)
   const walletTotalsRefreshRef = useRef(0)
+  const recommendationRefreshRef = useRef(0)
   const [manualForm, setManualForm] = useState({ message: '', sms_category: 'deposit', amount: '', sender_name: '', sender_number: '', receiver_number: '', trx_id: '', received_at: '', note: '' })
   // Respect an explicit prior choice either way; absent one, a phone opens
   // straight into the card view (a data table is a desktop concept — nobody
@@ -316,6 +325,21 @@ export default function SmsLive() {
       ])
       setData((current) => JSON.stringify(current) === JSON.stringify(list) ? current : list)
       setStats(st)
+      // Recommendations are advisory only. Load them independently so a
+      // slow transaction scan never blocks the live SMS inbox.
+      if (Date.now() - recommendationRefreshRef.current >= 15_000) {
+        recommendationRefreshRef.current = Date.now()
+        void api<{ waiting?: Array<{ id: number; candidate_tx_id?: number | null; candidate_count?: number; match_route?: string }> }>('/api/sms/queues')
+          .then((queue) => {
+            const next: Record<number, SmsRecommendation> = {}
+            for (const item of queue.waiting ?? []) {
+              if (item.candidate_tx_id == null) continue
+              next[Number(item.id)] = { smsId: Number(item.id), txId: Number(item.candidate_tx_id), candidateCount: Number(item.candidate_count ?? 1), route: item.match_route ?? 'evidence' }
+            }
+            setRecommendations(next)
+          })
+          .catch(() => { recommendationRefreshRef.current = 0 })
+      }
       // Capacity totals are advisory and must never block the live SMS inbox.
       // Refresh them independently once per minute; the inbox itself remains
       // on its eight-second cadence even if the aggregate report is slow.
@@ -750,6 +774,7 @@ export default function SmsLive() {
 
   const selectedReport = selected ? smsReport(selected) : null
   const walletAlerts = walletPaidTotals.filter((row) => row.paid_amount >= 50_000)
+  const recommendationFor = (smsId: number) => recommendations[smsId]
 
   return (
     <>
@@ -933,6 +958,7 @@ export default function SmsLive() {
                   const displayWallet = displayWalletForRow(r)
                   const mt = linked ? MATCH_META.auto : r.match_status ? MATCH_META[r.match_status] : null
                   const linkedAt = r.withdrawal_assigned_at
+                  const recommendation = !linked ? recommendationFor(r.id) : undefined
                   return (
                     <tr key={r.id} className={`sms-row sms-row-${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}${r.review_required && !linked ? ' is-review-hold' : ''}`} onClick={() => void openDetail(r.id)}>
                       <td className="mono">
@@ -948,7 +974,11 @@ export default function SmsLive() {
                       </td>
                       <td className="mono">{r.trx_id ?? '—'}<div className="cell-sub">SMS #{r.id}</div></td>
                       <td>
-                        {linked ? <><span className="pay-status-badge st-paid">{r.matched_ontarget_ref ?? r.matched_tx_id ?? (payoutLinked ? `WD ${r.matched_payout_ref ?? r.matched_payout_id}` : 'Linked')}</span>{r.matched_currency && <div className="cell-sub mono">{r.matched_currency}{r.matched_sub_merchant ? ` · ${r.matched_sub_merchant}` : ''}</div>}</> : <span className="pay-status-badge st-unlinked">{t('غير مرتبطة','Unlinked')}</span>}
+                        {linked
+                          ? <><span className="pay-status-badge st-paid">{r.matched_ontarget_ref ?? r.matched_tx_id ?? (payoutLinked ? `WD ${r.matched_payout_ref ?? r.matched_payout_id}` : 'Linked')}</span>{r.matched_currency && <div className="cell-sub mono">{r.matched_currency}{r.matched_sub_merchant ? ` · ${r.matched_sub_merchant}` : ''}</div>}</>
+                          : recommendation
+                            ? <><span className="pay-status-badge sms-recommendation-badge">{t('مقترح', 'Recommended')} · <span className="mono">TX #{recommendation.txId}</span></span>{recommendation.candidateCount > 1 && <div className="cell-sub">{t(`${recommendation.candidateCount} مرشحين — تحقق قبل الربط`, `${recommendation.candidateCount} candidates — verify before linking`)}</div>}</>
+                            : <span className="pay-status-badge st-unlinked">{t('غير مرتبطة','Unlinked')}</span>}
                       </td>
                       <td>
                         {mt ? <span className={`pay-status-badge ${mt.cls}`}>{t(mt.ar, mt.en)}</span> : <span className="pay-status-badge st-unlinked">{t('غير مرتبطة','Unlinked')}</span>}
@@ -970,6 +1000,7 @@ export default function SmsLive() {
               const linked = r.matched_payout_id != null || r.matched_tx_id != null
               const displayWallet = displayWalletForRow(r)
               const matchMeta = linked ? MATCH_META.auto : r.match_status ? MATCH_META[r.match_status] : null
+              const recommendation = !linked ? recommendationFor(r.id) : undefined
               return <article className="sms-live-card-shell" key={r.id}>
                 <button type="button" className={`sms-live-card sms-live-card-${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}${!linked && !r.is_blocked ? ' is-unlinked' : ''}${r.review_required && !linked ? ' is-review-hold' : ''}`} onClick={() => void openDetail(r.id)}>
                   <div className="sms-live-card-head"><span className="sms-card-brand"><span className={`sms-type-mark ${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}`}>{r.sms_category === 'withdrawal' ? '↗' : '↙'}</span><MethodLogo method={r.provider} /></span><strong className="mono">SMS #{r.id}</strong><span className="mono">{depositTime({ first_seen_at: r.received_at })}</span></div>
@@ -980,7 +1011,7 @@ export default function SmsLive() {
                     <span>{t('المحفظة', 'Wallet')}<b className="mono">{displayWallet ?? '—'}</b></span>
                     <span>{t('الجهاز', 'Device')}<b className="mono">{r.device_name ?? '—'}</b></span>
                   </div>
-                  <div className="sms-live-card-foot">{matchMeta ? <span className={`pay-status-badge ${matchMeta.cls}`}>{t(matchMeta.ar, matchMeta.en)}</span> : <span className="pay-status-badge st-dim">{t('غير مرتبطة', 'Unlinked')}</span>}{r.review_required && !linked && <span className="sms-review-hold-label">⚠ HOLD · {t('مراجعة 3 دقائق', '3-minute review')}</span>}{r.sms_category === 'withdrawal' && <span className="cell-sub">{r.matched_payout_id ? `WD ${r.matched_payout_ref ?? r.matched_payout_id}` : t('سحب غير معيّن', 'Unassigned withdrawal')}</span>}</div>
+                  <div className="sms-live-card-foot">{recommendation ? <span className="pay-status-badge sms-recommendation-badge">{t('مقترح', 'Recommended')} · <span className="mono">TX #{recommendation.txId}</span></span> : matchMeta ? <span className={`pay-status-badge ${matchMeta.cls}`}>{t(matchMeta.ar, matchMeta.en)}</span> : <span className="pay-status-badge st-dim">{t('غير مرتبطة', 'Unlinked')}</span>}{r.review_required && !linked && <span className="sms-review-hold-label">⚠ HOLD · {t('مراجعة 3 دقائق', '3-minute review')}</span>}{r.sms_category === 'withdrawal' && <span className="cell-sub">{r.matched_payout_id ? `WD ${r.matched_payout_ref ?? r.matched_payout_id}` : t('سحب غير معيّن', 'Unassigned withdrawal')}</span>}</div>
                   <div className="cell-sub sms-card-preview">{firstLine(r)}</div>
                 </button>
                 {!linked && !r.is_blocked && (
@@ -1044,7 +1075,8 @@ export default function SmsLive() {
                   {quickLinkCandidates.map((cand) => (
                     <li key={cand.tx_id} className={`cand-item${cand.is_duplicate_group ? ' is-duplicate' : ''}`}>
                       <div className="cand-info">
-                        <span className="mono">{cand.ontarget_ref ?? cand.tx_id}</span>
+                        <span className="mono">TX #{cand.tx_id}</span>
+                        {cand.ontarget_ref && <span className="cell-sub mono">Ref {cand.ontarget_ref}</span>}
                         <span className={`pay-status-badge ${statusMeta(cand.status).cls}`}>{statusMeta(cand.status).label}</span>
                         {cand.is_duplicate_group && <span className="pay-status-badge is-duplicate-badge" title={t('نفس العميل والمبلغ خلال 5 دقائق — تحقق قبل الربط', 'Same client and amount within 5 minutes — verify before linking')}>{t('محتمل تكرار', 'Possible duplicate')}</span>}
                         <div className="cell-sub">
