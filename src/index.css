@@ -4578,24 +4578,34 @@ html, body { overflow-x: hidden; overflow-y: auto; }
 }
 
 :root[data-theme='light'] {
-  --bg: #f4f6fa;
+  --bg: #f2f2f7;
   --surface: #ffffff;
-  --surface-raised: rgba(255, 255, 255, .94);
-  --surface-glass: rgba(255, 255, 255, .84);
-  --surface-2: #f7f8fb;
-  --surface-soft: rgba(248, 250, 252, .86);
-  --panel-soft: rgba(248, 250, 252, .86);
-  --border: #dde3ec;
-  --border-soft: #e9edf3;
-  --text: #101828;
-  --text-dim: #667085;
-  --text-muted: #98a2b3;
-  --accent: #4f46e5;
-  --brand-purple: #4f46e5;
-  --brand-blue: #5862f3;
-  --shadow-hover: 0 14px 38px rgba(15, 23, 42, .11);
-  --shadow-panel: 0 20px 60px rgba(15, 23, 42, .08), 0 1px 2px rgba(15, 23, 42, .04);
-  --focus-ring: 0 0 0 3px rgba(79, 70, 229, .2);
+  --surface-raised: rgba(255, 255, 255, .96);
+  --surface-glass: rgba(255, 255, 255, .86);
+  --surface-2: #f8f8fa;
+  --surface-soft: rgba(248, 248, 250, .92);
+  --panel-soft: rgba(248, 248, 250, .92);
+  --border: rgba(60, 60, 67, .18);
+  --border-soft: rgba(60, 60, 67, .11);
+  --text: #1c1c1e;
+  --text-dim: #6e6e73;
+  --text-muted: #8e8e93;
+  --accent: #007aff;
+  --brand-purple: #007aff;
+  --brand-blue: #007aff;
+  --status-pending: #ff9f0a;
+  --status-paid: #34c759;
+  --status-declined: #ff3b30;
+  --amber-bg: rgba(255, 159, 10, .13);
+  --amber-border: rgba(255, 159, 10, .30);
+  --green-bg: rgba(52, 199, 89, .12);
+  --green-border: rgba(52, 199, 89, .28);
+  --red-bg: rgba(255, 59, 48, .10);
+  --red-border: rgba(255, 59, 48, .25);
+  --shadow-hover: 0 8px 24px rgba(28, 28, 30, .12);
+  --shadow-panel: 0 8px 24px rgba(28, 28, 30, .08), 0 1px 3px rgba(28, 28, 30, .06);
+  --focus-ring: 0 0 0 3px rgba(0, 122, 255, .22);
+  --gradient-primary: linear-gradient(180deg, #0a84ff, #007aff);
 }
 
 html { color-scheme: light dark; scroll-behavior: smooth; }
@@ -4738,6 +4748,96 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   backdrop-filter: blur(20px) saturate(145%);
 }
 .pill.active { color: #fff; border-color: transparent; background: var(--gradient-primary); box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 22%, transparent); }
+
+/* Apple-inspired light appearance. Keep the dark product system untouched;
+   this layer applies only when the operator explicitly selects light mode. */
+html[data-theme='light'] { color-scheme: light; }
+html[data-theme='light'] body {
+  background: var(--bg);
+  color: var(--text);
+  letter-spacing: 0;
+}
+html[data-theme='light'] .dash-main {
+  background: transparent;
+}
+html[data-theme='light'] .dash-main::before { display: none; }
+html[data-theme='light'] .card,
+html[data-theme='light'] .stat-card,
+html[data-theme='light'] .module-card,
+html[data-theme='light'] .drawer,
+html[data-theme='light'] .login-box,
+html[data-theme='light'] .kpi-card {
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: none;
+}
+html[data-theme='light'] .sidebar {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .82);
+  box-shadow: 0 6px 22px rgba(28, 28, 30, .08);
+  backdrop-filter: blur(20px) saturate(140%);
+}
+html[data-theme='light'] .sidebar-link.active {
+  border-color: transparent;
+  background: var(--accent);
+  box-shadow: 0 5px 14px rgba(0, 122, 255, .22);
+}
+html[data-theme='light'] .sidebar-item:hover {
+  border-color: transparent;
+  background: rgba(0, 122, 255, .07);
+}
+html[data-theme='light'] .topbar,
+html[data-theme='light'] .filter-bar,
+html[data-theme='light'] .transaction-filter-toolbar,
+html[data-theme='light'] .reports-wallet-toolbar {
+  border-color: var(--border);
+  background: rgba(255, 255, 255, .82);
+  box-shadow: 0 5px 18px rgba(28, 28, 30, .06);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+html[data-theme='light'] .btn-primary {
+  background: var(--accent);
+  box-shadow: 0 5px 12px rgba(0, 122, 255, .20);
+}
+html[data-theme='light'] .btn-primary:hover { filter: brightness(.96); box-shadow: 0 7px 16px rgba(0, 122, 255, .24); }
+html[data-theme='light'] .btn-ghost,
+html[data-theme='light'] .theme-btn {
+  background: rgba(118, 118, 128, .08);
+  border-color: transparent;
+  color: var(--text);
+}
+html[data-theme='light'] .btn-ghost:hover,
+html[data-theme='light'] .theme-btn:hover {
+  border-color: transparent;
+  background: rgba(118, 118, 128, .14);
+}
+html[data-theme='light'] .login-input,
+html[data-theme='light'] input[type='date'],
+html[data-theme='light'] input[type='search'],
+html[data-theme='light'] select,
+html[data-theme='light'] textarea {
+  min-height: 42px;
+  border-color: var(--border);
+  background: rgba(118, 118, 128, .08);
+  color: var(--text);
+}
+html[data-theme='light'] .login-input:focus,
+html[data-theme='light'] input[type='date']:focus,
+html[data-theme='light'] input[type='search']:focus,
+html[data-theme='light'] select:focus,
+html[data-theme='light'] textarea:focus { background: var(--surface); }
+html[data-theme='light'] .pill.active {
+  background: var(--accent);
+  box-shadow: 0 5px 12px rgba(0, 122, 255, .18);
+}
+html[data-theme='light'] .data-table thead th {
+  background: #f2f2f7;
+  color: var(--text-dim);
+  border-block-end-color: var(--border);
+}
+html[data-theme='light'] .data-table tbody tr:hover td { background: rgba(0, 122, 255, .045); }
+html[data-theme='light'] ::selection { color: #fff; background: rgba(0, 122, 255, .55); }
 
 .table-wrap { border: 1px solid var(--border); border-radius: 18px; background: var(--surface); scrollbar-gutter: stable; }
 .data-table { font-size: 13px; }
