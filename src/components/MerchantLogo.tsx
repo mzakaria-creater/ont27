@@ -11,8 +11,10 @@ const PAYFUTURE_LOGO =
 
 export default function MerchantLogo({
   merchant,
+  displayName,
 }: {
   merchant: string | null | undefined;
+  displayName?: string | null;
 }) {
   const raw = (merchant ?? "").trim();
   const isMelBet = /mel\s*bet/i.test(raw);
@@ -35,6 +37,7 @@ export default function MerchantLogo({
   return (
     <span
       className={`merchant-brand-cell${isMelBet || isEzInvest || isT365 || isPayFuture ? " merchant-brand-featured" : ""}`}
+      title={raw || undefined}
     >
       {logo ? (
         <img
@@ -49,7 +52,7 @@ export default function MerchantLogo({
           {raw ? raw.slice(0, 1).toUpperCase() : "—"}
         </span>
       )}
-      <span className="merchant-brand-name">{raw || "—"}</span>
+      <span className="merchant-brand-name">{(displayName ?? raw) || "—"}</span>
     </span>
   );
 }

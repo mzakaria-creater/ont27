@@ -146,10 +146,8 @@ export function money(amount: number | null | undefined, currency?: string | nul
   return `${moneyFmt.format(Number(amount))} ${currency ?? ''}`.trim()
 }
 
-// Card-style masking for a wallet/receiving-account number: only the last 4
-// digits are real, the rest is dots — same convention as showing a bank
-// card number. Deliberately NOT applied to phone/sender-identity fields,
-// which this app's search relies on showing in full.
+// Kept for legacy screens that intentionally mask wallet numbers. The
+// transactions workspace uses the raw value so operators can verify routing.
 export function maskWallet(value: string | null | undefined): string {
   if (!value) return '—'
   const digits = value.replace(/\D/g, '')
