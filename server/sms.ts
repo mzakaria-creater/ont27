@@ -998,7 +998,10 @@ smsRoutes.post('/:id/expense', requirePerm('sms_live', 'can_edit'), async (c) =>
   if (!/^\d+$/.test(id)) return c.json({ error: 'bad_id' }, 400)
   const body = await c.req.json().catch(() => null)
   const comment = typeof body?.comment === 'string' ? body.comment.trim().slice(0, 500) : ''
+  const category = typeof body?.category === 'string' ? body.category.trim() : ''
+  const allowedCategories = ['withdrawal_sms', 'cash_withdrawal', 'wallet_transfer', 'payout_settlement', 'other']
   if (!comment) return c.json({ error: 'comment_required' }, 400)
+  if (!allowedCategories.includes(category)) return c.json({ error: 'expense_category_required' }, 400)
   const { data: sms, error: smsError } = await db.from('inbound_sms').select('id, sms_category, amount, confirmed_wallet_number, receiver_number, wallet_number, received_at').eq('id', id).maybeSingle()
   if (smsError) return c.json({ error: 'db_error', detail: smsError.message }, 500)
   if (!sms) return c.json({ error: 'not_found' }, 404)
@@ -1013,7 +1016,7 @@ smsRoutes.post('/:id/expense', requirePerm('sms_live', 'can_edit'), async (c) =>
   const wallet = sms.confirmed_wallet_number ?? sms.wallet_number ?? sms.receiver_number ?? 'unknown wallet'
   const record = {
     entry_date: sms.received_at ? new Date(sms.received_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
-    entry_type: 'expense', category: 'withdrawal_sms',
+    entry_type: 'expense', category,
     description: comment, amount, currency: 'EGP', beneficiary: wallet,
     reference, status: 'posted', created_by: actor.sub, created_by_name: actor.username,
   }

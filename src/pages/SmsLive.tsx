@@ -279,6 +279,7 @@ export default function SmsLive() {
   const [assignmentName, setAssignmentName] = useState('')
   const [assignmentBusy, setAssignmentBusy] = useState(false)
   const [expenseComment, setExpenseComment] = useState('')
+  const [expenseCategory, setExpenseCategory] = useState('withdrawal_sms')
   const [expenseBusy, setExpenseBusy] = useState(false)
   const [manualOpen, setManualOpen] = useState(false)
   const [manualBusy, setManualBusy] = useState(false)
@@ -722,7 +723,7 @@ export default function SmsLive() {
     if (!selected || selected.sms_category !== 'withdrawal' || !expenseComment.trim()) return
     setExpenseBusy(true); setLinkErr(null)
     try {
-      await api(`/api/sms/${selected.id}/expense`, { method: 'POST', body: JSON.stringify({ comment: expenseComment.trim() }) })
+      await api(`/api/sms/${selected.id}/expense`, { method: 'POST', body: JSON.stringify({ category: expenseCategory, comment: expenseComment.trim() }) })
       setLinkErr(t('تم تسجيل SMS السحب كمصروف في الدفتر.', 'Withdrawal SMS recorded as an expense in the financial book.'))
       setExpenseComment('')
     } catch (e) {
@@ -1267,6 +1268,13 @@ export default function SmsLive() {
                     <label className="filter-field">{assignmentType === 'payout' ? t('رقم معاملة السحب', 'Payout transaction/ref') : t('المرجع', 'Reference')}<input className="login-input" maxLength={160} value={assignmentRef} onChange={(e) => setAssignmentRef(e.target.value)} placeholder={assignmentType === 'payout' ? 'WD ref or Maven ID' : t('مرجع اختياري', 'Optional reference')} /></label>
                     <button className="btn-primary btn-sm" disabled={assignmentBusy || !assignmentName.trim() || (assignmentType === 'payout' && !assignmentRef.trim())} onClick={() => void assignWithdrawal()}>{assignmentBusy ? t('جارٍ التعيين…', 'Assigning…') : t('تعيين', 'Assign')}</button>
                     <h4>{t('تسجيل SMS السحب كمصروف', 'Record withdrawal SMS as expense')}</h4>
+                    <label className="filter-field">{t('فئة المصروف', 'Expense category')}<select className="login-input" value={expenseCategory} onChange={(e) => setExpenseCategory(e.target.value)}>
+                      <option value="withdrawal_sms">{t('SMS سحب', 'Withdrawal SMS')}</option>
+                      <option value="cash_withdrawal">{t('سحب نقدي', 'Cash withdrawal')}</option>
+                      <option value="wallet_transfer">{t('تحويل بين محافظ', 'Wallet transfer')}</option>
+                      <option value="payout_settlement">{t('تسوية سحب', 'Payout settlement')}</option>
+                      <option value="other">{t('أخرى', 'Other')}</option>
+                    </select></label>
                     <label className="filter-field">{t('تعليق المصروف', 'Expense comment')}<textarea className="login-input" rows={3} maxLength={500} value={expenseComment} onChange={(e) => setExpenseComment(e.target.value)} placeholder={t('مثال: سحب نقدي من محفظة ont3', 'Example: Cash withdrawal from ont3 wallet')} /></label>
                     <button className="btn-ghost btn-sm" disabled={expenseBusy || !expenseComment.trim()} onClick={() => void recordExpense()}>{expenseBusy ? t('جارٍ التسجيل…', 'Recording…') : t('إضافة كمصروف', 'Add as expense')}</button>
                   </section>
