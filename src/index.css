@@ -1817,6 +1817,38 @@ a.stat-card:hover { border-color: var(--accent); }
 .transactions-center-page .portal-transaction-grid tbody td {
   padding-block: 8px;
 }
+.transactions-center-page .portal-transaction-grid {
+  border-collapse: separate;
+  border-spacing: 0 8px;
+}
+.transactions-center-page .portal-transaction-grid thead th {
+  border-block-end: 0;
+}
+.transactions-center-page .portal-transaction-grid tbody tr:not(.tx-expanded-row) td {
+  background: var(--surface);
+  border-block: 1px solid var(--border-soft);
+}
+.transactions-center-page .portal-transaction-grid tbody tr:not(.tx-expanded-row) td:first-child {
+  border-inline-start: 1px solid var(--border-soft);
+  border-start-start-radius: 12px;
+  border-end-start-radius: 12px;
+}
+.transactions-center-page .portal-transaction-grid tbody tr:not(.tx-expanded-row) td:last-child {
+  border-inline-end: 1px solid var(--border-soft);
+  border-start-end-radius: 12px;
+  border-end-end-radius: 12px;
+}
+.transactions-center-page .portal-transaction-grid tbody tr:not(.tx-expanded-row):hover td {
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface)) !important;
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--border-soft));
+}
+.transactions-center-page .portal-transaction-grid tbody tr.row-pending:not(.tx-expanded-row) td {
+  background: color-mix(in srgb, var(--status-pending) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--status-pending) 22%, var(--border-soft));
+}
+.transactions-center-page .portal-transaction-grid tbody tr.tx-expanded-row td {
+  border-radius: 0 0 12px 12px;
+}
 @media (max-width: 900px) {
   .transactions-center-page .portal-transactions-card { min-height: 0; }
   .transactions-center-page .portal-table-wrap { height: calc(100vh - 250px); min-height: 420px; }
