@@ -152,6 +152,7 @@ async function readPayoutStatus(
   base: string,
   mavenId: number,
   firstSeenAt?: string | null,
+  windowDays = 2,
 ): Promise<string | null> {
   const months = [
     "Jan",
@@ -171,8 +172,8 @@ async function readPayoutStatus(
   const fmt = (d: Date, time: string) =>
     `${pad(d.getUTCDate())}-${months[d.getUTCMonth()]}-${d.getUTCFullYear()} ${time}`;
   const center = firstSeenAt ? new Date(firstSeenAt) : new Date();
-  const startDate = new Date(center.getTime() - 2 * 86400000);
-  const endDate = new Date(center.getTime() + 2 * 86400000);
+  const startDate = new Date(center.getTime() - windowDays * 86400000);
+  const endDate = new Date(center.getTime() + windowDays * 86400000);
   const body = new URLSearchParams({
     draw: "1",
     start: "0",
@@ -208,11 +209,12 @@ async function readPayoutStatusWithRetry(
   base: string,
   mavenId: number,
   firstSeenAt?: string | null,
+  windowDays = 2,
 ): Promise<string | null> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt += 1) {
     try {
-      return await readPayoutStatus(cookie, base, mavenId, firstSeenAt);
+      return await readPayoutStatus(cookie, base, mavenId, firstSeenAt, windowDays);
     } catch (error) {
       lastError = error;
       if (!isAmbiguousProviderError(error) || attempt === RETRY_ATTEMPTS) {
@@ -225,6 +227,23 @@ async function readPayoutStatusWithRetry(
     }
   }
   throw lastError;
+}
+
+// Maven's payout list is date-scoped and older pending rows can fall outside
+// the narrow collector window even though the provider still accepts a
+// decision for the ID. Widen only when the fast lookup returns no row; this
+// keeps normal decisions quick while preventing a false local PENDING result.
+async function readPayoutStatusAcrossHistory(
+  cookie: string,
+  base: string,
+  mavenId: number,
+  firstSeenAt?: string | null,
+): Promise<string | null> {
+  for (const windowDays of [2, 31, 180, 730]) {
+    const status = await readPayoutStatusWithRetry(cookie, base, mavenId, firstSeenAt, windowDays);
+    if (status != null) return status;
+  }
+  return null;
 }
 
 async function submitPayoutUpdate(
@@ -462,7 +481,7 @@ Deno.serve(async (req) => {
 
       // Refuse to touch anything the provider does not still show as pending.
       try {
-        beforeStatus = await readPayoutStatusWithRetry(
+        beforeStatus = await readPayoutStatusAcrossHistory(
           session.cookie,
           session.base,
           Number(maven_id),
@@ -474,7 +493,7 @@ Deno.serve(async (req) => {
           !isAmbiguousProviderError(firstError)
         ) throw firstError;
         session = await openOperatorSession(config);
-        beforeStatus = await readPayoutStatusWithRetry(
+        beforeStatus = await readPayoutStatusAcrossHistory(
           session.cookie,
           session.base,
           Number(maven_id),
@@ -519,7 +538,7 @@ Deno.serve(async (req) => {
         // 4. Verify against the provider's own view before claiming anything.
         await sleep(VERIFY_DELAY_MS);
         try {
-          afterStatus = await readPayoutStatusWithRetry(
+          afterStatus = await readPayoutStatusAcrossHistory(
             session.cookie,
             session.base,
             Number(maven_id),
