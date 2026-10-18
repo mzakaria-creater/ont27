@@ -446,7 +446,20 @@ smsRoutes.get('/queues', requirePerm('sms_live', 'can_view'), async (c) => {
     db.from('inbound_sms').select('id, amount, receiver_number, balance_after, received_at').not('balance_after', 'is', null).gte('received_at', since).order('received_at', { ascending: false, nullsFirst: false }).limit(10_000),
   ])
   if (smsError || txError || balanceError) return c.json({ error: 'db_error', detail: smsError?.message ?? txError?.message ?? balanceError?.message }, 500)
-  const transactions = (txRows ?? []) as QueueTx[]
+  const transactionIds = (txRows ?? []).map((row) => Number(row.tx_id)).filter(Number.isFinite)
+  const [matchRows, linkedSmsRows] = await Promise.all([
+    transactionIds.length ? db.from('sms_maven_matches').select('tx_id').in('tx_id', transactionIds) : Promise.resolve({ data: [] as { tx_id: number }[], error: null }),
+    db.from('inbound_sms').select('consumed_by_tx_id, matched_transaction_id, maven_transaction_id').or('consumed_by_tx_id.not.is.null,matched_transaction_id.not.is.null,maven_transaction_id.not.is.null').limit(10000),
+  ])
+  if (matchRows.error || linkedSmsRows.error) return c.json({ error: 'db_error', detail: matchRows.error?.message ?? linkedSmsRows.error?.message }, 500)
+  const linkedTransactionIds = new Set<number>((matchRows.data ?? []).map((row) => Number(row.tx_id)))
+  for (const row of linkedSmsRows.data ?? []) {
+    for (const value of [row.consumed_by_tx_id, row.matched_transaction_id, row.maven_transaction_id]) {
+      const txId = Number(value)
+      if (Number.isFinite(txId)) linkedTransactionIds.add(txId)
+    }
+  }
+  const transactions = (txRows ?? []).filter((row) => !linkedTransactionIds.has(Number(row.tx_id))) as QueueTx[]
   const history = (balanceHistory ?? []) as unknown as QueueSms[]
   const waiting: Record<string, unknown>[] = []
   const unlinked: Record<string, unknown>[] = []
