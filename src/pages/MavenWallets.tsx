@@ -282,10 +282,14 @@ export default function MavenWallets() {
       else if (replacePreview[bankId]?.current?.replace(/\D/g, '') === replaceNewNumber) finalResults[bankId] = { ok: true, message: t('لا تغيير: الرقم مطابق بالفعل', 'No change: number already matches') }
     }
     let completed = 0
-    for (const group of batches(replaceCommitTargets, 12)) {
+    // Each Maven edit is read -> write -> read-back. Keep requests small so a
+    // single Vercel invocation cannot hit its execution ceiling; a lost
+    // response must never cause the UI to blindly repeat a real write.
+    for (const group of batches(replaceCommitTargets, 4)) {
       try {
         const { results } = await api<{ results: Array<{ bank_id: string; ok: boolean; changed_from?: string; changed_to?: string; error?: string }> }>('/api/wallets/live/replacement/commit-bulk', {
           method: 'POST', body: JSON.stringify({ bank_ids: group, new_wallet_number: replaceNewNumber }),
+          timeoutMs: 55_000,
         })
         const byId = new Map(results.map((result) => [String(result.bank_id), result]))
         for (const bankId of group) {

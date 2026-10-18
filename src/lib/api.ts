@@ -18,22 +18,25 @@ export class ApiError extends Error {
 // list requests on filter change) rather than replacing it.
 const DEFAULT_TIMEOUT_MS = 30_000
 
-async function rawFetch(path: string, init?: RequestInit): Promise<Response> {
-  const isFormData = typeof FormData !== 'undefined' && init?.body instanceof FormData
-  const timeoutSignal = AbortSignal.timeout(DEFAULT_TIMEOUT_MS)
-  const signal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal
+type ApiRequestInit = RequestInit & { timeoutMs?: number }
+
+async function rawFetch(path: string, init?: ApiRequestInit): Promise<Response> {
+  const { timeoutMs, ...requestInit } = init ?? {}
+  const isFormData = typeof FormData !== 'undefined' && requestInit.body instanceof FormData
+  const timeoutSignal = AbortSignal.timeout(timeoutMs ?? DEFAULT_TIMEOUT_MS)
+  const signal = requestInit.signal ? AbortSignal.any([requestInit.signal, timeoutSignal]) : timeoutSignal
   try {
     return await fetch(path, {
-      ...init,
+      ...requestInit,
       signal,
       credentials: 'same-origin',
-      headers: { ...(isFormData ? {} : { 'Content-Type': 'application/json' }), ...init?.headers },
+      headers: { ...(isFormData ? {} : { 'Content-Type': 'application/json' }), ...requestInit.headers },
     })
   } catch (error) {
     // A caller-aborted request (e.g. Transactions.tsx cancelling a stale
     // list fetch) is deliberate, not a failure — let it propagate as-is so
     // callers that check for AbortError still see one.
-    if (init?.signal?.aborted) throw error
+    if (requestInit.signal?.aborted) throw error
     // Everything else here is "the request never got a response": DNS/TCP
     // failure, offline, CORS, or our own DEFAULT_TIMEOUT_MS firing. Wrapping
     // it in ApiError gives every caller (loginErrorMessage included) a
@@ -57,7 +60,7 @@ export async function refreshSession(): Promise<boolean> {
 
 async function tryRefresh(): Promise<boolean> { return refreshSession() }
 
-export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+export async function api<T>(path: string, init?: ApiRequestInit): Promise<T> {
   let res = await rawFetch(path, init)
   if (res.status === 401 && !path.startsWith('/api/auth/')) {
     if (await tryRefresh()) res = await rawFetch(path, init)

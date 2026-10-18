@@ -97,7 +97,9 @@ walletRoutes.post('/live/replacement/commit-bulk', requirePerm('wallets', 'can_e
   if (!bankIds.length || !/^\d{8,20}$/.test(newNumber)) return c.json({ error: 'invalid_replacement_request' }, 400)
 
   const actor = c.get('actor')
-  const result = await callMavenWalletSwitch({ bank_ids: bankIds, mode: 'bulk_edit', new_number: newNumber, confirm: true }, 120_000)
+  // The UI sends four IDs at a time. Keep this below the Vercel function
+  // ceiling while allowing Maven's three-step read/write/read verification.
+  const result = await callMavenWalletSwitch({ bank_ids: bankIds.slice(0, 4), mode: 'bulk_edit', new_number: newNumber, confirm: true }, 55_000)
   const results = Array.isArray(result.body.results) ? result.body.results as Array<Record<string, unknown>> : []
   if (!result.ok || result.body.ok !== true || !results.length) {
     return c.json({ error: 'maven_change_failed', detail: result.body }, 502)

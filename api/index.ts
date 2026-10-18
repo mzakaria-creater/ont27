@@ -5,7 +5,7 @@ import { app } from '../server/app.js'
 // upstream calls (edge-function fallback + direct DB lookup retry) on a slow
 // day; raising the ceiling here means a real transient stall surfaces as a
 // slightly slower login instead of a hard "can't connect" platform timeout.
-export const config = { maxDuration: 30 }
+export const config = { maxDuration: 60 }
 
 const handler = handle(app)
 
