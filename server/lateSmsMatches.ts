@@ -41,8 +41,42 @@ lateSmsMatchRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
   // carries no real customer name (Maven stores a placeholder), so phone +
   // amount + SMS name history is the strongest cross-check available.
   const rows = data ?? []
-  const smsIds = [...new Set(rows.map((r) => Number(r.sms_id)).filter(Number.isFinite))]
-  const phones = [...new Set(rows.map((r) => r.sender_number).filter((v): v is string => Boolean(v)))]
+  // A proposal can become resolved outside this popup: another operator may
+  // link the SMS from SMS Live, or a different audited action may move the
+  // transaction to PAID. Do not keep returning those rows as pending. This is
+  // also the fallback when Realtime is unavailable in one operator's browser.
+  const txIds = [...new Set(rows.map((row) => Number(row.tx_id)).filter(Number.isFinite))]
+  const smsIdsForState = [...new Set(rows.map((row) => Number(row.sms_id)).filter(Number.isFinite))]
+  const [{ data: txStates, error: txStateError }, { data: smsStates, error: smsStateError }] = await Promise.all([
+    txIds.length ? db.from('maven_transactions').select('tx_id, status').in('tx_id', txIds) : Promise.resolve({ data: [], error: null }),
+    smsIdsForState.length ? db.from('inbound_sms').select('id, consumed_by_tx_id, matched_transaction_id, maven_transaction_id').in('id', smsIdsForState) : Promise.resolve({ data: [], error: null }),
+  ])
+  if (txStateError) return c.json({ error: 'db_error', detail: txStateError.message }, 500)
+  if (smsStateError) return c.json({ error: 'db_error', detail: smsStateError.message }, 500)
+  const txStatusById = new Map((txStates ?? []).map((row) => [Number(row.tx_id), String(row.status ?? '').toUpperCase()]))
+  const smsStateById = new Map((smsStates ?? []).map((row) => [Number(row.id), row]))
+  const stale = rows.filter((row) => {
+    const txStatus = txStatusById.get(Number(row.tx_id))
+    const sms = smsStateById.get(Number(row.sms_id))
+    const smsLinked = sms && [sms.consumed_by_tx_id, sms.matched_transaction_id, sms.maven_transaction_id].some((value) => value != null)
+    return !sms || smsLinked || (txStatus != null && !['PENDING', 'DECLINED'].includes(txStatus))
+  })
+  if (stale.length) {
+    const staleIds = stale.map((row) => Number(row.id))
+    const staleAt = new Date().toISOString()
+    const { error: staleUpdateError } = await db.from('late_sms_match_proposals')
+      .update({ status: 'expired', decided_at: staleAt, decision_note: 'no longer actionable: another team action resolved the SMS or transaction' })
+      .in('id', staleIds)
+      .eq('status', 'pending')
+    if (staleUpdateError) return c.json({ error: 'db_error', detail: staleUpdateError.message }, 500)
+    await db.from('audit_log').insert(stale.map((row) => ({
+      actor_type: 'system', actor_name: 'late-sms-queue', action: 'late_match.expired_stale', entity: 'late_sms_match_proposals', entity_id: String(row.id),
+      after: { tx_id: row.tx_id, sms_id: row.sms_id, reason: 'resolved_by_other_team_action' },
+    })))
+  }
+  const activeRows = rows.filter((row) => !stale.some((staleRow) => staleRow.id === row.id))
+  const smsIds = [...new Set(activeRows.map((r) => Number(r.sms_id)).filter(Number.isFinite))]
+  const phones = [...new Set(activeRows.map((r) => r.sender_number).filter((v): v is string => Boolean(v)))]
   const [smsRes, histRes] = await Promise.all([
     smsIds.length ? db.from('inbound_sms').select('id, provider').in('id', smsIds) : Promise.resolve({ data: [] as { id: number; provider: string | null }[] }),
     phones.length ? db.from('inbound_sms').select('sender_number, sender_name').in('sender_number', phones).not('consumed_by_tx_id', 'is', null).not('sender_name', 'is', null).limit(5000) : Promise.resolve({ data: [] as { sender_number: string; sender_name: string }[] }),
@@ -54,7 +88,7 @@ lateSmsMatchRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
     set.add(String(h.sender_name).trim().toLowerCase()); names.set(h.sender_number, set)
   }
   return c.json({
-    rows: rows.map((r) => {
+    rows: activeRows.map((r) => {
       const known = names.get(r.sender_number ?? '')
       const mine = String(r.sms_sender_name ?? '').trim().toLowerCase()
       return { ...r, sms_provider: providerBySms.get(Number(r.sms_id)) ?? null, name_conflict: Boolean(known && mine && [...known].some((n) => n !== mine)) }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ExternalLink, MessageSquareWarning, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
-import { api } from '../lib/api'
+import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { playNotificationTone } from '../lib/notificationSounds'
@@ -67,14 +67,20 @@ export default function LateSmsMatchPopup() {
   const announced = useRef(new Set<number>())
   const dialog = useRef<HTMLElement | null>(null)
   const canSee = can('deposits')
+  const canDecide = can('deposits', 'can_approve')
 
   useEffect(() => {
     try { snoozed.current = new Set(JSON.parse(sessionStorage.getItem(SNOOZE_KEY) ?? '[]')) } catch { snoozed.current = new Set() }
   }, [])
 
-  const merge = useCallback((rows: Proposal[]) => {
+  const merge = useCallback((rows: Proposal[], reconcile = false) => {
     setQueue((current) => {
       const byId = new Map(current.map((row) => [row.id, row]))
+      const returnedIds = new Set(rows.map((row) => row.id))
+      // The pending endpoint is also the cross-operator source of truth. If
+      // another team member decided this proposal, it disappears from the
+      // response; remove the stale local copy instead of showing it again.
+      if (reconcile) for (const row of current) if (!returnedIds.has(row.id)) byId.delete(row.id)
       for (const row of rows) if (row.status === 'pending') byId.set(row.id, row)
       return [...byId.values()].sort((left, right) => left.id - right.id)
     })
@@ -91,8 +97,8 @@ export default function LateSmsMatchPopup() {
     if (status !== 'authed' || !canSee) return
     let cancelled = false
     let channel: ReturnType<typeof supabase.channel> | null = null
-    const load = () => void api<{ rows?: Proposal[] }>('/api/late-matches?status=pending&limit=20')
-      .then(({ rows = [] }) => { if (!cancelled) merge(rows) })
+    const load = () => void api<{ rows?: Proposal[] }>('/api/late-matches?status=pending&limit=100')
+      .then(({ rows = [] }) => { if (!cancelled) merge(rows, true) })
       .catch(() => { /* popup is best effort; the proposal stays pending */ })
     load()
     const timer = window.setInterval(load, POLL_MS)
@@ -136,10 +142,12 @@ export default function LateSmsMatchPopup() {
     setBusy(decision)
     setError(null)
     try {
-      await api(`/api/late-matches/${current.id}/decide`, { method: 'POST', body: JSON.stringify({ decision }) })
+      await api(`/api/late-matches/${current.id}/decide`, { method: 'POST', body: JSON.stringify({ decision }), timeoutMs: 65_000 })
       setQueue((rows) => rows.filter((row) => row.id !== current.id))
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e)
+      const message = e instanceof ApiError
+        ? [e.body?.detail, e.body?.reason, e.body?.message, e.code].find((value): value is string => typeof value === 'string' && value.trim().length > 0) ?? e.code
+        : e instanceof Error ? e.message : String(e)
       // 409 = someone else already answered or the pair changed; either way it is no longer actionable here.
       if (/already_decided|transaction_not_open|sms_already_linked|already_linked/.test(message)) setQueue((rows) => rows.filter((row) => row.id !== current.id))
       else setError(message)
@@ -180,12 +188,12 @@ export default function LateSmsMatchPopup() {
         {current.sms_blocked && <small>{t('الرسالة مقفولة بقاعدة الـ3 ساعات، والموافقة هتفك القفل وتسجّله باسمك.', 'This SMS carries the 3-hour assignment lock; approving unlocks it under your name.')}</small>}
         {error && <span className="late-match-error" role="alert">{error}</span>}
         <div className="late-match-actions">
-          <button type="button" className="btn-primary btn-sm" onClick={() => void decide('approve')} disabled={busy != null}>
+          {canDecide ? <button type="button" className="btn-primary btn-sm" onClick={() => void decide('approve')} disabled={busy != null}>
             <Check size={15}/> {busy === 'approve' ? t('جاري التنفيذ…', 'Approving…') : t('نعم، وافق', 'Yes, approve')}
-          </button>
-          <button type="button" className="btn-ghost btn-sm" onClick={() => void decide('reject')} disabled={busy != null}>
+          </button> : <small>{t('تحتاج صلاحية اعتماد لاتخاذ القرار.', 'Approval permission is required to decide this match.')}</small>}
+          {canDecide && <button type="button" className="btn-ghost btn-sm" onClick={() => void decide('reject')} disabled={busy != null}>
             <X size={15}/> {busy === 'reject' ? t('جاري الحفظ…', 'Saving…') : t('لا، تجاهل', 'No, dismiss')}
-          </button>
+          </button>}
           <button type="button" className="btn-ghost btn-sm" onClick={() => openTab(txPath)} disabled={busy != null}><ExternalLink size={14}/> {t('فتح المعاملة', 'Open transaction')}</button>
           <button type="button" className="btn-ghost btn-sm" onClick={() => openTab(smsPath)} disabled={busy != null}><ExternalLink size={14}/> {t('فتح الرسالة', 'Open SMS')}</button>
         </div>
