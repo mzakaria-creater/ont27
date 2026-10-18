@@ -282,27 +282,23 @@ export default function MavenWallets() {
       else if (replacePreview[bankId]?.current?.replace(/\D/g, '') === replaceNewNumber) finalResults[bankId] = { ok: true, message: t('لا تغيير: الرقم مطابق بالفعل', 'No change: number already matches') }
     }
     let completed = 0
-    // Each Maven edit is read -> write -> read-back. Keep requests small so a
-    // single Vercel invocation cannot hit its execution ceiling; a lost
-    // response must never cause the UI to blindly repeat a real write.
-    for (const group of batches(replaceCommitTargets, 4)) {
+    // Execute one wallet per request. Maven performs read -> write ->
+    // read-back verification, so a lost response must never cause a whole
+    // batch to be retried or hide which wallets already changed.
+    for (const bankId of replaceCommitTargets) {
       try {
-        const { results } = await api<{ results: Array<{ bank_id: string; ok: boolean; changed_from?: string; changed_to?: string; error?: string }> }>('/api/wallets/live/replacement/commit-bulk', {
-          method: 'POST', body: JSON.stringify({ bank_ids: group, new_wallet_number: replaceNewNumber }),
-          timeoutMs: 55_000,
+        const result = await api<{ bank_id: string; ok: boolean; changed_from?: string; changed_to?: string; error?: string }>('/api/wallets/live/replacement/commit', {
+          method: 'POST', body: JSON.stringify({ bank_id: bankId, new_wallet_number: replaceNewNumber }),
+          timeoutMs: 25_000,
         })
-        const byId = new Map(results.map((result) => [String(result.bank_id), result]))
-        for (const bankId of group) {
-          const result = byId.get(bankId)
-          finalResults[bankId] = result?.ok
-            ? { ok: true, message: t(`تم التغيير: ${result.changed_from ?? '—'} → ${result.changed_to ?? replaceNewNumber}`, `Changed: ${result.changed_from ?? '—'} → ${result.changed_to ?? replaceNewNumber}`) }
-            : { ok: false, message: result?.error || t('فشل التغيير على Maven', 'Change failed on Maven') }
-        }
+        finalResults[bankId] = result.ok
+          ? { ok: true, message: t(`تم التغيير: ${result.changed_from ?? '—'} → ${result.changed_to ?? replaceNewNumber}`, `Changed: ${result.changed_from ?? '—'} → ${result.changed_to ?? replaceNewNumber}`) }
+          : { ok: false, message: result.error || t('فشل التغيير على Maven', 'Change failed on Maven') }
       } catch (error) {
         const message = error instanceof ApiError ? error.code : t('فشل التغيير على Maven', 'Change failed on Maven')
-        for (const bankId of group) finalResults[bankId] = { ok: false, message }
+        finalResults[bankId] = { ok: false, message }
       }
-      completed += group.length
+      completed += 1
       setReplaceResults({ ...finalResults })
       setReplaceProgress({ phase: 'change', completed, total: replaceCommitTargets.length })
     }
