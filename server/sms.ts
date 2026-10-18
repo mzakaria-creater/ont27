@@ -91,7 +91,7 @@ function cairoOffset(date: string): string {
 function cairoBoundary(date: string, end = false): string { return `${date}T${end ? '23:59:59.999' : '00:00:00'}${cairoOffset(date)}` }
 
 type QueueSms = Record<string, unknown> & { id: number; amount: number | null; received_at: string | null; sender_name: string | null; sender_number: string | null; receiver_number: string | null; provider: string | null }
-type QueueTx = { tx_id: number; amount: number | null; sender_name: string | null; sender_number: string | null; receiving_wallet: string | null; to_account_number: string | null; first_seen_at: string | null }
+type QueueTx = { tx_id: number; amount: number | null; sender_name: string | null; sender_number: string | null; receiving_wallet: string | null; to_account_number: string | null; payment_method: string | null; status: string | null; first_seen_at: string | null }
 const cents = (value: unknown) => Math.round(Number(value ?? 0) * 100)
 const nameKey = (value: unknown) => String(value ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter((part) => part.length > 1).join(' ')
 const phoneKey = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
@@ -131,13 +131,29 @@ function queueCandidates(sms: QueueSms, transactions: QueueTx[], balanceHistory:
   const smsPhone = phoneKey(sms.sender_number)
   const orange = /orange/i.test(`${sms.provider ?? ''} ${sms.message ?? ''} ${sms.raw_sms ?? ''}`)
   return transactions.filter((tx) => {
-    // Match against Maven's current wallet first. A historical receiving_wallet
-    // match is review-only and must not be presented as an auto-link candidate.
-    if (cents(tx.amount) !== cents(sms.amount) || !smsWallet || phoneKey(tx.to_account_number ?? tx.receiving_wallet) !== smsWallet) return false
+    if (cents(tx.amount) !== cents(sms.amount)) return false
+    const txPhone = phoneKey(tx.sender_number)
+    const walletMatch = Boolean(smsWallet && phoneKey(tx.to_account_number ?? tx.receiving_wallet) === smsWallet)
+    const senderMatch = Boolean(smsPhone && txPhone && smsPhone === txPhone)
+    // Vodafone can report the wallet that received the SMS while Maven has
+    // already rotated the transaction's current wallet. For recommendations,
+    // an exact customer number + amount is useful evidence even when wallets
+    // differ; this remains a review suggestion and never auto-links a row.
+    if (!walletMatch && !senderMatch) return false
+    const method = String(tx.payment_method ?? '').toLowerCase()
+    if (method.includes('orange') && /vodafone|vf[- ]?cash/i.test(`${sms.provider ?? ''} ${sms.message ?? ''}`)) return false
+    if (method.includes('vodafone') && orange) return false
     const txAt = queueTime(tx.first_seen_at)
-    if (smsAt == null || txAt == null || Math.abs(smsAt - txAt) > 10 * 60_000) return false
-    if (smsPhone) return !phoneKey(tx.sender_number) || phoneKey(tx.sender_number) === smsPhone
+    if (smsAt == null || txAt == null) return false
+    const maxDelta = senderMatch ? 24 * 60 * 60_000 : 10 * 60_000
+    if (Math.abs(smsAt - txAt) > maxDelta) return false
+    if (senderMatch) return true
     return orange && sameName(sms.sender_name, tx.sender_name) && balanceContinuity(sms, balanceHistory)
+  }).sort((left, right) => {
+    const leftSender = phoneKey(left.sender_number) === smsPhone ? 1 : 0
+    const rightSender = phoneKey(right.sender_number) === smsPhone ? 1 : 0
+    if (leftSender !== rightSender) return rightSender - leftSender
+    return Math.abs((queueTime(left.first_seen_at) ?? 0) - (smsAt ?? 0)) - Math.abs((queueTime(right.first_seen_at) ?? 0) - (smsAt ?? 0))
   })
 }
 
@@ -421,7 +437,7 @@ smsRoutes.get('/queues', requirePerm('sms_live', 'can_view'), async (c) => {
   const since = new Date(Date.now() - 7 * 86_400_000).toISOString()
   const [{ data: smsRows, error: smsError }, { data: txRows, error: txError }, { data: balanceHistory, error: balanceError }] = await Promise.all([
     db.from('inbound_sms').select(LIST_COLUMNS).eq('sms_category', 'deposit').is('consumed_by_tx_id', null).is('matched_transaction_id', null).is('maven_transaction_id', null).or('is_blocked.eq.false,is_blocked.is.null').gte('received_at', since).order('received_at', { ascending: false, nullsFirst: false }).limit(1000),
-    db.from('maven_transactions').select('tx_id, amount, sender_name, sender_number, receiving_wallet, to_account_number, first_seen_at').eq('status', 'PENDING').gte('first_seen_at', since).order('first_seen_at', { ascending: false, nullsFirst: false }).limit(1000),
+    db.from('maven_transactions').select('tx_id, amount, sender_name, sender_number, receiving_wallet, to_account_number, payment_method, status, first_seen_at').in('status', ['PENDING', 'PAID', 'APPROVED', 'UNDERPAID', 'DECLINED', 'EXPIRED']).gte('first_seen_at', since).order('first_seen_at', { ascending: false, nullsFirst: false }).limit(2000),
     db.from('inbound_sms').select('id, amount, receiver_number, balance_after, received_at').not('balance_after', 'is', null).gte('received_at', since).order('received_at', { ascending: false, nullsFirst: false }).limit(10_000),
   ])
   if (smsError || txError || balanceError) return c.json({ error: 'db_error', detail: smsError?.message ?? txError?.message ?? balanceError?.message }, 500)
