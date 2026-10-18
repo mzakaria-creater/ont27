@@ -1347,6 +1347,14 @@ export default function Payouts() {
                         audit_log_id: {decisionResult.audit_log_id ?? "—"} ·
                         executed_on_provider: true
                       </span>
+                      <div className="cell-sub" style={{ marginTop: 8 }}>
+                        {t(
+                          "تمت إزالتها من قائمة Maven المعلّقة لأنها أصبحت مدفوعة، وليست محذوفة. ابحث في سجل Maven برقم العملية.",
+                          "Maven removes paid payouts from its pending queue; the transaction was not deleted. Find it in Maven history using the provider transaction ID.",
+                        )}
+                        <br />
+                        <span className="mono">Maven ID: {selected?.maven_id ?? "—"}</span>
+                      </div>
                     </div>
                   ) : (
                     <div className="card warn">
