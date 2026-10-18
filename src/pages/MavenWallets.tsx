@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Activity, CheckCircle2, CircleDollarSign, Download, Filter, Pencil, Plus, RefreshCw, RotateCw, Search, ShieldAlert, Smartphone, Trash2, WalletCards, Wifi, WifiOff, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { api, ApiError } from '../lib/api'
@@ -49,6 +50,7 @@ const batches = <T,>(items: T[], size: number) => Array.from({ length: Math.ceil
 export default function MavenWallets() {
   const { t } = useLocale()
   const { can } = useAuth()
+  const [searchParams] = useSearchParams()
   const [data, setData] = useState<WalletsResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
@@ -98,6 +100,7 @@ export default function MavenWallets() {
 
   const canManageRotation = can('wallets', 'can_edit')
   const canCreateWallet = can('wallets', 'can_create')
+  const focusedWallet = (searchParams.get('wallet') ?? '').replace(/\D/g, '')
 
   const loadRotationGroups = useCallback(async () => {
     try { setRotationGroups((await api<{ groups: RotationGroup[] }>('/api/wallets/rotation-groups')).groups) }
@@ -210,6 +213,17 @@ export default function MavenWallets() {
     }
     return [...map.values()]
   }, [liveRows])
+  useEffect(() => {
+    if (!focusedWallet || !liveRows.length || !canManageRotation) return
+    const selected = liveRows
+      .filter((row) => (livePhone(row) ?? '').replace(/\D/g, '') === focusedWallet)
+      .map(liveBankId)
+      .filter(Boolean)
+    if (selected.length) {
+      setQuery(focusedWallet)
+      setSelectedLive((current) => current.length === selected.length && selected.every((id) => current.includes(id)) ? current : selected)
+    }
+  }, [canManageRotation, focusedWallet, liveRows])
   const livePageSize = 10
   const livePageCount = Math.max(1, Math.ceil(liveGroups.length / livePageSize))
   const visibleLiveGroups = liveGroups.slice((livePage - 1) * livePageSize, livePage * livePageSize)

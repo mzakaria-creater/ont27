@@ -7,7 +7,7 @@ import { depositTime, money, statusMeta } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 import { usePageSize } from '../lib/pageSize'
 import PageSizeSelect from '../components/PageSizeSelect'
-import { LayoutGrid, TableProperties, X } from 'lucide-react'
+import { ExternalLink, LayoutGrid, TableProperties, X } from 'lucide-react'
 import MethodLogo from '../components/MethodLogo'
 import { Sheet, SheetHeader, SheetFooter } from '../components/Sheet'
 import MultiSelectFilter, { splitFilterValues } from '../components/MultiSelectFilter'
@@ -591,6 +591,7 @@ export default function SmsLive() {
           await api(`/api/tx/${txId}/edit`, {
             method: 'POST',
             body: JSON.stringify({ status: 'PAID', reason: `SMS linked from SMS Live; declined transaction recovery for SMS #${selected.id}` }),
+            timeoutMs: 90_000,
           })
         } catch (e) {
           const detail = e instanceof ApiError ? apiErrorDetail(e) : 'status_change_failed'
@@ -831,7 +832,7 @@ export default function SmsLive() {
             <div className="wallet-limit-popup-icon">⚠</div>
           <h3 id="wallet-limit-popup-title">{t('تنبيه حد المحفظة', 'Wallet limit alert')}</h3>
             <p>{t('وصلت المحافظ التالية إلى 50,000 جنيه مدفوع. يرجى إيقاف التوجيه أو مراجعة السعة.', 'These wallets reached 50,000 EGP paid. Please stop routing or review capacity.')}</p>
-            <div className="wallet-limit-popup-list">{walletAlerts.map((row) => <div key={row.wallet}><span><span className="mono">{row.wallet}</span>{(row.transaction_ref || row.merchant || row.transaction_count) && <small>{row.transaction_count ? `${row.transaction_count.toLocaleString('en-US')} ${t('معاملة', 'transactions')} · ` : ''}{row.transaction_ref ? `TRX ${row.transaction_ref}` : ''}{row.transaction_ref && row.merchant ? ' · ' : ''}{row.merchant ?? ''}</small>}</span><strong>{money(row.paid_amount, 'EGP')}</strong></div>)}</div>
+            <div className="wallet-limit-popup-list">{walletAlerts.map((row) => <div key={row.wallet}><span><span className="mono">{row.wallet}</span>{(row.transaction_ref || row.merchant || row.transaction_count) && <small>{row.transaction_count ? `${row.transaction_count.toLocaleString('en-US')} ${t('معاملة', 'transactions')} · ` : ''}{row.transaction_ref ? `TRX ${row.transaction_ref}` : ''}{row.transaction_ref && row.merchant ? ' · ' : ''}{row.merchant ?? ''}</small>}</span><span className="wallet-limit-popup-value"><strong>{money(row.paid_amount, 'EGP')}</strong>{can('wallets', 'can_edit') && <Link className="btn-ghost btn-sm wallet-limit-change" to={`/maven?wallet=${encodeURIComponent(row.wallet)}`} title={t('تحديد هذه المحفظة لتغيير رقمها في Maven', 'Select this wallet to change its Maven number')}><ExternalLink size={13} />{t('تغيير المحفظة', 'Change wallet')}</Link>}</span></div>)}</div>
             <button type="button" className="btn-primary" onClick={() => setWalletAlertDismissed(true)}>{t('فهمت', 'Acknowledge')}</button>
           </section>
         </div>
