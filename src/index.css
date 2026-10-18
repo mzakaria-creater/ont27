@@ -2074,6 +2074,7 @@ a.stat-card:hover { border-color: var(--accent); }
 .sms-feed-dir.out { color: var(--status-declined); }
 .sms-feed-amount { flex: 0 0 auto; font-size: 14px; font-weight: 800; color: var(--text); }
 .sms-feed-sender { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); font-size: 10.5px; min-width: 0; }
+.sms-feed-sender-number { margin-inline-start: 4px; direction: ltr; unicode-bidi: isolate; }
 .sms-feed-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .sms-feed-wallet { display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 700; font-size: 12px; min-width: 0; }
 .sms-feed-wallet svg { flex: 0 0 auto; }

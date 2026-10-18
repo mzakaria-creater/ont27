@@ -599,7 +599,10 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
               <div className="sms-feed-main">
                 <span className={`sms-feed-dir ${r.sms_category === 'withdrawal' ? 'out' : 'in'}`} aria-hidden="true">{r.sms_category === 'withdrawal' ? '↗' : '↙'}</span>
                 <span className="sms-feed-amount mono">{money(r.amount, 'EGP')}</span>
-                <span className="sms-feed-sender">{r.sender_name ?? r.sender_number ?? '—'}</span>
+                <span className="sms-feed-sender">
+                  {r.sender_name ?? (r.sender_number ? <span className="mono sms-feed-sender-number">&quot;{r.sender_number}&quot;</span> : '—')}
+                  {r.sender_name && r.sender_number && <span className="mono sms-feed-sender-number">&quot;{r.sender_number}&quot;</span>}
+                </span>
               </div>
               <div className="sms-feed-foot">
                 <span className="sms-feed-wallet mono"><WalletCards size={11} aria-hidden="true" />{receivingWallet ?? '—'}</span>
