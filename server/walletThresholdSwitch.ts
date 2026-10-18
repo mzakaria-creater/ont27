@@ -1,0 +1,86 @@
+import { db } from './db.js'
+import { callMavenWalletSwitch } from './mavenWalletSwitch.js'
+
+const normalizePhone = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
+const RECEIVED_SMS_CATEGORIES = ['deposit', 'received', 'income']
+
+type Rule = {
+  id: string
+  bank_id: string
+  merchant: string
+  payment_type: string
+  source_wallet: string
+  target_wallet: string
+  amount_threshold: number
+  amount_received_since_check: number
+  last_checked_at: string
+}
+
+export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-switch') {
+  const { data: rules, error } = await db
+    .from('maven_wallet_threshold_switch_rules')
+    .select('id, bank_id, merchant, payment_type, source_wallet, target_wallet, amount_threshold, amount_received_since_check, last_checked_at')
+    .eq('active', true)
+    .eq('status', 'active')
+  if (error) throw new Error(`threshold switch rules: ${error.message}`)
+
+  const results: Record<string, unknown>[] = []
+  for (const rule of (rules ?? []) as Rule[]) {
+    const source = normalizePhone(rule.source_wallet)
+    const target = normalizePhone(rule.target_wallet)
+    const since = rule.last_checked_at || new Date(0).toISOString()
+    const { data: smsRows, error: smsError } = await db
+      .from('inbound_sms')
+      .select('id, amount, receiver_number, wallet_number, confirmed_wallet_number, received_at')
+      .gte('received_at', since)
+      .in('sms_category', RECEIVED_SMS_CATEGORIES)
+      .or(`receiver_number.eq.${source},wallet_number.eq.${source},confirmed_wallet_number.eq.${source}`)
+      .not('is_blocked', 'is', true)
+      .not('is_duplicate', 'is', true)
+    if (smsError) throw new Error(`threshold switch SMS ${rule.id}: ${smsError.message}`)
+
+    const received = (smsRows ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
+    const total = Number(rule.amount_received_since_check || 0) + received
+    const checkedAt = new Date().toISOString()
+    await db.from('maven_wallet_threshold_switch_rules').update({ amount_received_since_check: total, last_checked_at: checkedAt, updated_at: checkedAt }).eq('id', rule.id)
+
+    if (total < Number(rule.amount_threshold)) {
+      results.push({ id: rule.id, status: 'below_threshold', amount_received: total })
+      continue
+    }
+
+    const { data: live, error: liveError } = await db.from('maven_banks_live_cache').select('bank_id, payment_type, phone_number, account_name').eq('bank_id', rule.bank_id).maybeSingle()
+    if (liveError) throw new Error(`threshold switch live cache ${rule.id}: ${liveError.message}`)
+    if (!live || normalizePhone(live.phone_number) !== source) {
+      const message = `Maven bank ${rule.bank_id} is not ${rule.source_wallet}; refusing to switch.`
+      await db.from('maven_wallet_threshold_switch_rules').update({ status: 'error', last_error: message, updated_at: checkedAt }).eq('id', rule.id)
+      await db.from('audit_log').insert({ actor_type: 'system', actor_name: actorName, action: 'maven_wallet_threshold_switch_refused', entity: 'maven_wallet_threshold_switch_rules', entity_id: rule.id, after: { ...rule, amount_received: total, reason: message } })
+      results.push({ id: rule.id, status: 'refused', error: message })
+      continue
+    }
+
+    const { data: targetLive } = await db.from('maven_banks_live_cache').select('bank_id, phone_number').neq('bank_id', rule.bank_id).eq('phone_number', rule.target_wallet).maybeSingle()
+    if (targetLive) {
+      const message = `Target wallet ${rule.target_wallet} already belongs to Maven bank ${targetLive.bank_id}.`
+      await db.from('maven_wallet_threshold_switch_rules').update({ status: 'error', last_error: message, updated_at: checkedAt }).eq('id', rule.id)
+      await db.from('audit_log').insert({ actor_type: 'system', actor_name: actorName, action: 'maven_wallet_threshold_switch_refused', entity: 'maven_wallet_threshold_switch_rules', entity_id: rule.id, after: { ...rule, amount_received: total, reason: message } })
+      results.push({ id: rule.id, status: 'refused', error: message })
+      continue
+    }
+
+    const provider = await callMavenWalletSwitch({ bank_id: rule.bank_id, mode: 'edit', new_number: rule.target_wallet, confirm: true }, 45_000)
+    const switched = provider.ok && provider.body.ok === true && normalizePhone(provider.body.changed_to) === target
+    if (!switched) {
+      const message = String(provider.body.error ?? 'Maven did not confirm the wallet switch.')
+      await db.from('maven_wallet_threshold_switch_rules').update({ status: 'error', last_error: message, updated_at: checkedAt }).eq('id', rule.id)
+      await db.from('audit_log').insert({ actor_type: 'system', actor_name: actorName, action: 'maven_wallet_threshold_switch_failed', entity: 'maven_wallet_threshold_switch_rules', entity_id: rule.id, after: { ...rule, amount_received: total, provider } })
+      results.push({ id: rule.id, status: 'failed', error: message })
+      continue
+    }
+
+    await db.from('maven_wallet_threshold_switch_rules').update({ active: false, status: 'switched', amount_received_since_check: total, last_checked_at: checkedAt, switched_at: checkedAt, last_error: null, updated_at: checkedAt }).eq('id', rule.id)
+    await db.from('audit_log').insert({ actor_type: 'system', actor_name: actorName, action: 'maven_wallet_threshold_switch_succeeded', entity: 'maven_wallet_threshold_switch_rules', entity_id: rule.id, before: { source_wallet: rule.source_wallet, amount_threshold: rule.amount_threshold }, after: { target_wallet: rule.target_wallet, amount_received: total, provider } })
+    results.push({ id: rule.id, status: 'switched', amount_received: total, changed_to: rule.target_wallet })
+  }
+  return { ok: true, results }
+}

@@ -43,6 +43,20 @@ interface RotationGroup {
   created_by: string | null
   created_at: string
 }
+interface ThresholdSwitchRule {
+  id: string
+  bank_id: string
+  merchant: string
+  payment_type: string
+  source_wallet: string
+  target_wallet: string
+  amount_threshold: number
+  amount_received_since_check: number
+  active: boolean
+  status: 'active' | 'switched' | 'error' | 'paused'
+  switched_at: string | null
+  last_error: string | null
+}
 const providers = ['Orange Money', 'Vodafone Cash', 'Etisalat Cash', 'WE Pay', 'InstaPay']
 const emptyNewWallet = { wallet_number: '', provider: 'Orange Money', merchant: '', daily_limit: '' }
 const batches = <T,>(items: T[], size: number) => Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size))
@@ -97,6 +111,9 @@ export default function MavenWallets() {
   const [quickThreshold, setQuickThreshold] = useState('50000')
   const [quickBusy, setQuickBusy] = useState(false)
   const [quickError, setQuickError] = useState<string | null>(null)
+  const [thresholdRules, setThresholdRules] = useState<ThresholdSwitchRule[]>([])
+  const [switchNotice, setSwitchNotice] = useState<ThresholdSwitchRule | null>(null)
+  const thresholdStatusRef = useRef<Record<string, string | null>>({})
 
   const canManageRotation = can('wallets', 'can_edit')
   const canCreateWallet = can('wallets', 'can_create')
@@ -107,6 +124,24 @@ export default function MavenWallets() {
     catch { /* the rotation panel is optional chrome; a failed load just leaves the list empty */ }
   }, [])
   useEffect(() => { if (canManageRotation) void loadRotationGroups() }, [canManageRotation, loadRotationGroups])
+
+  const loadThresholdRules = useCallback(async () => {
+    if (!can('wallets', 'can_view')) return
+    try {
+      const rules = (await api<{ rules: ThresholdSwitchRule[] }>('/api/wallets/threshold-switch-rules')).rules
+      for (const rule of rules) {
+        const previous = thresholdStatusRef.current[rule.id]
+        if (previous !== undefined && previous !== rule.switched_at && rule.status === 'switched') setSwitchNotice(rule)
+        thresholdStatusRef.current[rule.id] = rule.switched_at
+      }
+      setThresholdRules(rules)
+    } catch { /* optional operational status */ }
+  }, [can])
+  useEffect(() => {
+    void loadThresholdRules()
+    const timer = window.setInterval(() => void loadThresholdRules(), 30_000)
+    return () => window.clearInterval(timer)
+  }, [loadThresholdRules])
 
   const refresh = useCallback(async () => {
     const sequence = ++refreshSequence.current
@@ -469,6 +504,21 @@ export default function MavenWallets() {
         <div className="maven-provider-chips">{providers.map((provider) => <button key={provider} className={`maven-chip ${selectedProviders.includes(provider) ? 'active' : ''}`} type="button" onClick={() => toggleProvider(provider)}>{provider}</button>)}</div>
       </section>
 
+      {thresholdRules.map((rule) => (
+        <section className="card" key={rule.id} style={{ borderColor: rule.status === 'switched' ? 'var(--green-border)' : rule.status === 'error' ? 'var(--red-border)' : undefined }}>
+          <div className="recent-head">
+            <div>
+              <h3>{t('تبديل محفظة تلقائي', 'Automatic wallet switch')} · <span className="mono">{rule.bank_id}</span></h3>
+              <p className="cell-sub">{rule.merchant} · {rule.payment_type} · <span className="mono">{rule.source_wallet}</span> → <span className="mono">{rule.target_wallet}</span></p>
+            </div>
+            <span className={`pay-status-badge ${rule.status === 'switched' ? 'st-paid' : rule.status === 'error' ? 'st-declined' : 'st-pending'}`}>
+              {rule.status === 'switched' ? t('تم التغيير', 'Switched') : rule.status === 'error' ? t('يحتاج مراجعة', 'Needs review') : `${money(rule.amount_received_since_check, 'EGP')} / ${money(rule.amount_threshold, 'EGP')}`}
+            </span>
+          </div>
+          {rule.last_error && <div className="cell-sub danger-text">{rule.last_error}</div>}
+        </section>
+      ))}
+
       {error && <div className="card warn">{error}</div>}
       {replaceNotice && <div className="card">{replaceNotice} <button type="button" className="btn-ghost btn-sm" onClick={() => setReplaceNotice(null)}>{t('إغلاق', 'Dismiss')}</button></div>}
       <section className="card maven-live-accounts">
@@ -653,6 +703,23 @@ export default function MavenWallets() {
               <input className="login-input" placeholder={t('اسم الحساب (اختياري)', 'Account name (optional)')} value={addNewName} onChange={(e) => setAddNewName(e.target.value)} />
               <button className="btn-primary btn-sm" disabled={addNewBusy || addNewPreview?.loading || !/^\d{8,20}$/.test(addNewNumber)}>{addNewBusy ? t('جارٍ التنفيذ على Maven…', 'Applying on Maven…') : t('تأكيد الاستبدال الفعلي', 'Confirm real replacement')}</button>
             </form>
+          </section>
+        </div>
+      )}
+
+      {switchNotice && (
+        <div className="modal-backdrop" role="presentation">
+          <section className="card" style={{ maxWidth: 520 }} role="dialog" aria-modal="true" aria-labelledby="wallet-switch-success-title">
+            <div className="recent-head"><h3 id="wallet-switch-success-title"><CheckCircle2 size={18} /> {t('تم تغيير المحفظة بنجاح', 'Wallet switched successfully')}</h3><button type="button" className="icon-action" onClick={() => setSwitchNotice(null)} aria-label={t('إغلاق', 'Close')}><X size={17} /></button></div>
+            <p>{t('تم تأكيد التغيير من Maven بعد بلوغ حد الاستلام.', 'Maven confirmed the switch after the receiving threshold was reached.')}</p>
+            <dl className="detail-grid">
+              <dt>{t('التاجر', 'Merchant')}</dt><dd>{switchNotice.merchant}</dd>
+              <dt>{t('البنك', 'Bank')}</dt><dd className="mono">{switchNotice.bank_id}</dd>
+              <dt>{t('من', 'From')}</dt><dd className="mono" dir="ltr">{switchNotice.source_wallet}</dd>
+              <dt>{t('إلى', 'To')}</dt><dd className="mono" dir="ltr">{switchNotice.target_wallet}</dd>
+              <dt>{t('الحد', 'Threshold')}</dt><dd>{money(switchNotice.amount_threshold, 'EGP')}</dd>
+            </dl>
+            <button type="button" className="btn-primary btn-sm" onClick={() => setSwitchNotice(null)}>{t('تم', 'Done')}</button>
           </section>
         </div>
       )}

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { getCookie } from 'hono/cookie'
 import { createClient } from '@supabase/supabase-js'
 import { db } from './db.js'
+import { runWalletThresholdSwitch } from './walletThresholdSwitch.js'
 import { ACCESS_COOKIE, verifyAccessToken } from './tokens.js'
 import { repairPaidSmsMatches } from './smsMatcher.js'
 import { repairCheckoutSmsMatches } from './checkoutSmsMatcher.js'
@@ -1050,6 +1051,17 @@ deltaSyncRoutes.get('/wallet-rotation', async (c) => {
     rotated.push(group.id)
   }
   return c.json({ ok: true, rotated, at: new Date().toISOString() })
+})
+
+deltaSyncRoutes.get('/wallet-threshold-switch', async (c) => {
+  const secret = process.env.CRON_SECRET
+  if (!secret || c.req.header('authorization') !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401)
+  if (!(await claimDistributedLease(50, 'maven_wallet_threshold_switch'))) return c.json({ ok: true, skipped: 'distributed_lease' })
+  try {
+    return c.json(await runWalletThresholdSwitch())
+  } catch (error) {
+    return c.json({ ok: false, error: error instanceof Error ? error.message : 'wallet_threshold_switch_failed' }, 502)
+  }
 })
 
 // Piggyback trigger from the authed panel. Throttled per warm lambda; the

@@ -3,6 +3,7 @@ import { db } from './db.js'
 import { oldDb } from './oldDb.js'
 import { requireAuth, requirePerm, requireAnyPerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
+import { callMavenWalletSwitch } from './mavenWalletSwitch.js'
 
 // Wallet pool = wallet_device_map (receiving wallets → device/sim), enriched
 // with live device_status. Channels = local_deposit_channels (allocation config).
@@ -28,26 +29,6 @@ walletRoutes.get('/live', requirePerm('wallets', 'can_view'), async (c) => {
 // There is no documented REST API for this; it is HTML-form automation, so
 // it can break silently if Maven changes that site, and a wrong bank_id or
 // number changes real live routing immediately. Always preview before commit.
-const MAVEN_WALLET_SWITCH_URL = `${process.env.SUPABASE_URL ?? 'https://iwhjmhazcvctvipoasct.supabase.co'}/functions/v1/maven-wallet-switch`
-async function callMavenWalletSwitch(body: Record<string, unknown>, timeoutMs = 20_000): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY
-  if (!serviceKey) return { ok: false, status: 0, body: { error: 'maven_switch_not_configured' } }
-  try {
-    const res = await fetch(MAVEN_WALLET_SWITCH_URL, {
-      method: 'POST',
-      // The edge function performs real Maven writes. Authenticate every
-      // server-to-server call instead of leaving confirm:true publicly usable.
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
-    })
-    const json = await res.json().catch(() => ({})) as Record<string, unknown>
-    return { ok: res.ok, status: res.status, body: json }
-  } catch (e) {
-    return { ok: false, status: 0, body: { error: (e as Error).message } }
-  }
-}
-
 walletRoutes.post('/live/replacement/preview-bulk', requirePerm('wallets', 'can_edit'), async (c) => {
   const body = await c.req.json<{ bank_ids?: unknown }>().catch(() => null)
   const bankIds = Array.isArray(body?.bank_ids)
@@ -564,6 +545,12 @@ walletRoutes.get('/rotation-groups', requirePerm('wallets', 'can_view'), async (
     .order('created_at', { ascending: false })
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
   return c.json({ groups: data ?? [] })
+})
+
+walletRoutes.get('/threshold-switch-rules', requirePerm('wallets', 'can_view'), async (c) => {
+  const { data, error } = await db.from('maven_wallet_threshold_switch_rules').select('*').order('created_at', { ascending: false })
+  if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
+  return c.json({ rules: data ?? [] })
 })
 
 walletRoutes.post('/rotation-groups', requirePerm('wallets', 'can_edit'), async (c) => {

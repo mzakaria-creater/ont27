@@ -14,5 +14,6 @@
     { "path": "/api/cron/delta-sync-full", "schedule": "*/10 * * * *" },
     { "path": "/api/cron/auto-decline", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/wallet-rotation", "schedule": "*/5 * * * *" }
+    ,{ "path": "/api/cron/wallet-threshold-switch", "schedule": "*/5 * * * *" }
   ]
 }
