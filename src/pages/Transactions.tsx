@@ -1231,7 +1231,13 @@ export default function Transactions() {
                 </div>
                 {r.kind === 'deposit' && r.matched_sms?.balance_after != null && <div className="tx-live-balance mono">رصيدك الحالي {money(r.matched_sms.balance_after, r.currency ?? 'EGP')}</div>}
                 {proofUrl && <button type="button" className="all-tx-card-proof" onClick={() => setProof({ url: proofUrl, ref: String(r.ontarget_ref ?? id), onApprove: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'approve'); setProof(null) } : undefined, onDecline: r.status === 'PENDING' && r.kind === 'deposit' && !r.is_checkout_session && can('deposits', 'can_approve') ? async () => { await decide(r, 'decline'); setProof(null) } : undefined, onBlock: canClientProtection && r.kind === 'deposit' && r.sender_number ? async () => { await changeClientBlock(r, r.is_blacklisted ? 'unblock' : 'block'); setProof(null) } : undefined, blockLabel: r.is_blacklisted ? t('رفع حظر العميل', 'Unblock client') : t('حظر العميل', 'Block client') })}><img src={proofUrl} alt="" loading="lazy" /><span>{t('عرض إثبات الدفع', 'View payment proof')}</span></button>}
-                <div className="all-tx-card-brands"><MerchantLogo merchant={r.merchant ?? r.master_merchant} displayName={merchantDisplayName(r.merchant ?? r.master_merchant)} /><MethodLogo method={r.kind === 'deposit' ? r.payment_method : payoutMethodLabel(r)} /></div>
+                <div className="all-tx-card-brands">
+                  <div className="all-tx-card-merchant-stack">
+                    <MerchantLogo merchant={r.merchant ?? r.master_merchant} displayName={merchantDisplayName(r.merchant ?? r.master_merchant)} />
+                    {r.master_merchant && r.master_merchant !== r.merchant && <span className="all-tx-card-master-merchant" title={r.master_merchant}>{r.master_merchant}</span>}
+                  </div>
+                  <MethodLogo method={r.kind === 'deposit' ? r.payment_method : payoutMethodLabel(r)} />
+                </div>
                 <dl>
                   <div><dt>{t('النوع', 'Type')}</dt><dd>{r.kind === 'deposit' ? t('إيداع', 'Deposit') : t('سحب', 'Payout')}</dd></div>
                   <div><dt>{t('الطرف', 'Party')}</dt><dd><SenderIdentity name={party} phone={clientPhone} nameHref={party ? `/transactions?q=${encodeURIComponent(party)}` : undefined} phoneHref={clientPhone ? `/client/${encodeURIComponent(clientPhone)}` : undefined} /></dd></div>
