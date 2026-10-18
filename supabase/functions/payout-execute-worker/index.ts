@@ -174,34 +174,48 @@ async function readPayoutStatus(
   const center = firstSeenAt ? new Date(firstSeenAt) : new Date();
   const startDate = new Date(center.getTime() - windowDays * 86400000);
   const endDate = new Date(center.getTime() + windowDays * 86400000);
-  const body = new URLSearchParams({
-    draw: "1",
-    start: "0",
-    length: "200",
-    "search[value]": String(mavenId),
-    "search[regex]": "false",
-    "order[0][column]": "26",
-    "order[0][dir]": "desc",
-    StartCreatedDate: fmt(startDate, "00:00:00"),
-    EndCreatedDate: fmt(endDate, "23:59:59"),
-  }).toString();
-  const r = await fetch(`${base}/Transactions/GetP2PPayoutTransactions`, {
-    signal: AbortSignal.timeout(PROVIDER_FETCH_TIMEOUT_MS),
-    method: "POST",
-    headers: {
-      cookie,
-      "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-      "X-Requested-With": "XMLHttpRequest",
-      accept: "application/json",
-    },
-    body,
-  });
-  if (!r.ok) throw new Error(`payout list HTTP ${r.status}`);
-  const data = await r.json();
-  const row = (data.data ?? []).find(
-    (x: Record<string, unknown>) => Number(x.ID) === mavenId,
-  );
-  return row ? String(row.Status ?? "") : null;
+  const pageSize = 200;
+  const headers = {
+    cookie,
+    "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+    "X-Requested-With": "XMLHttpRequest",
+    accept: "application/json",
+  };
+
+  // Maven's DataTables endpoint sometimes ignores search[value] for older
+  // payouts. Scan the returned pages as well as the first page; otherwise a
+  // valid old payout can be mistaken for a missing provider record.
+  for (let start = 0; start <= 5000; start += pageSize) {
+    const body = new URLSearchParams({
+      draw: String(1 + start / pageSize),
+      start: String(start),
+      length: String(pageSize),
+      "search[value]": String(mavenId),
+      "search[regex]": "false",
+      "order[0][column]": "26",
+      "order[0][dir]": "desc",
+      StartCreatedDate: fmt(startDate, "00:00:00"),
+      EndCreatedDate: fmt(endDate, "23:59:59"),
+    }).toString();
+    const r = await fetch(`${base}/Transactions/GetP2PPayoutTransactions`, {
+      signal: AbortSignal.timeout(PROVIDER_FETCH_TIMEOUT_MS),
+      method: "POST",
+      headers,
+      body,
+    });
+    if (!r.ok) throw new Error(`payout list HTTP ${r.status}`);
+    const data = await r.json() as {
+      data?: Array<Record<string, unknown>>;
+      recordsFiltered?: number;
+      recordsTotal?: number;
+    };
+    const rows = data.data ?? [];
+    const row = rows.find((x) => Number(x.ID) === mavenId);
+    if (row) return String(row.Status ?? "");
+    const total = Number(data.recordsFiltered ?? data.recordsTotal ?? 0);
+    if (rows.length < pageSize || (total > 0 && start + rows.length >= total)) break;
+  }
+  return null;
 }
 
 async function readPayoutStatusWithRetry(
