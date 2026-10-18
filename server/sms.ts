@@ -17,7 +17,7 @@ export const smsRoutes = new Hono<AuthEnv>()
 smsRoutes.use('*', requireAuth)
 
 const LIST_COLUMNS =
-  'id, received_at, device_name, sim_slot, sender_number, sender_name, receiver_number, wallet_number, confirmed_wallet_number, amount, balance_after, sms_category, match_status, matched, review_required, is_blocked, block_reason, blocked_at, blocked_by, assignment_unlocked_at, assignment_unlocked_by, trx_id, matched_transaction_id, maven_transaction_id, consumed_by_tx_id, provider, sms_sender, sms_first_line, raw_sms, message, raw_payload, webhook_name, webhook_address, method, ocr_text, score, auto_match_score, processed_at, maven_synced, maven_synced_at, maven_status_sent'
+  'id, received_at, device_name, device_prefix, sim_slot, sender_number, sender_name, receiver_number, wallet_number, confirmed_wallet_number, wallet_resolution_source, resolved_employee, amount, balance_after, sms_category, match_status, matched, review_required, is_blocked, block_reason, blocked_at, blocked_by, assignment_unlocked_at, assignment_unlocked_by, trx_id, matched_transaction_id, maven_transaction_id, consumed_by_tx_id, provider, sms_sender, sms_first_line, raw_sms, message, raw_payload, webhook_name, webhook_address, method, ocr_text, score, auto_match_score, processed_at, maven_synced, maven_synced_at, maven_status_sent'
 
 // Three separate ingestion paths (the sms-inbound webhook, a direct "live"
 // path, and the legacy_mirror replication job) all write into inbound_sms,
@@ -320,12 +320,12 @@ async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> 
 async function markAmbiguousWallets(rows: Record<string, unknown>[]): Promise<void> {
   const devices = [...new Set(rows.map((row) => String(row.webhook_name ?? row.device_name ?? '').trim()).filter(Boolean))]
   if (!devices.length) return
-  const { data } = await db.from('wallet_device_map').select('device, sim_slot, to_account_number').in('device', devices)
+  const { data } = await db.from('device_prefix_map').select('prefix, sim_slot, wallet_number').in('prefix', devices).eq('active', true)
   const byDevice = new Map<string, { sim_slot: number | null; wallet: string }[]>()
   for (const item of data ?? []) {
-    const key = String(item.device ?? '')
+    const key = String(item.prefix ?? '')
     const list = byDevice.get(key) ?? []
-    list.push({ sim_slot: item.sim_slot == null ? null : Number(item.sim_slot), wallet: String(item.to_account_number ?? '') })
+    list.push({ sim_slot: item.sim_slot == null ? null : Number(item.sim_slot), wallet: String(item.wallet_number ?? '') })
     byDevice.set(key, list)
   }
   for (const row of rows) {
@@ -333,20 +333,25 @@ async function markAmbiguousWallets(rows: Record<string, unknown>[]): Promise<vo
     const device = String(row.webhook_name ?? row.device_name ?? '').trim()
     const mappings = byDevice.get(device) ?? []
     const slot = row.sim_slot == null ? null : Number(row.sim_slot)
+    const payload = row.raw_payload && typeof row.raw_payload === 'object' ? row.raw_payload as Record<string, unknown> : {}
+    const explicitWallet = [payload.wallet, payload.wallet_number, payload.receiver_number, payload.to]
+      .map((value) => String(value ?? '').replace(/\D/g, ''))
+      .some((value) => /^01\d{9}$/.test(value))
+      || /(?:على\s+رقم\s+محفظتك|إلى\s+رقم\s+محفظتك|رقم\s+المحفظة)\D*01\d{9}/.test(String(row.raw_sms ?? row.message ?? ''))
     // Forwarders often omit sim_slot. When the device has exactly one active
     // wallet mapping, that sole mapping is safe to use; only multiple mappings
     // remain ambiguous and must be hidden from operators.
     const match = slot == null
       ? (mappings.length === 1 ? mappings[0] : null)
       : mappings.find((item) => item.sim_slot === slot)
-    if (match) {
+    if (match && !explicitWallet) {
       // Never overwrite a wallet explicitly present in the SMS payload. The
       // device map is only a fallback for forwarders that omitted the wallet.
       if (!row.receiver_number && !row.wallet_number) row.wallet_number = match.wallet
       if (!row.receiver_number) row.receiver_number = match.wallet
       continue
     }
-    if (slot == null && mappings.length > 1) row.wallet_identity_ambiguous = true
+    if (!explicitWallet && (slot == null || !match)) row.wallet_identity_ambiguous = true
   }
 }
 

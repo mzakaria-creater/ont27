@@ -283,14 +283,11 @@ async function resolveWallet(
   if (prefixError) console.error("device_prefix_map lookup failed", prefixError);
 
   const mappedRows = (prefixRows ?? []) as { wallet_number: string; sim_slot: number | null; employee: string | null }[];
-  const rows = mappedRows.length
-    ? mappedRows.map((row) => ({ wallet: row.wallet_number, sim_slot: row.sim_slot, employee: row.employee, source: "device_prefix_map" }))
-    : await (async () => {
-      const { data } = await supabaseAdmin.from("wallet_device_map")
-        .select("to_account_number, sim_slot").eq("device", device);
-      return ((data ?? []) as { to_account_number: string; sim_slot: number | null }[])
-        .map((row) => ({ wallet: row.to_account_number, sim_slot: row.sim_slot, employee: null, source: "wallet_device_map" }));
-    })();
+  // device_prefix_map is the only trusted device -> SIM source. The old
+  // wallet_device_map can contain retired Maven numbers after rotation, so a
+  // missing V2 mapping must remain unresolved rather than showing a stale
+  // wallet as fact.
+  const rows = mappedRows.map((row) => ({ wallet: row.wallet_number, sim_slot: row.sim_slot, employee: row.employee, source: "device_prefix_map" }));
 
   if (!rows.length) return { wallet: null, employee: null, source: null };
 
