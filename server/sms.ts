@@ -91,7 +91,7 @@ function cairoOffset(date: string): string {
 function cairoBoundary(date: string, end = false): string { return `${date}T${end ? '23:59:59.999' : '00:00:00'}${cairoOffset(date)}` }
 
 type QueueSms = Record<string, unknown> & { id: number; amount: number | null; received_at: string | null; sender_name: string | null; sender_number: string | null; receiver_number: string | null; provider: string | null }
-type QueueTx = { tx_id: number; amount: number | null; sender_name: string | null; sender_number: string | null; receiving_wallet: string | null; to_account_number: string | null; payment_method: string | null; status: string | null; first_seen_at: string | null }
+type QueueTx = { tx_id: number; ontarget_ref?: string | null; amount: number | null; sender_name: string | null; sender_number: string | null; receiving_wallet: string | null; to_account_number: string | null; payment_method: string | null; merchant?: string | null; status: string | null; first_seen_at: string | null }
 const cents = (value: unknown) => Math.round(Number(value ?? 0) * 100)
 const nameKey = (value: unknown) => String(value ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter((part) => part.length > 1).join(' ')
 const phoneKey = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
@@ -437,7 +437,7 @@ smsRoutes.get('/queues', requirePerm('sms_live', 'can_view'), async (c) => {
   const since = new Date(Date.now() - 7 * 86_400_000).toISOString()
   const [{ data: smsRows, error: smsError }, { data: txRows, error: txError }, { data: balanceHistory, error: balanceError }] = await Promise.all([
     db.from('inbound_sms').select(LIST_COLUMNS).eq('sms_category', 'deposit').is('consumed_by_tx_id', null).is('matched_transaction_id', null).is('maven_transaction_id', null).or('is_blocked.eq.false,is_blocked.is.null').gte('received_at', since).order('received_at', { ascending: false, nullsFirst: false }).limit(1000),
-    db.from('maven_transactions').select('tx_id, amount, sender_name, sender_number, receiving_wallet, to_account_number, payment_method, status, first_seen_at').in('status', ['PENDING', 'PAID', 'APPROVED', 'UNDERPAID', 'DECLINED', 'EXPIRED']).gte('first_seen_at', since).order('first_seen_at', { ascending: false, nullsFirst: false }).limit(2000),
+    db.from('maven_transactions').select('tx_id, ontarget_ref, amount, sender_name, sender_number, receiving_wallet, to_account_number, payment_method, merchant, status, first_seen_at').in('status', ['PENDING', 'PAID', 'APPROVED', 'UNDERPAID', 'DECLINED', 'EXPIRED']).gte('first_seen_at', since).order('first_seen_at', { ascending: false, nullsFirst: false }).limit(2000),
     db.from('inbound_sms').select('id, amount, receiver_number, balance_after, received_at').not('balance_after', 'is', null).gte('received_at', since).order('received_at', { ascending: false, nullsFirst: false }).limit(10_000),
   ])
   if (smsError || txError || balanceError) return c.json({ error: 'db_error', detail: smsError?.message ?? txError?.message ?? balanceError?.message }, 500)
@@ -449,7 +449,19 @@ smsRoutes.get('/queues', requirePerm('sms_live', 'can_view'), async (c) => {
     const candidates = queueCandidates(sms, transactions, history)
     const target = candidates[0]
     const ageHours = Math.max(0, (Date.now() - (queueTime(sms.received_at) ?? Date.now())) / 3_600_000)
-    const item = { ...sms, age_hours: ageHours, stale: ageHours >= 1, candidate_tx_id: target?.tx_id ?? null, candidate_count: candidates.length, match_route: phoneKey(sms.sender_number) ? 'phone_exact' : 'orange_name_amount_balance' }
+    const candidate = target ? {
+      tx_id: target.tx_id,
+      ontarget_ref: target.ontarget_ref ?? null,
+      amount: target.amount,
+      status: target.status,
+      sender_name: target.sender_name,
+      sender_number: target.sender_number,
+      receiving_wallet: target.to_account_number ?? target.receiving_wallet,
+      payment_method: target.payment_method,
+      merchant: target.merchant ?? null,
+      first_seen_at: target.first_seen_at,
+    } : null
+    const item = { ...sms, age_hours: ageHours, stale: ageHours >= 1, candidate_tx_id: target?.tx_id ?? null, candidate_count: candidates.length, candidate, match_route: phoneKey(sms.sender_number) ? 'phone_exact' : 'orange_name_amount_balance' }
     if (target || isPotentialDeposit(sms)) waiting.push(item)
     else unlinked.push(item)
   }

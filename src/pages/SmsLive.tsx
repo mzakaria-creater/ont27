@@ -152,6 +152,15 @@ interface SmsRecommendation {
   txId: number
   candidateCount: number
   route: string
+  reference: string | null
+  amount: number | null
+  status: string | null
+  senderName: string | null
+  senderNumber: string | null
+  receivingWallet: string | null
+  paymentMethod: string | null
+  merchant: string | null
+  firstSeenAt: string | null
 }
 
 interface WalletPaidTotal { wallet: string; paid_amount: number; transaction_count?: number; transaction_ref?: string | null; merchant?: string | null }
@@ -329,12 +338,19 @@ export default function SmsLive() {
       // slow transaction scan never blocks the live SMS inbox.
       if (Date.now() - recommendationRefreshRef.current >= 15_000) {
         recommendationRefreshRef.current = Date.now()
-        void api<{ waiting?: Array<{ id: number; candidate_tx_id?: number | null; candidate_count?: number; match_route?: string }> }>('/api/sms/queues')
+        void api<{ waiting?: Array<{ id: number; candidate_tx_id?: number | null; candidate_count?: number; match_route?: string; candidate?: { tx_id: number; ontarget_ref?: string | null; amount?: number | null; status?: string | null; sender_name?: string | null; sender_number?: string | null; receiving_wallet?: string | null; payment_method?: string | null; merchant?: string | null; first_seen_at?: string | null } | null }> }>('/api/sms/queues')
           .then((queue) => {
             const next: Record<number, SmsRecommendation> = {}
             for (const item of queue.waiting ?? []) {
               if (item.candidate_tx_id == null) continue
-              next[Number(item.id)] = { smsId: Number(item.id), txId: Number(item.candidate_tx_id), candidateCount: Number(item.candidate_count ?? 1), route: item.match_route ?? 'evidence' }
+              const candidate = item.candidate
+              next[Number(item.id)] = {
+                smsId: Number(item.id), txId: Number(item.candidate_tx_id), candidateCount: Number(item.candidate_count ?? 1), route: item.match_route ?? 'evidence',
+                reference: candidate?.ontarget_ref ?? null, amount: candidate?.amount ?? null, status: candidate?.status ?? null,
+                senderName: candidate?.sender_name ?? null, senderNumber: candidate?.sender_number ?? null,
+                receivingWallet: candidate?.receiving_wallet ?? null, paymentMethod: candidate?.payment_method ?? null,
+                merchant: candidate?.merchant ?? null, firstSeenAt: candidate?.first_seen_at ?? null,
+              }
             }
             setRecommendations(next)
           })
@@ -775,6 +791,22 @@ export default function SmsLive() {
   const selectedReport = selected ? smsReport(selected) : null
   const walletAlerts = walletPaidTotals.filter((row) => row.paid_amount >= 50_000)
   const recommendationFor = (smsId: number) => recommendations[smsId]
+  const recommendationBadge = (recommendation: SmsRecommendation) => (
+    <span className="sms-recommendation-wrap">
+      <span className="pay-status-badge sms-recommendation-badge" tabIndex={0}>
+        {t('مقترح', 'Recommended')} · <span className="mono">TX #{recommendation.txId}</span>
+      </span>
+      <span className="sms-recommendation-popover" role="tooltip">
+        <strong>{t('تفاصيل المعاملة المقترحة', 'Recommended transaction details')}</strong>
+        <span><b>TX</b> <span className="mono">#{recommendation.txId}</span>{recommendation.reference ? <> · <b>{t('مرجع', 'Ref')}</b> <span className="mono">{recommendation.reference}</span></> : null}</span>
+        <span><b>{t('الحالة', 'Status')}</b> {recommendation.status ?? '—'} · <b>{t('المبلغ', 'Amount')}</b> {money(recommendation.amount, 'EGP')}</span>
+        <span><b>{t('العميل', 'Customer')}</b> {recommendation.senderName ?? '—'} · <span className="mono">{recommendation.senderNumber ?? '—'}</span></span>
+        <span><b>{t('المحفظة', 'Wallet')}</b> <span className="mono">{recommendation.receivingWallet ?? '—'}</span></span>
+        <span><b>{t('الطريقة', 'Method')}</b> {recommendation.paymentMethod ?? '—'}{recommendation.merchant ? <> · {recommendation.merchant}</> : null}</span>
+        <span><b>{t('وقت المعاملة', 'Transaction time')}</b> {recommendation.firstSeenAt ? depositTime({ first_seen_at: recommendation.firstSeenAt }) : '—'}</span>
+      </span>
+    </span>
+  )
 
   return (
     <>
@@ -977,7 +1009,7 @@ export default function SmsLive() {
                         {linked
                           ? <><span className="pay-status-badge st-paid">{r.matched_ontarget_ref ?? r.matched_tx_id ?? (payoutLinked ? `WD ${r.matched_payout_ref ?? r.matched_payout_id}` : 'Linked')}</span>{r.matched_currency && <div className="cell-sub mono">{r.matched_currency}{r.matched_sub_merchant ? ` · ${r.matched_sub_merchant}` : ''}</div>}</>
                           : recommendation
-                            ? <><span className="pay-status-badge sms-recommendation-badge">{t('مقترح', 'Recommended')} · <span className="mono">TX #{recommendation.txId}</span></span>{recommendation.candidateCount > 1 && <div className="cell-sub">{t(`${recommendation.candidateCount} مرشحين — تحقق قبل الربط`, `${recommendation.candidateCount} candidates — verify before linking`)}</div>}</>
+                            ? <>{recommendationBadge(recommendation)}{recommendation.candidateCount > 1 && <div className="cell-sub">{t(`${recommendation.candidateCount} مرشحين — تحقق قبل الربط`, `${recommendation.candidateCount} candidates — verify before linking`)}</div>}</>
                             : <span className="pay-status-badge st-unlinked">{t('غير مرتبطة','Unlinked')}</span>}
                       </td>
                       <td>
@@ -1011,7 +1043,7 @@ export default function SmsLive() {
                     <span>{t('المحفظة', 'Wallet')}<b className="mono">{displayWallet ?? '—'}</b></span>
                     <span>{t('الجهاز', 'Device')}<b className="mono">{r.device_name ?? '—'}</b></span>
                   </div>
-                  <div className="sms-live-card-foot">{recommendation ? <span className="pay-status-badge sms-recommendation-badge">{t('مقترح', 'Recommended')} · <span className="mono">TX #{recommendation.txId}</span></span> : matchMeta ? <span className={`pay-status-badge ${matchMeta.cls}`}>{t(matchMeta.ar, matchMeta.en)}</span> : <span className="pay-status-badge st-dim">{t('غير مرتبطة', 'Unlinked')}</span>}{r.review_required && !linked && <span className="sms-review-hold-label">⚠ HOLD · {t('مراجعة 3 دقائق', '3-minute review')}</span>}{r.sms_category === 'withdrawal' && <span className="cell-sub">{r.matched_payout_id ? `WD ${r.matched_payout_ref ?? r.matched_payout_id}` : t('سحب غير معيّن', 'Unassigned withdrawal')}</span>}</div>
+                  <div className="sms-live-card-foot">{recommendation ? recommendationBadge(recommendation) : matchMeta ? <span className={`pay-status-badge ${matchMeta.cls}`}>{t(matchMeta.ar, matchMeta.en)}</span> : <span className="pay-status-badge st-dim">{t('غير مرتبطة', 'Unlinked')}</span>}{r.review_required && !linked && <span className="sms-review-hold-label">⚠ HOLD · {t('مراجعة 3 دقائق', '3-minute review')}</span>}{r.sms_category === 'withdrawal' && <span className="cell-sub">{r.matched_payout_id ? `WD ${r.matched_payout_ref ?? r.matched_payout_id}` : t('سحب غير معيّن', 'Unassigned withdrawal')}</span>}</div>
                   <div className="cell-sub sms-card-preview">{firstLine(r)}</div>
                 </button>
                 {!linked && !r.is_blocked && (
