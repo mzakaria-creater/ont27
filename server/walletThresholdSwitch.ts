@@ -2,6 +2,11 @@ import { db } from './db.js'
 import { callMavenWalletSwitch } from './mavenWalletSwitch.js'
 
 const normalizePhone = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
+const phoneVariants = (value: unknown) => {
+  const raw = String(value ?? '').replace(/\D/g, '')
+  const local = normalizePhone(raw)
+  return [...new Set([raw, `0${local}`, `20${local}`].filter(Boolean))]
+}
 const RECEIVED_SMS_CATEGORIES = ['deposit', 'received', 'income']
 
 type Rule = {
@@ -28,13 +33,14 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
   for (const rule of (rules ?? []) as Rule[]) {
     const source = normalizePhone(rule.source_wallet)
     const target = normalizePhone(rule.target_wallet)
+    const sourceVariants = phoneVariants(rule.source_wallet)
     const since = rule.last_checked_at || new Date(0).toISOString()
     const { data: smsRows, error: smsError } = await db
       .from('inbound_sms')
       .select('id, amount, receiver_number, wallet_number, confirmed_wallet_number, received_at')
       .gte('received_at', since)
       .in('sms_category', RECEIVED_SMS_CATEGORIES)
-      .or(`receiver_number.eq.${source},wallet_number.eq.${source},confirmed_wallet_number.eq.${source}`)
+      .or(sourceVariants.flatMap((number) => [`receiver_number.eq.${number}`, `wallet_number.eq.${number}`, `confirmed_wallet_number.eq.${number}`]).join(','))
       .not('is_blocked', 'is', true)
       .not('is_duplicate', 'is', true)
     if (smsError) throw new Error(`threshold switch SMS ${rule.id}: ${smsError.message}`)
