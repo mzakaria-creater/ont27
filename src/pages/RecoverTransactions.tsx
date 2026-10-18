@@ -71,7 +71,11 @@ export default function RecoverTransactions() {
     if (!window.confirm(`${t(`استرجاع المعاملة ${row.ontarget_ref ?? row.tx_id} واعتمادها؟`, `Recover and approve transaction ${row.ontarget_ref ?? row.tx_id}?`)}\n${t('المبلغ', 'Amount')}: ${money(row.amount, row.currency ?? 'EGP')}`)) return
     setBusy(row.tx_id)
     try {
-      await api(`/api/deposits/${row.tx_id}/decision`, { method: 'POST', body: JSON.stringify({ action: 'approve', note: 'Recovered from Recover Transaction Review — late SMS evidence found after decline' }) })
+      // source is required: /decision refuses any non-PENDING transaction
+      // by default, and this page exists specifically to approve a DECLINED
+      // one -- this exact string is what both the endpoint and the
+      // provider worker (ngpay-approve) recognize as that one trusted case.
+      await api(`/api/deposits/${row.tx_id}/decision`, { method: 'POST', body: JSON.stringify({ action: 'approve', note: 'Recovered from Recover Transaction Review — late SMS evidence found after decline', source: 'manual_fix_decline_reversal' }) })
       setRows((current) => current?.filter((r) => r.tx_id !== row.tx_id) ?? current)
     } catch (e) {
       setErr(e instanceof ApiError ? `${t('فشل الاسترجاع', 'Recovery failed')}: ${e.code}` : t('فشل الاسترجاع.', 'Recovery failed.'))

@@ -502,7 +502,19 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
   if (!before) return c.json({ error: 'not_found' }, 404)
   const txId = String(before.tx_id)
   if (!await rowAllowed(c.get('actor'),before,'approve')) return c.json({error:'outside_assigned_scope'},403)
-  if (before.status !== 'PENDING') {
+  // RecoverTransactions.tsx ("Recover & approve") exists specifically to
+  // approve a DECLINED transaction that picked up late SMS evidence -- but
+  // called this exact endpoint, which unconditionally refused anything but
+  // PENDING. Every click on that page failed with not_pending, for every
+  // row, since the page was built; 'manual_fix_decline_reversal' was
+  // already a trusted source string in ngpay-approve's own reversal guard
+  // (see its trustedCorrectionSource), just never actually sent by any
+  // caller. This only widens the gate for that exact, already-permission-
+  // gated combination -- action=approve on a currently-DECLINED row,
+  // explicitly flagged by the caller -- not a general bypass.
+  const requestedSource = typeof body?.source === 'string' ? body.source.trim() : null
+  const isDeclineRecovery = action === 'approve' && before.status === 'DECLINED' && requestedSource === 'manual_fix_decline_reversal'
+  if (before.status !== 'PENDING' && !isDeclineRecovery) {
     return c.json({ error: 'not_pending', status: before.status }, 409)
   }
 
@@ -544,7 +556,10 @@ depositRoutes.post('/:txId/decision', requirePerm('deposits', 'can_approve'), as
         // guard also bounds the panel API request and returns a retryable error.
         signal: AbortSignal.timeout(75_000),
         headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
-        body: JSON.stringify({ tx_id: Number(txId), decision: target, actor_name: actor.username, remark: note ?? undefined }),
+        body: JSON.stringify({
+          tx_id: Number(txId), decision: target, actor_name: actor.username, remark: note ?? undefined,
+          ...(isDeclineRecovery ? { source: 'manual_fix_decline_reversal', allow_reversal: true } : {}),
+        }),
       })
       workerResult = await workerResponse.json().catch(() => ({ error: 'worker_invalid_response' })) as Record<string, unknown>
     } catch (error) {

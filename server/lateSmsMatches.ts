@@ -35,7 +35,31 @@ lateSmsMatchRoutes.get('/', requirePerm('deposits', 'can_view'), async (c) => {
     .order('created_at', { ascending: false })
     .limit(limit)
   if (error) return c.json({ error: 'db_error', detail: error.message }, 500)
-  return c.json({ rows: data ?? [] })
+  // Extra evidence for the bulk-review page: the SMS provider, and whether the
+  // same phone has already been linked to a transaction under a DIFFERENT SMS
+  // name (a sign the number belongs to someone else). The transaction side
+  // carries no real customer name (Maven stores a placeholder), so phone +
+  // amount + SMS name history is the strongest cross-check available.
+  const rows = data ?? []
+  const smsIds = [...new Set(rows.map((r) => Number(r.sms_id)).filter(Number.isFinite))]
+  const phones = [...new Set(rows.map((r) => r.sender_number).filter((v): v is string => Boolean(v)))]
+  const [smsRes, histRes] = await Promise.all([
+    smsIds.length ? db.from('inbound_sms').select('id, provider').in('id', smsIds) : Promise.resolve({ data: [] as { id: number; provider: string | null }[] }),
+    phones.length ? db.from('inbound_sms').select('sender_number, sender_name').in('sender_number', phones).not('consumed_by_tx_id', 'is', null).not('sender_name', 'is', null).limit(5000) : Promise.resolve({ data: [] as { sender_number: string; sender_name: string }[] }),
+  ])
+  const providerBySms = new Map((smsRes.data ?? []).map((r) => [Number(r.id), r.provider]))
+  const names = new Map<string, Set<string>>()
+  for (const h of histRes.data ?? []) {
+    const set = names.get(h.sender_number) ?? new Set<string>()
+    set.add(String(h.sender_name).trim().toLowerCase()); names.set(h.sender_number, set)
+  }
+  return c.json({
+    rows: rows.map((r) => {
+      const known = names.get(r.sender_number ?? '')
+      const mine = String(r.sms_sender_name ?? '').trim().toLowerCase()
+      return { ...r, sms_provider: providerBySms.get(Number(r.sms_id)) ?? null, name_conflict: Boolean(known && mine && [...known].some((n) => n !== mine)) }
+    }),
+  })
 })
 
 lateSmsMatchRoutes.post('/:id/decide', requirePerm('deposits', 'can_approve'), async (c) => {

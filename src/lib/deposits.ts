@@ -177,6 +177,36 @@ export function gatewayChipCls(gateway: string | null | undefined, master?: stri
   return merchantChipCls(master)
 }
 
+// Shared wallet-resolution rule for an SMS row's RECEIVING wallet, used by
+// both the full /sms page and the floating Live SMS drop-up widget. The two
+// previously diverged: the drop-up widget read matched_receiving_wallet
+// unconditionally (even on an unlinked row, where that field can be stale)
+// and ignored wallet_identity_ambiguous entirely -- showing a device's
+// guessed wallet number as if it were confirmed even when the SMS forwarder
+// omitted sim_slot and the device maps to more than one wallet, something
+// the full page already knows to hide rather than guess.
+interface WalletRow {
+  matched_tx_id?: number | null
+  matched_receiving_wallet?: string | null
+  wallet_identity_ambiguous?: boolean | null
+  confirmed_wallet_number?: string | null
+  wallet_number?: string | null
+  receiver_number?: string | null
+  linked_wallet_number?: string | null
+  sms_category?: string | null
+}
+
+export function displayReceivingWallet(row: WalletRow): string | null {
+  if (row.sms_category === 'withdrawal') {
+    return row.linked_wallet_number ?? (row.wallet_identity_ambiguous ? null : row.wallet_number) ?? null
+  }
+  // After linking, the transaction's current allocation is the operational
+  // wallet. The raw SMS wallet remains available as evidence, but may be an
+  // older number after Maven wallet rotation.
+  if (row.matched_tx_id != null && row.matched_receiving_wallet) return row.matched_receiving_wallet
+  return row.wallet_identity_ambiguous ? null : row.confirmed_wallet_number ?? row.wallet_number ?? row.receiver_number ?? null
+}
+
 // Icons for the payment methods that actually occur in maven_transactions:
 // Mobile Wallet / VodafoneCash / Orange Money / Orange / Etissalat, InstaPay,
 // Express Deposit, Bank Deposit, WireTransfer.

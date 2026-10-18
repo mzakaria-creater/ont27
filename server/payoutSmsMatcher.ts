@@ -48,8 +48,16 @@ export async function autoApproveMatchedPayout(payoutId: number, sms: Candidate,
 export async function autoLinkWithdrawalSms(limit = 300) {
   const since = new Date(Date.now() - 3 * 86_400_000).toISOString()
   const [{ data: payouts, error: payoutErr }, { data: messages, error: smsErr }] = await Promise.all([
+    // status='PENDING' matters as much as matched_sms_id IS NULL: a payout can
+    // be resolved by the legacy Maven mirror (its real status flips to
+    // APPROVED/DECLINED) before this matcher ever sees a withdrawal SMS for
+    // it, since nothing here sets matched_sms_id until a match is found.
+    // Without this filter an already-resolved payout stayed an eligible
+    // "unlinked" candidate forever, matched a later SMS, and fired a pointless
+    // approval call that always failed with "Automatic payout execution is
+    // switched off" -- confirmed live across 21 such no-op failures, Aug-Oct.
     db.from('maven_payout_transactions').select('maven_id, amount, mobile_no, first_seen_at, maven_raw_row')
-      .is('matched_sms_id', null).gte('first_seen_at', since).order('first_seen_at', { ascending: false }).limit(limit),
+      .eq('status', 'PENDING').is('matched_sms_id', null).gte('first_seen_at', since).order('first_seen_at', { ascending: false }).limit(limit),
     db.from('inbound_sms').select('id, amount, receiver_number, wallet_number, confirmed_wallet_number, received_at, consumed_by_tx_id, matched, message, sender_name, notes, manual_entry_note')
       .eq('sms_category', 'withdrawal').gte('received_at', since)
       .or('is_blocked.eq.false,is_blocked.is.null')

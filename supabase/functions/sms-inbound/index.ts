@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
+import nodemailer from "npm:nodemailer@7.0.6";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 if (!SUPABASE_URL) throw new Error("SUPABASE_URL is required");
@@ -15,6 +16,101 @@ const supabaseAdmin = createClient(SUPABASE_URL, secretKey, {
   // prevent the database from recovering.
   db: { retry: false },
 });
+
+// "Money out" (withdrawal) SMS -- a transfer leaving one of our own wallets
+// -- gets an immediate email alert, same SMTP credentials the
+// transaction-approval-email function already uses in this project. This is
+// deliberately NOT awaited before the webhook responds (see the
+// EdgeRuntime.waitUntil call site below): a slow or down mail server must
+// never add latency to -- or fail -- live SMS ingestion.
+const WITHDRAWAL_ALERT_EMAIL = "minafx2@gmail.com";
+
+// Confirmed live on SMS #1014741 (Orange Cash, "عملية تحويل أموال ناجحة
+// بمبلغ 3700.00 جنيه، لرقم 01094182796، رسوم التحويل 15.00 جنيه، رصيدك
+// الحالي 38.60 جنيه"): wallet_number/receiver_number on a withdrawal row is
+// OUR OWN sending wallet, never the recipient -- same fact
+// server/payoutSmsMatcher.ts's payoutDestination() already documents and
+// extracts via this identical "لرقم" pattern. The first version of this
+// alert used wallet_number/receiver_number as if it were the recipient and
+// never surfaced the real destination number at all, nor the fee/balance
+// that are sitting right there in the message.
+function extractPayoutDestination(message: string): string | null {
+  return message.match(/(?:لرقم|to\s+(?:number|phone)|recipient)\s*[:：-]?\s*(?:\+?20)?(01\d{9})/i)?.[1] ?? null;
+}
+function extractTransferFee(message: string): string | null {
+  return message.match(/رسوم\s*(?:التحويل|السحب)\s*[:：]?\s*([\d.,]+)/)?.[1] ?? null;
+}
+
+function esc(value: unknown): string {
+  return String(value ?? "—").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
+// Red theme on purpose -- this is money LEAVING one of our wallets, the
+// opposite event from transaction-approval-email's green "approved"
+// template, and should read as an alert, not a confirmation.
+function withdrawalAlertHtml(fields: { smsId: number; amount: string; recipient: string; ourWallet: string; fee: string; balanceAfter: string; provider: string; reference: string; device: string; receivedAt: string; message: string }): { subject: string; html: string; text: string } {
+  const { smsId, amount, recipient, ourWallet, fee, balanceAfter, provider, reference, device, receivedAt, message } = fields;
+  const subject = `Money Out SMS #${smsId}: ${amount} to ${recipient} (${provider})`;
+  const rows: [string, string][] = [
+    ["Amount", amount], ["To (recipient)", recipient], ["From our wallet", ourWallet],
+    ["Transfer fee", fee], ["Balance after", balanceAfter], ["Provider", provider],
+    ["Reference", reference], ["Device", device], ["Received", receivedAt],
+  ].map(([label, value]) => [label, value]);
+  const rowsHtml = rows.map(([label, value]) => `<tr><td style="padding:9px 0;color:#667085">${esc(label)}</td><td align="right" style="padding:9px 0;font-weight:700">${esc(value)}</td></tr>`).join("");
+  const html = `<!doctype html><html><body style="margin:0;background:#f6f3f3;font-family:Arial,Helvetica,sans-serif;color:#2a1515">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 12px;background:#f6f3f3"><tr><td align="center">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 10px 32px rgba(120,20,20,.12)">
+  <tr><td style="padding:30px 36px;background:#7f1d1d;color:#fff"><div style="font-weight:800;letter-spacing:1.5px;font-size:14px">ONTARGET</div><div style="margin-top:20px;width:50px;height:50px;line-height:50px;text-align:center;border-radius:50%;background:#ef4444;font-size:26px">&#9650;</div><h1 style="margin:14px 0 4px;font-size:27px">Money Out Alert</h1><div style="color:#fecaca">Withdrawal SMS detected -- wallet balance decreased</div></td></tr>
+  <tr><td style="padding:30px 36px"><p style="font-size:15px;line-height:1.7;color:#57534e;margin:0 0 22px">A withdrawal SMS just reported money leaving one of our wallets (SMS #${smsId}).</p>
+  <div style="border:1px solid #fecaca;border-radius:14px;overflow:hidden"><div style="padding:20px;background:#fef2f2;border-bottom:1px solid #fecaca"><div style="font-size:12px;color:#991b1b">AMOUNT OUT</div><div style="font-size:29px;font-weight:800;color:#7f1d1d;margin-top:4px">${esc(amount)}</div><div style="margin-top:9px;font-size:14px;color:#57534e">${esc(ourWallet)} &nbsp;&#8594;&nbsp; ${esc(recipient)}</div></div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:12px 20px;font-size:14px">${rowsHtml}</table></div>
+  <div style="margin-top:22px;padding:14px 16px;background:#fafaf9;border-radius:10px;border:1px solid #e7e5e4;font-size:12.5px;color:#57534e;white-space:pre-wrap;direction:rtl;text-align:right">${esc(message)}</div></td></tr>
+  <tr><td style="padding:18px 36px;background:#fafaf9;border-top:1px solid #e7e5e4;color:#a8a29e;font-size:12px">Internal operational alert from OnTarget.</td></tr></table></td></tr></table></body></html>`;
+  const text = [
+    `Money Out Alert -- withdrawal SMS detected.`, ``,
+    `SMS #${smsId}`, `Amount: ${amount}`, `To (recipient): ${recipient}`,
+    `From our wallet: ${ourWallet}`, `Transfer fee: ${fee}`, `Balance after: ${balanceAfter}`,
+    `Provider: ${provider}`, `Reference: ${reference}`, `Device: ${device}`, `Received: ${receivedAt}`,
+    ``, `Message:`, message,
+  ].join("\n");
+  return { subject, html, text };
+}
+
+async function sendWithdrawalAlertEmail(row: Record<string, unknown>, smsId: number): Promise<void> {
+  const smtpUser = Deno.env.get("SMTP_USER");
+  const smtpPassword = Deno.env.get("SMTP_PASSWORD");
+  if (!smtpUser || !smtpPassword) {
+    console.warn("withdrawal alert email skipped: SMTP not configured");
+    return;
+  }
+  const transport = nodemailer.createTransport({
+    host: Deno.env.get("SMTP_HOST") || "mail.privateemail.com",
+    port: Number(Deno.env.get("SMTP_PORT") || "465"),
+    secure: Number(Deno.env.get("SMTP_PORT") || "465") === 465,
+    auth: { user: smtpUser, pass: smtpPassword },
+  });
+  const message = String(row.message ?? "");
+  const fee = extractTransferFee(message);
+  const { subject, html, text } = withdrawalAlertHtml({
+    smsId,
+    amount: row.amount != null ? `${row.amount} EGP` : "—",
+    recipient: extractPayoutDestination(message) ?? "—",
+    ourWallet: String(row.wallet_number ?? row.receiver_number ?? "—"),
+    fee: fee ? `${fee} EGP` : "—",
+    balanceAfter: row.balance_after != null ? `${row.balance_after} EGP` : "—",
+    provider: String(row.provider ?? "—"),
+    reference: String(row.trx_reference ?? "—"),
+    device: String(row.device_name ?? "—"),
+    receivedAt: String(row.received_at ?? "—"),
+    message,
+  });
+  await transport.sendMail({
+    from: Deno.env.get("SMTP_FROM") || `OnTarget <${smtpUser}>`,
+    to: WITHDRAWAL_ALERT_EMAIL,
+    subject,
+    html,
+    text,
+  });
+}
 
 const jsonHeaders = {
   "Content-Type": "application/json",
@@ -54,7 +150,13 @@ function extractAmount(message: string): number | null {
 }
 
 function extractBalance(message: string): number | null {
-  const m = message.match(/رصيدك\s*الحالي\s*([\d.,]+)\s*(?=جنيه)/);
+  // Vodafone Cash's "تم استلام" confirmation states the balance as
+  // "رصيدك الحالي: 1327.79 جنيه" -- a colon between the label and the
+  // number that this regex did not tolerate, so balance_after came back
+  // null for every single Vodafone deposit (confirmed live: 0 of 273 in a
+  // 24h window had a balance, vs 531 of 634 Orange ones, which never carry
+  // that colon).
+  const m = message.match(/رصيدك\s*الحالي\s*[:：]?\s*([\d.,]+)\s*(?=جنيه)/);
   if (!m) return null;
   const n = Number(m[1].replace(/,/g, ""));
   return Number.isFinite(n) ? n : null;
@@ -62,6 +164,28 @@ function extractBalance(message: string): number | null {
 
 function extractReference(message: string): string | null {
   return message.match(/رقم\s*(?:المعاملة|العملية)\s*[:：]?\s*(\d+)/)?.[1] ?? null;
+}
+
+// The device-forwarder apps in production never actually send a
+// provider/network/carrier field, so `provider` always fell back to the
+// DEVICE identifier ("ont1", "ont2", ...) instead of a real network name.
+// That silently broke two things at once: the SMS Live provider filter
+// (Vodafone Cash / Orange Cash checkboxes match the `provider` column with
+// ilike '%vodafone%'/'%orange%' — see server/sms.ts PROVIDER_FILTER_PATTERNS
+// — so they matched nothing for any row through this path) and the
+// method-logo badge, which showed the same generic mark for every row
+// regardless of network. Now that both Vodafone and Orange wallets are live
+// side by side, every row looked identical either way. Detect the network
+// from the message text itself, the same signal mark_supported_sms_source()
+// already trusts server-side.
+function detectNetworkFromMessage(message: string): string | null {
+  if (/vodafone/i.test(message) || /vf[- ]?cash/i.test(message) || /فودافون/.test(message)) return "Vodafone Cash";
+  if (/orange/i.test(message) || /اورنج|اورنچ/.test(message)) return "Orange Cash";
+  if (/etisalat|e&/i.test(message)) return "Etisalat Cash";
+  if (/instapay|insta\s*pay/i.test(message) || /انستا\s*باي/.test(message)) return "InstaPay";
+  if (/we\s*pay/i.test(message)) return "WE Pay";
+  if (/alexbank|alex\s*bank|bank\s*of\s*alexandria/i.test(message) || /بنك\s*الاسكندرية/.test(message)) return "Alex Bank";
+  return null;
 }
 
 // Real provider traffic that is never a deposit/withdrawal event on its own:
@@ -90,6 +214,21 @@ function classifyNotification(message: string): string | null {
 // label as if it were a person's name.
 function extractSenderName(message: string): string | null {
   return message.match(/من\s+([^،\n]{2,60})،\s*رصيدك/)?.[1]?.trim() || null;
+}
+
+// Vodafone Cash's "تم استلام" confirmation states the sender's name in a
+// completely separate clause from Orange's ("...من رقم X المسجل بإسم <name>
+// على رقم محفظتك..." -- no trailing "، رصيدك" at all), so extractSenderName
+// above never matched it. Combined with the wiring bug fixed below (row.*
+// used to read senderValue directly instead of the already-extracted
+// rawSender), Vodafone deposits carried NEITHER sender_number NOR
+// sender_name -- a total identity blackout that Orange never has (its phone
+// survives embedded in sender_name, "<name>-01xxxxxxxxx"). That forced every
+// Vodafone deposit onto the weaker wallet+amount+time fallback instead of
+// the identity-based matching paths, which is most of what made Vodafone
+// automation noticeably less reliable than Orange's.
+function extractVodafoneSenderName(message: string): string | null {
+  return message.match(/المسجل\s+بإسم\s+([^\n]+?)\s*على\s+رقم\s+محفظتك/)?.[1]?.trim() ?? null;
 }
 
 function extractSenderNumber(message: string): string | null {
@@ -200,6 +339,16 @@ function smsDirection(message: string): "in" | "out" | "notice" | "unknown" {
   if (/لديك\s*عملية\s*سحب/.test(c) && !/بمبلغ/.test(c)) return "notice";
   const isOut = /(عملية\s*سحب\s*ناجحة|تحويل\s*أموال\s*ناجحة|رسوم\s*السحب|رسوم\s*التحويل|تم\s*خصم|تم\s*سحب|تم\s*تحويل|لرقم|تحويل\s*(إلى|الي|الى))/.test(c)
     || /(withdraw|debit|paid out)/i.test(c);
+  // "لتأكيد دفع مبلغ X ... ل <merchant>" (e.g. "Ubiqpay Technology Ltd.") is a
+  // Vodafone Cash merchant/bill-pay confirmation for a SEPARATE merchant, not
+  // a deposit to us. A 2026-10-13 change briefly classified it as "deposit" on
+  // the theory that "لتأكيد" (confirm) implied a completed payment -- wrong,
+  // per the account owner directly and independently per two different staff
+  // (ahmedmano.solly, minafx2@gmail.com) each manually blocking an occurrence
+  // of this exact message as irrelevant before the correction. Must stay
+  // "unknown" like Orange's "ادفع X (merchant)" / Fawry's "To pay X for
+  // merchant" -- never classified as a deposit, never shown as financial
+  // evidence, never eligible for automation.
   const isIn = /(تم\s*استلام|استلمت|استقبلت|إيداع|ايداع|تم\s*اضافة|تم\s*إضافة)/.test(c)
     || /(received|deposit|credited)/i.test(c);
   if (isOut) return "out"; // a successful outgoing action always wins
@@ -308,11 +457,12 @@ Deno.serve(async (req: Request) => {
     const walletValue = firstValue(payload, "wallet", "wallet_number", "receiver_number", "to");
     const amountValue = firstValue(payload, "amount", "value", "transfer_amount");
     const referenceValue = firstValue(payload, "trx_reference", "trx_ref", "transaction_id", "transactionId", "reference", "ref", "utr");
-    const providerValue = firstValue(payload, "provider", "network", "carrier") ?? "ont1";
     const simSlotValue = payload.sim_slot === undefined || payload.sim_slot === null ? null : payload.sim_slot as string | number;
 
     const message = messageValue === null ? null : String(messageValue);
     if (!message) return response({ error: "message is required" }, 400);
+
+    const providerValue = firstValue(payload, "provider", "network", "carrier") ?? detectNetworkFromMessage(message) ?? "ont1";
 
     const numericAmount = amountValue === null ? null : Number(String(amountValue).replace(/[^0-9.-]/g, ""));
     let amount = numericAmount !== null && Number.isFinite(numericAmount) ? numericAmount : null;
@@ -348,6 +498,36 @@ Deno.serve(async (req: Request) => {
     const isWithdrawal = direction === "out" ? true : direction === "in" ? false : legacyWithdrawal;
     const isIncoming = direction === "in" ? true : direction === "out" ? false : legacyIncoming;
 
+    // "جالك طلب تحويل بمبلغ X ... افتح تطبيق أنا فودافون علشان تقبل أو ترفض
+    // الطلب" is Vodafone Cash's PENDING incoming-transfer-request notice --
+    // the money has not moved, the wallet owner still has to accept it in the
+    // app. Confirmed live on sender 01067348969: 8 occurrences across
+    // different fabricated amounts (158/150/151/100/80/74 EGP), only ONE real
+    // "تم استلام" deposit from that same sender ever landed (45 EGP, a
+    // different amount). One of the fake-amount request SMS (#1014624, 74
+    // EGP) was used as "SMS evidence" by staff to manually override an
+    // automation-engine-blacklist auto-decline back to PAID on tx #138501449
+    // -- i.e. this misclassification already caused one blacklisted sender's
+    // declined transaction to be paid out. Must stay "unknown": never a
+    // deposit/withdrawal, never shown as financial evidence, never wallet-
+    // resolved, never eligible for automation or manual-match "evidence".
+    const isPendingTransferRequest = /طلب\s*تحويل/.test(message) && /(تقبل|ترفض|accept|reject)/i.test(message);
+
+    // "لتأكيد دفع مبلغ X ... ل Ubiqpay Technology Ltd." is Vodafone Cash's
+    // merchant/bill-pay confirmation for a SEPARATE merchant (see the
+    // 2026-10-13/14 revert history below for isWithdrawal/isIncoming) --
+    // that revert only removed it as an explicit isIncoming SIGNAL, but
+    // never stopped the UNCONDITIONAL fallback two lines below ((amount !==
+    // null && wallet !== null) => "deposit") from reaching the same wrong
+    // answer by a different route: this message has a real amount and, once
+    // the device happens to map to exactly one wallet, a real wallet too.
+    // Confirmed live: SMS #1014822 (1400 EGP) landed sms_category='deposit'
+    // AGAIN days after the revert, already manually blocked by an operator.
+    // Must never resolve a wallet or classify as deposit, same as
+    // isPendingTransferRequest right above.
+    const isMerchantBillPayConfirmation = /لتأكيد\s*دفع\s*مبلغ/.test(message);
+    const isNonDepositConfirmation = isPendingTransferRequest || isMerchantBillPayConfirmation;
+
     // A genuine wallet-provider deposit notification always originates from a
     // regulated sender ID (e.g. "OrangeCash") — Egyptian carriers never let a
     // real subscriber MSISDN send as one. A leading "+" on the raw envelope
@@ -369,18 +549,20 @@ Deno.serve(async (req: Request) => {
     // carrying a real wallet number just because its device has exactly one
     // mapped SIM, polluting an "unknown" row with data that implies evidence
     // that was never actually there.
-    const resolved = (isIncoming || isWithdrawal || amount !== null || textWallet)
+    const resolved = (!isNonDepositConfirmation && (isIncoming || isWithdrawal || amount !== null || textWallet))
       ? await resolveWallet(device, simSlotValue, textWallet, amount, balance, isWithdrawal).catch(() => ({ wallet: null, employee: null, source: null }))
       : { wallet: null, employee: null, source: null };
     const wallet = resolved.wallet;
 
-    const smsCategory = ["deposit", "received", "income", "withdrawal", "expense"].includes(categoryText)
-      ? categoryText
-      : isWithdrawal
-        ? "withdrawal"
-        : (isIncoming || (amount !== null && wallet !== null))
-          ? "deposit"
-          : "unknown";
+    const smsCategory = isNonDepositConfirmation
+      ? "unknown"
+      : ["deposit", "received", "income", "withdrawal", "expense"].includes(categoryText)
+        ? categoryText
+        : isWithdrawal
+          ? "withdrawal"
+          : (isIncoming || (amount !== null && wallet !== null))
+            ? "deposit"
+            : "unknown";
 
     // Genuine provider chatter that isn't a transaction (balance pings,
     // promo/loyalty texts, envelope-only fragments) goes to its own table
@@ -418,9 +600,14 @@ Deno.serve(async (req: Request) => {
     // and the older aliases (sender, wallet, trx_reference) some legacy
     // reporting still queries — cheap to keep both in sync.
     const row = {
-      sender: senderValue === null ? null : String(senderValue),
-      sender_number: senderValue === null ? null : String(senderValue),
-      sender_name: (firstValue(payload, "sender_name", "name") === null ? null : String(firstValue(payload, "sender_name", "name"))) ?? extractSenderName(message),
+      // rawSender already resolves to the text-extracted phone when the
+      // caller didn't supply one (see above) -- using senderValue directly
+      // here discarded that extraction and left sender_number/sender null
+      // for every Vodafone deposit despite the number being right there in
+      // the message.
+      sender: rawSender,
+      sender_number: rawSender,
+      sender_name: (firstValue(payload, "sender_name", "name") === null ? null : String(firstValue(payload, "sender_name", "name"))) ?? extractSenderName(message) ?? extractVodafoneSenderName(message),
       message,
       sms_first_line: message.split(/\r?\n/)[0]?.slice(0, 500) ?? message,
       wallet,
@@ -464,6 +651,20 @@ Deno.serve(async (req: Request) => {
     if (error) {
       console.error("inbound_sms insert failed", error);
       return response({ error: "Could not store SMS" }, 500);
+    }
+
+    if (smsCategory === "withdrawal") {
+      const alertTask = sendWithdrawalAlertEmail(row, data.id).catch((err) =>
+        console.error("withdrawal alert email failed", err instanceof Error ? err.message : err)
+      );
+      try {
+        // @ts-ignore -- EdgeRuntime is a Supabase/Deno Deploy global, not in the Deno lib types.
+        EdgeRuntime.waitUntil(alertTask);
+      } catch {
+        // Runtime without EdgeRuntime.waitUntil (e.g. local dev) -- the
+        // response below still returns promptly either way; this only
+        // means the mail send races the function's teardown locally.
+      }
     }
 
     return response({ ok: true, id: data.id }, 201);

@@ -5,11 +5,12 @@ import { useAuth } from '../auth/AuthContext'
 import { CATEGORIES, categoryFor } from '../nav/pageCatalog'
 import { api, ApiError } from '../lib/api'
 import { syncProviders } from '../lib/providerSync'
-import { depositTime, money } from '../lib/deposits'
+import { depositTime, displayReceivingWallet, money } from '../lib/deposits'
 import type { PagePermission } from '../lib/api'
 import { useLocale } from '../lib/locale'
 import { installNotificationAudioUnlock, playNotificationTone } from '../lib/notificationSounds'
-import { Ban, BarChart3, Bot, Building2, CalendarDays, ChevronDown, CircleDollarSign, Clock3, LayoutDashboard, Link2, Menu, MessageSquareText, Minimize2, PanelLeftClose, PanelLeftOpen, Plus, Search, Send, Settings, Users, WalletCards, X } from 'lucide-react'
+import MethodLogo from './MethodLogo'
+import { Ban, BarChart3, Bot, Building2, CalendarDays, ChevronDown, CircleDollarSign, Clock3, LayoutDashboard, Link2, Menu, MessageSquareText, Minimize2, PanelLeftClose, PanelLeftOpen, Plus, Search, Send, Settings, Unlink, Users, WalletCards, X } from 'lucide-react'
 
 // Shared authed layout ("Live Transaction Monitor" skin): nav rail (real pages
 // first, then the role's remaining permitted modules as "قريباً" placeholders),
@@ -110,6 +111,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   // Management — merchants, wallets, money movement
   { to: '/merchants', icon: '🏬', labelAr: 'التجار', labelEn: 'Merchants', keys: ['merchants'], group: 'customers' },
   { to: '/merchant-groups', icon: '🧱', labelAr: 'الشركاء والمجموعات', labelEn: 'Partners & Groups', keys: ['merchants'], group: 'customers' },
+  { to: '/late-matches', icon: '🔗', labelAr: 'مطابقات متأخرة', labelEn: 'Late SMS matches', keys: ['deposits'], group: 'overview' },
   { to: '/treasury', icon: '🏦', labelAr: 'الخزينة', labelEn: 'Treasury', keys: ['treasury', 'wallets', 'dashboard'], group: 'overview' },
   { to: '/fx', icon: '💹', labelAr: 'لوحة الأسعار', labelEn: 'FX dashboard', keys: ['dashboard', 'merchants', 'reports', 'treasury'], group: 'overview' },
   { to: '/wallets', icon: '👛', labelAr: 'المحافظ', labelEn: 'Wallets', keys: ['wallets'], group: 'payments' },
@@ -224,6 +226,7 @@ interface RailSms {
   matched_tx_id?: number | null
   matched_ontarget_ref?: string | null
   matched_receiving_wallet?: string | null
+  wallet_identity_ambiguous?: boolean | null
   linked_wallet_number?: string | null
   balance_after?: number | null
   wallet_balance_after?: number | null
@@ -233,6 +236,7 @@ interface RailSms {
   is_blocked?: boolean | null
   matched_sub_merchant?: string | null
   matched_master_merchant?: string | null
+  provider?: string | null
 }
 
 interface RailSmsCandidate {
@@ -296,6 +300,8 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
   const [selected, setSelected] = useState<RailSms | null>(null)
   const [candidates, setCandidates] = useState<RailSmsCandidate[]>([])
   const [linkingTxId, setLinkingTxId] = useState<number | null>(null)
+  const [approvingTxId, setApprovingTxId] = useState<number | null>(null)
+  const [unlinking, setUnlinking] = useState<'plain' | 'decline' | null>(null)
   const [linkErr, setLinkErr] = useState<string | null>(null)
   const [payoutRef, setPayoutRef] = useState('')
   const [assigningPayout, setAssigningPayout] = useState(false)
@@ -370,15 +376,32 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
     return () => { alive = false }
   }, [selected])
 
-  const linkToSuggestedTx = async (txId: number, confirmAmountMismatch = false) => {
+  const linkToSuggestedTx = async (txId: number, confirmAmountMismatch = false, alsoApprove = false) => {
     if (!selected) return
     setLinkingTxId(txId)
+    if (alsoApprove) setApprovingTxId(txId)
     setLinkErr(null)
     try {
       await api(`/api/sms/${selected.id}/link`, { method: 'POST', body: JSON.stringify({ tx_id: txId, confirm_amount_mismatch: confirmAmountMismatch }) })
       setRows((prev) => prev.map((r) => r.id === selected.id ? { ...r, matched: true, match_status: 'manual', matched_tx_id: txId } : r))
       setSelected((prev) => prev && prev.id === selected.id ? { ...prev, matched: true, match_status: 'manual', matched_tx_id: txId } : prev)
       setCandidates([])
+      if (alsoApprove) {
+        try {
+          await api(`/api/deposits/${txId}/decision`, { method: 'POST', body: JSON.stringify({ action: 'approve', note: 'Approved from Live SMS drop-up after manual link' }) })
+        } catch (approveError) {
+          // The link above already succeeded. "not_pending" here almost
+          // always means /api/sms/:id/link's own immediate-approval path
+          // (server/sms.ts, confirmed sender+wallet identity) already paid
+          // it the moment it linked -- that is the outcome the operator
+          // wanted, not a failure, so it must not surface as an error.
+          if (!(approveError instanceof ApiError && approveError.code === 'not_pending')) {
+            setLinkErr(approveError instanceof ApiError && approveError.status === 403
+              ? 'تم الربط، لكن لا تملك صلاحية اعتماد المعاملة.'
+              : 'تم الربط، لكن فشل اعتماد المعاملة — اعتمدها يدوياً من صفحة المعاملات.')
+          }
+        }
+      }
     } catch (error) {
       // The generic "could not link" message hid exactly why — every one of
       // these is a real, distinct reason the /link endpoint rejects a link,
@@ -410,6 +433,34 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
       }
     } finally {
       setLinkingTxId(null)
+      setApprovingTxId(null)
+    }
+  }
+
+  const unlinkSelected = async (alsoDecline: boolean) => {
+    if (!selected) return
+    const txId = selected.matched_tx_id
+    setUnlinking(alsoDecline ? 'decline' : 'plain')
+    setLinkErr(null)
+    try {
+      await api(`/api/sms/${selected.id}/unlink`, { method: 'POST' })
+      setRows((prev) => prev.map((r) => r.id === selected.id ? { ...r, matched: false, match_status: 'unmatched', matched_tx_id: null, matched_ontarget_ref: null, matched_receiving_wallet: null } : r))
+      setSelected((prev) => prev && prev.id === selected.id ? { ...prev, matched: false, match_status: 'unmatched', matched_tx_id: null, matched_ontarget_ref: null, matched_receiving_wallet: null } : prev)
+      if (alsoDecline && txId != null) {
+        try {
+          await api(`/api/deposits/${txId}/decision`, { method: 'POST', body: JSON.stringify({ action: 'decline', note: 'Declined from Live SMS drop-up after unlink' }) })
+        } catch (declineError) {
+          setLinkErr(declineError instanceof ApiError && declineError.code === 'not_pending'
+            ? `تم فك الربط، لكن المعاملة أصلاً بحالة ${String(declineError.body?.status ?? '—')} ولا يمكن رفضها تلقائياً.`
+            : declineError instanceof ApiError && declineError.status === 403
+              ? 'تم فك الربط، لكن لا تملك صلاحية رفض المعاملة.'
+              : 'تم فك الربط، لكن فشل رفض المعاملة — راجعها يدوياً من صفحة المعاملات.')
+        }
+      }
+    } catch {
+      setLinkErr('فشل فك الربط — حاول مرة أخرى.')
+    } finally {
+      setUnlinking(null)
     }
   }
 
@@ -519,11 +570,14 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
           const walletLinked = r.sms_category === 'withdrawal' && r.linked_wallet_number != null
           const linked = walletLinked || r.matched_tx_id != null
           const balance = r.balance_after ?? r.wallet_balance_after
-          // Keep the raw SMS wallet visible; the matched transaction wallet is
-          // shown separately so a mapping cannot hide the SMS evidence.
-          const receivingWallet = r.sms_category === 'withdrawal'
-            ? r.linked_wallet_number ?? r.receiver_number ?? r.wallet_number
-            : r.matched_receiving_wallet ?? r.confirmed_wallet_number ?? r.wallet_number ?? r.receiver_number
+          // Shared with the full /sms page's displayWalletForRow -- this
+          // widget used to read matched_receiving_wallet unconditionally
+          // (stale on an unlinked row) and ignore wallet_identity_ambiguous
+          // entirely, so it could show a device's merely-guessed wallet (when
+          // the forwarder omitted sim_slot and the device maps to more than
+          // one wallet) as if it were confirmed, which the full page already
+          // knows to hide rather than guess.
+          const receivingWallet = displayReceivingWallet(r)
           const rawText = r.raw_sms ?? r.message ?? r.sms_first_line
           // One color, one meaning: withdrawal is always red regardless of
           // link status (money leaving is its own kind of thing to watch);
@@ -539,7 +593,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
           return (
             <div key={r.id} role="button" tabIndex={0} onClick={() => setSelected(r)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelected(r) }} className={`sms-feed-item sms-feed-button ${cardState}`} aria-label={`SMS ${r.id} details`}>
               <div className="sms-feed-head">
-                <span className="sms-feed-device">{r.device_name ?? '—'}{r.sim_slot != null && <> · SIM{r.sim_slot}</>}</span>
+                <span className="sms-feed-device"><MethodLogo method={r.provider} />{r.device_name ?? '—'}{r.sim_slot != null && <> · SIM{r.sim_slot}</>}</span>
                 <span className="sms-feed-time mono">{depositTime({ first_seen_at: r.received_at })}</span>
               </div>
               <div className="sms-feed-main">
@@ -562,9 +616,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
         })}
       </div>
       {selected && (() => {
-        const selectedWallet = selected.sms_category === 'withdrawal'
-          ? selected.linked_wallet_number ?? selected.receiver_number ?? selected.wallet_number
-          : selected.matched_receiving_wallet ?? selected.confirmed_wallet_number ?? selected.wallet_number ?? selected.receiver_number
+        const selectedWallet = displayReceivingWallet(selected)
         const selectedBalance = selected.balance_after ?? selected.wallet_balance_after
         const selectedRaw = selected.raw_sms ?? selected.message ?? selected.sms_first_line
         const selectedLinked = selected.sms_category === 'withdrawal' ? selected.linked_wallet_number != null : selected.matched_tx_id != null
@@ -587,6 +639,22 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
               <div><span><Building2 size={12} /> التاجر</span><strong>{selectedMerchant}</strong></div>
             </div>
             {selectedRaw && <div className="sms-detail-sheet-raw" dir="auto"><span>Raw SMS</span><p>{selectedRaw}</p></div>}
+            {selected.sms_category !== 'withdrawal' && selected.matched_tx_id != null && can('sms_live', 'can_edit') && (
+              <div className="sms-match-card sms-suggest-card">
+                <div className="sms-match-head"><span className="sms-match-title"><Unlink size={15} /> فك الربط عن المعاملة</span></div>
+                <div className="cand-actions">
+                  <button type="button" className="btn-ghost danger btn-sm" disabled={unlinking != null} onClick={() => void unlinkSelected(false)}>
+                    {unlinking === 'plain' ? 'جارٍ فك الربط…' : 'فك الربط فقط'}
+                  </button>
+                  {can('deposits', 'can_approve') && (
+                    <button type="button" className="btn-ghost danger btn-sm" disabled={unlinking != null} onClick={() => void unlinkSelected(true)}>
+                      {unlinking === 'decline' ? 'جارٍ فك الربط والرفض…' : 'فك الربط + رفض المعاملة'}
+                    </button>
+                  )}
+                </div>
+                {linkErr && <p className="sms-detail-link-err">{linkErr}</p>}
+              </div>
+            )}
             {!selectedLinked && selected.sms_category === 'deposit' && can('sms_live', 'can_edit') && (
               <div className="sms-match-card sms-suggest-card sms-manual-link-card">
                 <div className="sms-match-head"><span className="sms-match-title"><Link2 size={15} /> ربط يدوي بمعاملة من نفس اليوم</span></div>
@@ -627,14 +695,26 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
                           {' · '}{cand.merchant ?? 'تاجر غير محدد'}
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        className="btn-primary btn-sm"
-                        disabled={linkingTxId === cand.tx_id}
-                        onClick={() => void linkToSuggestedTx(cand.tx_id)}
-                      >
-                        {linkingTxId === cand.tx_id ? 'جارٍ الربط…' : 'ربط'}
-                      </button>
+                      <div className="cand-actions">
+                        <button
+                          type="button"
+                          className="btn-primary btn-sm"
+                          disabled={linkingTxId === cand.tx_id}
+                          onClick={() => void linkToSuggestedTx(cand.tx_id)}
+                        >
+                          {linkingTxId === cand.tx_id && approvingTxId !== cand.tx_id ? 'جارٍ الربط…' : 'ربط'}
+                        </button>
+                        {cand.status === 'PENDING' && can('deposits', 'can_approve') && (
+                          <button
+                            type="button"
+                            className="btn-primary btn-sm is-approve"
+                            disabled={linkingTxId === cand.tx_id}
+                            onClick={() => void linkToSuggestedTx(cand.tx_id, false, true)}
+                          >
+                            {approvingTxId === cand.tx_id ? 'جارٍ الربط والاعتماد…' : 'ربط + اعتماد'}
+                          </button>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>
