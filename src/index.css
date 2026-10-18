@@ -1690,6 +1690,117 @@ a.stat-card:hover { border-color: var(--accent); }
 @media (max-width:760px){.mz-insight-grid,.mz-readout-grid{grid-template-columns:1fr}.mz-insight-card>b{font-size:9px}}
 @media (min-width: 769px) and (max-width: 1200px) { .transaction-filter-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 420px) { .transaction-filter-fields { grid-template-columns: 1fr; } .all-tx-card dl { grid-template-columns: 1fr; } }
+
+/* ===== All Transactions: operations console redesign ===== */
+.transactions-center-page {
+  --trx-panel: color-mix(in srgb, var(--surface-raised) 96%, var(--accent) 4%);
+  --trx-line: color-mix(in srgb, var(--border) 78%, var(--accent) 22%);
+  --trx-muted: color-mix(in srgb, var(--text-dim) 88%, var(--text) 12%);
+  padding-block-end: 28px;
+}
+.transactions-center-page .all-transactions-head {
+  align-items: flex-start;
+  padding: 18px 20px;
+  margin-block: 0 14px;
+  border: 1px solid var(--trx-line);
+  border-radius: 16px;
+  background: linear-gradient(112deg, color-mix(in srgb, var(--surface-raised) 96%, var(--accent) 4%), var(--surface));
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 7%, transparent);
+}
+.transactions-page-title { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.transactions-page-title h2 { margin: 0; font-size: clamp(20px, 2vw, 27px) !important; letter-spacing: -.02em; }
+.transactions-page-title .page-sub { margin: 5px 0 0; color: var(--trx-muted); font-size: 12px; }
+.transactions-title-icon { display: grid; place-items: center; width: 40px; height: 40px; flex: 0 0 40px; border-radius: 11px; color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border)); }
+.transactions-center-page .all-transactions-head-actions { justify-content: flex-end; gap: 8px; }
+.transactions-center-page .view-switch { padding: 3px; border: 1px solid var(--trx-line); border-radius: 10px; background: var(--surface); }
+.transactions-center-page .view-switch button { min-height: 34px; border-radius: 7px; color: var(--trx-muted); }
+.transactions-center-page .view-switch button.active { color: var(--text); background: var(--hover-2); box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 12%, transparent); }
+.transactions-center-page .export-actions { gap: 7px; }
+.transactions-center-page .export-actions .btn-sm { min-height: 34px; }
+
+.transactions-center-page .trx-kpi-strip { gap: 12px; margin-block-end: 14px; }
+.transactions-center-page .trx-kpi-strip .stat-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.transactions-center-page .trx-kpi-tile { position: relative; min-height: 78px; padding: 14px 15px; overflow: hidden; text-align: start; border: 1px solid var(--trx-line); border-radius: 13px; background: var(--trx-panel); box-shadow: 0 2px 8px color-mix(in srgb, var(--text) 5%, transparent); transition: border-color .2s var(--ease), box-shadow .2s var(--ease), background .2s var(--ease); }
+.transactions-center-page .trx-kpi-tile::after { content: ''; position: absolute; inset-inline-start: 0; inset-block: 12px; width: 3px; border-radius: 0 4px 4px 0; background: var(--border); }
+.transactions-center-page .trx-kpi-tile:hover { border-color: color-mix(in srgb, var(--accent) 48%, var(--border)); box-shadow: 0 5px 14px color-mix(in srgb, var(--text) 9%, transparent); }
+.transactions-center-page .trx-kpi-tile.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--surface-raised)); outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent); }
+.transactions-center-page .trx-kpi-tile.active::after { background: var(--accent); }
+.transactions-center-page .trx-kpi-tile:nth-child(2)::after { background: var(--status-paid); }
+.transactions-center-page .trx-kpi-tile:nth-child(3)::after { background: var(--status-pending); }
+.transactions-center-page .trx-kpi-tile:nth-child(4)::after { background: var(--status-declined); }
+.transactions-center-page .trx-kpi-tile:nth-child(5)::after { background: var(--brand-blue, var(--accent)); }
+.transactions-center-page .trx-kpi-tile .stat-label { color: var(--trx-muted); font-size: 10px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
+.transactions-center-page .trx-kpi-tile .stat-value { margin-top: 7px; color: var(--text); font-size: 22px; font-weight: 800; line-height: 1; }
+.transactions-center-page .chip-row { align-items: center; gap: 7px; padding: 3px 1px; }
+.transactions-center-page .chip-row .cell-sub { margin-inline-end: 3px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.transactions-center-page .chip-row .pill { min-height: 30px; padding: 6px 11px; border: 1px solid var(--border); background: var(--surface); font-size: 11px; }
+.transactions-center-page .chip-row .pill:hover { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+
+.transactions-center-page .trx-wallet-strip,
+.transactions-center-page .trx-activity-insights { margin-block-end: 14px; border: 1px solid var(--trx-line); border-radius: 14px; background: var(--trx-panel); box-shadow: 0 2px 8px color-mix(in srgb, var(--text) 4%, transparent); }
+.transactions-center-page .trx-wallet-strip { gap: 8px; padding: 10px 12px; }
+.transactions-center-page .trx-wallet-chip { min-height: 36px; padding: 6px 10px; border-radius: 9px; background: var(--surface); }
+.transactions-center-page .trx-wallet-chip > svg { color: var(--accent); }
+.transactions-center-page .trx-activity-insights { padding: 14px; }
+
+.transactions-center-page .transaction-filter-toolbar { position: sticky; top: 8px; z-index: 18; display: grid; gap: 10px; margin-block-end: 14px; padding: 11px; border: 1px solid var(--trx-line); border-radius: 14px; background: color-mix(in srgb, var(--surface-raised) 94%, transparent); box-shadow: 0 7px 18px color-mix(in srgb, var(--text) 8%, transparent); backdrop-filter: blur(12px); }
+.transactions-center-page .trx-filter-primary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.transactions-center-page .trx-filter-primary .multi-select-filter { flex: 0 1 170px; min-width: 145px; }
+.transactions-center-page .trx-search-bar { flex: 1 1 300px; min-height: 40px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
+.transactions-center-page .trx-search-bar:focus-within { border-color: var(--accent); box-shadow: var(--focus-ring); }
+.transactions-center-page .trx-more-filters-toggle.active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.transactions-center-page .transaction-filter-fields { padding: 11px 2px 1px; border-block-start: 1px solid var(--border-soft); }
+
+.transactions-center-page .portal-transactions-card { overflow: hidden; border: 1px solid var(--trx-line); border-radius: 15px; background: var(--trx-panel); box-shadow: 0 8px 22px color-mix(in srgb, var(--text) 6%, transparent); }
+.transactions-center-page .portal-table-wrap { max-height: calc(100vh - 310px); min-height: 470px; }
+.transactions-center-page .portal-transaction-grid { font-size: 12px; }
+.transactions-center-page .portal-transaction-grid thead th { position: sticky; top: 0; z-index: 2; padding-block: 11px; color: var(--text-dim); background: color-mix(in srgb, var(--surface-raised) 92%, var(--accent) 8%); border-block-end: 1px solid var(--trx-line); font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.transactions-center-page .portal-transaction-grid tbody td { padding-block: 10px; border-block-end: 1px solid var(--border-soft); }
+.transactions-center-page .portal-transaction-grid tbody tr:hover td { background: color-mix(in srgb, var(--accent) 5%, var(--surface)) !important; }
+.transactions-center-page .portal-transaction-grid tbody tr.row-pending td { background: color-mix(in srgb, var(--status-pending) 7%, var(--surface)); }
+.transactions-center-page .portal-status-icon { min-width: 94px; justify-content: center; gap: 5px; padding: 5px 7px; border: 1px solid currentColor; border-radius: 7px; font-size: 10px; font-weight: 800; }
+.transactions-center-page .portal-status-emoji { display: none; }
+.transactions-center-page .portal-status-icon.st-paid { color: var(--status-paid); background: var(--green-bg); }
+.transactions-center-page .portal-status-icon.st-pending { color: var(--status-pending); background: var(--amber-bg); }
+.transactions-center-page .portal-status-icon.st-declined { color: var(--status-declined); background: var(--red-bg); }
+.transactions-center-page .portal-status-icon.st-expired, .transactions-center-page .portal-status-icon.st-under { color: var(--text-dim); background: var(--hover); }
+.transactions-center-page .tx-action-primary, .transactions-center-page .tx-proof-icon { min-height: 30px; border-radius: 7px; }
+.transactions-center-page .tx-expand-btn { background: var(--accent); }
+.transactions-center-page .tx-expanded-row td { background: color-mix(in srgb, var(--accent) 5%, var(--surface)) !important; }
+.transactions-center-page .pager { padding: 12px 14px; border-block-start: 1px solid var(--border-soft); }
+.transactions-center-page .bulk-action-bar, .transactions-center-page .bulk-result-card { border-radius: 12px; box-shadow: 0 4px 12px color-mix(in srgb, var(--text) 5%, transparent); }
+.transactions-center-page .all-tx-card { border-radius: 14px; border-color: var(--trx-line); background: var(--trx-panel); box-shadow: 0 5px 14px color-mix(in srgb, var(--text) 6%, transparent); }
+.transactions-center-page .all-tx-card.pending { border-color: var(--amber-border); }
+
+@media (max-width: 1050px) {
+  .transactions-center-page .trx-kpi-strip .stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .transactions-center-page .all-transactions-head { flex-direction: column; }
+  .transactions-center-page .all-transactions-head-actions { width: 100%; justify-content: space-between; }
+}
+@media (max-width: 700px) {
+  .transactions-center-page .all-transactions-head { padding: 14px; }
+  .transactions-center-page .all-transactions-head-actions, .transactions-center-page .export-actions { align-items: stretch; flex-wrap: wrap; }
+  .transactions-center-page .export-actions > * { flex: 1 1 auto; }
+  .transactions-center-page .trx-kpi-strip .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .transactions-center-page .trx-kpi-tile { min-height: 70px; }
+  .transactions-center-page .trx-kpi-tile .stat-value { font-size: 19px; }
+  .transactions-center-page .transaction-filter-toolbar { position: static; }
+  .transactions-center-page .trx-filter-primary > * { flex: 1 1 100%; }
+  .transactions-center-page .trx-filter-primary .multi-select-filter { flex-basis: calc(50% - 4px); }
+  .transactions-center-page .trx-search-bar { flex-basis: 100%; }
+  .transactions-center-page .chip-row { overflow-x: auto; flex-wrap: nowrap; padding-block-end: 4px; }
+  .transactions-center-page .chip-row .cell-sub { flex: 0 0 auto; }
+  .transactions-center-page .portal-table-wrap { min-height: 360px; }
+}
+@media (max-width: 420px) {
+  .transactions-center-page .trx-kpi-strip .stat-grid { grid-template-columns: 1fr 1fr; gap: 7px; }
+  .transactions-center-page .trx-kpi-tile { padding: 11px 12px; }
+  .transactions-center-page .trx-filter-primary .multi-select-filter { flex-basis: 100%; }
+  .transactions-center-page .all-tx-card-grid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .transactions-center-page *, .transactions-center-page *::before, .transactions-center-page *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
 .complaint-tx-search { display: flex; align-items: center; gap: 8px; min-width: min(100%, 420px); }
 .complaint-tx-search > label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .complaint-tx-search-control { min-height: 38px; flex: 1; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--muted); }

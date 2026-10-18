@@ -10,7 +10,7 @@ import PageSizeSelect from '../components/PageSizeSelect'
 import ProofModal from '../components/ProofModal'
 import SenderIdentity from '../components/SenderIdentity'
 import { useAuth } from '../auth/AuthContext'
-import { AlertTriangle, Ban, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, CircleHelp, Clock3, Eye, Image, LayoutGrid, MessageSquareText, Pencil, RefreshCw, Search, SlidersHorizontal, Sparkles, TableProperties, Unlink, Unlock, Users, WalletCards, X, XCircle } from 'lucide-react'
+import { AlertTriangle, Ban, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, CircleHelp, Clock3, Eye, Image, LayoutGrid, MessageSquareText, Pencil, ReceiptText, RefreshCw, Search, SlidersHorizontal, Sparkles, TableProperties, Unlink, Unlock, Users, WalletCards, X, XCircle } from 'lucide-react'
 import TransactionEditDialog from '../components/TransactionEditDialog'
 import TransactionDetailModal from '../components/TransactionDetailModal'
 import ColumnPicker, { useVisibleColumns } from '../components/ColumnPicker'
@@ -68,8 +68,7 @@ function TransactionStatusIcon({ status, label }: { status: string; label: strin
             ? AlertTriangle
             : CircleHelp
   const tone = status === 'PENDING' ? 'st-pending' : status === 'PAID' || status === 'APPROVED' ? 'st-paid' : status === 'DECLINED' ? 'st-declined' : status === 'EXPIRED' ? 'st-expired' : status === 'UNDERPAID' ? 'st-under' : 'st-dim'
-  const emoji = status === 'PENDING' ? '⏳' : status === 'PAID' || status === 'APPROVED' ? '✅' : status === 'DECLINED' ? '⛔' : status === 'EXPIRED' ? '🗓️' : status === 'UNDERPAID' ? '⚠️' : '❔'
-  return <span className={`portal-status-icon ${tone}`} title={label} aria-label={label} role="img"><span className="portal-status-emoji" aria-hidden="true">{emoji}</span><Icon size={19} strokeWidth={2.5} aria-hidden="true" /><span className="portal-status-icon-label">{label}</span></span>
+  return <span className={`portal-status-icon ${tone}`} title={label} aria-label={label} role="img"><Icon size={17} strokeWidth={2.5} aria-hidden="true" /><span className="portal-status-icon-label">{label}</span></span>
 }
 
 // Fixed columns (expand / action / transaction id) always show; everything
@@ -906,11 +905,11 @@ export default function Transactions() {
     <>
     {/* Zoomed out slightly so more rows are visible without scrolling —
         modals below stay at normal scale, they're a separate concern. */}
-    <div className="trx-zoom-out">
+    <div className="trx-zoom-out transactions-center-page">
       <PressToPayNav />
       <section className="page-head all-transactions-head">
-        <div><h2>🧾 {t('كل المعاملات', 'All transactions')}</h2>
-        <p className="page-sub">{t('إيداعات وسحوبات موحّدة', 'Deposits and payouts unified')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p></div>
+        <div className="transactions-page-title"><span className="transactions-title-icon" aria-hidden="true"><ReceiptText size={20} /></span><div><h2>{t('كل المعاملات', 'All transactions')}</h2>
+        <p className="page-sub">{t('إيداعات وسحوبات موحّدة', 'Deposits and payouts unified')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p></div></div>
         <div className="all-transactions-head-actions">
           <div className="view-switch" role="group" aria-label={t('طريقة العرض', 'View mode')}>
             <button className={view === 'table' ? 'active' : ''} aria-pressed={view === 'table'} onClick={() => setFilter({ view: 'table' })}><TableProperties size={16} />{t('جدول', 'Table')}</button>
@@ -918,9 +917,9 @@ export default function Transactions() {
           </div>
           <div className="export-actions">
             <button type="button" className={`btn-ghost btn-sm${aiOpen ? ' active' : ''}`} aria-pressed={aiOpen} onClick={() => setAiOpen((v) => !v)}><Sparkles size={14}/> {t('بوابة الذكاء الاصطناعي', 'AI Gateway')}</button>
-            <button type="button" className="btn-primary btn-sm" disabled={loading} onClick={() => void refreshNow()}><RefreshCw size={14} className={loading ? 'spin' : ''} /> 🔄 {loading ? t('جارٍ التحديث…', 'Refreshing…') : t('تحديث الآن', 'Refresh now')}</button>
-            <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport('csv')}><Download size={14}/> 📥 CSV</button>
-            <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport('xlsx')}><Download size={14}/> 📊 {exportBusy ? t('جارٍ التصدير…', 'Exporting…') : 'XLSX'}</button>
+            <button type="button" className="btn-primary btn-sm" disabled={loading} onClick={() => void refreshNow()}><RefreshCw size={14} className={loading ? 'spin' : ''} /> {loading ? t('جارٍ التحديث…', 'Refreshing…') : t('تحديث الآن', 'Refresh now')}</button>
+            <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport('csv')}><Download size={14}/> CSV</button>
+            <button type="button" className="btn-ghost btn-sm" disabled={exportBusy} onClick={() => void runExport('xlsx')}><Download size={14}/> {exportBusy ? t('جارٍ التصدير…', 'Exporting…') : 'XLSX'}</button>
           </div>
         </div>
       </section>
@@ -940,9 +939,9 @@ export default function Transactions() {
         return <section className="trx-kpi-strip" aria-label={t('ملخص الحالات', 'Status summary')}>
           <div className="stat-grid">{tiles.map((k) => <button type="button" key={k.key} className={`stat-card trx-kpi-tile${status === k.status ? ' active' : ''}`} onClick={() => pick(k.status)}><span className="stat-label">{t(k.ar, k.en)}</span><span className="stat-value">{k.value.toLocaleString('en-US')}</span></button>)}</div>
           <div className="chip-row"><span className="cell-sub">{t('عروض محفوظة', 'Saved views')}:</span>
-            <button type="button" className="pill" onClick={() => setFilter({ date_range: 'today', from: today.from, to: today.to, currency: 'EGP', status: '', page: 1 })}>🇪🇬 {t('مصر — اليوم', 'Egypt — Today')}</button>
-            <button type="button" className="pill" onClick={() => setFilter({ status: 'PENDING', date_range: 'all', from: '', to: '', page: 1 })}>⏳ {t('بانتظار المراجعة', 'Pending Review')}</button>
-            <button type="button" className="pill" onClick={() => setFilter({ status: 'DECLINED,EXPIRED', date_range: 'today', from: today.from, to: today.to, page: 1 })}>⛔ {t('الفاشلة اليوم', 'Failed today')}</button>
+            <button type="button" className="pill" onClick={() => setFilter({ date_range: 'today', from: today.from, to: today.to, currency: 'EGP', status: '', page: 1 })}>{t('مصر — اليوم', 'Egypt — Today')}</button>
+            <button type="button" className="pill" onClick={() => setFilter({ status: 'PENDING', date_range: 'all', from: '', to: '', page: 1 })}>{t('بانتظار المراجعة', 'Pending Review')}</button>
+            <button type="button" className="pill" onClick={() => setFilter({ status: 'DECLINED,EXPIRED', date_range: 'today', from: today.from, to: today.to, page: 1 })}>{t('الفاشلة اليوم', 'Failed today')}</button>
           </div>
         </section>
       })()}
