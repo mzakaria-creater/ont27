@@ -228,8 +228,18 @@ interface RailSms {
   matched_receiving_wallet?: string | null
   wallet_identity_ambiguous?: boolean | null
   linked_wallet_number?: string | null
+  wallet_balance_before?: number | null
   balance_after?: number | null
   wallet_balance_after?: number | null
+  matched_payout_id?: number | null
+  matched_payout_ref?: string | null
+  matched_payout_status?: string | null
+  withdrawal_assignment_type?: string | null
+  withdrawal_assignment_reference?: string | null
+  withdrawal_assignment_name?: string | null
+  withdrawal_assigned_by?: string | null
+  withdrawal_assigned_at?: string | null
+  sms_sender?: string | null
   sms_first_line?: string | null
   raw_sms?: string | null
   message?: string | null
@@ -376,7 +386,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
     return () => { alive = false }
   }, [selected])
 
-  const linkToSuggestedTx = async (txId: number, confirmAmountMismatch = false, alsoApprove = false) => {
+  const linkToSuggestedTx = async (txId: number, confirmAmountMismatch = false, alsoApprove = false, changeDeclinedToPaid = false) => {
     if (!selected) return
     setLinkingTxId(txId)
     if (alsoApprove) setApprovingTxId(txId)
@@ -386,7 +396,19 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
       setRows((prev) => prev.map((r) => r.id === selected.id ? { ...r, matched: true, match_status: 'manual', matched_tx_id: txId } : r))
       setSelected((prev) => prev && prev.id === selected.id ? { ...prev, matched: true, match_status: 'manual', matched_tx_id: txId } : prev)
       setCandidates([])
-      if (alsoApprove) {
+      if (changeDeclinedToPaid) {
+        try {
+          await api(`/api/tx/${txId}/edit`, {
+            method: 'POST',
+            body: JSON.stringify({ status: 'PAID', reason: `SMS linked from Live SMS drop-up; declined transaction recovery for SMS #${selected.id}` }),
+          })
+        } catch (statusError) {
+          const detail = statusError instanceof ApiError
+            ? [statusError.body?.detail, statusError.body?.reason, statusError.body?.message].find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+            : null
+          setLinkErr(detail ? `تم ربط SMS، لكن فشل تغيير الحالة إلى PAID: ${detail}` : 'تم ربط SMS، لكن فشل تغيير الحالة إلى PAID — راجع المعاملة يدوياً.')
+        }
+      } else if (alsoApprove) {
         try {
           await api(`/api/deposits/${txId}/decision`, { method: 'POST', body: JSON.stringify({ action: 'approve', note: 'Approved from Live SMS drop-up after manual link' }) })
         } catch (approveError) {
@@ -632,11 +654,18 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
             <header><div><span className="cell-sub">SMS #{selected.id}</span><h3>{selected.sms_category === 'withdrawal' ? 'تحويل خارج' : 'استلام وارد'} · {money(selected.amount, 'EGP')}</h3></div><button type="button" className="sms-widget-icon-btn" onClick={() => setSelected(null)} aria-label="Close SMS details"><X size={16} /></button></header>
             <div className="sms-detail-sheet-grid">
               <div><span>المحفظة</span><strong className="mono">{selectedWallet ?? '—'}</strong></div>
-              <div><span>المرسل</span><strong>{selected.sender_name ?? selected.sender_number ?? '—'}</strong></div>
+              <div><span>المرسل</span><strong>{selected.sender_name ?? selected.sender_number ?? '—'}{selected.sender_name && selected.sender_number && <small className="mono sms-detail-inline-number">&quot;{selected.sender_number}&quot;</small>}</strong></div>
+              {selected.sms_category === 'withdrawal' && selected.receiver_number && <div><span>المستفيد</span><strong className="mono">{selected.receiver_number}</strong></div>}
               <div><span>الرصيد بعد العملية</span><strong className="mono">{selectedBalance == null ? '—' : money(selectedBalance, 'EGP')}</strong></div>
+              {selected.sms_category === 'withdrawal' && <div><span>حساب الرصيد</span><strong className="mono">{selected.wallet_balance_before != null ? money(selected.wallet_balance_before, 'EGP') : '—'} − {money(selected.amount, 'EGP')} = {selected.wallet_balance_after != null ? money(selected.wallet_balance_after, 'EGP') : '—'}</strong></div>}
               <div><span>الجهاز</span><strong className="mono">{selected.device_name ?? '—'}{selected.sim_slot != null ? ` · SIM${selected.sim_slot}` : ''}</strong></div>
+              <div><span>المزوّد</span><strong>{selected.provider ?? '—'}{selected.sms_sender ? ` · ${selected.sms_sender}` : ''}</strong></div>
               <div><span>حالة الربط</span><strong>{selectedLinked ? 'مرتبطة' : 'بانتظار المطابقة'}</strong></div>
               <div><span>المعاملة</span><strong className="mono">{selected.matched_ontarget_ref ?? selected.matched_tx_id ?? '—'}</strong></div>
+              {selected.sms_category === 'withdrawal' && <>
+                <div><span>معاملة السحب</span><strong className="mono">{selected.matched_payout_ref ?? selected.matched_payout_id ?? 'غير معيّنة'}</strong></div>
+                {selected.withdrawal_assignment_name && <div><span>التعيين اليدوي</span><strong>{selected.withdrawal_assignment_name}{selected.withdrawal_assignment_reference ? ` · ${selected.withdrawal_assignment_reference}` : ''}</strong></div>}
+              </>}
               <div><span><CalendarDays size={12} /> التاريخ (القاهرة)</span><strong className="mono">{receivedDate}</strong></div>
               <div><span><Clock3 size={12} /> الوقت</span><strong className="mono">{receivedTime}</strong></div>
               <div><span><Building2 size={12} /> التاجر</span><strong>{selectedMerchant}</strong></div>
@@ -715,6 +744,17 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
                             onClick={() => void linkToSuggestedTx(cand.tx_id, false, true)}
                           >
                             {approvingTxId === cand.tx_id ? 'جارٍ الربط والاعتماد…' : 'ربط + اعتماد'}
+                          </button>
+                        )}
+                        {String(cand.status).toUpperCase() === 'DECLINED' && can('transactions', 'can_edit') && (
+                          <button
+                            type="button"
+                            className="btn-ghost btn-sm danger"
+                            disabled={linkingTxId === cand.tx_id}
+                            onClick={() => void linkToSuggestedTx(cand.tx_id, false, false, true)}
+                            title="ربط SMS ثم تغيير الحالة عبر مسار التعديل المدقق"
+                          >
+                            {linkingTxId === cand.tx_id ? 'جارٍ الربط والتغيير…' : '🔗 ربط + PAID'}
                           </button>
                         )}
                       </div>

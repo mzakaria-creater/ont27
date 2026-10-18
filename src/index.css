@@ -2082,6 +2082,7 @@ a.stat-card:hover { border-color: var(--accent); }
 .sms-feed-pill.is-linked { background: var(--green-bg); color: var(--status-paid); }
 .sms-feed-pill.is-wait { background: var(--amber-bg); color: var(--status-pending); }
 .sms-feed-pill.is-info { background: var(--hover-2); color: var(--text-muted); }
+.sms-detail-inline-number { display: block; margin-top: 2px; color: var(--text-dim); direction: ltr; unicode-bidi: isolate; }
 /* The row switched from a native <button> to a div[role=button] so the
    matched-transaction pill below could become a real nested <a> (a <button>
    cannot contain another interactive element). Restore the cursor/focus
