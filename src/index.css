@@ -5411,6 +5411,75 @@ html[data-theme='light'] ::selection { color: #fff; background: rgba(0, 122, 255
   .transactions-center-page .transactions-page-title h2 { font-size: 22px !important; }
 }
 
+/* Responsive navigation layout. The grid owns the page geometry; an
+   unpinned rail expands over the workspace without changing its column, while
+   a pinned rail reserves the larger column so the main content reflows cleanly. */
+@media (min-width: 901px) {
+  .dash-body {
+    --nav-rail: 76px;
+    --nav-expanded: 276px;
+    display: grid;
+    grid-template-columns: var(--nav-rail) minmax(0, 1fr);
+    align-items: start;
+    gap: 18px;
+    width: 100%;
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .dash-body.nav-pinned {
+    grid-template-columns: var(--nav-expanded) minmax(0, 1fr);
+  }
+
+  .dash-body > .sidebar {
+    grid-column: 1;
+    grid-row: 1;
+    position: sticky;
+    inset-block-start: 16px;
+    z-index: 40;
+    width: var(--nav-rail);
+    min-width: var(--nav-rail);
+    max-width: var(--nav-expanded);
+    min-inline-size: var(--nav-rail);
+    inline-size: var(--nav-rail);
+    flex: none;
+    margin: 0;
+    box-sizing: border-box;
+    overflow-y: auto;
+    overflow-x: hidden;
+    transition: box-shadow .18s var(--ease), border-color .18s var(--ease);
+  }
+
+  .dash-body > .sidebar:not(.pinned):hover,
+  .dash-body > .sidebar:not(.pinned):focus-within {
+    width: var(--nav-expanded);
+    inline-size: var(--nav-expanded);
+    z-index: 70;
+    box-shadow: 14px 12px 34px color-mix(in srgb, var(--text) 18%, transparent);
+  }
+
+  html[dir='rtl'] .dash-body > .sidebar:not(.pinned):hover,
+  html[dir='rtl'] .dash-body > .sidebar:not(.pinned):focus-within {
+    box-shadow: -14px 12px 34px color-mix(in srgb, var(--text) 18%, transparent);
+  }
+
+  .dash-body > .sidebar.pinned {
+    width: var(--nav-expanded);
+    inline-size: var(--nav-expanded);
+    min-inline-size: var(--nav-expanded);
+    z-index: 50;
+    box-shadow: var(--shadow-panel);
+  }
+
+  .dash-body > .dash-main {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+}
+
 /* Sidebar: collapsed by default, expanded on hover/focus, or kept open when
    pinned. Keep the controls reachable in the collapsed state so operators can
    switch modes without hunting for an invisible button. */

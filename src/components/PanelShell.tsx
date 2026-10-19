@@ -928,7 +928,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
   const smsSplitView = smsOpen
 
   return (
-    <div className={`dash-body${smsSplitView ? ' sms-split' : ''}`}>
+    <div className={`dash-body${smsSplitView ? ' sms-split' : ''}${navPinned ? ' nav-pinned' : ''}`}>
       <a className="skip-link" href="#main-workspace">{t('تجاوز القائمة', 'Skip navigation')}</a>
       <button className="nav-toggle" onClick={() => setNavOpen((o) => !o)} title={t('القائمة', 'Menu')} aria-label={t('القائمة', 'Menu')}>{navOpen ? <X size={20} /> : <Menu size={20} />}</button>
       {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
