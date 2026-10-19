@@ -748,7 +748,9 @@ Deno.serve(async (req: Request) => {
       return response({ error: "Could not store SMS" }, 500);
     }
 
-    if (balance !== null && smsCategory !== "withdrawal") {
+    // The cumulative amount is the threshold source of truth. A missing
+    // balance_after must not prevent an immediate switch.
+    if (smsCategory !== "withdrawal") {
       const thresholdTask = switchWalletImmediately(wallet, balance, data.id, detectNetworkFromMessage(message) ?? providerValue).catch((thresholdError) =>
         console.error("immediate wallet threshold switch failed", thresholdError instanceof Error ? thresholdError.message : thresholdError)
       );
