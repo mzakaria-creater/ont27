@@ -921,13 +921,11 @@ export default function PanelShell({ children }: { children: ReactNode }) {
     return next
   })
 
-  // All Transactions is the one workspace where operators actively
-  // cross-reference the live feed against the table underneath it — a
-  // floating drop-up card covers exactly the rows being checked. There,
-  // dock the rail as a real third column (the shell's nav|content|SMS-rail
-  // layout already anticipated this — see the "Shell:" comment in index.css)
-  // instead of overlaying it.
-  const smsSplitView = smsOpen && pathname === '/transactions'
+  // Keep the live SMS feed beside the active workspace while it is open.
+  // Operators use it to cross-reference transactions, payouts, wallets, and
+  // other pages; a floating drop-up obscures the very data being checked.
+  // The CSS keeps the compact overlay behavior on narrow screens.
+  const smsSplitView = smsOpen
 
   return (
     <div className={`dash-body${smsSplitView ? ' sms-split' : ''}`}>

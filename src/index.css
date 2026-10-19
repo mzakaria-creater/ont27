@@ -5048,6 +5048,38 @@ html[data-theme='light'] ::selection { color: #fff; background: rgba(0, 122, 255
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 
+/* Open Live SMS as a real split-screen workspace on wide displays. The feed
+   stays independently scrollable, while phones and tablets retain the
+   bottom-sheet presentation defined above. */
+@media (min-width: 1280px) {
+  .dash-body.sms-split {
+    align-items: stretch;
+  }
+
+  .dash-body.sms-split > .dash-main {
+    min-width: 0;
+  }
+
+  .dash-body.sms-split > .sms-rail {
+    position: sticky;
+    inset-block-start: 16px;
+    inset-inline-end: auto;
+    align-self: flex-start;
+    width: min(380px, 30vw);
+    flex: 0 0 min(380px, 30vw);
+    height: calc(100dvh - 32px);
+    max-height: calc(100dvh - 32px);
+    margin: 0;
+    border-radius: 0;
+    border-block: 0;
+    border-inline-end: 0;
+    border-inline-start: 1px solid var(--border);
+    box-shadow: none;
+    backdrop-filter: none;
+    animation: none;
+  }
+}
+
 /* Sheet component (src/components/Sheet.tsx): side modifiers on the existing
    .drawer-backdrop/.drawer classes. side="start" (no modifier class) is
    unchanged — every existing hand-rolled drawer keeps looking exactly as it
