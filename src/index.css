@@ -5572,6 +5572,40 @@ html[data-theme='light'] ::selection { color: #fff; background: rgba(0, 122, 255
   .sidebar-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--status-paid); }
 }
 
+/* Keep Live SMS as a real third workspace column after the desktop sidebar
+   moved from flex to grid. Without an explicit grid placement the rail falls
+   onto an implicit second row and looks like it disappeared. */
+@media (min-width: 1280px) {
+  .dash-body.sms-split {
+    grid-template-columns: var(--nav-rail) minmax(0, 1fr) minmax(320px, min(380px, 30vw));
+    align-items: stretch;
+  }
+  .dash-body.sms-split.nav-pinned {
+    grid-template-columns: var(--nav-expanded) minmax(0, 1fr) minmax(320px, min(380px, 30vw));
+  }
+  .dash-body.sms-split > .sms-rail {
+    grid-column: 3;
+    grid-row: 1;
+    position: sticky;
+    inset-block-start: 16px;
+    inset-inline-end: auto;
+    align-self: start;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    height: calc(100dvh - 32px);
+    max-height: calc(100dvh - 32px);
+    margin: 0;
+    border-radius: 0;
+    border-block: 0;
+    border-inline-end: 0;
+    border-inline-start: 1px solid var(--border);
+    box-shadow: none;
+    backdrop-filter: none;
+    animation: none;
+  }
+}
+
 /* Sidebar: collapsed by default, expanded on hover/focus, or kept open when
    pinned. Keep the controls reachable in the collapsed state so operators can
    switch modes without hunting for an invisible button. */
