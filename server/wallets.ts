@@ -4,6 +4,7 @@ import { oldDb } from './oldDb.js'
 import { requireAuth, requirePerm, requireAnyPerm } from './rbac.js'
 import type { AuthEnv } from './rbac.js'
 import { callMavenWalletSwitch } from './mavenWalletSwitch.js'
+import { runWalletThresholdSwitch } from './walletThresholdSwitch.js'
 
 // Wallet pool = wallet_device_map (receiving wallets → device/sim), enriched
 // with live device_status. Channels = local_deposit_channels (allocation config).
@@ -588,6 +589,36 @@ walletRoutes.post('/threshold-switch-rules', requirePerm('wallets', 'can_edit'),
   if (error) return c.json({ error: 'threshold_switch_rule_create_failed', detail: error.message }, 400)
   await db.from('audit_log').insert({ actor_type: 'panel_user', actor_id: actor.sub, actor_name: actor.username, action: 'maven_wallet_threshold_switch_rule_created', entity: 'maven_wallet_threshold_switch_rules', entity_id: data.id, after: data })
   return c.json({ ok: true, rule: data }, 201)
+})
+
+walletRoutes.post('/threshold-switch-rules/:id/run', requirePerm('wallets', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  const actor = c.get('actor')
+  const { data: rule, error: ruleError } = await db.from('maven_wallet_threshold_switch_rules').select('*').eq('id', id).maybeSingle()
+  if (ruleError) return c.json({ error: 'db_error', detail: ruleError.message }, 500)
+  if (!rule) return c.json({ error: 'threshold_switch_rule_not_found' }, 404)
+  if (!rule.active || rule.status !== 'active') return c.json({ error: 'threshold_switch_rule_not_active' }, 409)
+
+  await db.from('audit_log').insert({
+    actor_type: 'panel_user', actor_id: actor.sub, actor_name: actor.username,
+    action: 'maven_wallet_threshold_switch_manual_run_requested',
+    entity: 'maven_wallet_threshold_switch_rules', entity_id: id,
+    after: { bank_id: rule.bank_id, source_wallet: rule.source_wallet, target_wallet: rule.target_wallet, amount_received_since_check: rule.amount_received_since_check, amount_threshold: rule.amount_threshold },
+  })
+  try {
+    const result = await runWalletThresholdSwitch(actor.username)
+    const match = (result.results as Array<Record<string, unknown>>).find((item) => item.id === id) ?? null
+    return c.json({ ok: match?.status === 'switched', result: match, results: result.results })
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    await db.from('audit_log').insert({
+      actor_type: 'panel_user', actor_id: actor.sub, actor_name: actor.username,
+      action: 'maven_wallet_threshold_switch_manual_run_failed',
+      entity: 'maven_wallet_threshold_switch_rules', entity_id: id,
+      after: { detail },
+    })
+    return c.json({ error: 'threshold_switch_run_failed', detail }, 502)
+  }
 })
 
 walletRoutes.patch('/threshold-switch-rules/:id', requirePerm('wallets', 'can_edit'), async (c) => {
