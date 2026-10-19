@@ -19,6 +19,16 @@ smsRoutes.use('*', requireAuth)
 const LIST_COLUMNS =
   'id, received_at, device_name, device_prefix, sim_slot, sender_number, sender_name, receiver_number, wallet_number, confirmed_wallet_number, wallet_resolution_source, resolved_employee, amount, balance_after, sms_category, match_status, matched, review_required, is_blocked, block_reason, blocked_at, blocked_by, assignment_unlocked_at, assignment_unlocked_by, trx_id, matched_transaction_id, maven_transaction_id, consumed_by_tx_id, provider, sms_sender, sms_first_line, raw_sms, message, raw_payload, webhook_name, webhook_address, method, ocr_text, score, auto_match_score, processed_at, maven_synced, maven_synced_at, maven_status_sent'
 
+// Marketing bundles are kept in inbound_sms for audit/history, but they are
+// not operational SMS evidence and must not occupy the live queue.
+const PROMOTIONAL_SMS_PATTERNS = ['%Plus37%', '%*211#%', '%خصم كبير على باقة النت%', '%1400 ميجا%']
+const hidePromotionalSms = (query: any) => {
+  for (const pattern of PROMOTIONAL_SMS_PATTERNS) {
+    for (const column of ['raw_sms', 'message', 'sms_first_line']) query = query.not(column, 'ilike', pattern)
+  }
+  return query
+}
+
 // Three separate ingestion paths (the sms-inbound webhook, a direct "live"
 // path, and the legacy_mirror replication job) all write into inbound_sms,
 // and regularly write the SAME physical SMS twice within a few seconds of
@@ -200,6 +210,8 @@ function applySmsFilters(query: any, filters: SmsFilterInput) {
   else if (match === 'unmatched') query = query.or('matched.eq.false,matched.is.null').is('consumed_by_tx_id', null).is('matched_transaction_id', null).is('maven_transaction_id', null)
   else if (match === 'review') query = query.eq('review_required', true).eq('matched', false)
 
+  query = hidePromotionalSms(query)
+
   if (q) {
     const like = `%${q.replaceAll(',', ' ')}%`
     const ors = [
@@ -310,7 +322,7 @@ async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> 
 
   const txIds = [...new Set(depositRows.map(resolveTx).filter((v): v is number => v != null))]
   if (!txIds.length) return
-  const { data: txs } = await db.from('maven_transactions').select('tx_id, ontarget_ref, currency, sub_merchant, master_merchant, gateway, receiving_wallet, to_account_number').in('tx_id', txIds)
+  const { data: txs } = await db.from('maven_transactions').select('tx_id, ontarget_ref, currency, sub_merchant, master_merchant, gateway, receiving_wallet, to_account_number, status').in('tx_id', txIds)
   const refByTx = new Map((txs ?? []).map((t) => [t.tx_id, t.ontarget_ref]))
 
   for (const r of depositRows) {
@@ -328,6 +340,7 @@ async function attachMatchedRef(rows: Record<string, unknown>[]): Promise<void> 
     r.matched_master_merchant = tx?.master_merchant ?? null
     r.matched_gateway = tx?.gateway ?? null
     r.matched_receiving_wallet = tx?.to_account_number ?? tx?.receiving_wallet ?? null
+    r.matched_transaction_status = tx?.status ?? null
     const smsWallet = String(r.confirmed_wallet_number ?? r.wallet_number ?? r.receiver_number ?? '').replace(/\D/g, '').slice(-11)
     const txWallet = String(r.matched_receiving_wallet ?? '').replace(/\D/g, '').slice(-11)
     r.wallet_match = Boolean(smsWallet && txWallet && smsWallet === txWallet)
@@ -441,7 +454,7 @@ smsRoutes.get('/stats', requirePerm('sms_live', 'can_view'), async (c) => {
 smsRoutes.get('/queues', requirePerm('sms_live', 'can_view'), async (c) => {
   const since = new Date(Date.now() - 7 * 86_400_000).toISOString()
   const [{ data: smsRows, error: smsError }, { data: txRows, error: txError }, { data: balanceHistory, error: balanceError }] = await Promise.all([
-    db.from('inbound_sms').select(LIST_COLUMNS).eq('sms_category', 'deposit').is('consumed_by_tx_id', null).is('matched_transaction_id', null).is('maven_transaction_id', null).or('is_blocked.eq.false,is_blocked.is.null').gte('received_at', since).order('received_at', { ascending: false, nullsFirst: false }).limit(1000),
+    hidePromotionalSms(db.from('inbound_sms').select(LIST_COLUMNS).eq('sms_category', 'deposit').is('consumed_by_tx_id', null).is('matched_transaction_id', null).is('maven_transaction_id', null).or('is_blocked.eq.false,is_blocked.is.null').gte('received_at', since).order('received_at', { ascending: false, nullsFirst: false }).limit(1000)),
     db.from('maven_transactions').select('tx_id, ontarget_ref, amount, sender_name, sender_number, receiving_wallet, to_account_number, payment_method, merchant, status, first_seen_at').in('status', ['PENDING', 'PAID', 'APPROVED', 'UNDERPAID', 'DECLINED', 'EXPIRED']).gte('first_seen_at', since).order('first_seen_at', { ascending: false, nullsFirst: false }).limit(2000),
     db.from('inbound_sms').select('id, amount, receiver_number, balance_after, received_at').not('balance_after', 'is', null).gte('received_at', since).order('received_at', { ascending: false, nullsFirst: false }).limit(10_000),
   ])

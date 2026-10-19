@@ -226,6 +226,7 @@ interface RailSms {
   trx_id: string | null
   matched_tx_id?: number | null
   matched_ontarget_ref?: string | null
+  matched_transaction_status?: string | null
   matched_receiving_wallet?: string | null
   wallet_identity_ambiguous?: boolean | null
   linked_wallet_number?: string | null
@@ -607,6 +608,8 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
           // among deposits, green means a transaction is already attached and
           // yellow means it still needs an operator to assign one.
           const cardState = r.sms_category === 'withdrawal' ? 'is-withdrawal' : linked ? 'is-linked' : 'is-unlinked'
+          const linkedStatus = r.sms_category === 'withdrawal' ? r.matched_payout_status : r.matched_transaction_status
+          const linkedNeedsAction = linked && !['PAID', 'APPROVED', 'SETTLED', 'COMPLETED'].includes(String(linkedStatus ?? '').toUpperCase())
           // A real transaction match (not a withdrawal wallet-only link) gets
           // a clickable TRX# that opens that transaction's popup via the
           // same ?open=<ref> mechanism Transactions.tsx already supports —
@@ -614,7 +617,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
           // to be loaded, so this works from any page, not just /transactions.
           const txRef = !walletLinked && linked ? String(r.matched_ontarget_ref ?? r.matched_tx_id ?? '') : ''
           return (
-            <div key={r.id} role="button" tabIndex={0} onClick={() => setSelected(r)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelected(r) }} className={`sms-feed-item sms-feed-button ${cardState}`} aria-label={`SMS ${r.id} details`}>
+            <div key={r.id} role="button" tabIndex={0} onClick={() => setSelected(r)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelected(r) }} className={`sms-feed-item sms-feed-button ${cardState}${linkedNeedsAction ? ' is-linked-needs-action' : ''}`} aria-label={`SMS ${r.id} details`}>
               <div className="sms-feed-head">
                 <span className="sms-feed-device"><MethodLogo method={r.provider} />{r.device_name ?? '—'}{r.sim_slot != null && <> · SIM{r.sim_slot}</>}</span>
                 <span className="sms-feed-time mono">{depositTime({ first_seen_at: r.received_at })}</span>

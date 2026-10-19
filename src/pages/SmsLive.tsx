@@ -84,6 +84,7 @@ interface SmsRow {
   wallet_balance_after?: number | null
   matched_tx_id?: number | null
   matched_ontarget_ref?: string | null
+  matched_transaction_status?: string | null
   matched_payout_id?: number | null
   matched_payout_ref?: string | null
   matched_payout_status?: string | null
@@ -1003,12 +1004,14 @@ export default function SmsLive() {
                 {data.rows.map((r) => {
                   const payoutLinked = r.sms_category === 'withdrawal' && r.matched_payout_id != null
                   const linked = payoutLinked || r.matched_tx_id != null
+                  const linkedStatus = payoutLinked ? r.matched_payout_status : r.matched_transaction_status
+                  const linkedNeedsAction = linked && !['PAID', 'APPROVED', 'SETTLED', 'COMPLETED'].includes(String(linkedStatus ?? '').toUpperCase())
                   const displayWallet = displayWalletForRow(r)
                   const mt = linked ? MATCH_META.auto : r.match_status ? MATCH_META[r.match_status] : null
                   const linkedAt = r.withdrawal_assigned_at
                   const recommendation = !linked ? recommendationFor(r.id) : undefined
                   return (
-                    <tr key={r.id} className={`sms-row sms-row-${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}${r.review_required && !linked ? ' is-review-hold' : ''}`} onClick={() => void openDetail(r.id)}>
+                    <tr key={r.id} className={`sms-row sms-row-${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}${r.review_required && !linked ? ' is-review-hold' : ''}${linkedNeedsAction ? ' is-linked-needs-action' : ''}`} onClick={() => void openDetail(r.id)}>
                       <td className="mono">
                         {money(r.amount, 'EGP')}
                         {r.balance_after != null && <div className="cell-sub mono">{t('رصيد', 'bal')} {money(r.balance_after, 'EGP')}</div>}
@@ -1046,11 +1049,13 @@ export default function SmsLive() {
             {data.rows.map((r) => {
               const cat = r.sms_category ? CATEGORY_META[r.sms_category] : null
               const linked = r.matched_payout_id != null || r.matched_tx_id != null
+              const linkedStatus = r.matched_payout_id != null ? r.matched_payout_status : r.matched_transaction_status
+              const linkedNeedsAction = linked && !['PAID', 'APPROVED', 'SETTLED', 'COMPLETED'].includes(String(linkedStatus ?? '').toUpperCase())
               const displayWallet = displayWalletForRow(r)
               const matchMeta = linked ? MATCH_META.auto : r.match_status ? MATCH_META[r.match_status] : null
               const recommendation = !linked ? recommendationFor(r.id) : undefined
               return <article className="sms-live-card-shell" key={r.id}>
-                <button type="button" className={`sms-live-card sms-live-card-${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}${!linked && !r.is_blocked ? ' is-unlinked' : ''}${r.review_required && !linked ? ' is-review-hold' : ''}`} onClick={() => void openDetail(r.id)}>
+                <button type="button" className={`sms-live-card sms-live-card-${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}${!linked && !r.is_blocked ? ' is-unlinked' : ''}${r.review_required && !linked ? ' is-review-hold' : ''}${linkedNeedsAction ? ' is-linked-needs-action' : ''}`} onClick={() => void openDetail(r.id)}>
                   <div className="sms-live-card-head"><span className="sms-card-brand"><span className={`sms-type-mark ${r.sms_category === 'withdrawal' ? 'payout' : 'deposit'}`}>{r.sms_category === 'withdrawal' ? '↗' : '↙'}</span><MethodLogo method={r.provider} /></span><strong className="mono">SMS #{r.id}</strong><span className="mono">{depositTime({ first_seen_at: r.received_at })}</span></div>
                   <div className="sms-live-card-amount">{money(r.amount, 'EGP')}</div>
                   <div className="sms-live-card-grid">
