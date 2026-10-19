@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, CirclePause, Pencil, PlayCircle, Plus, RefreshCw, RotateCcw, ShieldAlert, WalletCards, X } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { api, ApiError } from '../lib/api'
 import { money } from '../lib/deposits'
@@ -31,7 +32,9 @@ const statusLabel = (status: Rule['status'], t: (ar: string, en: string) => stri
 
 export default function WalletThresholdRules() {
   const { t } = useLocale()
-  const { can } = useAuth()
+  const { can, status } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
   const canEdit = can('wallets', 'can_edit')
   const [rules, setRules] = useState<Rule[]>([])
   const [loading, setLoading] = useState(true)
@@ -44,15 +47,25 @@ export default function WalletThresholdRules() {
   const [filter, setFilter] = useState<'all' | Rule['status']>('all')
 
   const load = useCallback(async () => {
+    if (status !== 'authed') return
     try {
       const response = await api<{ rules: Rule[] }>('/api/wallets/threshold-switch-rules')
       setRules(response.rules)
       setError(null)
     } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 401) {
+        navigate('/login', { replace: true, state: { from: `${location.pathname}${location.search}${location.hash}` } })
+        return
+      }
       setError(cause instanceof ApiError ? cause.code : t('تعذر تحميل القواعد.', 'Unable to load rules.'))
     } finally { setLoading(false) }
-  }, [t])
-  useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 20_000); return () => window.clearInterval(timer) }, [load])
+  }, [location.hash, location.pathname, location.search, navigate, status, t])
+  useEffect(() => {
+    if (status !== 'authed') return
+    void load()
+    const timer = window.setInterval(() => void load(), 20_000)
+    return () => window.clearInterval(timer)
+  }, [load, status])
 
   const filtered = useMemo(() => filter === 'all' ? rules : rules.filter((rule) => rule.status === filter), [filter, rules])
   const stats = useMemo(() => ({ active: rules.filter((rule) => rule.active && rule.status === 'active').length, switched: rules.filter((rule) => rule.status === 'switched').length, errors: rules.filter((rule) => rule.status === 'error').length }), [rules])
