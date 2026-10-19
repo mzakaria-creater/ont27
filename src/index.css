@@ -5371,3 +5371,58 @@ html[data-theme='light'] ::selection { color: #fff; background: rgba(0, 122, 255
 .treasury-card dl div { background: rgba(255,255,255,.12); border-radius: 10px; padding: 8px 10px; }
 .treasury-card dt { font-size: .72rem; opacity: .8; }
 .treasury-card dd { margin: 2px 0 0; font-weight: 700; }
+
+/* Sidebar: collapsed by default, expanded on hover/focus, or kept open when
+   pinned. Keep the controls reachable in the collapsed state so operators can
+   switch modes without hunting for an invisible button. */
+@media (min-width: 901px) {
+  .dash-body > .sidebar {
+    flex: 0 0 76px;
+    inline-size: 76px;
+    width: 76px;
+    min-inline-size: 76px;
+    transition: inline-size .2s var(--ease), width .2s var(--ease), flex-basis .2s var(--ease), box-shadow .2s var(--ease);
+  }
+
+  .dash-body > .sidebar:not(.pinned):hover,
+  .dash-body > .sidebar:not(.pinned):focus-within {
+    flex-basis: 76px;
+    inline-size: 276px;
+    width: 276px;
+    z-index: 60;
+  }
+
+  .dash-body > .sidebar.pinned {
+    flex-basis: 276px;
+    inline-size: 276px;
+    width: 276px;
+    z-index: 50;
+  }
+
+  .dash-body > .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-tools {
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .dash-body > .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-search-wrap {
+    flex: 0 0 28px;
+    inline-size: 28px;
+    width: 28px;
+    height: 32px;
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .dash-body > .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-search-wrap input,
+  .dash-body > .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-search-wrap button {
+    display: none;
+  }
+
+  .dash-body > .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-pin {
+    display: grid;
+    inline-size: 28px;
+    width: 28px;
+    height: 32px;
+  }
+}
