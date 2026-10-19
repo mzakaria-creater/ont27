@@ -553,6 +553,57 @@ walletRoutes.get('/threshold-switch-rules', requirePerm('wallets', 'can_view'), 
   return c.json({ rules: data ?? [] })
 })
 
+walletRoutes.patch('/threshold-switch-rules/:id', requirePerm('wallets', 'can_edit'), async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json<{
+    bank_id?: unknown
+    source_wallet?: unknown
+    target_wallet?: unknown
+    amount_threshold?: unknown
+  }>().catch(() => null)
+  const bankId = String(body?.bank_id ?? '').trim()
+  const sourceWallet = String(body?.source_wallet ?? '').replace(/\D/g, '')
+  const targetWallet = String(body?.target_wallet ?? '').replace(/\D/g, '')
+  const amountThreshold = Number(body?.amount_threshold)
+  if (!/^\d{1,20}$/.test(bankId) || !/^\d{8,20}$/.test(sourceWallet) || !/^\d{8,20}$/.test(targetWallet) || sourceWallet === targetWallet || !Number.isFinite(amountThreshold) || amountThreshold <= 0) {
+    return c.json({ error: 'invalid_threshold_switch_rule' }, 400)
+  }
+
+  const { data: before, error: beforeError } = await db.from('maven_wallet_threshold_switch_rules').select('*').eq('id', id).maybeSingle()
+  if (beforeError) return c.json({ error: 'db_error', detail: beforeError.message }, 500)
+  if (!before) return c.json({ error: 'threshold_switch_rule_not_found' }, 404)
+  if (!before.active || before.status !== 'active') return c.json({ error: 'threshold_switch_rule_not_active' }, 409)
+
+  const digits = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-10)
+  const { data: live, error: liveError } = await db.from('maven_banks_live_cache').select('bank_id, phone_number').eq('bank_id', bankId).maybeSingle()
+  if (liveError) return c.json({ error: 'db_error', detail: liveError.message }, 500)
+  if (!live || digits(live.phone_number) !== digits(sourceWallet)) return c.json({ error: 'source_wallet_not_live_for_bank' }, 409)
+
+  const { data: targetLive, error: targetError } = await db.from('maven_banks_live_cache').select('bank_id, phone_number').neq('bank_id', bankId).eq('phone_number', targetWallet).maybeSingle()
+  if (targetError) return c.json({ error: 'db_error', detail: targetError.message }, 500)
+  if (targetLive) return c.json({ error: 'target_wallet_in_use', bank_id: targetLive.bank_id }, 409)
+
+  const { data: updated, error: updateError } = await db.from('maven_wallet_threshold_switch_rules').update({
+    bank_id: bankId,
+    source_wallet: sourceWallet,
+    target_wallet: targetWallet,
+    amount_threshold: amountThreshold,
+    updated_at: new Date().toISOString(),
+    last_error: null,
+  }).eq('id', id).eq('active', true).eq('status', 'active').select('*').maybeSingle()
+  if (updateError) return c.json({ error: 'threshold_switch_rule_update_failed', detail: updateError.message }, 400)
+  if (!updated) return c.json({ error: 'threshold_switch_rule_not_active' }, 409)
+
+  const actor = c.get('actor')
+  await db.from('audit_log').insert({
+    actor_type: 'panel_user', actor_id: actor.sub, actor_name: actor.username,
+    action: 'maven_wallet_threshold_switch_rule_updated', entity: 'maven_wallet_threshold_switch_rules', entity_id: id,
+    before: { bank_id: before.bank_id, source_wallet: before.source_wallet, target_wallet: before.target_wallet, amount_threshold: before.amount_threshold },
+    after: { bank_id: updated.bank_id, source_wallet: updated.source_wallet, target_wallet: updated.target_wallet, amount_threshold: updated.amount_threshold },
+  })
+  return c.json({ ok: true, rule: updated })
+})
+
 walletRoutes.post('/rotation-groups', requirePerm('wallets', 'can_edit'), async (c) => {
   const body = await c.req.json<{ wallet_numbers?: unknown; mode?: unknown; interval_minutes?: unknown; amount_threshold?: unknown }>().catch(() => null)
   const wallets = Array.isArray(body?.wallet_numbers)

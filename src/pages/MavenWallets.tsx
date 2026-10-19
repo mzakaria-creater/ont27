@@ -113,6 +113,10 @@ export default function MavenWallets() {
   const [quickError, setQuickError] = useState<string | null>(null)
   const [thresholdRules, setThresholdRules] = useState<ThresholdSwitchRule[]>([])
   const [switchNotice, setSwitchNotice] = useState<ThresholdSwitchRule | null>(null)
+  const [thresholdEditRule, setThresholdEditRule] = useState<ThresholdSwitchRule | null>(null)
+  const [thresholdEditForm, setThresholdEditForm] = useState({ bank_id: '', source_wallet: '', target_wallet: '', amount_threshold: '' })
+  const [thresholdEditBusy, setThresholdEditBusy] = useState(false)
+  const [thresholdEditError, setThresholdEditError] = useState<string | null>(null)
   const thresholdStatusRef = useRef<Record<string, string | null>>({})
 
   const canManageRotation = can('wallets', 'can_edit')
@@ -142,6 +146,43 @@ export default function MavenWallets() {
     const timer = window.setInterval(() => void loadThresholdRules(), 30_000)
     return () => window.clearInterval(timer)
   }, [loadThresholdRules])
+
+  const openThresholdEdit = (rule: ThresholdSwitchRule) => {
+    setThresholdEditRule(rule)
+    setThresholdEditError(null)
+    setThresholdEditForm({
+      bank_id: rule.bank_id,
+      source_wallet: rule.source_wallet,
+      target_wallet: rule.target_wallet,
+      amount_threshold: String(rule.amount_threshold),
+    })
+  }
+
+  const saveThresholdEdit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!thresholdEditRule) return
+    setThresholdEditBusy(true); setThresholdEditError(null)
+    try {
+      await api(`/api/wallets/threshold-switch-rules/${thresholdEditRule.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          bank_id: thresholdEditForm.bank_id,
+          source_wallet: thresholdEditForm.source_wallet,
+          target_wallet: thresholdEditForm.target_wallet,
+          amount_threshold: Number(thresholdEditForm.amount_threshold),
+        }),
+      })
+      setThresholdEditRule(null)
+      await loadThresholdRules()
+    } catch (e) {
+      const code = e instanceof ApiError ? e.code : ''
+      setThresholdEditError(code === 'source_wallet_not_live_for_bank'
+        ? t('المحفظة الحالية لا تطابق الرقم الحي لهذا البنك في Maven.', 'The current wallet does not match this bank’s live Maven number.')
+        : code === 'target_wallet_in_use'
+          ? t('المحفظة الجديدة مستخدمة بالفعل في بنك آخر.', 'The new wallet is already used by another bank.')
+          : t('تعذّر حفظ إعداد التحويل.', 'Unable to save the switch settings.'))
+    } finally { setThresholdEditBusy(false) }
+  }
 
   const refresh = useCallback(async () => {
     const sequence = ++refreshSequence.current
@@ -515,6 +556,7 @@ export default function MavenWallets() {
               {rule.status === 'switched' ? t('تم التغيير', 'Switched') : rule.status === 'error' ? t('يحتاج مراجعة', 'Needs review') : `${money(rule.amount_received_since_check, 'EGP')} / ${money(rule.amount_threshold, 'EGP')}`}
             </span>
           </div>
+          {canManageRotation && rule.active && rule.status === 'active' && <button className="btn-ghost btn-sm" type="button" onClick={() => openThresholdEdit(rule)}><Pencil size={14} /> {t('تعديل الإعداد', 'Edit settings')}</button>}
           {rule.last_error && <div className="cell-sub danger-text">{rule.last_error}</div>}
         </section>
       ))}
@@ -720,6 +762,23 @@ export default function MavenWallets() {
               <dt>{t('الحد', 'Threshold')}</dt><dd>{money(switchNotice.amount_threshold, 'EGP')}</dd>
             </dl>
             <button type="button" className="btn-primary btn-sm" onClick={() => setSwitchNotice(null)}>{t('تم', 'Done')}</button>
+          </section>
+        </div>
+      )}
+
+      {thresholdEditRule && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !thresholdEditBusy) setThresholdEditRule(null) }}>
+          <section className="card" style={{ maxWidth: 520 }} role="dialog" aria-modal="true" aria-labelledby="threshold-edit-title">
+            <div className="recent-head"><h3 id="threshold-edit-title"><Pencil size={17} /> {t('إعداد تبديل محفظة Maven', 'Maven wallet switch settings')}</h3><button type="button" className="icon-action" disabled={thresholdEditBusy} onClick={() => setThresholdEditRule(null)} aria-label={t('إغلاق', 'Close')}><X size={17} /></button></div>
+            <p className="cell-sub">{t('يتم التبديل لحظيًا عند وصول SMS برصيد يساوي أو يتجاوز الحد.', 'The switch runs immediately when an SMS balance reaches or exceeds the threshold.')}</p>
+            <form className="control-row" onSubmit={saveThresholdEdit}>
+              <label className="filter-field">{t('كود بنك Maven', 'Maven bank code')}<input className="login-input mono" required inputMode="numeric" value={thresholdEditForm.bank_id} onChange={(e) => setThresholdEditForm({ ...thresholdEditForm, bank_id: e.target.value.replace(/\D/g, '') })} /></label>
+              <label className="filter-field">{t('المحفظة الحالية', 'Current wallet')}<input className="login-input mono" required inputMode="tel" value={thresholdEditForm.source_wallet} onChange={(e) => setThresholdEditForm({ ...thresholdEditForm, source_wallet: e.target.value.replace(/\D/g, '') })} /></label>
+              <label className="filter-field">{t('المحفظة الجديدة', 'New wallet')}<input className="login-input mono" required inputMode="tel" value={thresholdEditForm.target_wallet} onChange={(e) => setThresholdEditForm({ ...thresholdEditForm, target_wallet: e.target.value.replace(/\D/g, '') })} /></label>
+              <label className="filter-field">{t('التبديل عند رصيد (EGP)', 'Switch at balance (EGP)')}<input className="login-input" required type="number" min="1" step="0.01" value={thresholdEditForm.amount_threshold} onChange={(e) => setThresholdEditForm({ ...thresholdEditForm, amount_threshold: e.target.value })} /></label>
+              {thresholdEditError && <div className="card warn">{thresholdEditError}</div>}
+              <div className="row-actions"><button type="button" className="btn-ghost btn-sm" disabled={thresholdEditBusy} onClick={() => setThresholdEditRule(null)}>{t('إلغاء', 'Cancel')}</button><button className="btn-primary btn-sm" disabled={thresholdEditBusy}>{thresholdEditBusy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ الإعداد', 'Save settings')}</button></div>
+            </form>
           </section>
         </div>
       )}
