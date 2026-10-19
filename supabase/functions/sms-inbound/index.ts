@@ -17,6 +17,86 @@ const supabaseAdmin = createClient(SUPABASE_URL, secretKey, {
   db: { retry: false },
 });
 
+const MAVEN_WALLET_SWITCH_URL = `${SUPABASE_URL}/functions/v1/maven-wallet-switch`;
+
+function normalizedPhone(value: unknown): string {
+  return String(value ?? "").replace(/\D/g, "").slice(-10);
+}
+
+// Balance thresholds are safety controls, so evaluate them from the SMS event
+// itself. The five-minute cron remains a recovery pass for delayed webhooks.
+async function switchWalletImmediately(wallet: unknown, balance: unknown, smsId: number): Promise<void> {
+  const walletKey = normalizedPhone(wallet);
+  const currentBalance = Number(balance);
+  if (!walletKey || !Number.isFinite(currentBalance)) return;
+
+  const { data: rules, error: rulesError } = await supabaseAdmin
+    .from("maven_wallet_threshold_switch_rules")
+    .select("id, bank_id, source_wallet, target_wallet, amount_threshold")
+    .eq("active", true)
+    .eq("status", "active");
+  if (rulesError) throw rulesError;
+
+  for (const rule of rules ?? []) {
+    if (normalizedPhone(rule.source_wallet) !== walletKey || currentBalance < Number(rule.amount_threshold)) continue;
+
+    // Claim the rule before contacting Maven so two SMS retries cannot issue
+    // two provider edits for the same bank.
+    const now = new Date().toISOString();
+    const { data: claimed, error: claimError } = await supabaseAdmin
+      .from("maven_wallet_threshold_switch_rules")
+      .update({ active: false, status: "paused", last_checked_at: now, updated_at: now })
+      .eq("id", rule.id)
+      .eq("active", true)
+      .eq("status", "active")
+      .select("id")
+      .maybeSingle();
+    if (claimError) throw claimError;
+    if (!claimed) continue;
+
+    try {
+      const { data: live, error: liveError } = await supabaseAdmin
+        .from("maven_banks_live_cache")
+        .select("bank_id, phone_number")
+        .eq("bank_id", rule.bank_id)
+        .maybeSingle();
+      if (liveError) throw liveError;
+      if (!live || normalizedPhone(live.phone_number) !== walletKey) throw new Error(`maven bank ${rule.bank_id} is not ${rule.source_wallet}`);
+
+      const response = await fetch(MAVEN_WALLET_SWITCH_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${secretKey}`, apikey: secretKey },
+        body: JSON.stringify({ bank_id: rule.bank_id, mode: "edit", new_number: rule.target_wallet, confirm: true }),
+        signal: AbortSignal.timeout(45_000),
+      });
+      const provider = await response.json().catch(() => ({})) as Record<string, unknown>;
+      const changedTo = normalizedPhone(provider.changed_to);
+      if (!response.ok || provider.ok !== true || changedTo !== normalizedPhone(rule.target_wallet)) {
+        throw new Error(String(provider.error ?? `maven switch failed (${response.status})`));
+      }
+
+      await supabaseAdmin.from("maven_wallet_threshold_switch_rules").update({
+        status: "switched", switched_at: now, last_error: null, updated_at: now,
+      }).eq("id", rule.id);
+      await supabaseAdmin.from("audit_log").insert({
+        actor_type: "system", actor_name: "sms-inbound", action: "maven_wallet_threshold_switch_succeeded",
+        entity: "maven_wallet_threshold_switch_rules", entity_id: rule.id,
+        after: { sms_id: smsId, observed_balance: currentBalance, source_wallet: rule.source_wallet, target_wallet: rule.target_wallet, provider },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await supabaseAdmin.from("maven_wallet_threshold_switch_rules").update({
+        active: true, status: "active", last_error: message, updated_at: new Date().toISOString(),
+      }).eq("id", rule.id);
+      await supabaseAdmin.from("audit_log").insert({
+        actor_type: "system", actor_name: "sms-inbound", action: "maven_wallet_threshold_switch_failed",
+        entity: "maven_wallet_threshold_switch_rules", entity_id: rule.id,
+        after: { sms_id: smsId, observed_balance: currentBalance, error: message },
+      });
+    }
+  }
+}
+
 // "Money out" (withdrawal) SMS -- a transfer leaving one of our own wallets
 // -- gets an immediate email alert, same SMTP credentials the
 // transaction-approval-email function already uses in this project. This is
@@ -648,6 +728,18 @@ Deno.serve(async (req: Request) => {
     if (error) {
       console.error("inbound_sms insert failed", error);
       return response({ error: "Could not store SMS" }, 500);
+    }
+
+    if (balance !== null && wallet !== null && smsCategory !== "withdrawal") {
+      const thresholdTask = switchWalletImmediately(wallet, balance, data.id).catch((thresholdError) =>
+        console.error("immediate wallet threshold switch failed", thresholdError instanceof Error ? thresholdError.message : thresholdError)
+      );
+      try {
+        // @ts-ignore -- EdgeRuntime is a Supabase/Deno Deploy global.
+        EdgeRuntime.waitUntil(thresholdTask);
+      } catch {
+        // The webhook response remains independent from the provider switch.
+      }
     }
 
     if (smsCategory === "withdrawal") {
