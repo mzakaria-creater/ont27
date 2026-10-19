@@ -32,7 +32,7 @@ async function switchWalletImmediately(wallet: unknown, balance: unknown, smsId:
 
   const { data: rules, error: rulesError } = await supabaseAdmin
     .from("maven_wallet_threshold_switch_rules")
-    .select("id, bank_id, source_wallet, target_wallet, amount_threshold")
+    .select("id, bank_id, source_wallet, target_wallet, amount_threshold, created_at")
     .eq("active", true)
     .eq("status", "active");
   if (rulesError) throw rulesError;
@@ -42,7 +42,18 @@ async function switchWalletImmediately(wallet: unknown, balance: unknown, smsId:
     const ruleNetworkKey = String(rule.payment_type ?? '').replace(/\s+/g, '').toLowerCase();
     const walletMatches = walletKey && normalizedPhone(rule.source_wallet) === walletKey;
     const networkMatches = !walletKey && networkKey && ruleNetworkKey === networkKey;
-    if ((!walletMatches && !networkMatches) || currentBalance < Number(rule.amount_threshold)) continue;
+    if (!walletMatches && !networkMatches) continue;
+    const { data: receivedSms, error: receivedSmsError } = await supabaseAdmin
+      .from("inbound_sms")
+      .select("amount")
+      .gte("received_at", rule.created_at)
+      .eq("provider", rule.payment_type)
+      .in("sms_category", ["deposit", "received", "income"])
+      .not("is_blocked", "is", true)
+      .not("is_duplicate", "is", true);
+    if (receivedSmsError) throw receivedSmsError;
+    const cumulativeReceived = (receivedSms ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+    if (currentBalance < Number(rule.amount_threshold) && cumulativeReceived < Number(rule.amount_threshold)) continue;
 
     // Claim the rule before contacting Maven so two SMS retries cannot issue
     // two provider edits for the same bank.
@@ -85,7 +96,7 @@ async function switchWalletImmediately(wallet: unknown, balance: unknown, smsId:
       await supabaseAdmin.from("audit_log").insert({
         actor_type: "system", actor_name: "sms-inbound", action: "maven_wallet_threshold_switch_succeeded",
         entity: "maven_wallet_threshold_switch_rules", entity_id: rule.id,
-        after: { sms_id: smsId, observed_balance: currentBalance, source_wallet: rule.source_wallet, target_wallet: rule.target_wallet, provider },
+        after: { sms_id: smsId, observed_balance: currentBalance, cumulative_received: cumulativeReceived, source_wallet: rule.source_wallet, target_wallet: rule.target_wallet, provider },
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

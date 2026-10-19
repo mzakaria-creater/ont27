@@ -67,17 +67,22 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
         .not('is_duplicate', 'is', true)
       if (providerSmsError) throw new Error(`threshold switch provider SMS ${rule.id}: ${providerSmsError.message}`)
       observedBalance = (providerSms ?? []).reduce((max, row) => Math.max(max, Number(row.balance_after) || 0), 0)
-      if (providerSms?.length) evidenceSource = 'provider_balance_sms'
+      if (providerSms?.length) {
+        received = (providerSms ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
+        evidenceSource = 'provider_balance_sms'
+      }
 
-      const { data: transactions, error: transactionError } = await db
-        .from('maven_transactions')
-        .select('tx_id, amount, receiving_wallet, to_account_number, first_seen_at')
-        .gte('first_seen_at', since)
-        .in('status', ['PAID', 'APPROVED', 'SUCCESS', 'COMPLETED'])
-        .or(sourceVariants.flatMap((number) => [`receiving_wallet.eq.${number}`, `to_account_number.eq.${number}`]).join(','))
-      if (transactionError) throw new Error(`threshold switch transactions ${rule.id}: ${transactionError.message}`)
-      received = (transactions ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
-      if (!providerSms?.length) evidenceSource = 'maven_transactions'
+      if (!providerSms?.length) {
+        const { data: transactions, error: transactionError } = await db
+          .from('maven_transactions')
+          .select('tx_id, amount, receiving_wallet, to_account_number, first_seen_at')
+          .gte('first_seen_at', since)
+          .in('status', ['PAID', 'APPROVED', 'SUCCESS', 'COMPLETED'])
+          .or(sourceVariants.flatMap((number) => [`receiving_wallet.eq.${number}`, `to_account_number.eq.${number}`]).join(','))
+        if (transactionError) throw new Error(`threshold switch transactions ${rule.id}: ${transactionError.message}`)
+        received = (transactions ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
+        evidenceSource = 'maven_transactions'
+      }
     }
     const total = Number(rule.amount_received_since_check || 0) + received
     const checkedAt = new Date().toISOString()
