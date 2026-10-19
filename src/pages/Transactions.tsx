@@ -916,8 +916,11 @@ export default function Transactions() {
     <div className="trx-zoom-out transactions-center-page">
       <PressToPayNav />
       <section className="page-head all-transactions-head">
-        <div className="transactions-page-title"><span className="transactions-title-icon" aria-hidden="true"><ReceiptText size={20} /></span><div><h2>{t('كل المعاملات', 'All transactions')}</h2>
-        <p className="page-sub">{t('إيداعات وسحوبات موحّدة', 'Deposits and payouts unified')}{data && <> · {data.total.toLocaleString('en-US')}</>}</p></div></div>
+        <div className="transactions-page-title"><span className="transactions-title-icon" aria-hidden="true"><ReceiptText size={20} /></span><div>
+          <div className="transactions-operate-kicker">{t('التشغيل', 'Operate')}</div>
+          <h2>{t('مركز المعاملات', 'Transactions Center')}</h2>
+          <p className="page-sub">{data ? t(`${sortedRows.length.toLocaleString('en-US')} من ${data.total.toLocaleString('en-US')} سجل`, `${sortedRows.length.toLocaleString('en-US')} of ${data.total.toLocaleString('en-US')} records`) : t('إيداعات وسحوبات موحّدة', 'Deposits and payouts unified')}</p>
+        </div></div>
         <div className="all-transactions-head-actions">
           <div className="view-switch" role="group" aria-label={t('طريقة العرض', 'View mode')}>
             <button className={view === 'table' ? 'active' : ''} aria-pressed={view === 'table'} onClick={() => setFilter({ view: 'table' })}><TableProperties size={16} />{t('جدول', 'Table')}</button>

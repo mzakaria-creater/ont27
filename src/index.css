@@ -5372,6 +5372,45 @@ html[data-theme='light'] ::selection { color: #fff; background: rgba(0, 122, 255
 .treasury-card dt { font-size: .72rem; opacity: .8; }
 .treasury-card dd { margin: 2px 0 0; font-weight: 700; }
 
+/* Transactions Center visual pass: match the glass operator console while
+   keeping all values and actions backed by the existing V2 transaction feed. */
+.transactions-center-page .transactions-operate-kicker {
+  margin-block-end: 3px;
+  color: color-mix(in srgb, var(--accent) 82%, var(--text));
+  font: 700 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.transactions-center-page .all-transactions-head {
+  background: linear-gradient(115deg, color-mix(in srgb, var(--surface-raised) 94%, var(--accent) 6%), var(--surface));
+  border-radius: 20px;
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--text) 8%, transparent);
+}
+.transactions-center-page .transaction-filter-toolbar {
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface-raised) 90%, transparent);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--text) 8%, transparent);
+}
+.transactions-center-page .portal-transactions-card {
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--surface-raised) 96%, var(--accent) 4%);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--text) 8%, transparent);
+}
+.transactions-center-page .portal-transaction-grid tbody tr {
+  transition: background-color .16s var(--ease), box-shadow .16s var(--ease);
+}
+.transactions-center-page .portal-transaction-grid tbody tr:not(.tx-expanded-row):hover {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.transactions-center-page .all-tx-card {
+  border-radius: 18px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 8%, transparent);
+}
+@media (max-width: 700px) {
+  .transactions-center-page .all-transactions-head { border-radius: 16px; padding: 14px; }
+  .transactions-center-page .transactions-page-title h2 { font-size: 22px !important; }
+}
+
 /* Sidebar: collapsed by default, expanded on hover/focus, or kept open when
    pinned. Keep the controls reachable in the collapsed state so operators can
    switch modes without hunting for an invisible button. */
