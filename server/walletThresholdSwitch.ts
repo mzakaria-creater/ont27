@@ -45,13 +45,29 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
       .not('is_duplicate', 'is', true)
     if (smsError) throw new Error(`threshold switch SMS ${rule.id}: ${smsError.message}`)
 
-    const received = (smsRows ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
+    // Some Maven deposits arrive in V2 before their corresponding inbound SMS
+    // is linked (or when the provider did not expose the raw SMS). Use the
+    // provider transaction mirror as a verified fallback, without double
+    // counting when SMS evidence exists for this evaluation window.
+    let received = (smsRows ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
+    let evidenceSource = 'inbound_sms'
+    if (!smsRows?.length) {
+      const { data: transactions, error: transactionError } = await db
+        .from('maven_transactions')
+        .select('tx_id, amount, receiving_wallet, to_account_number, first_seen_at')
+        .gte('first_seen_at', since)
+        .in('status', ['PAID', 'APPROVED', 'SUCCESS', 'COMPLETED'])
+        .or(sourceVariants.flatMap((number) => [`receiving_wallet.eq.${number}`, `to_account_number.eq.${number}`]).join(','))
+      if (transactionError) throw new Error(`threshold switch transactions ${rule.id}: ${transactionError.message}`)
+      received = (transactions ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
+      evidenceSource = 'maven_transactions'
+    }
     const total = Number(rule.amount_received_since_check || 0) + received
     const checkedAt = new Date().toISOString()
     await db.from('maven_wallet_threshold_switch_rules').update({ amount_received_since_check: total, last_checked_at: checkedAt, updated_at: checkedAt }).eq('id', rule.id)
 
     if (total < Number(rule.amount_threshold)) {
-      results.push({ id: rule.id, status: 'below_threshold', amount_received: total })
+      results.push({ id: rule.id, status: 'below_threshold', amount_received: total, evidence_source: evidenceSource })
       continue
     }
 
