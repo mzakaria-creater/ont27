@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Activity, CheckCircle2, CircleDollarSign, Download, Filter, Pencil, Plus, RefreshCw, RotateCw, Search, ShieldAlert, Smartphone, Trash2, WalletCards, Wifi, WifiOff, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
-import { api, ApiError } from '../lib/api'
+import { api, ApiError, refreshSession } from '../lib/api'
 import { depositTime, money } from '../lib/deposits'
 import { useLocale } from '../lib/locale'
 
@@ -331,6 +331,10 @@ export default function MavenWallets() {
   // shows the current number) before the operator can confirm a commit.
   const openReplace = async (bankIds: string[]) => {
     const targets = [...new Set(bankIds.filter(Boolean))]
+    // Preview and commit can take longer than the short-lived access token
+    // when many Maven accounts are selected. Rotate the session first; the
+    // API client still retries safely if the token expires mid-run.
+    await refreshSession()
     setReplaceTarget(targets); setReplaceNewNumber(''); setReplaceResults({})
     setReplacePreview(Object.fromEntries(targets.map((id) => [id, { loading: true, current: null, error: null }])))
     setReplaceProgress({ phase: 'preview', completed: 0, total: targets.length })
@@ -367,6 +371,7 @@ export default function MavenWallets() {
   const submitReplace = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!replaceCommitTargets.length || !/^\d{8,20}$/.test(replaceNewNumber)) return
+    await refreshSession()
     setReplaceBusy(true)
     setReplaceProgress({ phase: 'change', completed: 0, total: replaceCommitTargets.length })
     const finalResults: Record<string, { ok: boolean; message: string }> = {}
@@ -388,7 +393,9 @@ export default function MavenWallets() {
           ? { ok: true, message: t(`تم التغيير: ${result.changed_from ?? '—'} → ${result.changed_to ?? replaceNewNumber}`, `Changed: ${result.changed_from ?? '—'} → ${result.changed_to ?? replaceNewNumber}`) }
           : { ok: false, message: result.error || t('فشل التغيير على Maven', 'Change failed on Maven') }
       } catch (error) {
-        const message = error instanceof ApiError ? error.code : t('فشل التغيير على Maven', 'Change failed on Maven')
+        const message = error instanceof ApiError && error.code === 'unauthenticated'
+          ? t('انتهت جلسة الدخول — سجّل الدخول ثم أعد التنفيذ.', 'Your session expired — sign in again, then retry.')
+          : error instanceof ApiError ? error.code : t('فشل التغيير على Maven', 'Change failed on Maven')
         finalResults[bankId] = { ok: false, message }
       }
       completed += 1

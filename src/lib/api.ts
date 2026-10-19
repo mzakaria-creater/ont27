@@ -63,7 +63,15 @@ async function tryRefresh(): Promise<boolean> { return refreshSession() }
 export async function api<T>(path: string, init?: ApiRequestInit): Promise<T> {
   let res = await rawFetch(path, init)
   if (res.status === 401 && !path.startsWith('/api/auth/')) {
-    if (await tryRefresh()) res = await rawFetch(path, init)
+    let refreshed = await tryRefresh()
+    // Another open panel tab may have rotated the refresh cookie between the
+    // request and this 401. Give the browser a short chance to receive that
+    // Set-Cookie before trying the refresh endpoint once more.
+    if (!refreshed) {
+      await new Promise((resolve) => setTimeout(resolve, 250))
+      refreshed = await tryRefresh()
+    }
+    if (refreshed) res = await rawFetch(path, init)
   }
   const body = await res.json().catch(() => null)
   if (!res.ok) {
