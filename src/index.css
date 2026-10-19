@@ -5381,15 +5381,11 @@ html[data-theme='light'] ::selection { color: #fff; background: rgba(0, 122, 255
     inline-size: 76px;
     width: 76px;
     min-inline-size: 76px;
-    will-change: width;
-    backface-visibility: hidden;
-    transition: width .2s var(--ease), inline-size .2s var(--ease), box-shadow .2s var(--ease);
-  }
-
-  .dash-body > .sidebar:not(:hover):not(:focus-within) {
-    /* Let the pointer clear the expanded surface before collapsing it. This
-       prevents a width transition from repeatedly crossing the hover edge. */
-    transition-delay: .12s;
+    /* The rail width is a hover hit-area. Animating it makes the hit-area move
+       under the pointer and causes repeated hover enter/leave flashes. */
+    transition: box-shadow .2s var(--ease);
+    will-change: auto;
+    backface-visibility: visible;
   }
 
   .dash-body > .sidebar:not(.pinned):hover,
@@ -5405,7 +5401,6 @@ html[data-theme='light'] ::selection { color: #fff; background: rgba(0, 122, 255
     inline-size: 276px;
     width: 276px;
     z-index: 50;
-    transition-delay: 0s;
   }
 
   .dash-body > .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-tools {
