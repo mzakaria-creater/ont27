@@ -933,7 +933,12 @@ deltaSyncRoutes.get('/delta-sync', async (c) => {
   if (!secret || auth !== `Bearer ${secret}`) {
     return c.json({ error: 'unauthorized' }, 401)
   }
-  if (!(await claimDistributedLease(20, 'provider_delta_sync_fast_cron'))) return c.json({ ok: true, skipped: 'distributed_lease' })
+  // A fast pass can spend up to 60s waiting on the legacy collector or Maven.
+  // The old 20s lease expired while that work was still running, allowing the
+  // next minute's cron invocation to start a second pass against Supabase.
+  // Keep the lease for the full function window so slow upstream calls do not
+  // multiply into a database outage.
+  if (!(await claimDistributedLease(300, 'provider_delta_sync_fast_cron'))) return c.json({ ok: true, skipped: 'distributed_lease' })
   const { results, directOk } = await runFastIngress()
   const ok = directOk && resultOk(results)
   return c.json({ ok, mode: 'fast', results, at: new Date().toISOString() }, ok ? 200 : 502)
@@ -946,7 +951,10 @@ deltaSyncRoutes.get('/delta-sync-full', async (c) => {
   const secret = process.env.CRON_SECRET
   const auth = c.req.header('authorization')
   if (!secret || auth !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401)
-  if (!(await claimDistributedLease(240, 'provider_delta_sync_full'))) return c.json({ ok: true, skipped: 'distributed_lease' })
+  // Full repair is deliberately serialized with a lease longer than Vercel's
+  // 60s execution window. A timed-out invocation must not be joined by the
+  // next scheduled run while its upstream requests are still unwinding.
+  if (!(await claimDistributedLease(300, 'provider_delta_sync_full'))) return c.json({ ok: true, skipped: 'distributed_lease' })
   const results: Record<string, number | string> = {}
   let directOk = true
   try { mergeReconcileResult(results, await reconcileMaven('repair')) }

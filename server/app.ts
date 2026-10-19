@@ -62,7 +62,10 @@ app.get('/health', async (c) => {
     return c.json({ ok: true, api: true, database: true, latency_ms: Date.now() - startedAt })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    console.error('backend health database check failed:', message.replace(/\s+/g, ' ').slice(0, 300))
+    const detail = error && typeof error === 'object'
+      ? JSON.stringify(error)
+      : message
+    console.error('backend health database check failed:', detail.replace(/\s+/g, ' ').slice(0, 300))
     c.header('Retry-After', '5')
     return c.json({ ok: false, api: true, database: false, error: 'database_unavailable', latency_ms: Date.now() - startedAt }, 503)
   }
