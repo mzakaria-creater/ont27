@@ -335,7 +335,10 @@ export default function MavenWallets() {
     setReplacePreview(Object.fromEntries(targets.map((id) => [id, { loading: true, current: null, error: null }])))
     setReplaceProgress({ phase: 'preview', completed: 0, total: targets.length })
     let completed = 0
-    for (const group of batches(targets, 24)) {
+    // The V2 edge function already supports up to 150 bank ids and performs
+    // bounded concurrent reads. One request avoids waiting for five serial
+    // preview rounds before the operator can confirm a change.
+    for (const group of batches(targets, 150)) {
       try {
         const { results } = await api<{ results: Array<{ bank_id: string; ok: boolean; current?: { PhoneNumber?: string }; error?: string }> }>('/api/wallets/live/replacement/preview-bulk', {
           method: 'POST', body: JSON.stringify({ bank_ids: group }),

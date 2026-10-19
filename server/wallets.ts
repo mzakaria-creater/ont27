@@ -11,12 +11,18 @@ import { runWalletThresholdSwitch } from './walletThresholdSwitch.js'
 
 export const walletRoutes = new Hono<AuthEnv>()
 
+const LIVE_BANK_COLUMNS = 'bank_id, payment_type, phone_number, account_name, last_checked'
+const readLiveBankCache = async () => db
+  .from('maven_banks_live_cache')
+  .select(LIVE_BANK_COLUMNS)
+  .order('bank_id')
+
 walletRoutes.use('*', requireAuth)
 
 walletRoutes.get('/live', requirePerm('wallets', 'can_view'), async (c) => {
-  const { data, error } = await db.rpc('maven_banks_live_list')
-  if (error) return c.json({ error: 'legacy_wallet_lookup_failed', detail: error.message }, 502)
-  return c.json({ live: Array.isArray(data) ? data : [] })
+  const { data, error } = await readLiveBankCache()
+  if (error) return c.json({ error: 'live_wallet_cache_failed', detail: error.message }, 502)
+  return c.json({ live: data ?? [] })
 })
 
 // Maven has not exposed an endpoint to actually change which number receives
@@ -125,14 +131,10 @@ walletRoutes.post('/live/add-new/commit', requirePerm('wallets', 'can_create'), 
 })
 
 walletRoutes.get('/', requirePerm('wallets', 'can_view'), async (c) => {
-  // Authoritative live wallet list straight from Maven (checked every few
-  // minutes by the old system) — wallet_device_map is only the device
-  // mapping and its auto-inferred rows go stale.
+  // V2's cache is refreshed by maven-banks-sync. Do not block the page on a
+  // live Maven/RPC request; the replacement actions still verify directly.
   const includeLive = c.req.query('include_live') !== 'false'
-  const liveP = includeLive ? (async () => {
-    const { data } = await db.rpc('maven_banks_live_list')
-    return Array.isArray(data) ? data : []
-  })() : Promise.resolve([])
+  const liveP = includeLive ? readLiveBankCache().then(({ data }) => data ?? []) : Promise.resolve([])
 
   const [wallets, devices, channels, live] = await Promise.all([
     db
@@ -164,9 +166,9 @@ walletRoutes.get('/', requirePerm('wallets', 'can_view'), async (c) => {
 // source into the v2 wallet map. This is idempotent and never overwrites an
 // operator's device assignment.
 walletRoutes.post('/sync-live', requirePerm('wallets', 'can_edit'), async (c) => {
-  const { data, error } = await db.rpc('maven_banks_live_list')
-  if (error) return c.json({ error: 'legacy_wallet_lookup_failed', detail: error.message }, 502)
-  const rows = (Array.isArray(data) ? data : []) as Array<Record<string, unknown>>
+  const { data, error } = await readLiveBankCache()
+  if (error) return c.json({ error: 'live_wallet_cache_failed', detail: error.message }, 502)
+  const rows = (data ?? []) as Array<Record<string, unknown>>
   const wallets = rows.map((row) => ({
     to_account_number: String(row.phone_number ?? '').replace(/\D/g, '').slice(-20),
     provider: String(row.account_name ?? row.bank_name ?? 'Mobile Wallet').slice(0, 80),
@@ -272,10 +274,7 @@ walletRoutes.post('/allocation/simulate', requirePerm('wallets', 'can_view'), as
 
   const monthStart = cairoBoundary(1)
   const dayStart = cairoBoundary('today')
-  const livePromise = (async () => {
-    const { data } = await db.rpc('maven_banks_live_list')
-    return Array.isArray(data) ? data as { phone_number?: string | null }[] : []
-  })()
+  const livePromise = readLiveBankCache().then(({ data }) => (data ?? []) as { phone_number?: string | null }[])
   const [wallets, devices, accounts, transactions, sms, liveWallets] = await Promise.all([
     db.from('wallet_device_map').select('to_account_number, device, provider, confidence, payment_type, daily_limit, merchant, sim_slot, enrich_priority, updated_at'),
     db.from('device_status').select('device, sim_slot, online, balance, balance_at, last_seen_at'),
