@@ -2151,6 +2151,44 @@ a.stat-card:hover { border-color: var(--accent); }
     height: auto; max-height: calc(100vh - 32px);
   }
 }
+
+/* Sidebar layout repair: keep the collapsed rail from reflowing the
+   workspace when it expands on hover. A pinned sidebar reserves its full
+   width; an unpinned sidebar expands above the workspace as an overlay. */
+@media (min-width: 901px) {
+  .dash-body > .sidebar {
+    flex: 0 0 76px;
+    inline-size: 76px;
+    width: 76px;
+    min-width: 76px;
+    z-index: 40;
+    transition: inline-size .2s var(--ease), width .2s var(--ease), box-shadow .2s var(--ease);
+  }
+
+  .dash-body > .sidebar:hover,
+  .dash-body > .sidebar:focus-within {
+    flex-basis: 76px;
+    inline-size: 276px;
+    width: 276px;
+    z-index: 60;
+  }
+
+  .dash-body > .sidebar.pinned {
+    flex-basis: 276px;
+    inline-size: 276px;
+    width: 276px;
+  }
+
+  .dash-body > .sidebar:not(.pinned):hover,
+  .dash-body > .sidebar:not(.pinned):focus-within {
+    box-shadow: 18px 0 42px rgba(15, 23, 42, .16), var(--shadow-panel);
+  }
+
+  html[dir='rtl'] .dash-body > .sidebar:not(.pinned):hover,
+  html[dir='rtl'] .dash-body > .sidebar:not(.pinned):focus-within {
+    box-shadow: -18px 0 42px rgba(15, 23, 42, .16), var(--shadow-panel);
+  }
+}
 /* All Transactions: AI Gateway panel. */
 .export-actions .btn-ghost[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
 .ai-gateway-panel { display: flex; flex-direction: column; gap: 10px; margin-block-end: 14px; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); }
