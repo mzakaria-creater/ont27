@@ -44,14 +44,18 @@ async function switchWalletImmediately(wallet: unknown, balance: unknown, smsId:
     if (!walletMatches && !networkMatches) continue;
     const { data: receivedSms, error: receivedSmsError } = await supabaseAdmin
       .from("inbound_sms")
-      .select("amount")
+      .select("amount, receiver_number, wallet_number, confirmed_wallet_number")
       .gte("received_at", rule.created_at)
       .eq("provider", rule.payment_type)
       .in("sms_category", ["deposit", "received", "income"])
       .not("is_blocked", "is", true)
       .not("is_duplicate", "is", true);
     if (receivedSmsError) throw receivedSmsError;
-    const cumulativeReceived = (receivedSms ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+    const sourceWallet = normalizedPhone(rule.source_wallet);
+    const walletScopedSms = walletKey
+      ? (receivedSms ?? []).filter((row) => [row.receiver_number, row.wallet_number, row.confirmed_wallet_number].some((value) => normalizedPhone(value) === sourceWallet))
+      : receivedSms ?? [];
+    const cumulativeReceived = walletScopedSms.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
     if (cumulativeReceived < Number(rule.amount_threshold)) continue;
 
     // Claim the rule before contacting Maven so two SMS retries cannot issue

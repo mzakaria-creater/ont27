@@ -40,7 +40,7 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
     const { data: smsRows, error: smsError } = await db
       .from('inbound_sms')
       .select('id, amount, balance_after, provider, receiver_number, wallet_number, confirmed_wallet_number, received_at')
-      .gte('received_at', since)
+      .gte('received_at', startedAt)
       .in('sms_category', RECEIVED_SMS_CATEGORIES)
       .or(sourceVariants.flatMap((number) => [`receiver_number.eq.${number}`, `wallet_number.eq.${number}`, `confirmed_wallet_number.eq.${number}`]).join(','))
       .not('is_blocked', 'is', true)
@@ -54,7 +54,7 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
     let received = (smsRows ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
     let observedBalance = (smsRows ?? []).reduce((max, row) => Math.max(max, Number(row.balance_after) || 0), 0)
     let evidenceSource = 'inbound_sms'
-    let cumulativeReceived: number | null = null
+    let cumulativeReceived: number | null = smsRows?.length ? received : null
     {
       // Orange Cash confirmations may omit the receiving wallet because the
       // forwarder has no resolved device. The provider/payment type is still
@@ -71,7 +71,7 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
         .not('is_duplicate', 'is', true)
       if (providerSmsError) throw new Error(`threshold switch provider SMS ${rule.id}: ${providerSmsError.message}`)
       observedBalance = (providerSms ?? []).reduce((max, row) => Math.max(max, Number(row.balance_after) || 0), 0)
-      if (providerSms?.length) {
+      if (providerSms?.length && cumulativeReceived === null) {
         cumulativeReceived = (providerSms ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
         received = cumulativeReceived
         evidenceSource = 'provider_balance_sms'
