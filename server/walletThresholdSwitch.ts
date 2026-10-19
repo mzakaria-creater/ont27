@@ -19,12 +19,13 @@ type Rule = {
   amount_threshold: number
   amount_received_since_check: number
   last_checked_at: string
+  created_at: string
 }
 
 export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-switch') {
   const { data: rules, error } = await db
     .from('maven_wallet_threshold_switch_rules')
-    .select('id, bank_id, merchant, payment_type, source_wallet, target_wallet, amount_threshold, amount_received_since_check, last_checked_at')
+    .select('id, bank_id, merchant, payment_type, source_wallet, target_wallet, amount_threshold, amount_received_since_check, last_checked_at, created_at')
     .eq('active', true)
     .eq('status', 'active')
   if (error) throw new Error(`threshold switch rules: ${error.message}`)
@@ -35,6 +36,7 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
     const target = normalizePhone(rule.target_wallet)
     const sourceVariants = phoneVariants(rule.source_wallet)
     const since = rule.last_checked_at || new Date(0).toISOString()
+    const startedAt = rule.created_at || new Date(0).toISOString()
     const { data: smsRows, error: smsError } = await db
       .from('inbound_sms')
       .select('id, amount, balance_after, provider, receiver_number, wallet_number, confirmed_wallet_number, received_at')
@@ -52,15 +54,17 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
     let received = (smsRows ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
     let observedBalance = (smsRows ?? []).reduce((max, row) => Math.max(max, Number(row.balance_after) || 0), 0)
     let evidenceSource = 'inbound_sms'
-    if (!smsRows?.length) {
+    let cumulativeReceived: number | null = null
+    {
       // Orange Cash confirmations may omit the receiving wallet because the
       // forwarder has no resolved device. The provider/payment type is still
-      // an explicit match to the configured Maven rule, so use its live SMS
-      // balance before falling back to Maven transaction amounts.
+      // an explicit match to the configured Maven rule. Recalculate the
+      // cumulative deposit total from the rule start so balance_after can
+      // never trigger a switch and retries cannot double-count an SMS.
       const { data: providerSms, error: providerSmsError } = await db
         .from('inbound_sms')
         .select('id, amount, balance_after, provider, received_at')
-        .gte('received_at', since)
+        .gte('received_at', startedAt)
         .in('sms_category', RECEIVED_SMS_CATEGORIES)
         .eq('provider', rule.payment_type)
         .not('is_blocked', 'is', true)
@@ -68,11 +72,10 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
       if (providerSmsError) throw new Error(`threshold switch provider SMS ${rule.id}: ${providerSmsError.message}`)
       observedBalance = (providerSms ?? []).reduce((max, row) => Math.max(max, Number(row.balance_after) || 0), 0)
       if (providerSms?.length) {
-        received = (providerSms ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
+        cumulativeReceived = (providerSms ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
+        received = cumulativeReceived
         evidenceSource = 'provider_balance_sms'
-      }
-
-      if (!providerSms?.length) {
+      } else if (!smsRows?.length) {
         const { data: transactions, error: transactionError } = await db
           .from('maven_transactions')
           .select('tx_id, amount, receiving_wallet, to_account_number, first_seen_at')
@@ -84,12 +87,14 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
         evidenceSource = 'maven_transactions'
       }
     }
-    const total = Number(rule.amount_received_since_check || 0) + received
+    const total = cumulativeReceived === null
+      ? Number(rule.amount_received_since_check || 0) + received
+      : Math.max(Number(rule.amount_received_since_check || 0), cumulativeReceived)
     const checkedAt = new Date().toISOString()
     await db.from('maven_wallet_threshold_switch_rules').update({ amount_received_since_check: total, last_checked_at: checkedAt, updated_at: checkedAt }).eq('id', rule.id)
 
     const threshold = Number(rule.amount_threshold)
-    if (total < threshold && observedBalance < threshold) {
+    if (total < threshold) {
       results.push({ id: rule.id, status: 'below_threshold', amount_received: total, observed_balance: observedBalance || null, evidence_source: evidenceSource })
       continue
     }

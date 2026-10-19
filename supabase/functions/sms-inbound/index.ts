@@ -28,7 +28,6 @@ function normalizedPhone(value: unknown): string {
 async function switchWalletImmediately(wallet: unknown, balance: unknown, smsId: number, network: unknown = null): Promise<void> {
   const walletKey = normalizedPhone(wallet);
   const currentBalance = Number(balance);
-  if (!Number.isFinite(currentBalance)) return;
 
   const { data: rules, error: rulesError } = await supabaseAdmin
     .from("maven_wallet_threshold_switch_rules")
@@ -53,7 +52,7 @@ async function switchWalletImmediately(wallet: unknown, balance: unknown, smsId:
       .not("is_duplicate", "is", true);
     if (receivedSmsError) throw receivedSmsError;
     const cumulativeReceived = (receivedSms ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
-    if (currentBalance < Number(rule.amount_threshold) && cumulativeReceived < Number(rule.amount_threshold)) continue;
+    if (cumulativeReceived < Number(rule.amount_threshold)) continue;
 
     // Claim the rule before contacting Maven so two SMS retries cannot issue
     // two provider edits for the same bank.
@@ -96,7 +95,7 @@ async function switchWalletImmediately(wallet: unknown, balance: unknown, smsId:
       await supabaseAdmin.from("audit_log").insert({
         actor_type: "system", actor_name: "sms-inbound", action: "maven_wallet_threshold_switch_succeeded",
         entity: "maven_wallet_threshold_switch_rules", entity_id: rule.id,
-        after: { sms_id: smsId, observed_balance: currentBalance, cumulative_received: cumulativeReceived, source_wallet: rule.source_wallet, target_wallet: rule.target_wallet, provider },
+        after: { sms_id: smsId, observed_balance: Number.isFinite(currentBalance) ? currentBalance : null, cumulative_received: cumulativeReceived, source_wallet: rule.source_wallet, target_wallet: rule.target_wallet, provider },
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -106,7 +105,7 @@ async function switchWalletImmediately(wallet: unknown, balance: unknown, smsId:
       await supabaseAdmin.from("audit_log").insert({
         actor_type: "system", actor_name: "sms-inbound", action: "maven_wallet_threshold_switch_failed",
         entity: "maven_wallet_threshold_switch_rules", entity_id: rule.id,
-        after: { sms_id: smsId, observed_balance: currentBalance, error: message },
+        after: { sms_id: smsId, observed_balance: Number.isFinite(currentBalance) ? currentBalance : null, error: message },
       });
     }
   }
