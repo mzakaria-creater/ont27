@@ -2013,6 +2013,231 @@ a.stat-card:hover { border-color: var(--accent); }
   .transactions-center-page .all-tx-card-grid { padding: 10px; gap: 10px; }
   .transactions-center-page .portal-transaction-grid { padding-inline: 4px; }
 }
+
+/* Transactions Center: final operator workspace skin. Keep the existing
+   controls and data model, but give the page one clear hierarchy: title,
+   status rail, filters, then the queue. */
+.transactions-center-page {
+  width: 100%;
+  max-width: none;
+  color: var(--text);
+}
+.transactions-center-page .all-transactions-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin-block: 0 16px;
+  padding: 0 2px 16px;
+  border: 0;
+  border-block-end: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.transactions-center-page .transactions-page-title { align-items: center; gap: 13px; }
+.transactions-center-page .transactions-title-icon {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+  border-radius: 13px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+.transactions-center-page .transactions-operate-kicker {
+  margin-block-end: 5px;
+  color: var(--accent);
+  font: 800 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.transactions-center-page .transactions-page-title h2 {
+  font-size: clamp(24px, 2.4vw, 34px) !important;
+  letter-spacing: -.025em;
+  line-height: 1.05;
+}
+.transactions-center-page .transactions-page-title .page-sub { margin-top: 7px; font-size: 12px; }
+.transactions-center-page .all-transactions-head-actions { align-items: center; }
+.transactions-center-page .export-actions { justify-content: flex-end; }
+.transactions-center-page .view-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
+}
+.transactions-center-page .view-switch button {
+  min-height: 34px;
+  padding-inline: 10px;
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.transactions-center-page .view-switch button.active {
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 15%, transparent);
+}
+
+.transactions-center-page .trx-kpi-strip { margin-block-end: 16px; }
+.transactions-center-page .trx-kpi-strip .stat-grid {
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  gap: 8px;
+}
+.transactions-center-page .trx-kpi-tile {
+  display: grid;
+  gap: 9px;
+  min-height: 86px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--text) 5%, transparent);
+}
+.transactions-center-page .trx-kpi-tile .stat-label { font-size: 10px; font-weight: 800; }
+.transactions-center-page .trx-kpi-tile .stat-value { margin-top: 0; font-size: 25px; font-variant-numeric: tabular-nums; }
+.transactions-center-page .trx-kpi-tile.active { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent); }
+.transactions-center-page .chip-row {
+  margin-block-start: 9px;
+  padding: 0;
+  gap: 6px;
+}
+.transactions-center-page .chip-row .pill { min-height: 29px; border-radius: 999px; }
+
+.transactions-center-page .trx-wallet-strip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 48px;
+  margin-block-end: 16px;
+  padding: 7px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface-2);
+  box-shadow: none;
+}
+.transactions-center-page .trx-wallet-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+}
+.transactions-center-page .trx-wallet-chip .cell-sub { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.transactions-center-page .transaction-filter-toolbar {
+  position: sticky;
+  top: 8px;
+  z-index: 18;
+  gap: 9px;
+  margin-block-end: 12px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--text) 8%, transparent);
+  backdrop-filter: blur(16px) saturate(125%);
+}
+.transactions-center-page .trx-filter-primary { gap: 7px; }
+.transactions-center-page .trx-search-bar { min-height: 40px; border-color: var(--border); box-shadow: none; }
+.transactions-center-page .trx-search-bar:focus-within { box-shadow: var(--focus-ring); }
+.transactions-center-page .transaction-filter-fields { margin-top: 1px; padding: 10px 2px 1px; }
+
+.transactions-center-page .portal-transactions-card {
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--surface);
+  box-shadow: 0 8px 26px color-mix(in srgb, var(--text) 7%, transparent);
+}
+.transactions-center-page .portal-table-wrap {
+  height: calc(100vh - 305px);
+  min-height: 520px;
+  overflow: auto;
+  scrollbar-gutter: stable both-edges;
+}
+.transactions-center-page .portal-transaction-grid {
+  width: max-content;
+  min-width: 100%;
+  padding-inline: 0;
+  border-spacing: 0;
+  font-size: 12px;
+}
+.transactions-center-page .portal-transaction-grid thead th {
+  padding: 12px 10px;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border-block-end: 1px solid var(--border);
+  font-size: 10px;
+  letter-spacing: .07em;
+}
+.transactions-center-page .portal-transaction-grid tbody tr:not(.tx-expanded-row) td {
+  min-height: 60px;
+  padding: 9px 10px;
+  background: var(--surface);
+  border-block: 0;
+  border-block-end: 1px solid var(--border-soft);
+  box-shadow: none;
+}
+.transactions-center-page .portal-transaction-grid tbody tr:not(.tx-expanded-row):hover td {
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface)) !important;
+}
+.transactions-center-page .portal-transaction-grid tbody tr.row-pending:not(.tx-expanded-row) td {
+  background: color-mix(in srgb, var(--status-pending) 7%, var(--surface));
+}
+.transactions-center-page .portal-transaction-grid tbody tr:not(.tx-expanded-row) td:first-child,
+.transactions-center-page .portal-transaction-grid tbody tr:not(.tx-expanded-row) td:last-child {
+  border-radius: 0;
+  border-inline: 0;
+}
+.transactions-center-page .portal-transaction-grid .portal-row-actions { min-width: 96px; }
+.transactions-center-page .portal-transaction-grid .tx-action-primary,
+.transactions-center-page .portal-transaction-grid .tx-proof-icon,
+.transactions-center-page .portal-transaction-grid .tx-expand-btn { box-shadow: none; }
+.transactions-center-page .portal-transaction-grid .tx-expanded-row td { border-block-end: 1px solid var(--border); }
+
+.transactions-center-page .all-tx-card-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 390px), 1fr));
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface-2);
+}
+.transactions-center-page .all-tx-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--text) 6%, transparent);
+}
+.transactions-center-page .all-tx-card:hover { transform: translateY(-1px); box-shadow: 0 9px 22px color-mix(in srgb, var(--text) 10%, transparent); }
+.transactions-center-page .all-tx-card > header { background: var(--surface-2); }
+.transactions-center-page .all-tx-card > .all-tx-card-amount { font-size: 26px; font-weight: 800; }
+.transactions-center-page .all-tx-card-actions { gap: 6px; }
+.transactions-center-page .all-tx-card-actions > * { min-height: 34px; }
+
+@media (max-width: 1050px) {
+  .transactions-center-page .all-transactions-head { grid-template-columns: 1fr; }
+  .transactions-center-page .all-transactions-head-actions { justify-content: space-between; }
+  .transactions-center-page .trx-kpi-strip .stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .transactions-center-page .all-transactions-head { padding-inline: 0; }
+  .transactions-center-page .all-transactions-head-actions { align-items: stretch; flex-direction: column; }
+  .transactions-center-page .export-actions { justify-content: stretch; }
+  .transactions-center-page .export-actions > * { flex: 1 1 auto; }
+  .transactions-center-page .trx-kpi-strip .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .transactions-center-page .trx-kpi-tile { min-height: 76px; padding: 12px; }
+  .transactions-center-page .trx-kpi-tile .stat-value { font-size: 21px; }
+  .transactions-center-page .transaction-filter-toolbar { position: static; }
+  .transactions-center-page .portal-table-wrap { height: auto; max-height: calc(100vh - 245px); min-height: 360px; }
+}
 .complaint-tx-search { display: flex; align-items: center; gap: 8px; min-width: min(100%, 420px); }
 .complaint-tx-search > label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .complaint-tx-search-control { min-height: 38px; flex: 1; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--muted); }
