@@ -36,12 +36,11 @@ async function switchWalletImmediately(wallet: unknown, balance: unknown, smsId:
     .eq("status", "active");
   if (rulesError) throw rulesError;
 
-  const networkKey = String(network ?? '').replace(/\s+/g, '').toLowerCase();
   for (const rule of rules ?? []) {
-    const ruleNetworkKey = String(rule.payment_type ?? '').replace(/\s+/g, '').toLowerCase();
     const walletMatches = walletKey && normalizedPhone(rule.source_wallet) === walletKey;
-    const networkMatches = !walletKey && networkKey && ruleNetworkKey === networkKey;
-    if (!walletMatches && !networkMatches) continue;
+    // A payment network is not a wallet identity. Never switch a rule from
+    // all SMS of the same provider when the inbound SMS has no wallet.
+    if (!walletMatches) continue;
     const { data: receivedSms, error: receivedSmsError } = await supabaseAdmin
       .from("inbound_sms")
       .select("amount, receiver_number, wallet_number, confirmed_wallet_number")
@@ -52,9 +51,7 @@ async function switchWalletImmediately(wallet: unknown, balance: unknown, smsId:
       .not("is_duplicate", "is", true);
     if (receivedSmsError) throw receivedSmsError;
     const sourceWallet = normalizedPhone(rule.source_wallet);
-    const walletScopedSms = walletKey
-      ? (receivedSms ?? []).filter((row) => [row.receiver_number, row.wallet_number, row.confirmed_wallet_number].some((value) => normalizedPhone(value) === sourceWallet))
-      : receivedSms ?? [];
+    const walletScopedSms = (receivedSms ?? []).filter((row) => [row.receiver_number, row.wallet_number, row.confirmed_wallet_number].some((value) => normalizedPhone(value) === sourceWallet));
     const cumulativeReceived = walletScopedSms.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
     if (cumulativeReceived < Number(rule.amount_threshold)) continue;
 

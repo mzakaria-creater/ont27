@@ -47,49 +47,30 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
       .not('is_duplicate', 'is', true)
     if (smsError) throw new Error(`threshold switch SMS ${rule.id}: ${smsError.message}`)
 
-    // Some Maven deposits arrive in V2 before their corresponding inbound SMS
-    // is linked (or when the provider did not expose the raw SMS). Use the
-    // provider transaction mirror as a verified fallback, without double
-    // counting when SMS evidence exists for this evaluation window.
+    // Count only evidence tied to this wallet. A provider-wide SMS fallback
+    // is unsafe because another live wallet can use the same network.
     let received = (smsRows ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
     let observedBalance = (smsRows ?? []).reduce((max, row) => Math.max(max, Number(row.balance_after) || 0), 0)
     let evidenceSource = 'inbound_sms'
     let cumulativeReceived: number | null = smsRows?.length ? received : null
-    {
-      // Orange Cash confirmations may omit the receiving wallet because the
-      // forwarder has no resolved device. The provider/payment type is still
-      // an explicit match to the configured Maven rule. Recalculate the
-      // cumulative deposit total from the rule start so balance_after can
-      // never trigger a switch and retries cannot double-count an SMS.
-      const { data: providerSms, error: providerSmsError } = await db
-        .from('inbound_sms')
-        .select('id, amount, balance_after, provider, received_at')
-        .gte('received_at', startedAt)
-        .in('sms_category', RECEIVED_SMS_CATEGORIES)
-        .eq('provider', rule.payment_type)
-        .not('is_blocked', 'is', true)
-        .not('is_duplicate', 'is', true)
-      if (providerSmsError) throw new Error(`threshold switch provider SMS ${rule.id}: ${providerSmsError.message}`)
-      observedBalance = (providerSms ?? []).reduce((max, row) => Math.max(max, Number(row.balance_after) || 0), 0)
-      if (providerSms?.length && cumulativeReceived === null) {
-        cumulativeReceived = (providerSms ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
-        received = cumulativeReceived
-        evidenceSource = 'provider_balance_sms'
-      } else if (!smsRows?.length) {
-        const { data: transactions, error: transactionError } = await db
-          .from('maven_transactions')
-          .select('tx_id, amount, receiving_wallet, to_account_number, first_seen_at')
-          .gte('first_seen_at', since)
-          .in('status', ['PAID', 'APPROVED', 'SUCCESS', 'COMPLETED'])
-          .or(sourceVariants.flatMap((number) => [`receiving_wallet.eq.${number}`, `to_account_number.eq.${number}`]).join(','))
-        if (transactionError) throw new Error(`threshold switch transactions ${rule.id}: ${transactionError.message}`)
-        received = (transactions ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
-        evidenceSource = 'maven_transactions'
-      }
+    if (!smsRows?.length) {
+      // If SMS wallet resolution is delayed, an exact Maven receiving-wallet
+      // match is still safe. Do not fall back to the provider/payment type.
+      const { data: transactions, error: transactionError } = await db
+        .from('maven_transactions')
+        .select('tx_id, amount, receiving_wallet, to_account_number, first_seen_at')
+        .gte('first_seen_at', since)
+        .in('status', ['PAID', 'APPROVED', 'SUCCESS', 'COMPLETED'])
+        .or(sourceVariants.flatMap((number) => [`receiving_wallet.eq.${number}`, `to_account_number.eq.${number}`]).join(','))
+      if (transactionError) throw new Error(`threshold switch transactions ${rule.id}: ${transactionError.message}`)
+      received = (transactions ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
+      evidenceSource = 'maven_transactions'
     }
+    // Recalculate from the rule start on every pass. Math.max would preserve
+    // an earlier bad match forever and could switch the wallet too early.
     const total = cumulativeReceived === null
       ? Number(rule.amount_received_since_check || 0) + received
-      : Math.max(Number(rule.amount_received_since_check || 0), cumulativeReceived)
+      : cumulativeReceived
     const checkedAt = new Date().toISOString()
     await db.from('maven_wallet_threshold_switch_rules').update({ amount_received_since_check: total, last_checked_at: checkedAt, updated_at: checkedAt }).eq('id', rule.id)
 
