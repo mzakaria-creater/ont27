@@ -116,6 +116,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/fx', icon: '💹', labelAr: 'لوحة الأسعار', labelEn: 'FX dashboard', keys: ['dashboard', 'merchants', 'reports', 'treasury'], group: 'overview' },
   { to: '/wallets', icon: '👛', labelAr: 'المحافظ', labelEn: 'Wallets', keys: ['wallets'], group: 'payments' },
   { to: '/mavenwallets', icon: '◉', labelAr: 'محافظ Maven', labelEn: 'Maven Wallets', keys: ['wallets'], group: 'payments' },
+  { to: '/wallet-threshold-rules', icon: '⇄', labelAr: 'قواعد تبديل المحافظ', labelEn: 'Wallet switch rules', keys: ['wallets'], group: 'payments' },
   { to: '/ngpay-wallet-management', icon: '🛠️', labelAr: 'تغيير محافظ NGPay', labelEn: 'NGPay wallet management', keys: ['wallets'], group: 'payments' },
   { to: '/payment-methods', icon: '💳', labelAr: 'طرق الدفع', labelEn: 'Payment Methods', keys: ['wallets', 'payment_methods'], group: 'payments' },
   { to: '/merchant-payment-setup', icon: '🧩', labelAr: 'إعداد دفع التجار', labelEn: 'Merchant Payment Setup', keys: ['wallets', 'payment_methods'], group: 'payments' },

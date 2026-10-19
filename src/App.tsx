@@ -27,6 +27,7 @@ const MerchantGroups = lazy(() => import('./pages/MerchantGroups'))
 const FxDashboard = lazy(() => import('./pages/FxDashboard'))
 const Wallets = lazy(() => import('./pages/Wallets'))
 const MavenWallets = lazy(() => import('./pages/MavenWallets'))
+const WalletThresholdRules = lazy(() => import('./pages/WalletThresholdRules'))
 const NgpayWalletManagement = lazy(() => import('./pages/NgpayWalletManagement'))
 const SmsLive = lazy(() => import('./pages/SmsLive'))
 const Transactions = lazy(() => import('./pages/Transactions'))
@@ -567,6 +568,7 @@ export default function App() {
             <Route path="/fx" element={<PageGate keys={['dashboard', 'merchants', 'reports', 'treasury']}><FxDashboard /></PageGate>} />
             <Route path="/wallets" element={<PageGate keys={['wallets']}><Wallets /></PageGate>} />
             <Route path="/mavenwallets" element={<PageGate keys={['wallets']}><MavenWallets /></PageGate>} />
+            <Route path="/wallet-threshold-rules" element={<PageGate keys={['wallets']}><WalletThresholdRules /></PageGate>} />
             <Route path="/ngpay-wallet-management" element={<PageGate keys={['wallets']}><NgpayWalletManagement /></PageGate>} />
             <Route path="/sms" element={<PageGate keys={['sms_live']}><SmsLive /></PageGate>} />
             <Route path="/settlements" element={<PageGate keys={['settlements','settlements_list','settlement_recon','fees']}><Settlements /></PageGate>} />
