@@ -37,7 +37,7 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
     const since = rule.last_checked_at || new Date(0).toISOString()
     const { data: smsRows, error: smsError } = await db
       .from('inbound_sms')
-      .select('id, amount, receiver_number, wallet_number, confirmed_wallet_number, received_at')
+      .select('id, amount, balance_after, receiver_number, wallet_number, confirmed_wallet_number, received_at')
       .gte('received_at', since)
       .in('sms_category', RECEIVED_SMS_CATEGORIES)
       .or(sourceVariants.flatMap((number) => [`receiver_number.eq.${number}`, `wallet_number.eq.${number}`, `confirmed_wallet_number.eq.${number}`]).join(','))
@@ -50,6 +50,7 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
     // provider transaction mirror as a verified fallback, without double
     // counting when SMS evidence exists for this evaluation window.
     let received = (smsRows ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
+    const observedBalance = (smsRows ?? []).reduce((max, row) => Math.max(max, Number(row.balance_after) || 0), 0)
     let evidenceSource = 'inbound_sms'
     if (!smsRows?.length) {
       const { data: transactions, error: transactionError } = await db
@@ -66,8 +67,9 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
     const checkedAt = new Date().toISOString()
     await db.from('maven_wallet_threshold_switch_rules').update({ amount_received_since_check: total, last_checked_at: checkedAt, updated_at: checkedAt }).eq('id', rule.id)
 
-    if (total < Number(rule.amount_threshold)) {
-      results.push({ id: rule.id, status: 'below_threshold', amount_received: total, evidence_source: evidenceSource })
+    const threshold = Number(rule.amount_threshold)
+    if (total < threshold && observedBalance < threshold) {
+      results.push({ id: rule.id, status: 'below_threshold', amount_received: total, observed_balance: observedBalance || null, evidence_source: evidenceSource })
       continue
     }
 
@@ -101,8 +103,8 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
     }
 
     await db.from('maven_wallet_threshold_switch_rules').update({ active: false, status: 'switched', amount_received_since_check: total, last_checked_at: checkedAt, switched_at: checkedAt, last_error: null, updated_at: checkedAt }).eq('id', rule.id)
-    await db.from('audit_log').insert({ actor_type: 'system', actor_name: actorName, action: 'maven_wallet_threshold_switch_succeeded', entity: 'maven_wallet_threshold_switch_rules', entity_id: rule.id, before: { source_wallet: rule.source_wallet, amount_threshold: rule.amount_threshold }, after: { target_wallet: rule.target_wallet, amount_received: total, provider } })
-    results.push({ id: rule.id, status: 'switched', amount_received: total, changed_to: rule.target_wallet })
+    await db.from('audit_log').insert({ actor_type: 'system', actor_name: actorName, action: 'maven_wallet_threshold_switch_succeeded', entity: 'maven_wallet_threshold_switch_rules', entity_id: rule.id, before: { source_wallet: rule.source_wallet, amount_threshold: rule.amount_threshold }, after: { target_wallet: rule.target_wallet, amount_received: total, observed_balance: observedBalance || null, provider } })
+    results.push({ id: rule.id, status: 'switched', amount_received: total, observed_balance: observedBalance || null, changed_to: rule.target_wallet })
   }
   return { ok: true, results }
 }
