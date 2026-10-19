@@ -933,6 +933,14 @@ export default function PanelShell({ children }: { children: ReactNode }) {
       <button className="nav-toggle" onClick={() => setNavOpen((o) => !o)} title={t('القائمة', 'Menu')} aria-label={t('القائمة', 'Menu')}>{navOpen ? <X size={20} /> : <Menu size={20} />}</button>
       {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
       <nav className={`sidebar${navOpen ? ' open' : ''}${navPinned ? ' pinned' : ''}`} aria-label={t('التنقل الرئيسي', 'Main navigation')}>
+        <div className="sidebar-brand">
+          <span className="sidebar-brand-mark" aria-hidden="true">P</span>
+          <span className="sidebar-brand-copy"><strong>OnTarget</strong><small>PRESS2PAY</small></span>
+        </div>
+        <div className="sidebar-environment" role="status" aria-label={t('بيئة التشغيل الحالية: مباشر', 'Current environment: Live')}>
+          <span className="sidebar-environment-live"><span className="sidebar-live-dot" aria-hidden="true" />{t('مباشر', 'Live')}</span>
+          <span className="sidebar-environment-disabled" aria-disabled="true">{t('تجريبي', 'Sandbox')}</span>
+        </div>
         <div className="sidebar-tools">
           <div className="sidebar-search-wrap">
             <Search size={15} aria-hidden="true" />

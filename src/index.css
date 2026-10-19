@@ -5450,6 +5450,66 @@ html[data-theme='light'] ::selection { color: #fff; background: rgba(0, 122, 255
     transition: box-shadow .18s var(--ease), border-color .18s var(--ease);
   }
 
+  .dash-body > .sidebar .sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    min-height: 54px;
+    padding: 3px 7px 13px;
+    margin-block-end: 8px;
+    border-block-end: 1px solid var(--border-soft, var(--border));
+  }
+  .sidebar-brand-mark {
+    display: grid;
+    place-items: center;
+    flex: 0 0 38px;
+    width: 38px;
+    height: 38px;
+    border: 1px solid color-mix(in srgb, var(--accent) 74%, var(--border));
+    border-radius: 12px;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+    font: 800 18px/1 ui-sans-serif, system-ui, sans-serif;
+    box-shadow: 0 5px 14px color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+  .sidebar-brand-copy { display: grid; gap: 3px; min-width: 0; }
+  .sidebar-brand-copy strong { overflow: hidden; color: var(--text); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+  .sidebar-brand-copy small { color: var(--accent); font: 700 9px/1 ui-monospace, monospace; letter-spacing: .22em; }
+  .sidebar-environment {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 4px;
+    margin-block-end: 11px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--bg) 72%, transparent);
+  }
+  .sidebar-environment-live,
+  .sidebar-environment-disabled {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 29px;
+    border-radius: 10px;
+    color: var(--text-dim);
+    font-size: 10px;
+    font-weight: 750;
+  }
+  .sidebar-environment-live { color: var(--status-paid); background: color-mix(in srgb, var(--status-paid) 13%, transparent); }
+  .sidebar-environment-disabled { opacity: .42; }
+  .sidebar-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--status-paid); box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-paid) 16%, transparent); }
+
+  .dash-body > .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-brand {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  .dash-body > .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-brand-copy,
+  .dash-body > .sidebar:not(.pinned):not(:hover):not(:focus-within) .sidebar-environment {
+    display: none;
+  }
+
   .dash-body > .sidebar:not(.pinned):hover,
   .dash-body > .sidebar:not(.pinned):focus-within {
     width: var(--nav-expanded);
@@ -5478,6 +5538,38 @@ html[data-theme='light'] ::selection { color: #fff; background: rgba(0, 122, 255
     min-width: 0;
     max-width: none;
   }
+}
+
+@media (max-width: 900px) {
+  .sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 54px;
+    padding: 4px 6px 13px;
+    margin-block-end: 10px;
+    border-block-end: 1px solid var(--border);
+  }
+  .sidebar-brand-mark {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+    font-weight: 800;
+  }
+  .sidebar-brand-copy { display: grid; gap: 3px; }
+  .sidebar-brand-copy strong { font-size: 14px; }
+  .sidebar-brand-copy small { color: var(--accent); font: 700 9px ui-monospace, monospace; letter-spacing: .2em; }
+  .sidebar-environment { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin-block-end: 10px; border: 1px solid var(--border); border-radius: 14px; background: color-mix(in srgb, var(--bg) 72%, transparent); }
+  .sidebar-environment-live, .sidebar-environment-disabled { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 29px; border-radius: 10px; font-size: 10px; font-weight: 750; }
+  .sidebar-environment-live { color: var(--status-paid); background: color-mix(in srgb, var(--status-paid) 13%, transparent); }
+  .sidebar-environment-disabled { color: var(--text-dim); opacity: .45; }
+  .sidebar-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--status-paid); }
 }
 
 /* Sidebar: collapsed by default, expanded on hover/focus, or kept open when
