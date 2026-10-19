@@ -25,10 +25,10 @@ function normalizedPhone(value: unknown): string {
 
 // Balance thresholds are safety controls, so evaluate them from the SMS event
 // itself. The five-minute cron remains a recovery pass for delayed webhooks.
-async function switchWalletImmediately(wallet: unknown, balance: unknown, smsId: number): Promise<void> {
+async function switchWalletImmediately(wallet: unknown, balance: unknown, smsId: number, network: unknown = null): Promise<void> {
   const walletKey = normalizedPhone(wallet);
   const currentBalance = Number(balance);
-  if (!walletKey || !Number.isFinite(currentBalance)) return;
+  if (!Number.isFinite(currentBalance)) return;
 
   const { data: rules, error: rulesError } = await supabaseAdmin
     .from("maven_wallet_threshold_switch_rules")
@@ -37,8 +37,12 @@ async function switchWalletImmediately(wallet: unknown, balance: unknown, smsId:
     .eq("status", "active");
   if (rulesError) throw rulesError;
 
+  const networkKey = String(network ?? '').replace(/\s+/g, '').toLowerCase();
   for (const rule of rules ?? []) {
-    if (normalizedPhone(rule.source_wallet) !== walletKey || currentBalance < Number(rule.amount_threshold)) continue;
+    const ruleNetworkKey = String(rule.payment_type ?? '').replace(/\s+/g, '').toLowerCase();
+    const walletMatches = walletKey && normalizedPhone(rule.source_wallet) === walletKey;
+    const networkMatches = !walletKey && networkKey && ruleNetworkKey === networkKey;
+    if ((!walletMatches && !networkMatches) || currentBalance < Number(rule.amount_threshold)) continue;
 
     // Claim the rule before contacting Maven so two SMS retries cannot issue
     // two provider edits for the same bank.
@@ -730,8 +734,8 @@ Deno.serve(async (req: Request) => {
       return response({ error: "Could not store SMS" }, 500);
     }
 
-    if (balance !== null && wallet !== null && smsCategory !== "withdrawal") {
-      const thresholdTask = switchWalletImmediately(wallet, balance, data.id).catch((thresholdError) =>
+    if (balance !== null && smsCategory !== "withdrawal") {
+      const thresholdTask = switchWalletImmediately(wallet, balance, data.id, detectNetworkFromMessage(message) ?? providerValue).catch((thresholdError) =>
         console.error("immediate wallet threshold switch failed", thresholdError instanceof Error ? thresholdError.message : thresholdError)
       );
       try {

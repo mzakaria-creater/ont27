@@ -37,7 +37,7 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
     const since = rule.last_checked_at || new Date(0).toISOString()
     const { data: smsRows, error: smsError } = await db
       .from('inbound_sms')
-      .select('id, amount, balance_after, receiver_number, wallet_number, confirmed_wallet_number, received_at')
+      .select('id, amount, balance_after, provider, receiver_number, wallet_number, confirmed_wallet_number, received_at')
       .gte('received_at', since)
       .in('sms_category', RECEIVED_SMS_CATEGORIES)
       .or(sourceVariants.flatMap((number) => [`receiver_number.eq.${number}`, `wallet_number.eq.${number}`, `confirmed_wallet_number.eq.${number}`]).join(','))
@@ -50,9 +50,25 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
     // provider transaction mirror as a verified fallback, without double
     // counting when SMS evidence exists for this evaluation window.
     let received = (smsRows ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
-    const observedBalance = (smsRows ?? []).reduce((max, row) => Math.max(max, Number(row.balance_after) || 0), 0)
+    let observedBalance = (smsRows ?? []).reduce((max, row) => Math.max(max, Number(row.balance_after) || 0), 0)
     let evidenceSource = 'inbound_sms'
     if (!smsRows?.length) {
+      // Orange Cash confirmations may omit the receiving wallet because the
+      // forwarder has no resolved device. The provider/payment type is still
+      // an explicit match to the configured Maven rule, so use its live SMS
+      // balance before falling back to Maven transaction amounts.
+      const { data: providerSms, error: providerSmsError } = await db
+        .from('inbound_sms')
+        .select('id, amount, balance_after, provider, received_at')
+        .gte('received_at', since)
+        .in('sms_category', RECEIVED_SMS_CATEGORIES)
+        .eq('provider', rule.payment_type)
+        .not('is_blocked', 'is', true)
+        .not('is_duplicate', 'is', true)
+      if (providerSmsError) throw new Error(`threshold switch provider SMS ${rule.id}: ${providerSmsError.message}`)
+      observedBalance = (providerSms ?? []).reduce((max, row) => Math.max(max, Number(row.balance_after) || 0), 0)
+      if (providerSms?.length) evidenceSource = 'provider_balance_sms'
+
       const { data: transactions, error: transactionError } = await db
         .from('maven_transactions')
         .select('tx_id, amount, receiving_wallet, to_account_number, first_seen_at')
@@ -61,7 +77,7 @@ export async function runWalletThresholdSwitch(actorName = 'wallet-threshold-swi
         .or(sourceVariants.flatMap((number) => [`receiving_wallet.eq.${number}`, `to_account_number.eq.${number}`]).join(','))
       if (transactionError) throw new Error(`threshold switch transactions ${rule.id}: ${transactionError.message}`)
       received = (transactions ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
-      evidenceSource = 'maven_transactions'
+      if (!providerSms?.length) evidenceSource = 'maven_transactions'
     }
     const total = Number(rule.amount_received_since_check || 0) + received
     const checkedAt = new Date().toISOString()
