@@ -113,6 +113,11 @@ let lastLegacyMavenCollectorAt = 0
 // the same idempotent mirror with status/timestamp guards, so concurrent runs
 // are safe and keep new Maven transactions visible while a full scan runs.
 const activeSync: { fast: Promise<Record<string, number | string>> | null; full: Promise<Record<string, number | string>> | null; mirror: Promise<Record<string, number | string>> | null } = { fast: null, full: null, mirror: null }
+// The old-project mirror is an emergency migration path, not a live request
+// dependency. It was saturating both Supabase gateways with long reads and
+// making auth refreshes look like random logouts. V2 Maven reconciliation is
+// the normal live path; legacy pulls must be explicitly enabled for a repair.
+const legacyDeltaSyncEnabled = () => process.env.ENABLE_LEGACY_DELTA_SYNC === 'true'
 
 type DbWriteError = { code?: string | null; message?: string | null; details?: string | null; hint?: string | null }
 
@@ -898,14 +903,19 @@ async function runFastIngress(): Promise<{ results: Record<string, number | stri
   const directPromise = reconcileMaven('live')
     .then((value) => ({ ok: true as const, value, durationMs: Date.now() - directStartedAt }))
     .catch((error) => ({ ok: false as const, error, durationMs: Date.now() - directStartedAt }))
+  const legacy = legacyDeltaSyncEnabled()
   const collectorStartedAt = Date.now()
-  const collectorPromise = refreshLegacyMavenCollector()
-    .then((value) => ({ ok: true as const, value, durationMs: Date.now() - collectorStartedAt }))
-    .catch((error) => ({ ok: false as const, error, durationMs: Date.now() - collectorStartedAt }))
+  const collectorPromise = legacy
+    ? refreshLegacyMavenCollector()
+      .then((value) => ({ ok: true as const, value, durationMs: Date.now() - collectorStartedAt }))
+      .catch((error) => ({ ok: false as const, error, durationMs: Date.now() - collectorStartedAt }))
+    : Promise.resolve({ ok: true as const, value: 'legacy_sync_disabled', durationMs: 0 })
   const mirrorStartedAt = Date.now()
-  const mirrorPromise = syncOnce('fast')
-    .then((value) => ({ ok: true as const, value, durationMs: Date.now() - mirrorStartedAt }))
-    .catch((error) => ({ ok: false as const, error, durationMs: Date.now() - mirrorStartedAt }))
+  const mirrorPromise = legacy
+    ? syncOnce('fast')
+      .then((value) => ({ ok: true as const, value, durationMs: Date.now() - mirrorStartedAt }))
+      .catch((error) => ({ ok: false as const, error, durationMs: Date.now() - mirrorStartedAt }))
+    : Promise.resolve({ ok: true as const, value: 'legacy_sync_disabled', durationMs: 0 })
 
   const [direct, collector, mirror] = await Promise.all([directPromise, collectorPromise, mirrorPromise])
   const results: Record<string, number | string> = {
@@ -921,7 +931,7 @@ async function runFastIngress(): Promise<{ results: Record<string, number | stri
   else results.maven_legacy_collector = `error: ${collector.error instanceof Error ? collector.error.message : String(collector.error)}`
   if (mirror.ok) Object.assign(results, mirror.value)
   else results.error = `error: ${mirror.error instanceof Error ? mirror.error.message : String(mirror.error)}`
-  if (!directOk && mirror.ok && Number(mirror.value.maven_transactions ?? 0) > 0) directOk = true
+  if (!directOk && mirror.ok && typeof mirror.value !== 'string' && Number(mirror.value.maven_transactions ?? 0) > 0) directOk = true
   return { results, directOk }
 }
 
@@ -933,12 +943,10 @@ deltaSyncRoutes.get('/delta-sync', async (c) => {
   if (!secret || auth !== `Bearer ${secret}`) {
     return c.json({ error: 'unauthorized' }, 401)
   }
-  // A fast pass can spend up to 60s waiting on the legacy collector or Maven.
-  // The old 20s lease expired while that work was still running, allowing the
-  // next minute's cron invocation to start a second pass against Supabase.
-  // Keep the lease for the full function window so slow upstream calls do not
-  // multiply into a database outage.
-  if (!(await claimDistributedLease(300, 'provider_delta_sync_fast_cron'))) return c.json({ ok: true, skipped: 'distributed_lease' })
+  // Share the same lease as the browser pump. A cron tick and an open panel
+  // must never reconcile Maven concurrently. The live V2 call is capped at
+  // 15s, so 30s prevents overlap without blocking fresh sync for minutes.
+  if (!(await claimDistributedLease(30, 'provider_delta_sync_fast'))) return c.json({ ok: true, skipped: 'distributed_lease' })
   const { results, directOk } = await runFastIngress()
   const ok = directOk && resultOk(results)
   return c.json({ ok, mode: 'fast', results, at: new Date().toISOString() }, ok ? 200 : 502)
@@ -951,6 +959,7 @@ deltaSyncRoutes.get('/delta-sync-full', async (c) => {
   const secret = process.env.CRON_SECRET
   const auth = c.req.header('authorization')
   if (!secret || auth !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401)
+  if (!legacyDeltaSyncEnabled()) return c.json({ ok: true, mode: 'full', skipped: 'legacy_sync_disabled', at: new Date().toISOString() })
   // Full repair is deliberately serialized with a lease longer than Vercel's
   // 60s execution window. A timed-out invocation must not be joined by the
   // next scheduled run while its upstream requests are still unwinding.
@@ -973,6 +982,7 @@ deltaSyncRoutes.get('/delta-sync-full', async (c) => {
 deltaSyncRoutes.get('/delta-gap-check', async (c) => {
   const secret = process.env.CRON_SECRET
   if (!secret || c.req.header('authorization') !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401)
+  if (!legacyDeltaSyncEnabled()) return c.json({ ok: true, skipped: 'legacy_sync_disabled', at: new Date().toISOString() })
   if (!(await claimDistributedLease(3_600, 'maven_delta_gap_detector'))) return c.json({ ok: true, skipped: 'distributed_lease' })
   try {
     const result = await runMavenGapCheck(75)
@@ -1099,7 +1109,10 @@ deltaSyncRoutes.post('/delta-sync', async (c) => {
   // `distributed_lease` and left fresh provider rows invisible until cron ran.
   // The database lease contract accepts 5–300 seconds. Keep this at the
   // minimum so browser pumps stay responsive without generating invalid RPCs.
-  if (!(await claimDistributedLease(5, 'provider_delta_sync_fast'))) return c.json({ ok: true, skipped: 'distributed_lease' })
+  // The V2 reconciliation call has a 15s upstream budget. Keep the
+  // distributed lease longer than that so multiple open tabs cannot start
+  // overlapping reconciliation requests while the first one is unwinding.
+  if (!(await claimDistributedLease(30, 'provider_delta_sync_fast'))) return c.json({ ok: true, skipped: 'distributed_lease' })
 
   lastFastRunAt = now
   const startedAt = Date.now()
