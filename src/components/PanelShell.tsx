@@ -276,9 +276,9 @@ interface RailTelegramAlert { id: number; alert_type: string; chat_id: string | 
 const telegramPlainText = (value: string | null) => (value ?? '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/?(?:b|code|strong|em)>/gi, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim()
 const telegramTxRef = (value: string | null) => telegramPlainText(value).match(/(?:^|\n)TRX\s*:\s*([0-9]+)/i)?.[1] ?? null
 const cairoToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(new Date())
-const cairoWeekStart = () => {
+const cairoYesterday = () => {
   const date = new Date(`${cairoToday()}T12:00:00Z`)
-  date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7))
+  date.setUTCDate(date.getUTCDate() - 1)
   return date.toISOString().slice(0, 10)
 }
 
@@ -345,7 +345,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
           // and its header search box filters within that set) — 5000 was
           // pure excess: a multi-MB JSON payload re-fetched on every 15s
           // tick on every page an operator had the rail open on.
-          api<{ rows: RailSms[] }>(`/api/sms?from=${cairoWeekStart()}&to=${cairoToday()}&category=deposit,withdrawal&limit=200`),
+          api<{ rows: RailSms[] }>(`/api/sms?from=${cairoYesterday()}&to=${cairoToday()}&category=deposit,withdrawal&limit=200`),
           api<{ devices: RailDevice[] }>('/api/sms/devices'),
         ])
         if (!alive) return
@@ -353,7 +353,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
         setDevices(dev.devices)
         if (await sync) {
           const [freshList, freshDev] = await Promise.all([
-            api<{ rows: RailSms[] }>(`/api/sms?from=${cairoWeekStart()}&to=${cairoToday()}&category=deposit,withdrawal&limit=200`),
+            api<{ rows: RailSms[] }>(`/api/sms?from=${cairoYesterday()}&to=${cairoToday()}&category=deposit,withdrawal&limit=200`),
             api<{ devices: RailDevice[] }>('/api/sms/devices'),
           ])
           if (!alive) return
