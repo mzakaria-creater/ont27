@@ -396,7 +396,14 @@ Deno.serve(async (req) => {
           // via the edit-request flow, failing identically every time.
           const sourceStr = String(source ?? "");
           const trustedCorrectionSource = ["manual_fix_decline_reversal", "complaint", "direct_edit", "late_sms_match"].includes(sourceStr) || sourceStr.startsWith("edit_request:");
-          const safeReversal = allow_reversal === true && trustedCorrectionSource && ["PAID", "DECLINED"].includes(effectiveDecision) && ["PAID", "DECLINED"].includes(String(beforeStatus ?? "")) && beforeStatus !== effectiveDecision;
+          // A human may recover an expired deposit to PAID when fresh SMS or
+          // other payment evidence proves it was received. Automation never
+          // sends allow_reversal, so EXPIRED remains protected from accidental
+          // state changes while the audited edit path can execute it live.
+          const safeReversal = allow_reversal === true && trustedCorrectionSource && (
+            (["PAID", "DECLINED"].includes(effectiveDecision) && ["PAID", "DECLINED"].includes(String(beforeStatus ?? "")) && beforeStatus !== effectiveDecision) ||
+            (effectiveDecision === "PAID" && String(beforeStatus ?? "") === "EXPIRED")
+          );
           const safeUnderpayment = amountOverride != null && effectiveDecision === "UNDERPAID" && beforeStatus === "PAID" && providerAmount != null && amountOverride < providerAmount;
           // Mirror image of safeUnderpayment: a transaction Maven marked
           // UNDERPAID (saw a lower amount than requested) turns out to have

@@ -266,6 +266,7 @@ export async function applyEdit(
           source,
           allow_reversal: edit.status != null && edit.status !== currentStatus && (
             (['PAID', 'DECLINED'].includes(currentStatus) && ['PAID', 'DECLINED'].includes(mavenDecision)) ||
+            (currentStatus === 'EXPIRED' && mavenDecision === 'PAID') ||
             (currentStatus === 'UNDERPAID' && mavenDecision === 'PAID')
           ),
           override_amount: edit.amount ?? undefined,
