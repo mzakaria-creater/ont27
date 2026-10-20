@@ -73,7 +73,7 @@ export default function TransactionEditPanel({
     try {
       if (isSteward) {
         const res = await api<{ local_only: boolean; executed_on_provider: boolean }>(
-          `/api/tx/${txId}/edit`, { method: 'POST', body: JSON.stringify(payload) },
+          `/api/tx/${txId}/edit`, { method: 'POST', body: JSON.stringify(payload), timeoutMs: 55_000 },
         )
         setDone(res.executed_on_provider
           ? t('نُفِّذ على المزوّد وتأكّد.', 'Executed on the provider and confirmed.')
@@ -100,6 +100,8 @@ export default function TransactionEditPanel({
         const providerError = body?.worker?.error ?? body?.detail?.error
         const suffix = typeof providerError === 'string' ? `: ${providerError}` : ''
         setErr(t(`فشل التنفيذ على المزوّد — لم يتغيّر شيء${suffix}.`, `Provider execution failed — nothing changed${suffix}.`))
+      } else if (e instanceof ApiError && (e.code === 'network_timeout' || e.code === 'network_error')) {
+        setErr(t('انتهت مهلة الاتصال أثناء انتظار Maven. لا تعِد الضغط قبل مراجعة حالة المعاملة على Maven.', 'The Maven request timed out. Check the transaction on Maven before retrying.'))
       } else {
         setErr(t('تعذّر تنفيذ الطلب.', 'The request could not be completed.'))
       }

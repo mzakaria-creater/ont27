@@ -49,10 +49,14 @@ export default function TransactionEditDialog({ txId, ontargetRef, status, amoun
     setBusy(true); setError(null); setDone(null)
     try {
       const endpoint = steward ? `/api/tx/${txId}/edit` : `/api/tx/${txId}/edit-request`
-      const out = await api<{ executed_on_provider?: boolean; telegram?: { sent: number } }>(endpoint, { method: 'POST', body: JSON.stringify({ status: nextStatus, amount: canEditAmount && nextAmount !== '' ? Number(nextAmount) : null, sender_number: canEditAmount && nextSenderNumber !== '' ? nextSenderNumber.trim() : null, receiving_wallet: changingWallet ? nextReceivingWallet.trim() : null, reason: reason.trim() }) })
+      const out = await api<{ executed_on_provider?: boolean; telegram?: { sent: number } }>(endpoint, { method: 'POST', body: JSON.stringify({ status: nextStatus, amount: canEditAmount && nextAmount !== '' ? Number(nextAmount) : null, sender_number: canEditAmount && nextSenderNumber !== '' ? nextSenderNumber.trim() : null, receiving_wallet: changingWallet ? nextReceivingWallet.trim() : null, reason: reason.trim() }), timeoutMs: 55_000 })
       setDone(steward ? (out.executed_on_provider ? 'Executed on provider.' : 'Status updated locally.') : `Edit request sent (${out.telegram?.sent ?? 0} approvers).`)
       setNextStatus(''); setNextAmount(''); setNextSenderNumber(''); setNextReceivingWallet(''); setReason(''); setReasonChoice(''); onDone?.()
-    } catch (e) { setError(e instanceof ApiError ? e.code : 'edit_failed') }
+    } catch (e) {
+      setError(e instanceof ApiError && (e.code === 'network_timeout' || e.code === 'network_error')
+        ? 'Maven request timed out. Check the transaction on Maven before retrying.'
+        : e instanceof ApiError ? e.code : 'edit_failed')
+    }
     finally { setBusy(false) }
   }
   return <>

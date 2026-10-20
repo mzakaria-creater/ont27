@@ -232,7 +232,10 @@ export async function applyEdit(
     try {
       res = await fetch(`${baseUrl}/functions/v1/ngpay-approve`, {
         method: 'POST',
-        signal: AbortSignal.timeout(75_000),
+        // Vercel's API function is capped at 60 seconds. Leave room for the
+        // JSON response and audit mirror so the browser receives a real
+        // worker_failed result instead of a closed connection/network_error.
+        signal: AbortSignal.timeout(52_000),
         headers: { authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'content-type': 'application/json' },
         body: JSON.stringify({
           tx_id: txId,
