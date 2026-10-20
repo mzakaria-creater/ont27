@@ -173,15 +173,17 @@ extraRoutes.get(
     // are exact identifiers, so avoid the expensive wildcard OR across the
     // full ledger and use the indexed transaction id as the fast path.
     let providerReferenceTxIds: number[] = []
-    if (q && q.length >= 3) {
-      const exact = /^\d{8,}$/.test(q)
-      const refLookups = exact
-        ? await Promise.all([
-          db.from('maven_transactions').select('tx_id').eq('merchant_tx_reference', q).limit(200),
-          db.from('maven_transactions').select('tx_id').eq('ontarget_ref', q).limit(200),
-          db.from('maven_transactions').select('tx_id').filter('maven_raw_row->>Reference1', 'eq', q).limit(200),
-        ])
-        : [await db.from('maven_transactions').select('tx_id').filter('maven_raw_row->>Reference1', 'ilike', `%${q.replaceAll('%', '')}%`).limit(200)]
+    // A partial search must never be narrowed to the rows returned by one
+    // substring lookup. For example, searching `138` should still find every
+    // transaction whose provider TransactionId starts with that prefix. Use
+    // the reference fast path only for a complete-looking numeric identifier;
+    // partial text stays on the broad, truthful search predicate below.
+    if (q && /^\d{8,}$/.test(q)) {
+      const refLookups = await Promise.all([
+        db.from('maven_transactions').select('tx_id').eq('merchant_tx_reference', q).limit(200),
+        db.from('maven_transactions').select('tx_id').eq('ontarget_ref', q).limit(200),
+        db.from('maven_transactions').select('tx_id').filter('maven_raw_row->>Reference1', 'eq', q).limit(200),
+      ])
       providerReferenceTxIds = [...new Set(refLookups.flatMap((lookup) => (lookup.data ?? []).map((row) => Number(row.tx_id)).filter(Number.isFinite)))]
     }
 
@@ -214,7 +216,7 @@ extraRoutes.get(
       if (Number.isFinite(maxAmount)) query = query.lte('amount', maxAmount)
       if (q) {
         const like = `%${q.replaceAll(',', ' ')}%`
-        const ors = [`ontarget_ref.ilike.${like}`, `merchant_tx_reference.ilike.${like}`, `maven_raw_row->>Reference1.ilike.${like}`, `sender_number.ilike.${like}`, `sender_name.ilike.${like}`, `maven_raw_row->>AccountNumber.ilike.${like}`, `maven_raw_row->>PhoneNo.ilike.${like}`, `maven_raw_row->>UserName.ilike.${like}`, `receiving_wallet.ilike.${like}`, `to_account_number.ilike.${like}`, `merchant.ilike.${like}`]
+        const ors = [`ontarget_ref.ilike.${like}`, `merchant_tx_reference.ilike.${like}`, `maven_raw_row->>Reference1.ilike.${like}`, `maven_raw_row->>TransactionId.ilike.${like}`, `maven_raw_row->>TransactionID.ilike.${like}`, `sender_number.ilike.${like}`, `sender_name.ilike.${like}`, `maven_raw_row->>AccountNumber.ilike.${like}`, `maven_raw_row->>PhoneNo.ilike.${like}`, `maven_raw_row->>UserName.ilike.${like}`, `receiving_wallet.ilike.${like}`, `to_account_number.ilike.${like}`, `merchant.ilike.${like}`]
         const exact: string[] = []
         if (/^\d+$/.test(q)) exact.push(`tx_id.eq.${q}`)
         if (/^\d+(\.\d{1,2})?$/.test(q)) exact.push(`amount.eq.${q}`)
