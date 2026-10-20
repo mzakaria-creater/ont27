@@ -230,6 +230,12 @@ export async function applyEdit(
     if (!baseUrl || !serviceKey) return { ok: false, error: 'worker_not_configured' }
     let res: Response
     try {
+      // Keep the declined-to-paid edit compatible with older V2 worker
+      // deployments: this is the same role-gated human recovery path used by
+      // the Recover Transactions screen and is already trusted there.
+      const workerSource = currentStatus === 'DECLINED' && mavenDecision === 'PAID'
+        ? 'manual_fix_decline_reversal'
+        : source
       res = await fetch(`${baseUrl}/functions/v1/ngpay-approve`, {
         method: 'POST',
         // Vercel's API function is capped at 60 seconds. Leave room for the
@@ -263,7 +269,7 @@ export async function applyEdit(
           // a separate requester AND approver), so it deserves the same
           // trust. Pass the real source through; ngpay-approve now also
           // recognizes the `edit_request:` prefix (see its own comment).
-          source,
+          source: workerSource,
           allow_reversal: edit.status != null && edit.status !== currentStatus && (
             (['PAID', 'DECLINED'].includes(currentStatus) && ['PAID', 'DECLINED'].includes(mavenDecision)) ||
             (currentStatus === 'EXPIRED' && mavenDecision === 'PAID') ||
