@@ -183,6 +183,13 @@ extraRoutes.get(
         db.from('maven_transactions').select('tx_id').eq('merchant_tx_reference', q).limit(200),
         db.from('maven_transactions').select('tx_id').eq('ontarget_ref', q).limit(200),
         db.from('maven_transactions').select('tx_id').filter('maven_raw_row->>Reference1', 'eq', q).limit(200),
+        db.from('maven_transactions').select('tx_id').filter('maven_raw_row->>TransactionId', 'eq', q).limit(200),
+        db.from('maven_transactions').select('tx_id').filter('maven_raw_row->>TransactionID', 'eq', q).limit(200),
+        // Maven has changed the raw key casing/name across collector
+        // versions. The JSON text fallback keeps an exact numeric search
+        // useful even when the provider sends an unfamiliar key or number
+        // value instead of a string.
+        db.from('maven_transactions').select('tx_id').filter('maven_raw_row::text', 'ilike', `%${q}%`).limit(200),
       ])
       providerReferenceTxIds = [...new Set(refLookups.flatMap((lookup) => (lookup.data ?? []).map((row) => Number(row.tx_id)).filter(Number.isFinite)))]
     }
@@ -216,7 +223,7 @@ extraRoutes.get(
       if (Number.isFinite(maxAmount)) query = query.lte('amount', maxAmount)
       if (q) {
         const like = `%${q.replaceAll(',', ' ')}%`
-        const ors = [`ontarget_ref.ilike.${like}`, `merchant_tx_reference.ilike.${like}`, `maven_raw_row->>Reference1.ilike.${like}`, `maven_raw_row->>TransactionId.ilike.${like}`, `maven_raw_row->>TransactionID.ilike.${like}`, `sender_number.ilike.${like}`, `sender_name.ilike.${like}`, `maven_raw_row->>AccountNumber.ilike.${like}`, `maven_raw_row->>PhoneNo.ilike.${like}`, `maven_raw_row->>UserName.ilike.${like}`, `receiving_wallet.ilike.${like}`, `to_account_number.ilike.${like}`, `merchant.ilike.${like}`]
+        const ors = [`ontarget_ref.ilike.${like}`, `merchant_tx_reference.ilike.${like}`, `maven_raw_row->>Reference1.ilike.${like}`, `maven_raw_row->>TransactionId.ilike.${like}`, `maven_raw_row->>TransactionID.ilike.${like}`, `maven_raw_row::text.ilike.${like}`, `sender_number.ilike.${like}`, `sender_name.ilike.${like}`, `maven_raw_row->>AccountNumber.ilike.${like}`, `maven_raw_row->>PhoneNo.ilike.${like}`, `maven_raw_row->>UserName.ilike.${like}`, `receiving_wallet.ilike.${like}`, `to_account_number.ilike.${like}`, `merchant.ilike.${like}`]
         const exact: string[] = []
         if (/^\d+$/.test(q)) exact.push(`tx_id.eq.${q}`)
         if (/^\d+(\.\d{1,2})?$/.test(q)) exact.push(`amount.eq.${q}`)
