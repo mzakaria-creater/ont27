@@ -56,9 +56,9 @@ export default function TransactionEditPanel({
   // Mirrors the server's rule exactly — this is the one thing the operator
   // must not be misled about.
   const normalizedGateway = String(gateway ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase()
-  const isNgPay = normalizedGateway.includes('nagupay') || normalizedGateway.includes('nagopay')
+  const isNgPay = normalizedGateway.includes('nagupay') || normalizedGateway.includes('nagopay') || normalizedGateway === 'ngpay' || normalizedGateway.includes('ngpay')
   const providerTarget = (changingStatus ? nextStatus : status).toUpperCase()
-  const hitsProvider = isNgPay && (changingAmount || (changingStatus && ['PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID'].includes(providerTarget)))
+  const hitsProvider = isNgPay && (changingAmount || (changingStatus && ['PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID', 'OVERPAID', 'APPROVED'].includes(providerTarget)))
 
   const submit = async () => {
     setBusy(true)
@@ -137,7 +137,7 @@ export default function TransactionEditPanel({
           <label className="field-label">{t('الحالة الجديدة', 'New status')}</label>
           <select className="login-input" value={nextStatus} onChange={(e) => setNextStatus(e.target.value)} disabled={busy}>
             <option value="">{t('— بدون تغيير —', '— no change —')}</option>
-            {Object.keys(STATUS_META).filter((s) => s !== status).map((s) => (
+            {Object.keys(STATUS_META).filter((s) => s !== status && ['PENDING', 'PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID', 'OVERPAID', 'APPROVED'].includes(s)).map((s) => (
               <option key={s} value={s}>{statusMeta(s).label}</option>
             ))}
           </select>

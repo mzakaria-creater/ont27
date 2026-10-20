@@ -33,7 +33,7 @@ const AMOUNT_EDIT_ROLES = new Set(['super_admin', 'owner', 'admin', 'operations_
 // allow-list server-side because the browser must never be the authorization
 // boundary for financial edits.
 const AMOUNT_EDIT_USERNAMES = new Set(['ahmedmano.solly', 'joe'])
-const EDITABLE_STATUSES = ['PENDING', 'PAID', 'DECLINED', 'EXPIRED', 'EXPIRED_LOCAL', 'UNDERPAID', 'APPROVED']
+const EDITABLE_STATUSES = ['PENDING', 'PAID', 'DECLINED', 'EXPIRED', 'EXPIRED_LOCAL', 'UNDERPAID', 'OVERPAID', 'APPROVED']
 const PROVIDER_STATUSES = new Set(['PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID', 'OVERPAID'])
 
 const canEditAmount = (actor: { role: string; username: string }) =>
@@ -49,8 +49,11 @@ const TX_COLS = 'tx_id, ontarget_ref, status, amount, currency, gateway, master_
 function isNgPayGateway(tx: Record<string, unknown>): boolean {
   const raw = tx.maven_raw_row && typeof tx.maven_raw_row === 'object' && !Array.isArray(tx.maven_raw_row)
     ? tx.maven_raw_row as Record<string, unknown> : null
-  const gateway = String(tx.gateway ?? raw?.Gateway ?? raw?.gateway ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase()
-  return gateway === 'nagupayp2p' || gateway === 'nagopayp2p' || gateway.includes('nagupay') || gateway.includes('nagopay')
+  const values = [tx.gateway, raw?.Gateway, raw?.gateway, tx.master_merchant, raw?.MasterMerchant, raw?.master_merchant]
+  return values.some((value) => {
+    const gateway = String(value ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+    return gateway === 'nagupayp2p' || gateway === 'nagopayp2p' || gateway.includes('nagupay') || gateway.includes('nagopay') || gateway === 'ngpay' || gateway.includes('ngpay')
+  })
 }
 
 interface EditInput {

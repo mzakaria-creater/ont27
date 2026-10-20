@@ -259,8 +259,8 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (rowErr) return json({ error: rowErr.message }, 500);
     if (!row) return json({ error: `No transaction for tx_id ${tx_id}` }, 404);
-    const gatewayKey = String(row.gateway ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
-    const isNgPay = gatewayKey === "nagupayp2p" || gatewayKey === "nagopayp2p" || gatewayKey.includes("nagupay") || gatewayKey.includes("nagopay");
+    const gatewayKeys = [row.gateway, row.master_merchant].map((value) => String(value ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase());
+    const isNgPay = gatewayKeys.some((gatewayKey) => gatewayKey === "nagupayp2p" || gatewayKey === "nagopayp2p" || gatewayKey.includes("nagupay") || gatewayKey.includes("nagopay") || gatewayKey === "ngpay" || gatewayKey.includes("ngpay"));
     if (!isNgPay) return json({ error: `This worker only executes NGPay deposits — got gateway=${row.gateway}` }, 400);
 
     // pg_net is asynchronous. If the database or Edge runtime is congested,

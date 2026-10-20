@@ -31,7 +31,9 @@ export default function TransactionEditDialog({ txId, ontargetRef, status, amoun
   // status edit targeting a real provider outcome always executes, no matter
   // the current status; APPROVED executes as PAID since Maven has no
   // "Approved" state of its own (see the server-side comment).
-  const provider = changing && gateway === 'NagupayP2P' && (
+  const normalizedGateway = String(gateway ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+  const isNgPay = normalizedGateway.includes('nagupay') || normalizedGateway.includes('nagopay') || normalizedGateway === 'ngpay' || normalizedGateway.includes('ngpay')
+  const provider = changing && isNgPay && (
     (nextAmount !== '' && canEditAmount && ['PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID', 'OVERPAID', 'APPROVED'].includes(status)) ||
     (nextStatus !== '' && ['PAID', 'DECLINED', 'EXPIRED', 'UNDERPAID', 'OVERPAID', 'APPROVED'].includes(nextStatus))
   )
