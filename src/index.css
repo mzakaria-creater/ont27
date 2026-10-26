@@ -2676,6 +2676,8 @@ a.stat-card:hover { border-color: var(--accent); }
    operator to assign a transaction, green = already assigned, red = a
    withdrawal (money leaving), regardless of its own link status. */
 .sms-feed-item.is-linked { box-shadow: inset 3px 0 0 var(--status-paid); background: color-mix(in srgb, var(--status-paid) 11%, var(--surface)); border-color: color-mix(in srgb, var(--status-paid) 35%, var(--border-soft)); }
+.sms-feed-item.is-incoming { box-shadow: inset 3px 0 0 var(--status-paid); background: color-mix(in srgb, var(--status-paid) 11%, var(--surface)); border-color: color-mix(in srgb, var(--status-paid) 35%, var(--border-soft)); }
+.sms-feed-item.is-incoming:hover { background: color-mix(in srgb, var(--status-paid) 18%, var(--surface)); }
 .sms-feed-item.is-linked:hover { background: color-mix(in srgb, var(--status-paid) 18%, var(--surface)); }
 .sms-feed-item.is-unlinked { box-shadow: inset 3px 0 0 var(--status-pending); background: color-mix(in srgb, var(--status-pending) 13%, var(--surface)); border-color: color-mix(in srgb, var(--status-pending) 40%, var(--border-soft)); }
 .sms-feed-item.is-unlinked:hover { background: color-mix(in srgb, var(--status-pending) 20%, var(--surface)); }
@@ -2892,6 +2894,12 @@ a.stat-card:hover { border-color: var(--accent); }
   color: var(--text-dim); text-decoration: none; transition: background 0.15s var(--ease);
 }
 .alert-row:hover { background: var(--hover); color: var(--text); }
+.alert-row-in { border-inline-start: 3px solid var(--status-paid); background: color-mix(in srgb, var(--status-paid) 8%, transparent); }
+.alert-row-in:hover { background: color-mix(in srgb, var(--status-paid) 15%, var(--hover)); }
+.alert-row-out { border-inline-start: 3px solid var(--status-declined); background: color-mix(in srgb, var(--status-declined) 9%, transparent); }
+.alert-row-out:hover { background: color-mix(in srgb, var(--status-declined) 16%, var(--hover)); }
+.alert-row-in .alert-row-mid { color: var(--status-paid); }
+.alert-row-out .alert-row-mid { color: var(--status-declined); }
 .alert-row-mid { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .alert-empty { padding: 6px 11px; font-size: 11.5px; color: var(--text-muted); }
 .bell-count.warn { background: var(--amber-bg); color: var(--status-pending); }

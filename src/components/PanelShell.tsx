@@ -607,7 +607,7 @@ function SmsRail({ onMinimize }: { onMinimize: () => void }) {
           // link status (money leaving is its own kind of thing to watch);
           // among deposits, green means a transaction is already attached and
           // yellow means it still needs an operator to assign one.
-          const cardState = r.sms_category === 'withdrawal' ? 'is-withdrawal' : linked ? 'is-linked' : 'is-unlinked'
+          const cardState = r.sms_category === 'withdrawal' ? 'is-withdrawal' : 'is-incoming'
           const linkedStatus = r.sms_category === 'withdrawal' ? r.matched_payout_status : r.matched_transaction_status
           const linkedNeedsAction = linked && !['PAID', 'APPROVED', 'SETTLED', 'COMPLETED'].includes(String(linkedStatus ?? '').toUpperCase())
           // A real transaction match (not a withdrawal wallet-only link) gets

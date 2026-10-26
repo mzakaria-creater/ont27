@@ -190,7 +190,7 @@ function Bell() {
             {(data.pendingDepositsStale ?? 0) > 0 && <div className="alert-empty">{t(`${data.pendingDepositsStale} معاملات Pending قديمة خارج التنبيه الحي`, `${data.pendingDepositsStale} old pending records excluded from the live alert`)}</div>}
             {(data.latestPending ?? []).length === 0 && <div className="alert-empty">{t('لا شيء معلّق', 'Nothing pending')}</div>}
             {(data.latestPending ?? []).map((r) => (
-              <Link key={r.tx_id} to={r.ontarget_ref ? `/transactions/${r.ontarget_ref}` : '/deposits?status=PENDING'} className="alert-row" onClick={() => setOpen(false)}>
+              <Link key={r.tx_id} to={r.ontarget_ref ? `/transactions/${r.ontarget_ref}` : '/deposits?status=PENDING'} className="alert-row alert-row-in" onClick={() => setOpen(false)}>
                 <span className="mono">{r.ontarget_ref ?? r.tx_id}</span>
                 <span className="alert-row-mid">
                   {r.sender_name ?? '—'}
@@ -208,7 +208,7 @@ function Bell() {
             </Link>
             {(data.latestPayouts ?? []).length === 0 && <div className="alert-empty">{t('لا شيء معلّق', 'Nothing pending')}</div>}
             {(data.latestPayouts ?? []).map((r) => (
-              <Link key={r.maven_id} to={`/payouts?status=PENDING&q=${encodeURIComponent(r.ontarget_ref ?? String(r.maven_id))}`} className="alert-row" onClick={() => setOpen(false)}>
+              <Link key={r.maven_id} to={`/payouts?status=PENDING&q=${encodeURIComponent(r.ontarget_ref ?? String(r.maven_id))}`} className="alert-row alert-row-out" onClick={() => setOpen(false)}>
                 <span className="mono">{r.ontarget_ref ?? r.maven_id}</span>
                 <span className="alert-row-mid">{r.account_name ?? r.mobile_no ?? '—'}</span>
                 <span className="mono">{money(r.amount, 'EGP')}</span>
