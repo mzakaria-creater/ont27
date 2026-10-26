@@ -471,6 +471,16 @@ export default function Transactions() {
   const abortRef = useRef<AbortController | null>(null)
   const lastFingerprint = useRef('')
   const lastRunAt = useRef(0)
+  const transactionSearch = (limit: number, offset: number) => {
+    const search = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+    if (type) search.set('type', type)
+    if (status) search.set('status', status)
+    if (appliedQ) search.set('q', appliedQ)
+    for (const [key, value] of Object.entries({ from, to, merchant, method, currency, min_amount: minAmount, max_amount: maxAmount })) {
+      if (value) search.set(key, value)
+    }
+    return search
+  }
   const load = useCallback(async (silent = false) => {
     const seq = ++requestSeq.current
     abortRef.current?.abort()
@@ -478,14 +488,7 @@ export default function Transactions() {
     abortRef.current = controller
     if (!silent) setLoading(true)
     setErr(null)
-    const search = new URLSearchParams({ limit: String(pageSize), offset: String((page - 1) * pageSize) })
-    if (type) search.set('type', type)
-    if (status) search.set('status', status)
-    if (appliedQ) search.set('q', appliedQ)
-    // An explicit transaction search must be able to find historical rows
-    // even though the normal list defaults to the current month.
-    const dateFilters = appliedQ.trim() ? {} : { from, to }
-    for (const [key, value] of Object.entries({ ...dateFilters, merchant, method, currency, min_amount: minAmount, max_amount: maxAmount })) if (value) search.set(key, value)
+    const search = transactionSearch(pageSize, (page - 1) * pageSize)
     try {
       const next = await api<ListResponse>(`/api/transactions?${search}`, { signal: controller.signal })
       if (seq !== requestSeq.current) return
@@ -660,25 +663,20 @@ export default function Transactions() {
     { header: 'Created (UTC)', key: 'created', value: (r) => r.created_utc ?? r.first_seen_at ?? '' },
   ]
 
-  // Export respects the active filters, not just the current page — fetch
-  // in MAX_PAGE-sized batches up to a sane cap so a huge unfiltered export
-  // doesn't hang the browser or the API.
-  const EXPORT_CAP = 5000
+  // Export respects the active filters, not just the current page. Fetch each
+  // batch from the same query used by the table and continue until the server
+  // has no more matching rows. This is important for date ranges such as
+  // July 1 through today, where the result commonly spans many pages.
   const fetchAllForExport = async (): Promise<TxRow[]> => {
     const batchSize = 500
     const collected: TxRow[] = []
     let offset = 0
     for (;;) {
-      const search = new URLSearchParams({ limit: String(batchSize), offset: String(offset) })
-      if (type) search.set('type', type)
-      if (status) search.set('status', status)
-      if (appliedQ) search.set('q', appliedQ)
-      const dateFilters = appliedQ.trim() ? {} : { from, to }
-      for (const [key, value] of Object.entries({ ...dateFilters, merchant, method, currency, min_amount: minAmount, max_amount: maxAmount })) if (value) search.set(key, value)
+      const search = transactionSearch(batchSize, offset)
       const page = await api<ListResponse>(`/api/transactions?${search}`)
       collected.push(...page.rows)
-      offset += batchSize
-      if (page.rows.length < batchSize || collected.length >= EXPORT_CAP || offset >= page.total) break
+      offset += page.rows.length
+      if (page.rows.length < batchSize || page.rows.length === 0 || (page.total > 0 && offset >= page.total)) break
     }
     return collected
   }
