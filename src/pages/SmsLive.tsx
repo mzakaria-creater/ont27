@@ -258,6 +258,7 @@ export default function SmsLive() {
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [selected, setSelected] = useState<SmsDetail | null>(null)
+  const pushedDetailRef = useRef(false)
   const [detailLoading, setDetailLoading] = useState(false)
   const [candidates, setCandidates] = useState<CandidateTx[] | null>(null)
   const [candQ, setCandQ] = useState('')
@@ -506,6 +507,12 @@ export default function SmsLive() {
     try {
       const res = await api<{ sms: SmsDetail }>(`/api/sms/${id}`)
       setSelected(res.sms)
+      if (Number(params.get('sms_id')) !== id) {
+        const nextParams = new URLSearchParams(params)
+        nextParams.set('sms_id', String(id))
+        pushedDetailRef.current = true
+        setParams(nextParams)
+      }
       setMetaName(res.sms.sender_name ?? '')
       setMetaNotes(res.sms.notes ?? '')
       setMetaCategory(res.sms.manual_entry_note ?? '')
@@ -526,6 +533,12 @@ export default function SmsLive() {
     }
   }, [requestedSmsId])
 
+  // Phone back button / browser back closes the open details instead of leaving the page:
+  // opening a row pushes ?sms_id=<id>, and when the param disappears the sheet closes.
+  useEffect(() => {
+    if (!(requestedSmsId > 0)) { pushedDetailRef.current = false; if (selected) setSelected(null) }
+  }, [requestedSmsId])
+
   // Deep link from the floating SMS widget's "Add" button (?manual=1).
   const manualRequested = params.get('manual') === '1'
   useEffect(() => {
@@ -537,6 +550,13 @@ export default function SmsLive() {
   }, [manualRequested])
 
   const closeDetail = () => {
+    // We pushed a history entry when opening: pop it so the back stack stays clean.
+    if (pushedDetailRef.current && Number(params.get('sms_id')) > 0) {
+      pushedDetailRef.current = false
+      setSelected(null)
+      window.history.back()
+      return
+    }
     setSelected(null)
     const next = new URLSearchParams(params)
     next.delete('sms_id')
@@ -1167,7 +1187,7 @@ export default function SmsLive() {
             {detailLoading && <p className="sidebar-hint">{t('جارٍ التحميل…', 'Loading…')}</p>}
             {selected && (
               <>
-                <SheetHeader title={<span className="mono">SMS #{selected.id}</span>} onClose={closeDetail} />
+                <SheetHeader title={<span className="mono">SMS #{selected.id}</span>} onBack={closeDetail} onClose={closeDetail} />
 
                 <div className="drawer-amount">
                   <span className="mono">{money(selected.amount, 'EGP')}</span>

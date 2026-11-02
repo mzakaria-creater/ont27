@@ -1,5 +1,5 @@
 import { type CSSProperties, type ReactNode, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { ArrowRight, X } from 'lucide-react'
 
 // A reusable slide-in panel. Every page that needed this (SmsLive, Deposits,
 // Merchants, Complaints, UserEditor, TransactionEditDialog/Panel) hand-
@@ -41,15 +41,20 @@ export function Sheet({ open, onClose, side = 'start', ariaLabel, busy = false, 
   )
 }
 
-export function SheetHeader({ title, subtitle, onClose, busy = false, children }: { title: ReactNode; subtitle?: ReactNode; onClose?: () => void; busy?: boolean; children?: ReactNode }) {
+export function SheetHeader({ title, subtitle, onClose, onBack, busy = false, children }: { title: ReactNode; subtitle?: ReactNode; onClose?: () => void; onBack?: () => void; busy?: boolean; children?: ReactNode }) {
   return (
     <div className="drawer-head">
-      <div>
+      {onBack && (
+        <button type="button" className="btn-ghost btn-sm sheet-back" onClick={onBack} disabled={busy} aria-label="Back">
+          <ArrowRight size={16}/><span>رجوع / Back</span>
+        </button>
+      )}
+      <div className="drawer-head-title">
         <h3>{title}</h3>
         {subtitle && <p className="cell-sub">{subtitle}</p>}
       </div>
       {children}
-      {onClose && <button type="button" className="btn-ghost btn-sm" onClick={onClose} disabled={busy} aria-label="Close">✕</button>}
+      {onClose && <button type="button" className="btn-ghost btn-sm sheet-close" onClick={onClose} disabled={busy} aria-label="Close"><X size={18}/></button>}
     </div>
   )
 }
