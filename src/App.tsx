@@ -105,6 +105,7 @@ const PayoutRequests = lazy(() => import('./pages/PayoutRequests'))
 const TeamTasks = lazy(() => import('./pages/TeamTasks'))
 const OperatorHandbook = lazy(() => import('./pages/OperatorHandbook'))
 const Devices = lazy(() => import('./pages/Devices'))
+const Ussd = lazy(() => import('./pages/Ussd'))
 const StaffAttendance = lazy(() => import('./pages/StaffAttendance'))
 const MindMap = lazy(() => import('./pages/MindMap'))
 const RedTeam = lazy(() => import('./pages/RedTeam'))
@@ -624,6 +625,7 @@ export default function App() {
             <Route path="/airdroid" element={<PageGate keys={['sms_live','wallets']}><AirDroid /></PageGate>} />
             <Route path="/maven" element={<PageGate keys={['sms_live','wallets']}><AirDroid defaultPortal="maven" /></PageGate>} />
             <Route path="/devices" element={<PageGate keys={['sms_live','wallets']}><Devices /></PageGate>} />
+            <Route path="/ussd" element={<PageGate keys={['payouts']}><Ussd /></PageGate>} />
             <Route path="/ontarget-hub" element={<PageGate keys={['wallets','payouts','sms_live','treasury']}><TreasuryHub /></PageGate>} />
             <Route path="/hub" element={<PageGate keys={['wallets','payouts','sms_live','treasury']}><TreasuryHub /></PageGate>} />
           </Route>

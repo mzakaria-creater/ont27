@@ -39,6 +39,7 @@ import { proofExtractRoutes } from './proofExtract.js'
 import { transactionsAiRoutes } from './transactionsAi.js'
 import { gatewayDashboardRoutes } from './gatewayDashboard.js'
 import { deviceRoutes } from './devices.js'
+import { ussdRoutes } from './ussd.js'
 import { gatewayRoutes } from './gateway.js'
 import { emailNotificationRoutes } from './emailNotifications.js'
 import { whatsappRoutes, whatsappWebhookRoutes } from './whatsapp.js'
@@ -81,6 +82,7 @@ app.route('/proof', proofExtractRoutes)
 app.route('/transactions-ai', transactionsAiRoutes)
 app.route('/gateway-dashboard', gatewayDashboardRoutes)
 app.route('/devices', deviceRoutes)
+app.route('/ussd', ussdRoutes)
 app.route('/merchants', merchantRoutes)
 app.route('/fx', fxRoutes)
 app.route('/treasury', treasuryRoutes)

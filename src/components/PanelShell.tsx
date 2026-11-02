@@ -94,6 +94,7 @@ const BUILT_LINKS: NavLinkDef[] = [
   { to: '/airdroid', icon: '📱', labelAr: 'إدارة AirDroid', labelEn: 'AirDroid devices', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/maven', icon: '◈', labelAr: 'بوابة Maven', labelEn: 'Maven portal', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/devices', icon: '📲', labelAr: 'أسطول الأجهزة', labelEn: 'Device fleet', keys: ['sms_live', 'wallets'], group: 'payments' },
+  { to: '/ussd', icon: '☎️', labelAr: 'إرسال USSD', labelEn: 'USSD sender', keys: ['payouts'], group: 'payments' },
   { to: '/gateway', icon: '🏦', labelAr: 'البوابة والأرصدة', labelEn: 'Gateway & Balances', keys: ['wallets', 'deposits', 'payouts'], group: 'payments' },
   { to: '/wallet-report', icon: '📊', labelAr: 'تقرير المحافظ', labelEn: 'Wallet report', keys: ['sms_live', 'wallets'], group: 'payments' },
   { to: '/sms-balance-chains', icon: '🔗', labelAr: 'سلاسل أرصدة SMS', labelEn: 'SMS balance chains', keys: ['sms_live', 'wallets', 'reports'], group: 'payments' },
