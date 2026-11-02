@@ -4849,3 +4849,25 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .treasury-card dl div { background: rgba(255,255,255,.12); border-radius: 10px; padding: 8px 10px; }
 .treasury-card dt { font-size: .72rem; opacity: .8; }
 .treasury-card dd { margin: 2px 0 0; font-weight: 700; }
+
+/* Sheet header: stays pinned while the drawer content scrolls (mobile full-screen
+   drawers used to scroll the close button out of reach), with big touch targets. */
+.drawer-head {
+  position: sticky;
+  top: -20px;
+  z-index: 5;
+  margin: -20px -20px 0;
+  padding: 12px 20px;
+  gap: 10px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.drawer-head .drawer-head-title { flex: 1; min-width: 0; }
+.drawer-head .sheet-close,
+.drawer-head .sheet-back { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; min-width: 40px; flex: none; }
+:root[dir="ltr"] .drawer-head .sheet-back svg, html[dir="ltr"] .drawer-head .sheet-back svg { transform: scaleX(-1); }
+@media (max-width: 720px) {
+  .drawer-head { padding: 10px 14px; margin: -20px -20px 0; }
+  .drawer-head .sheet-close,
+  .drawer-head .sheet-back { min-height: 44px; min-width: 44px; }
+}
